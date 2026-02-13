@@ -171,8 +171,18 @@ def process_video(video_path: Path) -> None:
         progress.update("save", f"正在保存 Markdown...")
         notify_stage(filename, "4/4 保存文件...")
 
-        # 生成标准名称
-        standard_name = generate_standard_name(lang)
+        # 生成标准名称 (使用视频创建时间)
+        try:
+            # macOS 上 st_birthtime 为创建时间
+            stat = video_path.stat()
+            if hasattr(stat, "st_birthtime"):
+                creation_time = datetime.fromtimestamp(stat.st_birthtime)
+            else:
+                creation_time = datetime.fromtimestamp(stat.st_mtime)
+        except Exception:
+            creation_time = datetime.now()
+
+        standard_name = generate_standard_name(lang, date=creation_time)
 
         # 保存 Markdown
         md_path = save_transcript_md(standard_name, lang, duration, segments)
