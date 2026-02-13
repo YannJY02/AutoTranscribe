@@ -20,6 +20,10 @@ build/
 video/
 txt/
 logs/
+# 但保留目录结构占位文件
+!video/.gitkeep
+!txt/.gitkeep
+!logs/.gitkeep
 
 # ── 模型缓存 ──────────────────────────────────────────────
 *.pt
