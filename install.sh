@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_NAME="transcribe"
 PLIST_NAME="com.yann.autotranscribe"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
+LAUNCHD_LOG_DIR="$HOME/Library/Logs/AutoTranscribe"
 
 # 颜色
 GREEN='\033[0;32m'
@@ -91,7 +92,31 @@ mkdir -p "${SCRIPT_DIR}/video"
 mkdir -p "${SCRIPT_DIR}/txt"
 mkdir -p "${SCRIPT_DIR}/logs"
 mkdir -p "${SCRIPT_DIR}/scripts"
+mkdir -p "${LAUNCHD_LOG_DIR}"
 ok "目录结构就绪"
+
+# ── 创建辅助启动脚本 ────────────────────────────────────
+# 仅用于手动调试；LaunchAgent 直接调用 Python，避免 Desktop 脚本执行限制
+info "创建启动脚本..."
+cat > "${SCRIPT_DIR}/run.sh" << 'RUN_EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUN_EOF
+# 追加带变量展开的行
+cat >> "${SCRIPT_DIR}/run.sh" << RUN_EOF
+exec "${PYTHON_PATH}" "\${SCRIPT_DIR}/scripts/main.py"
+RUN_EOF
+chmod +x "${SCRIPT_DIR}/run.sh"
+
+cat > "${SCRIPT_DIR}/run_update.sh" << 'RUN_EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUN_EOF
+cat >> "${SCRIPT_DIR}/run_update.sh" << RUN_EOF
+exec "${PYTHON_PATH}" "\${SCRIPT_DIR}/scripts/update.py"
+RUN_EOF
+chmod +x "${SCRIPT_DIR}/run_update.sh"
+ok "启动脚本已创建"
 
 # ── 创建 LaunchAgent ────────────────────────────────────
 info "配置开机自启..."
@@ -113,14 +138,11 @@ cat > "$PLIST_PATH" << PLIST_EOF
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
+    <true/>
     <key>StandardOutPath</key>
-    <string>${SCRIPT_DIR}/logs/launchd_stdout.log</string>
+    <string>${LAUNCHD_LOG_DIR}/launchd_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>${SCRIPT_DIR}/logs/launchd_stderr.log</string>
+    <string>${LAUNCHD_LOG_DIR}/launchd_stderr.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -160,9 +182,9 @@ cat > "$UPDATE_PLIST_PATH" << UPDATE_EOF
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>${SCRIPT_DIR}/logs/update_stdout.log</string>
+    <string>${LAUNCHD_LOG_DIR}/update_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>${SCRIPT_DIR}/logs/update_stderr.log</string>
+    <string>${LAUNCHD_LOG_DIR}/update_stderr.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -179,8 +201,12 @@ ok "每周更新已配置 (每周日 03:00)"
 # ── 加载 LaunchAgent ────────────────────────────────────
 info "启动服务..."
 # 先卸载旧的（如果存在）
+launchctl bootout gui/$(id -u)/${PLIST_NAME} 2>/dev/null || true
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
-launchctl load "$PLIST_PATH"
+sleep 1
+if ! launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH" >/tmp/autotranscribe_install_start.err 2>&1; then
+    launchctl load "$PLIST_PATH" >>/tmp/autotranscribe_install_start.err 2>&1 || fail "服务启动失败: $(cat /tmp/autotranscribe_install_start.err)"
+fi
 ok "服务已启动"
 
 # ── 完成 ────────────────────────────────────────────────
@@ -190,7 +216,7 @@ echo -e "  ${GREEN}✅ 安装完成！${NC}"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 echo "  📂 监控目录: ~/Desktop, ~/Downloads"
-echo "  📹 视频存放: ${SCRIPT_DIR}/video/"
+echo "  📹 音视频存放: ${SCRIPT_DIR}/video/"
 echo "  📝 转录输出: ${SCRIPT_DIR}/txt/"
 echo "  📋 运行日志: ${SCRIPT_DIR}/logs/"
 echo ""

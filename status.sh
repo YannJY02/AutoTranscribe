@@ -1,6 +1,9 @@
 #!/bin/bash
 # 查看自动转录服务状态
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LABEL="com.yann.autotranscribe"
+
+SERVICE_LINE="$(launchctl list 2>/dev/null | awk -v label="$LABEL" '$3 == label {print $0}')"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
@@ -8,9 +11,15 @@ echo "  🎙 自动转录系统状态"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# 检查服务是否运行
-if launchctl list | grep -q "com.yann.autotranscribe"; then
-    echo "  🟢 服务状态: 运行中"
+# 检查服务是否运行（精确匹配主服务 label，避免误匹配 update agent）
+if [ -n "$SERVICE_LINE" ]; then
+    PID=$(echo "$SERVICE_LINE" | awk '{print $1}')
+    STATUS_CODE=$(echo "$SERVICE_LINE" | awk '{print $2}')
+    if [ "$PID" != "-" ]; then
+        echo "  🟢 服务状态: 运行中 (PID: ${PID})"
+    else
+        echo "  🟡 服务状态: 已加载但未运行 (LastExitStatus: ${STATUS_CODE})"
+    fi
 else
     echo "  🔴 服务状态: 已停止"
 fi
@@ -20,7 +29,7 @@ VIDEO_COUNT=$(find "${SCRIPT_DIR}/video" -type f 2>/dev/null | wc -l | tr -d ' '
 TXT_COUNT=$(find "${SCRIPT_DIR}/txt" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
 FAIL_COUNT=$(find "${SCRIPT_DIR}/video" -name "fail_*" -type f 2>/dev/null | wc -l | tr -d ' ')
 
-echo "  📹 已转录视频: ${VIDEO_COUNT}"
+echo "  📹 已处理音视频: ${VIDEO_COUNT}"
 echo "  📝 转录文稿: ${TXT_COUNT}"
 echo "  ❌ 失败文件: ${FAIL_COUNT}"
 echo ""
