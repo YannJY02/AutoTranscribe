@@ -6,6 +6,7 @@
 """
 
 import logging
+import json
 import queue
 import signal
 import sys
@@ -16,8 +17,9 @@ from pathlib import Path
 
 # 将 scripts/ 目录加入 Python 路径
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import LOG_FILE, LOG_DIR
+from config import LOG_FILE, LOG_DIR, TXT_DIR
 from watcher import start_watching
 from notifier import (
     ask_confirm, notify_start, notify_stage,
@@ -30,6 +32,8 @@ from file_manager import (
 )
 from progress import progress
 from dashboard_server import run_dashboard_bg
+from insightkit.insights.service import InsightService
+from insightkit.insights.render import render_insight_markdown
 import webbrowser
 
 # ── 日志配置 ──────────────────────────────────────────────
@@ -46,6 +50,7 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+insight_service = InsightService()
 
 
 # ── 转录回调 ──────────────────────────────────────────────
@@ -187,6 +192,36 @@ def process_video(video_path: Path) -> None:
         # 保存 Markdown
         md_path = save_transcript_md(standard_name, lang, duration, segments)
         logger.info(f"✅ Markdown: {md_path}")
+
+        # 生成并保存 InsightKit 定稿洞察（JSON + Markdown）
+        try:
+            transcript_rows = []
+            for seg in segments:
+                transcript_rows.append(
+                    {
+                        "start_ms": int(seg.get("start", 0) or 0),
+                        "end_ms": int(seg.get("end", 0) or 0),
+                        "speaker": str(seg.get("speaker", "") or ""),
+                        "text": str(seg.get("text", "") or ""),
+                    }
+                )
+            insight_payload = insight_service.build_final(transcript_rows)
+
+            insight_json = TXT_DIR / f"{standard_name}_insight.json"
+            insight_json.write_text(
+                json.dumps(insight_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            insight_md = TXT_DIR / f"{standard_name}_insight.md"
+            insight_md.write_text(
+                render_insight_markdown(insight_payload, title=standard_name),
+                encoding="utf-8",
+            )
+            logger.info(f"✅ Insight JSON: {insight_json}")
+            logger.info(f"✅ Insight Markdown: {insight_md}")
+        except Exception as insight_err:
+            logger.warning(f"InsightKit 定稿洞察生成失败，已跳过: {insight_err}")
 
         # 移动原始输入文件
         new_video_path = move_video(video_path, standard_name, success=True)

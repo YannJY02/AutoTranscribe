@@ -1,26 +1,71 @@
 """
-FunASR 转录引擎 — 语言检测 + ASR + 说话人分离。
+InsightKit 本地转写引擎（faster-whisper + silero-vad + pyannote）。
 
-模型采用懒加载策略：首次使用时加载，之后常驻内存以加速后续转录。
-长音频优化：语言检测仅使用前 60 秒，ASR 依赖内置 VAD 自动分段。
+默认严格本地模式：
+- 必须使用本地 ASR 模型目录（不允许静默网络下载回退）
+- 无法加载 ASR/VAD 时直接报错
+- 说话人分离为可降级能力（无 HF token 时仅关闭分离，不阻塞 ASR）
 """
 
+from __future__ import annotations
+
 import logging
+import math
+import os
 import subprocess
 import tempfile
 import threading
-import time
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 语言检测采样时长（秒）：只取前 N 秒用于语言检测，大幅降低内存和时间
-LID_SAMPLE_SECONDS = 60
+LID_SAMPLE_SECONDS = 45
 
-# 全局模型缓存 + 锁
-_models: dict = {}
+# 运行时配置（可由环境变量覆盖）
+ASR_ENGINE = os.getenv("INSIGHTKIT_ASR_ENGINE", "whisper").strip().lower() or "whisper"
+DEFAULT_MODEL_NAME = os.getenv("INSIGHTKIT_ASR_MODEL", "large-v3").strip() or "large-v3"
+MODEL_DIR = Path(
+    os.getenv(
+        "INSIGHTKIT_MODEL_DIR",
+        str(Path.home() / "Library" / "Application Support" / "InsightKit" / "models"),
+    )
+).expanduser()
+WHISPER_MODEL_DIR = MODEL_DIR / "faster-whisper" / DEFAULT_MODEL_NAME
+FUNASR_MODEL_DIR = MODEL_DIR / "funasr"
+STRICT_LOCAL_ONLY = os.getenv("INSIGHTKIT_ASR_STRICT_LOCAL_ONLY", "1").strip() != "0"
+VAD_ENABLED = os.getenv("INSIGHTKIT_VAD_ENABLED", "1").strip() != "0"
+DIARIZATION_ENABLED = os.getenv("INSIGHTKIT_DIARIZATION_ENABLED", "1").strip() != "0"
+HF_TOKEN = (
+    os.getenv("HF_TOKEN", "").strip()
+    or os.getenv("HUGGINGFACE_TOKEN", "").strip()
+    or os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip()
+)
+ASR_DEVICE = os.getenv("INSIGHTKIT_ASR_DEVICE", "auto").strip() or "auto"
+ASR_COMPUTE_TYPE = os.getenv("INSIGHTKIT_ASR_COMPUTE_TYPE", "int8").strip() or "int8"
+FUNASR_ASR_MODEL = (
+    os.getenv("INSIGHTKIT_FUNASR_ASR_MODEL", "").strip()
+    or "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
+)
+FUNASR_VAD_MODEL = os.getenv("INSIGHTKIT_FUNASR_VAD_MODEL", "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch").strip()
+FUNASR_PUNC_MODEL = os.getenv("INSIGHTKIT_FUNASR_PUNC_MODEL", "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch").strip()
+FUNASR_SPK_MODEL = os.getenv("INSIGHTKIT_FUNASR_SPK_MODEL", "iic/speech_campplus_sv_zh-cn_16k-common").strip()
+
+_models: dict[str, Any] = {}
 _models_lock = threading.Lock()
+
+
+def _engine() -> str:
+    return "funasr" if ASR_ENGINE == "funasr" else "whisper"
+
+
+def _local_funasr_paths() -> dict[str, Path]:
+    return {
+        "asr": FUNASR_MODEL_DIR / "asr",
+        "vad": FUNASR_MODEL_DIR / "vad",
+        "punc": FUNASR_MODEL_DIR / "punc",
+        "spk": FUNASR_MODEL_DIR / "spk",
+    }
 
 
 def _get_audio_duration(audio_path: str) -> float:
@@ -28,159 +73,366 @@ def _get_audio_duration(audio_path: str) -> float:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 audio_path,
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
         )
         return float(result.stdout.strip())
-    except Exception as e:
-        logger.warning(f"无法获取音频时长: {e}")
+    except Exception as exc:
+        logger.warning("无法获取音频时长: %s", exc)
         return 0.0
 
 
-def extract_audio(input_path: Path, output_path: Optional[Path] = None) -> Path:
+def extract_audio(input_path: Path, output_path: Path | None = None) -> Path:
     """从输入音视频文件提取 16kHz 单声道 WAV 音频。"""
     if output_path is None:
         output_path = Path(tempfile.mktemp(suffix=".wav"))
 
-    logger.info(f"提取音频: {input_path.name} → {output_path.name}")
     cmd = [
-        "ffmpeg", "-y", "-i", str(input_path),
-        "-vn",                  # 不要视频
-        "-acodec", "pcm_s16le", # 16-bit PCM
-        "-ar", "16000",         # 16kHz
-        "-ac", "1",             # 单声道
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-vn",
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
         str(output_path),
     ]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=600,
-    )
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=900, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg 失败: {result.stderr[-500:]}")
-    logger.info("音频提取完成")
     return output_path
 
 
 def _load_model(key: str):
-    """懒加载模型，首次加载后常驻内存。"""
-    from funasr import AutoModel
-    from config import (
-        LID_MODEL, ASR_MODEL_ZH,
-        VAD_MODEL, SPK_MODEL, PUNC_MODEL,
-    )
+    """
+    兼容旧调用方（scripts/main.py 仍会调用 _load_model("asr")）。
+    """
+    if key != "asr":
+        raise ValueError(f"未知模型 key: {key}")
+    return _CompatASRModel()
 
+
+def _resolve_model_source() -> str:
+    explicit_path = os.getenv("INSIGHTKIT_ASR_MODEL_PATH", "").strip()
+    if explicit_path:
+        path = Path(explicit_path).expanduser()
+        if path.exists():
+            return str(path)
+        raise RuntimeError(f"指定的 ASR 模型路径不存在: {path}")
+
+    local_path = WHISPER_MODEL_DIR
+    if local_path.exists():
+        return str(local_path)
+
+    if STRICT_LOCAL_ONLY:
+        raise RuntimeError(
+            "本地 ASR 模型未就绪。请先执行 asr.runtime.bootstrap（期望目录: "
+            f"{local_path}）。"
+        )
+
+    # 非严格模式下允许 faster-whisper 自行下载模型
+    return DEFAULT_MODEL_NAME
+
+
+def _load_whisper_model():
     with _models_lock:
-        if key in _models:
-            return _models[key]
+        cached = _models.get("whisper")
+        if cached is not None:
+            return cached
 
-        logger.info(f"加载模型: {key}")
-        t0 = time.time()
+        try:
+            from faster_whisper import WhisperModel
+        except Exception as exc:
+            raise RuntimeError(
+                "未安装 faster-whisper。请先执行 asr.runtime.bootstrap。"
+            ) from exc
 
-        if key == "lid":
-            model = AutoModel(model=LID_MODEL, disable_update=True)
-        elif key == "asr":
-            # 统一使用中文模型：它同时支持中英文，且是唯一支持
-            # 时间戳 + 说话人分离 (punc_model + spk_model) 的模型
-            model = AutoModel(
-                model=ASR_MODEL_ZH,
-                vad_model=VAD_MODEL,
-                punc_model=PUNC_MODEL,
-                spk_model=SPK_MODEL,
-                disable_update=True,
-            )
-        else:
-            raise ValueError(f"未知模型 key: {key}")
-
-        dt = time.time() - t0
-        logger.info(f"模型 {key} 加载完成 ({dt:.1f}s)")
-        _models[key] = model
+        model_source = _resolve_model_source()
+        logger.info(
+            "加载 faster-whisper 模型: source=%s device=%s compute=%s",
+            model_source,
+            ASR_DEVICE,
+            ASR_COMPUTE_TYPE,
+        )
+        model = WhisperModel(
+            model_size_or_path=model_source,
+            device=ASR_DEVICE,
+            compute_type=ASR_COMPUTE_TYPE,
+            download_root=str(MODEL_DIR / "faster-whisper"),
+            local_files_only=STRICT_LOCAL_ONLY,
+        )
+        _models["whisper"] = model
         return model
 
 
+def _load_silero_model():
+    with _models_lock:
+        cached = _models.get("silero_vad")
+        if cached is not None:
+            return cached
+
+        try:
+            from silero_vad import load_silero_vad
+        except Exception as exc:
+            raise RuntimeError(
+                "未安装 silero-vad。请先执行 asr.runtime.bootstrap。"
+            ) from exc
+
+        model = load_silero_vad()
+        _models["silero_vad"] = model
+        return model
+
+
+def _resolve_funasr_source(local_path: Path, remote_id: str) -> str:
+    if local_path.exists():
+        return str(local_path)
+    if STRICT_LOCAL_ONLY:
+        raise RuntimeError(
+            "本地 FunASR 模型未就绪。请先执行 asr.runtime.bootstrap（期望目录: "
+            f"{local_path}）。"
+        )
+    return remote_id
+
+
+def _load_funasr_model():
+    with _models_lock:
+        cached = _models.get("funasr")
+        if cached is not None:
+            return cached
+
+        try:
+            from funasr import AutoModel
+        except Exception as exc:
+            raise RuntimeError("未安装 FunASR。请先执行 asr.runtime.bootstrap。") from exc
+
+        paths = _local_funasr_paths()
+        model = AutoModel(
+            model=_resolve_funasr_source(paths["asr"], FUNASR_ASR_MODEL),
+            vad_model=_resolve_funasr_source(paths["vad"], FUNASR_VAD_MODEL) if VAD_ENABLED else None,
+            punc_model=_resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
+            spk_model=_resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None,
+            disable_update=True,
+            trust_remote_code=True,
+        )
+        _models["funasr"] = model
+        return model
+
+
+def _speech_exists(audio_path: Path) -> bool:
+    if not VAD_ENABLED:
+        return True
+    try:
+        from silero_vad import get_speech_timestamps, read_audio
+    except Exception as exc:
+        raise RuntimeError("silero-vad 运行失败，请检查安装。") from exc
+
+    vad_model = _load_silero_model()
+    waveform = read_audio(str(audio_path), sampling_rate=16000)
+    speech = get_speech_timestamps(waveform, vad_model, sampling_rate=16000)
+    return len(speech) > 0
+
+
 def _extract_audio_clip(audio_path: Path, max_seconds: int = LID_SAMPLE_SECONDS) -> Path:
-    """
-    从音频文件中提取前 N 秒，用于语言检测。
-    对短音频（<= max_seconds）直接返回原路径。
-    """
+    """提取前 N 秒音频用于快速语言检测。"""
     duration = _get_audio_duration(str(audio_path))
     if duration <= max_seconds:
-        logger.info(f"音频 {duration:.0f}s <= {max_seconds}s，无需截取")
         return audio_path
 
     clip_path = Path(tempfile.mktemp(suffix="_lid_clip.wav"))
-    logger.info(f"截取前 {max_seconds}s 用于语言检测 (总时长 {duration:.0f}s)")
     cmd = [
-        "ffmpeg", "-y", "-i", str(audio_path),
-        "-t", str(max_seconds),
-        "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(audio_path),
+        "-t",
+        str(max_seconds),
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
         str(clip_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
     if result.returncode != 0:
-        logger.warning(f"截取音频失败，将使用完整音频: {result.stderr[-200:]}")
+        logger.warning("截取语言检测片段失败，回退完整音频: %s", result.stderr[-200:])
         return audio_path
     return clip_path
 
 
+def _load_diarization_pipeline():
+    if not DIARIZATION_ENABLED:
+        return None
+    if not HF_TOKEN:
+        return None
+
+    with _models_lock:
+        if "pyannote_pipeline" in _models:
+            return _models["pyannote_pipeline"]
+
+        try:
+            from pyannote.audio import Pipeline
+        except Exception:
+            return None
+
+        try:
+            pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                use_auth_token=HF_TOKEN,
+            )
+            _models["pyannote_pipeline"] = pipeline
+            return pipeline
+        except Exception as exc:
+            logger.warning("pyannote 初始化失败，将禁用分离: %s", exc)
+            return None
+
+
+def _diarize(audio_path: Path) -> list[tuple[int, int, str]]:
+    pipeline = _load_diarization_pipeline()
+    if pipeline is None:
+        return []
+
+    try:
+        diarization = pipeline(str(audio_path))
+    except Exception as exc:
+        logger.warning("pyannote 说话人分离失败，继续无 speaker 转写: %s", exc)
+        return []
+
+    spans: list[tuple[int, int, str]] = []
+    for turn, _, speaker in diarization.itertracks(yield_label=True):
+        start_ms = max(0, int(round(float(turn.start) * 1000)))
+        end_ms = max(start_ms + 1, int(round(float(turn.end) * 1000)))
+        spans.append((start_ms, end_ms, str(speaker)))
+    return spans
+
+
+def _pick_speaker(start_ms: int, end_ms: int, spans: list[tuple[int, int, str]]) -> str:
+    best_speaker = ""
+    best_overlap = 0
+    for s0, s1, speaker in spans:
+        overlap = max(0, min(end_ms, s1) - max(start_ms, s0))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_speaker = speaker
+    return best_speaker
+
+
+def _confidence_from_logprob(avg_logprob: float | None) -> float:
+    if avg_logprob is None:
+        return 0.0
+    try:
+        value = math.exp(float(avg_logprob))
+        return max(0.0, min(1.0, value))
+    except Exception:
+        return 0.0
+
+
+def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    if not _speech_exists(audio_path):
+        return "unknown", []
+
+    model = _load_whisper_model()
+    segments_iter, info = model.transcribe(
+        str(audio_path),
+        language=None,
+        vad_filter=False,
+        beam_size=1,
+        best_of=1,
+        condition_on_previous_text=True,
+        word_timestamps=False,
+    )
+
+    speaker_spans = _diarize(audio_path)
+    segments: list[dict[str, Any]] = []
+
+    for seg in segments_iter:
+        text = str(getattr(seg, "text", "") or "").strip()
+        if not text:
+            continue
+        start_ms = max(0, int(round(float(getattr(seg, "start", 0.0)) * 1000)))
+        end_ms = max(start_ms + 200, int(round(float(getattr(seg, "end", 0.0)) * 1000)))
+        speaker = _pick_speaker(start_ms, end_ms, speaker_spans)
+        segments.append(
+            {
+                "start": start_ms,
+                "end": end_ms,
+                "text": text,
+                "speaker": speaker,
+                "confidence": _confidence_from_logprob(getattr(seg, "avg_logprob", None)),
+            }
+        )
+
+    language = str(getattr(info, "language", "") or "unknown")
+    if language.startswith("zh"):
+        language = "zh"
+    elif language.startswith("en"):
+        language = "en"
+    elif not language:
+        language = "unknown"
+    return language, segments
+
+
+def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    model = _load_funasr_model()
+    result = model.generate(input=str(audio_path))
+    parsed = _parse_funasr_result(result)
+    segments: list[dict[str, Any]] = []
+    for seg in parsed:
+        text = str(seg.get("text", "") or "").strip()
+        if not text:
+            continue
+        start_ms = int(seg.get("start", 0) or 0)
+        end_ms = int(seg.get("end", 0) or 0)
+        if end_ms <= start_ms:
+            end_ms = start_ms + 1200
+        speaker = str(seg.get("speaker", "") or "")
+        segments.append(
+            {
+                "start": start_ms,
+                "end": end_ms,
+                "text": text,
+                "speaker": speaker,
+                "confidence": float(seg.get("confidence", 0.0) or 0.0),
+            }
+        )
+    return "zh", segments
+
+
+def _transcribe_active(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    if _engine() == "funasr":
+        return _transcribe_funasr(audio_path)
+    return _transcribe_whisper(audio_path)
+
+
 def detect_language(audio_path: Path) -> str:
     """
-    使用 SenseVoice 检测音频语言。
-    返回 'zh'、'en' 或 'en_cn'（中英混合）。默认 'zh'。
-
-    优化：对长音频仅使用前 60 秒做检测，大幅降低内存和耗时。
+    返回 'zh' / 'en' / 'unknown'。
     """
-    logger.info("检测语言...")
     clip_path = None
     try:
-        # 对长音频只取前 60 秒做语言检测
         clip_path = _extract_audio_clip(audio_path)
-        is_clip = (clip_path != audio_path)
-
-        model = _load_model("lid")
-        result = model.generate(input=str(clip_path), language="auto")
-
-        if result and len(result) > 0:
-            text = str(result[0].get("text", ""))
-            logger.info(f"SenseVoice 原始输出: {text[:200]}")
-
-            # 提取语言标签
-            tag = ""
-            if "<|zh|>" in text or "<|yue|>" in text:
-                tag = "zh"
-            elif "<|en|>" in text:
-                tag = "en"
-            elif "<|ja|>" in text:
-                tag = "zh"  # 日语 fallback
-            else:
-                tag = "zh"  # 默认
-
-            # 检查是否中英混合：在转录文本中查找中文字符
-            # 去掉 SenseVoice 标签后的纯文本
-            import re
-            pure_text = re.sub(r"<\|[^|]+\|>", "", text)
-            has_chinese = bool(re.search(r"[\u4e00-\u9fff]", pure_text))
-            has_english = bool(re.search(r"[a-zA-Z]{2,}", pure_text))
-
-            if has_chinese and has_english:
-                logger.info("检测到语言: 中英混合 (en_cn)")
-                return "en_cn"
-            elif tag == "zh":
-                logger.info("检测到语言: 中文")
-                return "zh"
-            else:
-                logger.info("检测到语言: English")
-                return "en"
-        else:
-            logger.warning("SenseVoice 无输出，默认使用中文")
-            return "zh"
-    except Exception as e:
-        logger.error(f"语言检测失败: {e}，默认使用中文")
-        return "zh"
+        lang, _ = _transcribe_active(clip_path)
+        return lang
+    except Exception as exc:
+        logger.warning("语言检测失败，默认 unknown: %s", exc)
+        return "unknown"
     finally:
-        # 清理截取的临时文件
         if clip_path and clip_path != audio_path and clip_path.exists():
             try:
                 clip_path.unlink()
@@ -188,51 +440,28 @@ def detect_language(audio_path: Path) -> str:
                 pass
 
 
-def transcribe(input_path: Path) -> dict:
+def transcribe(input_path: Path) -> dict[str, Any]:
     """
-    完整转录流程：提取音频 → 语言检测 → ASR + 说话人分离。
+    完整转录流程：提取音频 -> 本地 ASR -> 返回结构化片段。
 
     返回:
-        {
-            "lang": "zh" | "en",
-            "duration": float,   # 秒
-            "segments": [
-                {"start": int, "end": int, "text": str, "speaker": str},
-                ...
-            ],
-        }
+    {
+      "lang": "zh|en|unknown",
+      "duration": float,
+      "segments": [{"start":int,"end":int,"text":str,"speaker":str,"confidence":float}, ...]
+    }
     """
     audio_path = None
     try:
-        # 1. 提取音频
         audio_path = extract_audio(input_path)
         duration = _get_audio_duration(str(audio_path))
-        logger.info(f"音频时长: {duration:.1f}s")
-
-        # 2. 语言检测（用于文件命名，不影响模型选择）
-        lang = detect_language(audio_path)
-
-        # 3. ASR + 说话人分离（统一使用 zh 模型，支持中英文+时间戳+说话人）
-        logger.info(f"开始转录 (检测语言: {lang}, 引擎: Paraformer-zh)...")
-        t0 = time.time()
-
-        asr_model = _load_model("asr")
-        result = asr_model.generate(input=str(audio_path))
-
-        dt = time.time() - t0
-        logger.info(f"转录完成，耗时: {dt:.1f}s")
-
-        # 4. 解析结果
-        segments = _parse_funasr_result(result)
-
+        lang, segments = _transcribe_active(audio_path)
         return {
             "lang": lang,
             "duration": duration,
             "segments": segments,
         }
-
     finally:
-        # 清理临时音频文件
         if audio_path and audio_path.exists():
             try:
                 audio_path.unlink()
@@ -240,66 +469,107 @@ def transcribe(input_path: Path) -> dict:
                 pass
 
 
-def _parse_funasr_result(result) -> list[dict]:
+def transcribe_audio_chunk(wav_path: Path, offset_ms: int = 0) -> list[dict[str, Any]]:
     """
-    解析 FunASR 的输出结果为统一的 segments 格式。
-
-    FunASR 输出格式可能有多种形式，这里做兼容处理。
+    对单个 WAV chunk 执行增量转写，并返回绝对时间戳片段。
     """
-    segments = []
+    if not wav_path.exists():
+        raise FileNotFoundError(str(wav_path))
+    if wav_path.suffix.lower() != ".wav":
+        raise ValueError("live chunk must be wav")
 
+    _, raw_segments = _transcribe_active(wav_path)
+
+    out: list[dict[str, Any]] = []
+    for seg in raw_segments:
+        text = str(seg.get("text", "") or "").strip()
+        if not text:
+            continue
+
+        start = int(seg.get("start", 0) or 0)
+        end = int(seg.get("end", 0) or 0)
+        if end <= start:
+            end = start + 1200
+
+        out.append(
+            {
+                "start_ms": start + int(offset_ms),
+                "end_ms": end + int(offset_ms),
+                "speaker": str(seg.get("speaker", "") or ""),
+                "text": text,
+                "confidence": float(seg.get("confidence", 0.0) or 0.0),
+            }
+        )
+    return out
+
+
+class _CompatASRModel:
+    """兼容 scripts/main.py 中 `asr_model.generate(input=...)` 调用。"""
+
+    def generate(self, input: str):  # noqa: A002
+        path = Path(input).expanduser().resolve()
+        _, segments = _transcribe_active(path)
+        sentence_info = [
+            {
+                "start": seg["start"],
+                "end": seg["end"],
+                "text": seg["text"],
+                "spk": seg["speaker"],
+            }
+            for seg in segments
+        ]
+        return [
+            {
+                "text": " ".join(seg["text"] for seg in segments),
+                "sentence_info": sentence_info,
+            }
+        ]
+
+
+def _parse_funasr_result(result) -> list[dict[str, Any]]:
+    """
+    兼容旧解析逻辑，同时支持 faster-whisper 兼容输出。
+    """
+    segments: list[dict[str, Any]] = []
     if not result:
         return segments
 
     for item in result:
-        # item 可能是 dict 或其他对象
         if isinstance(item, dict):
-            text = item.get("text", "")
-            sentence_info = item.get("sentence_info", [])
-
-            if sentence_info:
-                # 有逐句信息（含时间戳和说话人）
-                for sent in sentence_info:
-                    seg = {
-                        "start": sent.get("start", 0),
-                        "end": sent.get("end", 0),
-                        "text": sent.get("text", ""),
-                        "speaker": sent.get("spk", ""),
+            # faster-whisper 兼容结构：直接有 start/end/text
+            if {"start", "end", "text"}.issubset(item.keys()):
+                segments.append(
+                    {
+                        "start": int(item.get("start", 0) or 0),
+                        "end": int(item.get("end", 0) or 0),
+                        "text": str(item.get("text", "") or ""),
+                        "speaker": str(item.get("speaker", "") or ""),
+                        "confidence": float(item.get("confidence", 0.0) or 0.0),
                     }
-                    # spk 可能是整数
-                    if isinstance(seg["speaker"], int):
-                        seg["speaker"] = f"spk{seg['speaker']}"
-                    elif seg["speaker"]:
-                        seg["speaker"] = str(seg["speaker"])
-                    segments.append(seg)
-            elif text:
-                # 只有文本，没有逐句信息
-                timestamp = item.get("timestamp", [])
-                if timestamp and len(timestamp) > 0:
-                    # 有时间戳列表
-                    for i, ts in enumerate(timestamp):
-                        if isinstance(ts, (list, tuple)) and len(ts) >= 2:
-                            segments.append({
-                                "start": ts[0],
-                                "end": ts[1],
-                                "text": text if i == 0 else "",
-                                "speaker": "",
-                            })
-                else:
-                    # 最简单的情况：只有一段文本
-                    segments.append({
-                        "start": 0,
-                        "end": 0,
-                        "text": text,
-                        "speaker": "",
-                    })
+                )
+                continue
+
+            sentence_info = item.get("sentence_info", [])
+            if sentence_info:
+                for sent in sentence_info:
+                    speaker = sent.get("spk", "")
+                    if isinstance(speaker, int):
+                        speaker = f"spk{speaker}"
+                    segments.append(
+                        {
+                            "start": int(sent.get("start", 0) or 0),
+                            "end": int(sent.get("end", 0) or 0),
+                            "text": str(sent.get("text", "") or ""),
+                            "speaker": str(speaker or ""),
+                            "confidence": float(sent.get("confidence", 0.0) or 0.0),
+                        }
+                    )
+                continue
+
+            text = str(item.get("text", "") or "").strip()
+            if text:
+                segments.append({"start": 0, "end": 0, "text": text, "speaker": "", "confidence": 0.0})
         else:
-            # 兜底：尝试转为字符串
-            segments.append({
-                "start": 0,
-                "end": 0,
-                "text": str(item),
-                "speaker": "",
-            })
+            segments.append({"start": 0, "end": 0, "text": str(item), "speaker": "", "confidence": 0.0})
 
     return segments

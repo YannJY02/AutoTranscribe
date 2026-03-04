@@ -120,6 +120,78 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
+## 🧠 InsightKit (Mac Personal Meeting Assistant) — Preview
+
+This repository now includes an **InsightKit** foundation for a native macOS meeting assistant with differentiated naming and architecture:
+
+- **UI modules**: 会话总览 / 高光洞察 / 观点图谱 / 决策账本 / 执行清单 / 时间脉络
+- **Runtime**: SwiftUI shell + Python JSON-RPC sidecar
+- **Schema**: `insightkit/schemas/insight_package_v1.json`
+- **Storage**: SQLite + FTS5 transcript indexing
+- **BYOK-ready**: provider adapter abstraction for cloud insight generation
+
+### Run InsightKit sidecar
+
+```bash
+python3 scripts/insight_sidecar.py
+```
+
+### Build macOS app shell (SwiftPM)
+
+```bash
+swift build --package-path macos/InsightKitApp
+```
+
+### Package double-clickable macOS app (`.app`)
+
+```bash
+bash scripts/package_insightkit_app.sh --clean
+open dist/macos/InsightKit.app
+```
+
+### Sync app bundle on each iteration (rebuild + install)
+
+```bash
+bash scripts/sync_insightkit_app.sh
+```
+
+Default install path: `~/Applications/InsightKit.app`  
+Optional custom path:
+
+```bash
+bash scripts/sync_insightkit_app.sh --install-dir /Applications
+```
+
+Default behavior of `sync_insightkit_app.sh`:
+- fail-closed (tests/build/verify failure means no successful sync mark)
+- clean build by default (`--no-clean` to disable)
+- writes sync artifacts:
+  - `logs/workflow/sync_status.json` (this run status)
+  - `logs/workflow/latest_sync.json` (last successful sync)
+
+### Run gap-driven loop (auto package+install enabled by default)
+
+```bash
+python3 scripts/release_loop.py --max-rounds 1
+```
+
+Useful flags:
+- `--no-auto-package` disable auto package/install for this run
+- `--install-dir /Applications` override install target
+- `--package-debug` use debug package mode
+- `--skip-sync-verify` skip post-install verification (not recommended)
+
+### Export unloadable module for AttentionOS (`/Users/yann.jy/Desktop/AI/RSS`)
+
+```bash
+python3 scripts/export_attention_module.py --output dist/attentionos-insightkit-module
+```
+
+See integration guide:
+
+- `docs/insightkit-architecture.md`
+- `docs/attentionos-integration.md`
+
 # 🎙 AutoTranscribe — 中文说明
 
 **AutoTranscribe** 是一个全自动的本地音视频转录系统，专为 macOS 设计。它监控桌面和下载文件夹中的新音视频文件，弹窗确认后自动完成语音转文字和说话人分离，全程本地运行，零云端费用。

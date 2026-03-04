@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://insightkit.local/schema/insight_package_v1.json",
+  "title": "InsightPackageV1",
+  "type": "object",
+  "required": [
+    "session_overview",
+    "highlight_insights",
+    "speaker_perspectives",
+    "decision_ledger",
+    "action_tracks",
+    "timeline_beats",
+    "provenance_links"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "session_overview": {
+      "type": "object",
+      "required": ["title", "overview", "topics"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "overview": {"type": "string", "minLength": 1},
+        "topics": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "highlight_insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["quote", "reason", "speaker", "evidence_span"],
+        "additionalProperties": false,
+        "properties": {
+          "quote": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "speaker": {"type": "string"},
+          "evidence_span": {
+            "type": "object",
+            "required": ["start_ms", "end_ms"],
+            "additionalProperties": false,
+            "properties": {
+              "start_ms": {"type": "integer", "minimum": 0},
+              "end_ms": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "speaker_perspectives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["speaker", "viewpoints", "evidence_spans"],
+        "additionalProperties": false,
+        "properties": {
+          "speaker": {"type": "string", "minLength": 1},
+          "viewpoints": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "evidence_spans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["start_ms", "end_ms"],
+              "additionalProperties": false,
+              "properties": {
+                "start_ms": {"type": "integer", "minimum": 0},
+                "end_ms": {"type": "integer", "minimum": 0}
+              }
+            }
+          }
+        }
+      }
+    },
+    "decision_ledger": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "problem",
+          "options",
+          "decision",
+          "rationale",
+          "owner",
+          "evidence_span"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "problem": {"type": "string", "minLength": 1},
+          "options": {"type": "array", "items": {"type": "string"}},
+          "decision": {"type": "string", "minLength": 1},
+          "rationale": {"type": "string", "minLength": 1},
+          "owner": {"type": "string"},
+          "needs_review": {"type": "boolean"},
+          "evidence_span": {
+            "type": "object",
+            "required": ["start_ms", "end_ms"],
+            "additionalProperties": false,
+            "properties": {
+              "start_ms": {"type": "integer", "minimum": 0},
+              "end_ms": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "action_tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task", "owner", "due_at", "priority", "status", "evidence_span"],
+        "additionalProperties": false,
+        "properties": {
+          "task": {"type": "string", "minLength": 1},
+          "owner": {"type": "string", "minLength": 1},
+          "due_at": {"type": "string"},
+          "priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"]},
+          "status": {"type": "string", "enum": ["draft", "open", "in_progress", "done"]},
+          "needs_review": {"type": "boolean"},
+          "evidence_span": {
+            "type": "object",
+            "required": ["start_ms", "end_ms"],
+            "additionalProperties": false,
+            "properties": {
+              "start_ms": {"type": "integer", "minimum": 0},
+              "end_ms": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "timeline_beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "title", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "summary": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "provenance_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "url"],
+        "additionalProperties": false,
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,651 @@
+import AVFoundation
+import CoreGraphics
+import SwiftUI
+
+struct SettingsView: View {
+    private struct VendorDraft {
+        var baseURL: String
+        var modelID: String
+        var useCustomModel: Bool
+    }
+
+    @ObservedObject private var configStore = AppConfigStore.shared
+
+    @State private var selectedVendor: ProviderVendor = .openai
+    @State private var vendorBaseURL: String = ""
+    @State private var vendorModelID: String = ""
+    @State private var vendorAPIKey: String = ""
+    @State private var vendorDrafts: [ProviderVendor: VendorDraft] = [:]
+
+    // Controls whether the model field is freetext (custom) or picker
+    @State private var vendorUseCustomModel: Bool = false
+
+    // Guard: suppress onChange auto-save while we programmatically load fields
+    @State private var isLoadingVendorFields: Bool = false
+
+    @State private var asrModel: String = ""
+    @State private var asrEngine: LocalASREngine = .whisper
+    @State private var asrModelDir: String = ""
+    @State private var vadEnabled: Bool = true
+    @State private var diarizationEnabled: Bool = true
+    @State private var strictMode: Bool = true
+
+    @State private var useCustomWhisperModel: Bool = false
+    @State private var useCustomFunasrModel: Bool = false
+
+    @State private var savedFeedback: Bool = false
+    @State private var savedFeedbackTask: Task<Void, Never>? = nil
+
+    @State private var statusMessage: String = ""
+    @State private var isRunningTask = false
+    @State private var providerProbeResult: ProviderProbeResult?
+    @State private var providerProbeAt: Date?
+    @State private var lastAppliedConfigRevision: Int = -1
+
+    private let rpc = InsightRPCClient()
+    private let sidecarManager = SidecarManager()
+
+    // MARK: - Computed helpers
+
+    private var currentPresets: [String] {
+        AppConfigStore.modelPresets(for: selectedVendor)
+    }
+
+    private var isCustomModel: Bool {
+        vendorUseCustomModel || !currentPresets.contains(vendorModelID)
+    }
+
+    private var vendorModelLabel: String {
+        selectedVendor == .doubao ? "模型名称（或接入点 ID）" : "模型名称"
+    }
+
+    private var vendorModelPlaceholder: String {
+        selectedVendor == .doubao ? "输入模型名称或接入点 ID" : "输入模型名称"
+    }
+
+    private var selectedVendorKeyWarning: String? {
+        validateAPIKeyFormat(vendor: selectedVendor, key: configStore.apiKeyValue(for: selectedVendor))
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        Form {
+            vendorSection
+            asrSection
+
+            if !statusMessage.isEmpty {
+                Section {
+                    Text(statusMessage)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            DisclosureGroup("术语说明") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("实时语音总结：边说边转写，边生成洞察。")
+                    Text("转写总结：导入已录好的音视频后生成定稿。")
+                    Text("洞察：AI 从转写中提炼会话总览、高光洞察、决策账本和执行清单。")
+                    Text("语音识别方案：本地转写引擎（Whisper/FunASR）。")
+                    Text("智能分析服务：通过 API 生成洞察内容。")
+                    Text("一键修复语音识别：自动安装本地依赖并准备模型。")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(16)
+        .frame(minWidth: 600, idealWidth: 680)
+        .onAppear { syncFromStore() }
+        .onDisappear {
+            flushVendorToStore()
+            saveCurrentVendorAPIKey()
+        }
+    }
+
+    // MARK: - Vendor Section
+
+    @ViewBuilder
+    private var vendorSection: some View {
+        Section("智能分析服务") {
+            // Vendor picker
+            Picker("服务提供商", selection: $selectedVendor) {
+                ForEach(ProviderVendor.allCases) { vendor in
+                    Text(vendor.displayName).tag(vendor)
+                }
+            }
+            .onChange(of: selectedVendor) { oldVendor, newVendor in
+                switchVendor(from: oldVendor, to: newVendor)
+            }
+
+            // Base URL — readonly preview + edit toggle
+            LabeledContent("服务地址（高级）") {
+                TextField("", text: $vendorBaseURL)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: vendorBaseURL) { _, _ in
+                        guard !isLoadingVendorFields else { return }
+                        flushVendorToStore()
+                    }
+            }
+
+            // Model: Picker for presets, TextField for custom
+            if vendorUseCustomModel || currentPresets.isEmpty {
+                LabeledContent(vendorModelLabel) {
+                    HStack {
+                        TextField(vendorModelPlaceholder, text: $vendorModelID)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: vendorModelID) { _, _ in
+                                guard !isLoadingVendorFields else { return }
+                                flushVendorToStore()
+                            }
+                        if !currentPresets.isEmpty {
+                            Button("选择预设") {
+                                vendorUseCustomModel = false
+                                // Snap back to the first preset if current modelID is not in presets
+                                if !currentPresets.contains(vendorModelID), let first = currentPresets.first {
+                                    vendorModelID = first
+                                    flushVendorToStore()
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            } else {
+                Picker(vendorModelLabel, selection: $vendorModelID) {
+                    ForEach(currentPresets, id: \.self) { preset in
+                        Text(preset).tag(preset)
+                    }
+                    Divider()
+                    Text("自定义…").tag("__custom__")
+                }
+                .onChange(of: vendorModelID) { _, newVal in
+                    guard !isLoadingVendorFields else { return }
+                    if newVal == "__custom__" {
+                        vendorUseCustomModel = true
+                        vendorModelID = ""
+                    } else {
+                        flushVendorToStore()
+                    }
+                }
+            }
+
+            // API Key row
+            HStack(spacing: 8) {
+                SecureField("API Key（点击“保存 API Key”后写入钥匙串）", text: $vendorAPIKey)
+                    .onSubmit { saveCurrentVendorAPIKey() }
+                Button("保存 API Key") {
+                    saveCurrentVendorAPIKey()
+                }
+                .controlSize(.small)
+                .disabled(vendorAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            // Status row
+            HStack {
+                Label(
+                    configStore.hasAPIKey(for: selectedVendor) ? "Key: ✓ 已保存" : "Key: 未保存",
+                    systemImage: configStore.hasAPIKey(for: selectedVendor) ? "key.fill" : "key"
+                )
+                .font(.caption)
+                .foregroundStyle(configStore.hasAPIKey(for: selectedVendor) ? .green : .secondary)
+
+                Spacer()
+
+                if savedFeedback {
+                    Label("已保存", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+                }
+
+                Button("清除 API Key", role: .destructive) {
+                    try? configStore.setAPIKey("", for: selectedVendor)
+                    vendorAPIKey = ""
+                    showSavedFeedback()
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+
+                Button("检查可用性") {
+                    providerProbeResult = nil
+                    runAsync { try await applyConfigAndProbeProviders() }
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(isRunningTask)
+            }
+
+            if let warning = selectedVendorKeyWarning {
+                Label("Key 可能无效：\(warning)（可点击“保存 API Key”覆盖）", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
+            }
+
+            if let probe = providerProbeResult {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        probe.ok ? "连接通过" : "连接失败",
+                        systemImage: probe.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(probe.ok ? Color.green : Color.orange)
+
+                    Text("服务：\(probe.vendor.displayName) · 模型：\(probe.model.isEmpty ? "未填写" : probe.model)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("服务地址：\(probe.baseURL)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    if let providerProbeAt {
+                        Text("最近验证：\(providerProbeAt.formatted(date: .abbreviated, time: .standard))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !probe.message.isEmpty {
+                        Text(probe.message)
+                            .font(.system(size: 12))
+                    }
+                    if !probe.hint.isEmpty {
+                        Text("修复建议：\(probe.hint)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("重新检查") {
+                            runAsync { try await applyConfigAndProbeProviders() }
+                        }
+                        .controlSize(.small)
+
+                        if !probe.ok {
+                            Button("打开钥匙串设置提示") {
+                                statusMessage = "请在当前服务重新填写 API Key 后点击“检查可用性”。"
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(NSColor.windowBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(probe.ok ? Color.green.opacity(0.4) : Color.orange.opacity(0.5), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    // MARK: - ASR Section
+
+    @ViewBuilder
+    private var asrSection: some View {
+        Section("本地语音识别") {
+            Picker("语音识别方案", selection: $asrEngine) {
+                ForEach(LocalASREngine.allCases) { engine in
+                    Text(engine.userLabel).tag(engine)
+                }
+            }
+            .onChange(of: asrEngine) { _, newEngine in
+                asrModel = configStore.defaultModelName(for: newEngine)
+                asrModelDir = configStore.defaultModelDir(for: newEngine)
+                useCustomWhisperModel = false
+                useCustomFunasrModel = false
+                autoSaveASR()
+            }
+
+            // Model Picker
+            if asrEngine == .whisper {
+                if useCustomWhisperModel {
+                    HStack {
+                        TextField("自定义 Whisper 模型名", text: $asrModel)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: asrModel) { _, _ in autoSaveASR() }
+                        Button("使用预设") {
+                            useCustomWhisperModel = false
+                            asrModel = configStore.defaultModelName(for: .whisper)
+                            autoSaveASR()
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                } else {
+                    Picker("Whisper 模型", selection: $asrModel) {
+                        ForEach(AppConfigStore.whisperPresets, id: \.self) { Text($0).tag($0) }
+                        Divider()
+                        Text("自定义…").tag("__custom__")
+                    }
+                    .onChange(of: asrModel) { _, v in
+                        if v == "__custom__" { useCustomWhisperModel = true; asrModel = "" }
+                        else { autoSaveASR() }
+                    }
+                }
+            } else {
+                if useCustomFunasrModel {
+                    HStack {
+                        TextField("自定义 FunASR 模型名", text: $asrModel)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: asrModel) { _, _ in autoSaveASR() }
+                        Button("使用预设") {
+                            useCustomFunasrModel = false
+                            asrModel = configStore.defaultModelName(for: .funasr)
+                            autoSaveASR()
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                } else {
+                    Picker("FunASR 模型", selection: $asrModel) {
+                        ForEach(AppConfigStore.funasrPresets, id: \.self) { Text($0).tag($0) }
+                        Divider()
+                        Text("自定义…").tag("__custom__")
+                    }
+                    .onChange(of: asrModel) { _, v in
+                        if v == "__custom__" { useCustomFunasrModel = true; asrModel = "" }
+                        else { autoSaveASR() }
+                    }
+                }
+            }
+
+            TextField("模型下载位置", text: $asrModelDir)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: asrModelDir) { _, _ in autoSaveASR() }
+
+            DisclosureGroup("高级设置") {
+                Toggle("启用静音过滤（VAD）", isOn: $vadEnabled)
+                    .onChange(of: vadEnabled) { _, _ in autoSaveASR() }
+                Toggle("启用说话人区分", isOn: $diarizationEnabled)
+                    .onChange(of: diarizationEnabled) { _, _ in autoSaveASR() }
+                Toggle("失败时不使用兜底结果（严格模式）", isOn: $strictMode)
+                    .onChange(of: strictMode) { _, _ in
+                        configStore.updateStrictMode(strictMode)
+                        showSavedFeedback()
+                    }
+            }
+
+            HStack(spacing: 8) {
+                Button("一键修复语音识别") {
+                    runAsync { try await applyConfigAndBootstrapASR() }
+                }
+                .disabled(isRunningTask)
+
+                Button("一键测试服务") {
+                    runAsync { try await runQuickDiagnostics() }
+                }
+                .disabled(isRunningTask)
+
+                Button("重启 Sidecar") {
+                    runAsync { try await restartSidecar() }
+                }
+                .disabled(isRunningTask)
+            }
+        }
+    }
+
+    // MARK: - Save Helpers
+
+    /// Flush current vendor fields to store. Never called while isLoadingVendorFields is true.
+    private func flushVendorToStore() {
+        let base = vendorBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = vendorModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        persistVendorDraft(
+            vendor: selectedVendor,
+            baseURL: base,
+            modelID: model,
+            useCustomModel: vendorUseCustomModel
+        )
+        showSavedFeedback()
+    }
+
+    private func persistVendorDraft(vendor: ProviderVendor, baseURL: String, modelID: String, useCustomModel: Bool) {
+        vendorDrafts[vendor] = VendorDraft(baseURL: baseURL, modelID: modelID, useCustomModel: useCustomModel)
+        configStore.updateProfile(vendor: vendor, baseURL: baseURL, modelID: modelID)
+    }
+
+    private func autoSaveASR() {
+        configStore.updateASR(
+            engine: asrEngine,
+            model: asrModel,
+            modelDir: asrModelDir,
+            vadEnabled: vadEnabled,
+            diarizationEnabled: diarizationEnabled
+        )
+        configStore.updateASRProfileModel(engine: asrEngine, model: asrModel)
+        showSavedFeedback()
+    }
+
+    private func showSavedFeedback() {
+        savedFeedbackTask?.cancel()
+        withAnimation { savedFeedback = true }
+        savedFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { withAnimation { savedFeedback = false } }
+        }
+    }
+
+    private func validateAPIKeyFormat(vendor: ProviderVendor, key: String) -> String? {
+        let value = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        switch vendor {
+        case .deepseek:
+            if value.hasPrefix("sk-"), value.count >= 20 {
+                return nil
+            }
+            return "DeepSeek API Key 通常以 sk- 开头。"
+        case .doubao:
+            let pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            if value.range(of: pattern, options: .regularExpression) != nil {
+                return nil
+            }
+            return "豆包 Ark API Key 通常是 UUID 形态。"
+        default:
+            return value.count >= 12 ? nil : "Key 长度过短。"
+        }
+    }
+
+    private func saveCurrentVendorAPIKey() {
+        let trimmed = vendorAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return }
+        try? configStore.setAPIKey(trimmed, for: selectedVendor)
+        showSavedFeedback()
+    }
+
+    private func saveAPIKey(_ key: String, for vendor: ProviderVendor) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return }
+        try? configStore.setAPIKey(trimmed, for: vendor)
+    }
+
+    private func loadAPIKey(for vendor: ProviderVendor) {
+        vendorAPIKey = configStore.apiKeyValue(for: vendor)
+    }
+
+    // MARK: - Vendor switching (critical fix)
+
+    /// Switch to a new vendor.
+    ///
+    /// Order of operations:
+    /// 1. Flush the CURRENT vendor's fields before switching
+    /// 2. Set isLoadingVendorFields = true   ← prevents onChange auto-save during field update
+    /// 3. Update selectedVendor (already done by Picker binding)
+    /// 4. Load new vendor's baseURL + modelID from store
+    /// 5. isLoadingVendorFields = false
+    private func switchVendor(from oldVendor: ProviderVendor, to newVendor: ProviderVendor) {
+        let oldBase = vendorBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let oldModel = vendorModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let oldKey = vendorAPIKey
+        persistVendorDraft(
+            vendor: oldVendor,
+            baseURL: oldBase,
+            modelID: oldModel,
+            useCustomModel: vendorUseCustomModel
+        )
+        saveAPIKey(oldKey, for: oldVendor)
+
+        configStore.updateSelectedVendor(newVendor)
+
+        // Step 2-5: load new vendor under guard
+        isLoadingVendorFields = true
+        defer { isLoadingVendorFields = false }
+
+        let profile = configStore.profile(for: newVendor)
+        let draft = vendorDrafts[newVendor]
+
+        // Use the saved draft if available, else fall back to store profile
+        vendorBaseURL = draft?.baseURL ?? profile.baseURL
+        vendorModelID = draft?.modelID ?? profile.modelID
+        vendorUseCustomModel = draft?.useCustomModel
+            ?? !AppConfigStore.modelPresets(for: newVendor).contains(profile.modelID)
+        loadAPIKey(for: newVendor)
+    }
+
+    // MARK: - Initial sync
+
+    private func syncFromStore() {
+        let config = configStore.config
+
+        // Build drafts from current store
+        for profile in config.analysis.providers {
+            let presets = AppConfigStore.modelPresets(for: profile.vendor)
+            vendorDrafts[profile.vendor] = VendorDraft(
+                baseURL: profile.baseURL,
+                modelID: profile.modelID,
+                useCustomModel: !presets.contains(profile.modelID)
+            )
+        }
+
+        isLoadingVendorFields = true
+        selectedVendor = config.analysis.selectedVendor
+        let profile = configStore.profile(for: selectedVendor)
+        vendorBaseURL = profile.baseURL
+        vendorModelID = profile.modelID
+        vendorUseCustomModel = !AppConfigStore.modelPresets(for: selectedVendor).contains(profile.modelID)
+        loadAPIKey(for: selectedVendor)
+        isLoadingVendorFields = false
+
+        asrEngine = config.asr.engine
+        asrModel = config.asr.model
+        asrModelDir = config.asr.modelDir
+        vadEnabled = config.asr.vadEnabled
+        diarizationEnabled = config.asr.diarizationEnabled
+        strictMode = config.strict.strictMode
+        useCustomWhisperModel = !AppConfigStore.whisperPresets.contains(config.asr.whisperProfile.model)
+        useCustomFunasrModel = !AppConfigStore.funasrPresets.contains(config.asr.funasrProfile.model)
+        lastAppliedConfigRevision = -1
+    }
+
+    // MARK: - Async tasks
+
+    private func runAsync(_ task: @escaping () async throws -> Void) {
+        isRunningTask = true
+        Task {
+            defer { Task { @MainActor in isRunningTask = false } }
+            do {
+                try await task()
+            } catch {
+                await MainActor.run { statusMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func applyConfigAndProbeProviders() async throws {
+        flushVendorToStore()
+        saveCurrentVendorAPIKey()
+        try await ensureSidecarInSyncIfNeeded()
+        let status = try rpc.providersStatus(probeActive: false)
+        let active = status.vendors.first(where: { $0.vendor == selectedVendor })
+        let probe = try rpc.providerProbe(
+            vendor: selectedVendor,
+            model: active?.modelID ?? vendorModelID,
+            baseURL: active?.baseURL ?? vendorBaseURL,
+            forceRefresh: true
+        )
+        let okText = probe.ok ? "可用" : "不可用"
+        await MainActor.run {
+            providerProbeResult = probe
+            providerProbeAt = Date()
+            statusMessage = "当前厂商: \(probe.vendor.displayName) · \(okText)"
+        }
+    }
+
+    private func applyConfigAndBootstrapASR() async throws {
+        flushVendorToStore()
+        saveCurrentVendorAPIKey()
+        configStore.updateASRProfileModel(engine: asrEngine, model: asrModel)
+        configStore.updateASREngine(asrEngine)
+        try await ensureSidecarInSyncIfNeeded()
+        let result = try rpc.asrRuntimeBootstrap(model: asrModel, engine: asrEngine)
+        await MainActor.run {
+            statusMessage = result.ok ? "语音识别运行时已就绪。" : "语音识别修复失败，请查看日志后重试。"
+        }
+    }
+
+    private func restartSidecar() async throws {
+        flushVendorToStore()
+        saveCurrentVendorAPIKey()
+        let ensureReadyProbe = { [rpc] in _ = try rpc.ensureReady(timeoutSec: 6) }
+        try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+        await MainActor.run {
+            lastAppliedConfigRevision = configStore.configRevision
+            statusMessage = "Sidecar 已重启并加载新配置。"
+        }
+    }
+
+    private func runQuickDiagnostics() async throws {
+        flushVendorToStore()
+        saveCurrentVendorAPIKey()
+        try await ensureSidecarInSyncIfNeeded()
+        let report = try rpc.diagnosticsQuickCheck(probeTimeoutSec: 6)
+        let status = try rpc.providersStatus(probeActive: false)
+        let active = status.vendors.first(where: { $0.vendor == selectedVendor })
+        let providerProbe = try rpc.providerProbe(
+            vendor: selectedVendor,
+            model: active?.modelID ?? vendorModelID,
+            baseURL: active?.baseURL ?? vendorBaseURL,
+            forceRefresh: true
+        )
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        let micReady = micStatus == .authorized
+        let screenReady = CGPreflightScreenCaptureAccess()
+        let overall = report.overall == .pass && micReady && screenReady && providerProbe.ok ? "通过" : "需处理"
+        let lines = report.checks.map {
+            "\($0.title): \($0.status.rawValue)\($0.timedOut ? "(timeout)" : "") (\($0.details))"
+        }
+        let permissionLine = "权限检查: 麦克风=\(micReady ? "pass" : "fail"), 屏幕录制=\(screenReady ? "pass" : "fail")"
+        let providerLine = "厂商探测: \(providerProbe.vendor.displayName)=\(providerProbe.ok ? "pass" : "fail") (\(providerProbe.model))"
+        let hasTimeout = report.checks.contains(where: { $0.timedOut })
+        await MainActor.run {
+            providerProbeResult = providerProbe
+            providerProbeAt = Date()
+            let suffix = hasTimeout ? "（部分检查超时）" : ""
+            statusMessage = "快速自检 \(overall)\(suffix)\n" + ([permissionLine, providerLine] + lines).joined(separator: "\n")
+        }
+    }
+
+    private func ensureSidecarInSyncIfNeeded() async throws {
+        let ensureReadyProbe = { [rpc] in _ = try rpc.ensureReady(timeoutSec: 6) }
+        let revision = configStore.configRevision
+        if revision != lastAppliedConfigRevision {
+            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+            await MainActor.run {
+                lastAppliedConfigRevision = revision
+            }
+            return
+        }
+        do {
+            _ = try rpc.ensureReady(timeoutSec: 6)
+        } catch {
+            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+            await MainActor.run {
+                lastAppliedConfigRevision = configStore.configRevision
+            }
+        }
+    }
+}
