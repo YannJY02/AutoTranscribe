@@ -39,6 +39,41 @@ FUNASR_DEFAULTS = {
 }
 
 
+def _backend_status(engine: str) -> dict[str, Any]:
+    if engine == "funasr":
+        return {
+            "device": "auto",
+            "compute_type": "float32",
+            "configured_device": "auto",
+            "configured_compute_type": "float32",
+            "resolved": "",
+            "supported_compute_types": ["float16", "float32"],
+        }
+
+    requested_device = os.getenv("INSIGHTKIT_ASR_DEVICE", "auto").strip() or "auto"
+    requested_compute = os.getenv("INSIGHTKIT_ASR_COMPUTE_TYPE", "int8").strip() or "int8"
+    supported: list[str] = []
+    try:
+        import ctranslate2
+
+        raw_supported = ctranslate2.get_supported_compute_types(requested_device)
+        if isinstance(raw_supported, (set, list, tuple)):
+            supported = sorted(str(x) for x in raw_supported)
+        elif raw_supported:
+            supported = [str(raw_supported)]
+    except Exception:
+        supported = []
+
+    return {
+        "device": requested_device,
+        "compute_type": requested_compute,
+        "configured_device": requested_device,
+        "configured_compute_type": requested_compute,
+        "resolved": "",
+        "supported_compute_types": supported,
+    }
+
+
 def _normalize_engine(engine: str | None) -> str:
     raw = (engine or DEFAULT_ENGINE).strip().lower()
     if raw not in {"whisper", "funasr"}:
@@ -192,6 +227,15 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
         "ready_by_engine": {
             "whisper": bool(whisper_status["ready"]),
             "funasr": bool(funasr_status["ready"]),
+        },
+        "backend": _backend_status(normalized_engine),
+        "warm": {
+            "ready": False,
+            "state": "idle",
+            "in_progress": False,
+            "attempt": 0,
+            "last_warm_ms": 0,
+            "last_error": "",
         },
         "ready": bool(active["ready"]),
     }

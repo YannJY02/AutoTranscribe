@@ -15,6 +15,8 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -52,11 +54,261 @@ FUNASR_PUNC_MODEL = os.getenv("INSIGHTKIT_FUNASR_PUNC_MODEL", "iic/punc_ct-trans
 FUNASR_SPK_MODEL = os.getenv("INSIGHTKIT_FUNASR_SPK_MODEL", "iic/speech_campplus_sv_zh-cn_16k-common").strip()
 
 _models: dict[str, Any] = {}
-_models_lock = threading.Lock()
+_model_registry_lock = threading.Lock()
+_models_lock = _model_registry_lock
+_runtime_state_lock = threading.Lock()
+_runtime_backend_snapshot: dict[str, Any] | None = None
+_runtime_warm_snapshot: dict[str, Any] | None = None
+_prewarm_thread: threading.Thread | None = None
+_prewarm_timer: threading.Timer | None = None
+_prewarm_generation = 0
+_prewarm_key: tuple[str, str] | None = None
+
+
+def _supported_compute_types(device: str) -> list[str]:
+    try:
+        import ctranslate2
+
+        supported = ctranslate2.get_supported_compute_types(device)
+        if isinstance(supported, (set, list, tuple)):
+            return sorted(str(x) for x in supported)
+        if supported:
+            return [str(supported)]
+    except Exception:
+        pass
+    return []
+
+
+def _configured_backend_status(engine_name: str | None = None) -> dict[str, Any]:
+    selected_engine = "funasr" if (engine_name or _engine()) == "funasr" else "whisper"
+    if selected_engine == "funasr":
+        return {
+            "device": "auto",
+            "compute_type": "float32",
+            "configured_device": "auto",
+            "configured_compute_type": "float32",
+            "resolved": "",
+            "supported_compute_types": ["float16", "float32"],
+        }
+
+    return {
+        "device": ASR_DEVICE,
+        "compute_type": ASR_COMPUTE_TYPE,
+        "configured_device": ASR_DEVICE,
+        "configured_compute_type": ASR_COMPUTE_TYPE,
+        "resolved": "",
+        "supported_compute_types": _supported_compute_types(ASR_DEVICE),
+    }
+
+
+def _resolved_funasr_device() -> str:
+    resolved = "cpu"
+    try:
+        import torch
+
+        if bool(getattr(torch.cuda, "is_available", lambda: False)()):
+            resolved = "cuda"
+        elif bool(getattr(getattr(torch.backends, "mps", None), "is_available", lambda: False)()):
+            resolved = "mps"
+    except Exception:
+        pass
+    return resolved
+
+
+def _resolved_backend_status(engine_name: str | None = None) -> dict[str, Any]:
+    backend = _configured_backend_status(engine_name)
+    selected_engine = "funasr" if (engine_name or _engine()) == "funasr" else "whisper"
+    backend["resolved"] = _resolved_funasr_device() if selected_engine == "funasr" else ("cpu" if ASR_DEVICE == "auto" else ASR_DEVICE)
+    return backend
+
+
+def _default_backend_status() -> dict[str, Any]:
+    return _configured_backend_status()
+
+
+def _default_warm_status() -> dict[str, Any]:
+    return {
+        "ready": False,
+        "state": "idle",
+        "in_progress": False,
+        "attempt": 0,
+        "last_warm_ms": 0,
+        "last_error": "",
+        "watchdog_sec": 0,
+        "_generation": 0,
+        "_started_at": 0.0,
+    }
+
+
+def _sanitize_warm_state(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ready": bool(state.get("ready", False)),
+        "state": str(state.get("state", "idle") or "idle"),
+        "in_progress": bool(state.get("in_progress", False)),
+        "attempt": int(state.get("attempt", 0) or 0),
+        "last_warm_ms": int(state.get("last_warm_ms", 0) or 0),
+        "last_error": str(state.get("last_error", "") or ""),
+        "watchdog_sec": int(state.get("watchdog_sec", 0) or 0),
+    }
+
+
+def _runtime_warm_state_locked() -> dict[str, Any]:
+    global _runtime_warm_snapshot
+    if not isinstance(_runtime_warm_snapshot, dict):
+        _runtime_warm_snapshot = _default_warm_status()
+    return _runtime_warm_snapshot
+
+
+def _runtime_backend_state_locked() -> dict[str, Any]:
+    global _runtime_backend_snapshot
+    if not isinstance(_runtime_backend_snapshot, dict):
+        _runtime_backend_snapshot = _default_backend_status()
+    return _runtime_backend_snapshot
+
+
+def _set_backend_status(backend: dict[str, Any]) -> None:
+    with _runtime_state_lock:
+        snapshot = _configured_backend_status()
+        snapshot.update(dict(backend))
+        if not snapshot.get("configured_device"):
+            snapshot["configured_device"] = snapshot.get("device", "")
+        if not snapshot.get("configured_compute_type"):
+            snapshot["configured_compute_type"] = snapshot.get("compute_type", "")
+        global _runtime_backend_snapshot
+        _runtime_backend_snapshot = snapshot
+
+
+def _set_warm_state(**updates: Any) -> dict[str, Any]:
+    with _runtime_state_lock:
+        state = dict(_runtime_warm_state_locked())
+        state.update(updates)
+        global _runtime_warm_snapshot
+        _runtime_warm_snapshot = state
+        return dict(state)
+
+
+def _finalize_warm_success(generation: int, warm_ms: int) -> None:
+    with _runtime_state_lock:
+        state = dict(_runtime_warm_state_locked())
+        if int(state.get("_generation", 0) or 0) != generation:
+            return
+        state.update(
+            {
+                "ready": True,
+                "state": "ready",
+                "in_progress": False,
+                "last_warm_ms": max(0, int(warm_ms)),
+                "last_error": "",
+                "_started_at": 0.0,
+            }
+        )
+        global _runtime_warm_snapshot, _prewarm_thread, _prewarm_timer, _prewarm_key
+        _runtime_warm_snapshot = state
+        if _prewarm_timer is not None:
+            _prewarm_timer.cancel()
+            _prewarm_timer = None
+        _prewarm_thread = None
+        _prewarm_key = None
+
+
+def _finalize_warm_failure(generation: int, error: str) -> None:
+    with _runtime_state_lock:
+        state = dict(_runtime_warm_state_locked())
+        if int(state.get("_generation", 0) or 0) != generation:
+            return
+        state.update(
+            {
+                "ready": False,
+                "state": "failed",
+                "in_progress": False,
+                "last_error": str(error or "warm failed"),
+                "_generation": generation + 1,
+                "_started_at": 0.0,
+            }
+        )
+        global _runtime_warm_snapshot, _prewarm_thread, _prewarm_timer, _prewarm_key
+        _runtime_warm_snapshot = state
+        if _prewarm_timer is not None:
+            _prewarm_timer.cancel()
+            _prewarm_timer = None
+        _prewarm_thread = None
+        _prewarm_key = None
+
+
+def _discard_engine_cache(engine_name: str) -> None:
+    key = "funasr" if engine_name == "funasr" else "whisper"
+    with _model_registry_lock:
+        _models.pop(key, None)
+
+
+def _prewarm_watchdog_expired(generation: int, timeout_sec: int) -> None:
+    _finalize_warm_failure(generation, f"prewarm timed out after {timeout_sec}s")
+
+
+def _warm_generation_is_active(generation: int) -> bool:
+    with _runtime_state_lock:
+        state = _runtime_warm_state_locked()
+        return int(state.get("_generation", 0) or 0) == generation and bool(state.get("in_progress", False))
+
+
+def runtime_backend_status(engine: str | None = None) -> dict[str, Any]:
+    with _runtime_state_lock:
+        if isinstance(_runtime_backend_snapshot, dict):
+            return dict(_runtime_backend_snapshot)
+    return _configured_backend_status(engine)
+
+
+def runtime_warm_status() -> dict[str, Any]:
+    with _runtime_state_lock:
+        state = dict(_runtime_warm_state_locked())
+    return _sanitize_warm_state(state)
+
+
+def _mark_warm_ready(warm_ms: int | None = None) -> None:
+    current = runtime_warm_status()
+    _set_warm_state(
+        ready=True,
+        state="ready",
+        in_progress=False,
+        last_warm_ms=max(0, int(warm_ms if warm_ms is not None else current.get("last_warm_ms", 0))),
+        last_error="",
+    )
+
+
+def _reset_runtime_state_for_tests() -> None:
+    global _runtime_backend_snapshot, _runtime_warm_snapshot, _prewarm_thread, _prewarm_timer, _prewarm_generation, _prewarm_key
+    with _runtime_state_lock:
+        if _prewarm_timer is not None:
+            _prewarm_timer.cancel()
+        _prewarm_generation += 1
+        _runtime_backend_snapshot = None
+        _runtime_warm_snapshot = _default_warm_status()
+        _prewarm_thread = None
+        _prewarm_timer = None
+        _prewarm_key = None
+    with _model_registry_lock:
+        _models.clear()
+
+def _write_silence_wav(duration_sec: float = 0.25, sample_rate: int = 16_000) -> Path:
+    path = Path(tempfile.mktemp(suffix="_warmup.wav"))
+    frame_count = max(1, int(duration_sec * sample_rate))
+    silence = b"\x00\x00" * frame_count
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(silence)
+    return path
 
 
 def _engine() -> str:
     return "funasr" if ASR_ENGINE == "funasr" else "whisper"
+
+
+def _active_model_name(engine_name: str) -> str:
+    if engine_name == "funasr":
+        return FUNASR_ASR_MODEL
+    return DEFAULT_MODEL_NAME
 
 
 def _local_funasr_paths() -> dict[str, Path]:
@@ -150,52 +402,65 @@ def _resolve_model_source() -> str:
 
 
 def _load_whisper_model():
-    with _models_lock:
+    with _model_registry_lock:
         cached = _models.get("whisper")
-        if cached is not None:
-            return cached
+    if cached is not None:
+        return cached
 
-        try:
-            from faster_whisper import WhisperModel
-        except Exception as exc:
-            raise RuntimeError(
-                "未安装 faster-whisper。请先执行 asr.runtime.bootstrap。"
-            ) from exc
+    try:
+        from faster_whisper import WhisperModel
+    except Exception as exc:
+        raise RuntimeError(
+            "未安装 faster-whisper。请先执行 asr.runtime.bootstrap。"
+        ) from exc
 
-        model_source = _resolve_model_source()
-        logger.info(
-            "加载 faster-whisper 模型: source=%s device=%s compute=%s",
-            model_source,
-            ASR_DEVICE,
-            ASR_COMPUTE_TYPE,
-        )
-        model = WhisperModel(
-            model_size_or_path=model_source,
-            device=ASR_DEVICE,
-            compute_type=ASR_COMPUTE_TYPE,
-            download_root=str(MODEL_DIR / "faster-whisper"),
-            local_files_only=STRICT_LOCAL_ONLY,
-        )
-        _models["whisper"] = model
-        return model
+    model_source = _resolve_model_source()
+    logger.info(
+        "加载 faster-whisper 模型: source=%s device=%s compute=%s",
+        model_source,
+        ASR_DEVICE,
+        ASR_COMPUTE_TYPE,
+    )
+    model = WhisperModel(
+        model_size_or_path=model_source,
+        device=ASR_DEVICE,
+        compute_type=ASR_COMPUTE_TYPE,
+        download_root=str(MODEL_DIR / "faster-whisper"),
+        local_files_only=STRICT_LOCAL_ONLY,
+    )
+    resolved = str(getattr(model, "device", ASR_DEVICE) or ASR_DEVICE).lower()
+    backend = _resolved_backend_status("whisper")
+    backend["resolved"] = resolved
+    _set_backend_status(backend)
+
+    with _model_registry_lock:
+        cached = _models.get("whisper")
+        if cached is None:
+            _models["whisper"] = model
+            return model
+        return cached
 
 
 def _load_silero_model():
-    with _models_lock:
+    with _model_registry_lock:
         cached = _models.get("silero_vad")
-        if cached is not None:
-            return cached
+    if cached is not None:
+        return cached
 
-        try:
-            from silero_vad import load_silero_vad
-        except Exception as exc:
-            raise RuntimeError(
-                "未安装 silero-vad。请先执行 asr.runtime.bootstrap。"
-            ) from exc
+    try:
+        from silero_vad import load_silero_vad
+    except Exception as exc:
+        raise RuntimeError(
+            "未安装 silero-vad。请先执行 asr.runtime.bootstrap。"
+        ) from exc
 
-        model = load_silero_vad()
-        _models["silero_vad"] = model
-        return model
+    model = load_silero_vad()
+    with _model_registry_lock:
+        cached = _models.get("silero_vad")
+        if cached is None:
+            _models["silero_vad"] = model
+            return model
+        return cached
 
 
 def _resolve_funasr_source(local_path: Path, remote_id: str) -> str:
@@ -210,27 +475,33 @@ def _resolve_funasr_source(local_path: Path, remote_id: str) -> str:
 
 
 def _load_funasr_model():
-    with _models_lock:
+    with _model_registry_lock:
         cached = _models.get("funasr")
-        if cached is not None:
-            return cached
+    if cached is not None:
+        return cached
 
-        try:
-            from funasr import AutoModel
-        except Exception as exc:
-            raise RuntimeError("未安装 FunASR。请先执行 asr.runtime.bootstrap。") from exc
+    try:
+        from funasr import AutoModel
+    except Exception as exc:
+        raise RuntimeError("未安装 FunASR。请先执行 asr.runtime.bootstrap。") from exc
 
-        paths = _local_funasr_paths()
-        model = AutoModel(
-            model=_resolve_funasr_source(paths["asr"], FUNASR_ASR_MODEL),
-            vad_model=_resolve_funasr_source(paths["vad"], FUNASR_VAD_MODEL) if VAD_ENABLED else None,
-            punc_model=_resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
-            spk_model=_resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None,
-            disable_update=True,
-            trust_remote_code=True,
-        )
-        _models["funasr"] = model
-        return model
+    paths = _local_funasr_paths()
+    model = AutoModel(
+        model=_resolve_funasr_source(paths["asr"], FUNASR_ASR_MODEL),
+        vad_model=_resolve_funasr_source(paths["vad"], FUNASR_VAD_MODEL) if VAD_ENABLED else None,
+        punc_model=_resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
+        spk_model=_resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None,
+        disable_update=True,
+        trust_remote_code=True,
+    )
+    _set_backend_status(_resolved_backend_status("funasr"))
+
+    with _model_registry_lock:
+        cached = _models.get("funasr")
+        if cached is None:
+            _models["funasr"] = model
+            return model
+        return cached
 
 
 def _speech_exists(audio_path: Path) -> bool:
@@ -282,25 +553,30 @@ def _load_diarization_pipeline():
     if not HF_TOKEN:
         return None
 
-    with _models_lock:
-        if "pyannote_pipeline" in _models:
-            return _models["pyannote_pipeline"]
+    with _model_registry_lock:
+        cached = _models.get("pyannote_pipeline")
+    if cached is not None:
+        return cached
 
-        try:
-            from pyannote.audio import Pipeline
-        except Exception:
-            return None
+    try:
+        from pyannote.audio import Pipeline
+    except Exception:
+        return None
 
-        try:
-            pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                use_auth_token=HF_TOKEN,
-            )
-            _models["pyannote_pipeline"] = pipeline
-            return pipeline
-        except Exception as exc:
-            logger.warning("pyannote 初始化失败，将禁用分离: %s", exc)
-            return None
+    try:
+        pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1",
+            use_auth_token=HF_TOKEN,
+        )
+        with _model_registry_lock:
+            cached = _models.get("pyannote_pipeline")
+            if cached is None:
+                _models["pyannote_pipeline"] = pipeline
+                return pipeline
+            return cached
+    except Exception as exc:
+        logger.warning("pyannote 初始化失败，将禁用分离: %s", exc)
+        return None
 
 
 def _diarize(audio_path: Path) -> list[tuple[int, int, str]]:
@@ -379,6 +655,7 @@ def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
         )
 
     language = str(getattr(info, "language", "") or "unknown")
+    _mark_warm_ready()
     if language.startswith("zh"):
         language = "zh"
     elif language.startswith("en"):
@@ -411,6 +688,7 @@ def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
                 "confidence": float(seg.get("confidence", 0.0) or 0.0),
             }
         )
+    _mark_warm_ready()
     return "zh", segments
 
 
@@ -418,6 +696,163 @@ def _transcribe_active(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     if _engine() == "funasr":
         return _transcribe_funasr(audio_path)
     return _transcribe_whisper(audio_path)
+
+
+def _warmup_once(engine_name: str) -> None:
+    wav_path: Path | None = None
+    try:
+        wav_path = _write_silence_wav()
+        if engine_name == "funasr":
+            model = _load_funasr_model()
+            _ = model.generate(input=str(wav_path))
+        else:
+            model = _load_whisper_model()
+            segments_iter, _ = model.transcribe(
+                str(wav_path),
+                language="en",
+                vad_filter=False,
+                beam_size=1,
+                best_of=1,
+                condition_on_previous_text=False,
+                word_timestamps=False,
+            )
+            # Consume at most one segment to force graph initialization.
+            for _ in segments_iter:
+                break
+    finally:
+        if wav_path and wav_path.exists():
+            try:
+                wav_path.unlink()
+            except Exception:
+                pass
+
+
+def _warm_worker(engine_name: str, model_name: str, generation: int) -> None:
+    started = time.perf_counter()
+    try:
+        logger.info("asr prewarm start: engine=%s model=%s generation=%s", engine_name, model_name, generation)
+        _set_warm_state(state="loading")
+        if engine_name == "funasr":
+            _load_funasr_model()
+        else:
+            _load_whisper_model()
+        if not _warm_generation_is_active(generation):
+            _discard_engine_cache(engine_name)
+            return
+        _set_warm_state(state="warming")
+        _warmup_once(engine_name)
+        if not _warm_generation_is_active(generation):
+            _discard_engine_cache(engine_name)
+            return
+        warm_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "asr prewarm ready: engine=%s model=%s generation=%s warm_ms=%s backend_resolved=%s",
+            engine_name,
+            model_name,
+            generation,
+            warm_ms,
+            runtime_backend_status().get("resolved", ""),
+        )
+        _finalize_warm_success(generation, warm_ms)
+    except Exception as exc:
+        logger.warning("asr prewarm failed: engine=%s model=%s generation=%s error=%s", engine_name, model_name, generation, exc)
+        _discard_engine_cache(engine_name)
+        _finalize_warm_failure(generation, str(exc))
+
+
+def prewarm_asr(
+    engine: str | None = None,
+    model: str | None = None,
+    timeout_sec: int = 20,
+) -> dict[str, Any]:
+    selected_engine = "funasr" if (engine or _engine()) == "funasr" else "whisper"
+    selected_model = (model or _active_model_name(selected_engine)).strip() or _active_model_name(selected_engine)
+    watchdog_sec = max(3, int(timeout_sec or 20))
+
+    global _prewarm_generation, _prewarm_thread, _prewarm_timer, _prewarm_key, _runtime_warm_snapshot, _runtime_backend_snapshot
+    with _runtime_state_lock:
+        state = dict(_runtime_warm_state_locked())
+        active_thread = _prewarm_thread
+        active_key = _prewarm_key
+        if (
+            bool(state.get("in_progress", False))
+            and active_thread is not None
+            and active_thread.is_alive()
+            and active_key == (selected_engine, selected_model)
+        ):
+            snapshot = _sanitize_warm_state(state)
+            return {
+                "ok": True,
+                "engine": selected_engine,
+                "model": selected_model,
+                "state": snapshot["state"],
+                "started": False,
+                "in_progress": snapshot["in_progress"],
+                "attempt": snapshot["attempt"],
+                "watchdog_sec": snapshot["watchdog_sec"],
+                "warm_ms": snapshot["last_warm_ms"],
+                "backend": dict(_runtime_backend_state_locked()),
+                "warm": snapshot,
+                "error": snapshot["last_error"],
+            }
+
+        _prewarm_generation += 1
+        generation = _prewarm_generation
+        attempt = max(0, int(state.get("attempt", 0) or 0)) + 1
+        next_state = dict(state)
+        next_state.update(
+            {
+                "ready": False,
+                "state": "loading",
+                "in_progress": True,
+                "attempt": attempt,
+                "last_error": "",
+                "watchdog_sec": watchdog_sec,
+                "_generation": generation,
+                "_started_at": time.perf_counter(),
+            }
+        )
+        _runtime_warm_snapshot = next_state
+        _runtime_backend_snapshot = _configured_backend_status(selected_engine)
+        if _prewarm_timer is not None:
+            _prewarm_timer.cancel()
+        _prewarm_key = (selected_engine, selected_model)
+        worker = threading.Thread(
+            target=_warm_worker,
+            args=(selected_engine, selected_model, generation),
+            name=f"asr-prewarm-{selected_engine}",
+            daemon=True,
+        )
+        timer = threading.Timer(watchdog_sec, _prewarm_watchdog_expired, args=(generation, watchdog_sec))
+        timer.daemon = True
+        _prewarm_thread = worker
+        _prewarm_timer = timer
+
+    timer.start()
+    worker.start()
+    snapshot = runtime_warm_status()
+    logger.info(
+        "asr prewarm accepted: engine=%s model=%s warm_state=%s warm_attempt=%s watchdog_sec=%s",
+        selected_engine,
+        selected_model,
+        snapshot.get("state"),
+        snapshot.get("attempt"),
+        watchdog_sec,
+    )
+    return {
+        "ok": True,
+        "engine": selected_engine,
+        "model": selected_model,
+        "state": snapshot["state"],
+        "started": True,
+        "in_progress": snapshot["in_progress"],
+        "attempt": snapshot["attempt"],
+        "watchdog_sec": watchdog_sec,
+        "warm_ms": snapshot["last_warm_ms"],
+        "backend": runtime_backend_status(),
+        "warm": snapshot,
+        "error": snapshot["last_error"],
+    }
 
 
 def detect_language(audio_path: Path) -> str:
