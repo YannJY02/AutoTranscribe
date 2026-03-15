@@ -1,7 +1,13 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 final class KeychainService {
+    enum InteractionPolicy {
+        case allowUI
+        case failIfInteractionRequired
+    }
+
     enum KeychainError: LocalizedError {
         case unexpectedStatus(OSStatus)
 
@@ -47,14 +53,22 @@ final class KeychainService {
         }
     }
 
-    func readSecret(account: String) throws -> String? {
-        let query: [String: Any] = [
+    func readSecret(
+        account: String,
+        interactionPolicy: InteractionPolicy = .allowUI
+    ) throws -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if interactionPolicy == .failIfInteractionRequired {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
+        }
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

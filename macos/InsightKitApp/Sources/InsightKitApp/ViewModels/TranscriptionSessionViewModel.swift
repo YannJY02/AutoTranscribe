@@ -39,6 +39,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var lastInlineErrorAt: Date?
     private let fetchLock = NSLock()
     private var fetchInFlight = false
+    /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
+    /// cooperative thread pool which would stall all async/SwiftUI work.
+    private let rpcQueue = DispatchQueue(label: "InsightKit.TranscriptionSession.RPC", qos: .userInitiated)
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
@@ -73,14 +76,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func refreshStatus() {
-        Task.detached { [weak self] in
+        guard beginFetchIfNeeded() else { return }
+        rpcQueue.async { [weak self] in
             guard let self else { return }
-            await self.fetchStatus(isPolling: false)
+            self.fetchStatusSync(isPolling: false)
         }
     }
 
     func importFile(path: String, title: String = "") {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
@@ -88,52 +92,55 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 _ = try self.rpcClient.transcriptionImport(filePath: path, title: title)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
-                _ = await self.applyStatus(status, sidecar: sidecar)
+                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
 
     func startWatcher(dirs: [String]) {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: true, allowProviderProbeFailure: true)
                 _ = try self.rpcClient.transcriptionWatchStart(dirs: dirs)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
-                _ = await self.applyStatus(status, sidecar: try? self.rpcClient.sidecarStatus())
+                let sidecar = try? self.rpcClient.sidecarStatus()
+                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
 
     func stopWatcher() {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 _ = try self.rpcClient.transcriptionWatchStop()
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
-                _ = await self.applyStatus(status, sidecar: try? self.rpcClient.sidecarStatus())
+                let sidecar = try? self.rpcClient.sidecarStatus()
+                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
 
     func cancelJob(jobID: String, reason: String = "cancelled_by_user") {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 _ = try self.rpcClient.transcriptionCancel(jobID: jobID, reason: reason)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
-                _ = await self.applyStatus(status, sidecar: try? self.rpcClient.sidecarStatus())
+                let sidecar = try? self.rpcClient.sidecarStatus()
+                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
@@ -161,16 +168,16 @@ final class TranscriptionSessionViewModel: ObservableObject {
             return
         }
 
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 let transcripts = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
-                await self.updateArtifacts(result: result, transcript: transcripts)
+                DispatchQueue.main.async { self.updateArtifactsSync(result: result, transcript: transcripts) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
@@ -183,17 +190,17 @@ final class TranscriptionSessionViewModel: ObservableObject {
             return
         }
 
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "txt")
-                await MainActor.run {
+                DispatchQueue.main.async {
                     self.lastExportPath = result.path
                 }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
@@ -242,8 +249,11 @@ final class TranscriptionSessionViewModel: ObservableObject {
         pollingMode = .idle
     }
 
-    private func fetchStatus(isPolling: Bool) async {
-        if !beginFetchIfNeeded() {
+    /// Synchronous version called from rpcQueue – never on the cooperative thread pool.
+    private func fetchStatusSync(isPolling: Bool) {
+        // For polling path, beginFetchIfNeeded is checked here.
+        // For refreshStatus path, it’s already checked before dispatch.
+        if isPolling && !beginFetchIfNeeded() {
             return
         }
         defer { endFetch() }
@@ -253,11 +263,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
             try ensureSidecarReady(allowRebootstrap: allowRebootstrap)
             let status = try rpcClient.transcriptionStatus(limit: 100)
             let sidecar = try? rpcClient.sidecarStatus()
-            let hasActiveWork = await applyStatus(status, sidecar: sidecar)
-            await markPollSuccess(hasActiveWork: hasActiveWork)
+            DispatchQueue.main.async {
+                let hasActiveWork = self.applyStatusSync(status, sidecar: sidecar)
+                self.markPollSuccessSync(hasActiveWork: hasActiveWork)
+            }
         } catch {
-            await markPollFailure()
-            await publishError(error)
+            DispatchQueue.main.async {
+                self.markPollFailureSync()
+                self.publishErrorSync(error)
+            }
         }
     }
 
@@ -453,9 +467,11 @@ final class TranscriptionSessionViewModel: ObservableObject {
 
     private func startPolling() {
         pollTask = Task.detached { [weak self] in
-            guard let self else { return }
             while !Task.isCancelled {
-                await self.fetchStatus(isPolling: true)
+                guard let self else { return }
+                self.rpcQueue.async {
+                    self.fetchStatusSync(isPolling: true)
+                }
                 try? await Task.sleep(nanoseconds: self.pollIntervalSec * 1_000_000_000)
             }
         }
@@ -477,15 +493,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
         fetchLock.unlock()
     }
 
-    @MainActor
-    private func markPollSuccess(hasActiveWork: Bool) {
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func markPollSuccessSync(hasActiveWork: Bool) {
         pollFailureStreak = 0
         pollingMode = hasActiveWork ? .active : .idle
         pollIntervalSec = hasActiveWork ? 2 : 10
     }
 
-    @MainActor
-    private func markPollFailure() {
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func markPollFailureSync() {
         pollFailureStreak += 1
         if pollFailureStreak >= 4 {
             pollingMode = .degraded
@@ -498,8 +514,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
         pollIntervalSec = UInt64(ladder[idx])
     }
 
-    @MainActor
-    private func applyStatus(_ status: TranscriptionStatusResult, sidecar: [String: Any]?) -> Bool {
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func applyStatusSync(_ status: TranscriptionStatusResult, sidecar: [String: Any]?) -> Bool {
         jobs = status.jobs
         watcherState = status.watcher
         watcherState.queueSize = status.queue.count
@@ -562,22 +578,22 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     private func loadArtifactsForMeeting(_ meetingID: String) {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 let transcript = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
-                await self.updateArtifacts(result: result, transcript: transcript)
+                DispatchQueue.main.async { self.updateArtifactsSync(result: result, transcript: transcript) }
             } catch {
-                await self.publishError(error)
+                DispatchQueue.main.async { self.publishErrorSync(error) }
             }
         }
     }
 
-    @MainActor
-    private func updateArtifacts(result: InsightRefreshResult, transcript: [TranscriptSegment]) {
-        updateWorkbench(result)
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func updateArtifactsSync(result: InsightRefreshResult, transcript: [TranscriptSegment]) {
+        updateWorkbenchSync(result)
         transcriptSegments = transcript.sorted(by: { $0.startMs < $1.startMs })
         metrics.provider = result.provider
         metrics.needsReviewCount = result.needsReviewCount
@@ -585,8 +601,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
         metrics.segmentsIngested = transcript.count
     }
 
-    @MainActor
-    private func publishError(_ error: Error) {
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func publishErrorSync(_ error: Error) {
         let raw = error.localizedDescription
         let lower = raw.lowercased()
         let message: String
@@ -610,8 +626,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
         lastInlineErrorAt = now
     }
 
-    @MainActor
-    private func updateWorkbench(_ result: InsightRefreshResult) {
+    /// Called from DispatchQueue.main – no @MainActor needed.
+    private func updateWorkbenchSync(_ result: InsightRefreshResult) {
         let package = result.package
         workbench = InsightWorkbenchState(
             sessionOverview: package.sessionOverview.overview,

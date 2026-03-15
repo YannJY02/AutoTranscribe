@@ -31,11 +31,39 @@ struct BottomStatusBarView: View {
                             tag("Chunk \(payload.developer.chunkIndex)")
                             tag("片段 \(payload.developer.segmentsIngested)")
                             tag("延迟 \(payload.developer.latencyMs)ms")
+                            tag("队列 \(payload.developer.queueDepth)")
+                            if payload.developer.droppedChunks > 0 {
+                                tag("丢弃 \(payload.developer.droppedChunks)")
+                            }
+                            if payload.developer.warmReadyMs > 0 {
+                                tag("预热 \(payload.developer.warmReadyMs)ms")
+                            }
+                            if payload.developer.firstSegmentMs > 0 {
+                                tag("首条文本 \(payload.developer.firstSegmentMs)ms")
+                            }
+                            if !payload.developer.warmState.isEmpty {
+                                let label = payload.developer.warmAttempt > 0
+                                    ? "预热 \(payload.developer.warmState)#\(payload.developer.warmAttempt)"
+                                    : "预热 \(payload.developer.warmState)"
+                                tag(label)
+                            }
+                            if !payload.developer.backendResolved.isEmpty {
+                                tag("后端 \(payload.developer.backendResolved)")
+                            }
+                            if !payload.developer.backendComputeType.isEmpty {
+                                tag("配置计算 \(payload.developer.backendComputeType)")
+                            }
+                            if !payload.developer.backendDevice.isEmpty {
+                                tag("配置设备 \(payload.developer.backendDevice)")
+                            }
                             if !payload.developer.provider.isEmpty {
                                 tag("Provider \(payload.developer.provider)")
                             }
                             if !payload.developer.analysisState.isEmpty {
                                 tag(payload.developer.analysisState)
+                            }
+                            if !payload.developer.warmError.isEmpty {
+                                tag(payload.developer.warmError)
                             }
                             if payload.developer.needsReviewCount > 0 {
                                 tag("需复核 \(payload.developer.needsReviewCount)")

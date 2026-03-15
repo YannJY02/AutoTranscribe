@@ -22,6 +22,7 @@ protocol InsightRPCClientProtocol {
     func ensureReady(timeoutSec: Int) throws -> [String: Any]
     func asrRuntimeStatus(engine: LocalASREngine?) throws -> ASRRuntimeStatus
     func asrRuntimeBootstrap(model: String, engine: LocalASREngine?) throws -> ASRBootstrapResult
+    func asrPrewarm(model: String, engine: LocalASREngine?, timeoutSec: Int) throws -> ASRPrewarmResult
     func asrTranscribeChunk(wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta]
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus
     func providerProbe(vendor: ProviderVendor, model: String, baseURL: String, forceRefresh: Bool) throws -> ProviderProbeResult
@@ -50,6 +51,93 @@ protocol LiveASRServiceProtocol {
 
 extension LiveASRService: LiveASRServiceProtocol {}
 
+struct WarmupBacklogUpdate: Equatable {
+    let queue: [AudioChunk]
+    let droppedExisting: [AudioChunk]
+    let droppedIncoming: Bool
+    let bufferedAudioMs: Int
+}
+
+struct WarmupBacklogPolicy {
+    let maxChunks: Int
+    let maxBufferedAudioMs: Int
+
+    func enqueue(_ chunk: AudioChunk, into queued: [AudioChunk]) -> WarmupBacklogUpdate {
+        guard maxChunks > 0, maxBufferedAudioMs > 0 else {
+            return WarmupBacklogUpdate(queue: queued, droppedExisting: [], droppedIncoming: true, bufferedAudioMs: queued.bufferedAudioMs)
+        }
+
+        var nextQueue = queued
+        var droppedExisting: [AudioChunk] = []
+        let incomingDuration = max(0, chunk.endMs - chunk.startMs)
+
+        while !nextQueue.isEmpty && (nextQueue.count >= maxChunks || nextQueue.bufferedAudioMs + incomingDuration > maxBufferedAudioMs) {
+            if let silentIndex = nextQueue.firstIndex(where: \.isLikelySilent) {
+                droppedExisting.append(nextQueue.remove(at: silentIndex))
+                continue
+            }
+            if chunk.isLikelySilent {
+                return WarmupBacklogUpdate(
+                    queue: nextQueue,
+                    droppedExisting: droppedExisting,
+                    droppedIncoming: true,
+                    bufferedAudioMs: nextQueue.bufferedAudioMs
+                )
+            }
+            droppedExisting.append(nextQueue.removeFirst())
+        }
+
+        if nextQueue.count >= maxChunks || nextQueue.bufferedAudioMs + incomingDuration > maxBufferedAudioMs {
+            return WarmupBacklogUpdate(
+                queue: nextQueue,
+                droppedExisting: droppedExisting,
+                droppedIncoming: true,
+                bufferedAudioMs: nextQueue.bufferedAudioMs
+            )
+        }
+
+        nextQueue.append(chunk)
+        return WarmupBacklogUpdate(
+            queue: nextQueue,
+            droppedExisting: droppedExisting,
+            droppedIncoming: false,
+            bufferedAudioMs: nextQueue.bufferedAudioMs
+        )
+    }
+}
+
+enum WarmupRetryAction: Equatable {
+    case retry(afterSeconds: Int)
+    case failSession
+}
+
+struct WarmupRetryPolicy {
+    let maxAutomaticRetries: Int
+    let retryDelaySec: Int
+
+    func action(forFailureCount failureCount: Int) -> WarmupRetryAction {
+        if failureCount <= maxAutomaticRetries {
+            return .retry(afterSeconds: retryDelaySec)
+        }
+        return .failSession
+    }
+}
+
+enum LiveCaptureStateMapper {
+    static func captureState(warmReady: Bool, hasTranscript: Bool) -> CaptureState {
+        guard warmReady else { return .warmingModel }
+        return hasTranscript ? .transcribing : .capturing
+    }
+}
+
+private extension Array where Element == AudioChunk {
+    var bufferedAudioMs: Int {
+        reduce(0) { partialResult, chunk in
+            partialResult + Swift.max(0, chunk.endMs - chunk.startMs)
+        }
+    }
+}
+
 final class LiveSessionViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var selectedTab: InsightTab = .sessionOverview
@@ -57,7 +145,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var focusMode = false
     @Published var isExecutionPanelVisible = false
 
-    @Published var inputMode: AudioInputMode = .mixed
+    @Published var inputMode: AudioInputMode = .microphone
     @Published var captureState: CaptureState = .idle
     @Published var transcriptSegments: [TranscriptSegment] = []
     @Published var workbench: InsightWorkbenchState = .empty
@@ -76,6 +164,16 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var sessionHandle = SessionHandle()
     @Published var analysisRuntimeState: AnalysisRuntimeState = .ready
     @Published var captureHealth = CaptureHealthSnapshot.empty
+    @Published var asrBackendStatus = ASRBackendStatus(
+        configuredDevice: "auto",
+        configuredComputeType: "int8",
+        device: "auto",
+        computeType: "int8",
+        resolved: "",
+        supportedComputeTypes: []
+    )
+    @Published var asrWarmStatus = ASRWarmStatus(ready: false, state: .idle, inProgress: false, attempt: 0, lastWarmMs: 0, lastError: "")
+    @Published var liveWarmup = LiveWarmupSnapshot.empty
 
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
@@ -87,9 +185,12 @@ final class LiveSessionViewModel: ObservableObject {
 
     private let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
     private let stateQueue = DispatchQueue(label: "InsightKit.LiveSession.State")
+    /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
+    /// cooperative thread pool which would stall all async/SwiftUI work.
+    private let rpcQueue = DispatchQueue(label: "InsightKit.LiveSession.RPC", qos: .userInitiated)
 
     private var liveCoordinator = LiveInsightCoordinator()
-    private var activeMode: AudioInputMode = .mixed
+    private var activeMode: AudioInputMode = .microphone
     private var recentFingerprints: [String] = []
     private var insightRefreshSuspended = false
     private var captureMonitorTask: Task<Void, Never>?
@@ -97,6 +198,24 @@ final class LiveSessionViewModel: ObservableObject {
 
     private var _isRunning = false
     private var _sessionState = SessionHandle()
+    private let _isRunningLock = NSLock()
+    private var queuedChunks: [AudioChunk] = []
+    private var chunkInFlight = false
+    private let maxQueuedChunks = 8
+    private let warmupBacklogPolicy = WarmupBacklogPolicy(maxChunks: 2, maxBufferedAudioMs: 8_000)
+    private let warmupRetryPolicy = WarmupRetryPolicy(maxAutomaticRetries: 1, retryDelaySec: 2)
+    private let warmupPollIntervalNs: UInt64 = 400_000_000
+    private var warmupKickTask: Task<Void, Never>?
+    private var warmupPollTask: Task<Void, Never>?
+    private var warmupRetryTask: Task<Void, Never>?
+    private var warmupFailureCount = 0
+    private var warmupRetryScheduled = false
+
+    // Fix 2: Throttle audio-level UI updates to ~15 Hz.
+    private var lastMicLevelDispatch: Date?
+    private var lastSystemLevelDispatch: Date?
+    private var lastMicLevel: Float = 0
+    private var lastSystemLevel: Float = 0
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
@@ -138,7 +257,9 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     var isRunning: Bool {
-        stateQueue.sync { _isRunning }
+        _isRunningLock.lock()
+        defer { _isRunningLock.unlock() }
+        return _isRunning
     }
 
     var canStartSession: Bool {
@@ -161,6 +282,13 @@ final class LiveSessionViewModel: ObservableObject {
         !isRunning
     }
 
+    func prepareForLiveEntry() {
+        guard !isRunning else { return }
+        inputMode = .microphone
+        activeMode = .microphone
+        mixBus.setMode(.microphone)
+    }
+
     func reloadSystemAudioSources() {
         Task {
             do {
@@ -178,7 +306,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func refreshSidecarStatus() {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 let status = try self.rpcClient.sidecarStatus()
@@ -221,7 +349,7 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         let selectedMode = inputMode
-        if selectedMode != .microphone, selectedSystemSourceID == nil {
+        if selectedMode.requiresSystemAudioSource, selectedSystemSourceID == nil {
             errorMessage = "请先选择系统音频源。"
             isSystemAudioPickerPresented = true
             return
@@ -231,9 +359,12 @@ final class LiveSessionViewModel: ObservableObject {
 
         let meetingID = "live-\(UUID().uuidString)"
         let source = rpcSource(for: selectedMode)
+        let startupAt = Date()
 
         stateQueue.sync {
+            _isRunningLock.lock()
             _isRunning = true
+            _isRunningLock.unlock()
             _sessionState.activeMeetingID = meetingID
             _sessionState.lastMeetingID = nil
             activeMode = selectedMode
@@ -247,10 +378,10 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         mixBus.setMode(selectedMode)
-        captureState = .capturing
+        captureState = .preparingRuntime
         analysisRuntimeState = .ready
         captureHealth = CaptureHealthSnapshot(
-            sessionStartedAt: Date(),
+            sessionStartedAt: startupAt,
             lastChunkAt: nil,
             lastTranscriptAt: nil,
             inputLevelMic: 0,
@@ -258,53 +389,90 @@ final class LiveSessionViewModel: ObservableObject {
         )
         startCaptureHealthMonitor()
 
-        Task {
+        // Split into: (1) blocking RPC on rpcQueue, then (2) async audio capture on Task.
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
             do {
-                try sidecarManager.startIfNeeded(ensureReady: { [weak self] in
+                let selectedEngine = AppConfigStore.shared.config.asr.engine
+                let selectedModel = AppConfigStore.shared.currentASRModel()
+                try self.sidecarManager.startIfNeeded(ensureReady: { [weak self] in
                     guard let self else { return }
                     _ = try self.rpcClient.ensureReady(timeoutSec: 6)
                 })
-                refreshSidecarStatus()
-                try assertSidecarCapabilities([
+                self.refreshSidecarStatus()
+                try self.assertSidecarCapabilities([
                     "session.start",
                     "session.stop",
                     "asr.transcribe_chunk",
+                    "asr.prewarm",
                     "transcript.delta",
                     "insight.refresh_live",
                 ])
-                try ensureRuntimeReady(requireASR: true, requireProvider: true, allowProviderProbeFailure: true)
-
-                try rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
-
-                if selectedMode != .systemAudio {
-                    try await micCapture.start()
+                try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
+                try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
+                self.updateMain {
+                    self.captureState = .warmingModel
+                    self.liveWarmup = LiveWarmupSnapshot(
+                        state: .idle,
+                        attempt: 0,
+                        bufferedChunks: 0,
+                        bufferedAudioMs: 0,
+                        automaticRetryCount: 0,
+                        isRetryScheduled: false,
+                        lastError: ""
+                    )
                 }
-                if selectedMode != .microphone {
-                    guard let sourceID = selectedSystemSourceID else {
-                        throw NSError(domain: "InsightKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "缺少系统音频源"])
+                self.probeProvidersInBackground()
+
+                // Audio capture must be started from an async context
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        if selectedMode != .systemAudio {
+                            try await self.micCapture.start()
+                        }
+                        if selectedMode != .microphone {
+                            guard let sourceID = self.selectedSystemSourceID else {
+                                throw NSError(domain: "InsightKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "缺少系统音频源"])
+                            }
+                            try await self.systemAudioCapture.start(sourceID: sourceID)
+                        }
+                        self.permissionState = .granted
+                        self.beginWarmupLifecycle(
+                            meetingID: meetingID,
+                            startupAt: startupAt,
+                            engine: selectedEngine,
+                            model: selectedModel
+                        )
+                    } catch {
+                        self.publishError(error)
+                        self.stopLiveSession(finalState: .error(error.localizedDescription))
                     }
-                    try await systemAudioCapture.start(sourceID: sourceID)
-                }
-                updateMain {
-                    self.permissionState = .granted
                 }
             } catch {
-                publishError(error)
-                stopLiveSession()
+                self.publishError(error)
+                self.stopLiveSession(finalState: .error(error.localizedDescription))
             }
         }
     }
 
     func stopLiveSession() {
+        stopLiveSession(finalState: .idle)
+    }
+
+    private func stopLiveSession(finalState: CaptureState) {
         if !isRunning {
             return
         }
 
         stateQueue.sync {
+            _isRunningLock.lock()
             _isRunning = false
+            _isRunningLock.unlock()
         }
         captureMonitorTask?.cancel()
         captureMonitorTask = nil
+        cancelWarmupTasks()
 
         micCapture.stop()
         Task {
@@ -314,12 +482,19 @@ final class LiveSessionViewModel: ObservableObject {
         pipelineQueue.async { [weak self] in
             guard let self else { return }
             let activeMeetingID = self.currentActiveMeetingID()
+            let shouldFlushTail = self.asrWarmStatus.ready
             do {
-                let tail = try self.chunkAssembler.flush(minDurationSec: 1.0)
-                if let meetingID = activeMeetingID {
-                    for chunk in tail {
-                        try self.processChunk(chunk, meetingID: meetingID)
+                self.queuedChunks.removeAll(keepingCapacity: false)
+                self.chunkInFlight = false
+                if shouldFlushTail {
+                    let tail = try self.chunkAssembler.flush(minDurationSec: 1.0)
+                    if let meetingID = activeMeetingID {
+                        for chunk in tail {
+                            try self.processChunk(chunk, meetingID: meetingID)
+                        }
                     }
+                }
+                if let meetingID = activeMeetingID {
                     try? self.rpcClient.sessionStop(meetingID: meetingID)
                 }
             } catch {
@@ -334,54 +509,57 @@ final class LiveSessionViewModel: ObservableObject {
             }
             self.syncSessionHandleFromState()
             self.updateMain {
-                self.captureState = .idle
+                self.metrics.queueDepth = 0
+                self.captureState = finalState
             }
         }
     }
 
     func buildFinalInsight() {
-        Task {
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
             do {
-                try sidecarManager.startIfNeeded(ensureReady: { [weak self] in
+                try self.sidecarManager.startIfNeeded(ensureReady: { [weak self] in
                     guard let self else { return }
                     _ = try self.rpcClient.ensureReady(timeoutSec: 6)
                 })
-                refreshSidecarStatus()
-                try ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
-                guard let meetingID = currentBuildTargetID() else {
+                self.refreshSidecarStatus()
+                try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
+                guard let meetingID = self.currentBuildTargetID() else {
                     throw NSError(domain: "InsightKit", code: -2, userInfo: [NSLocalizedDescriptionKey: "当前无会话，无法生成定稿洞察"])
                 }
-                updateMain {
+                self.updateMain {
                     self.captureState = .refreshing
                 }
-                let result = try rpcClient.buildFinal(meetingID: meetingID)
-                updateWorkbench(result)
-                updateMain {
+                let result = try self.rpcClient.buildFinal(meetingID: meetingID)
+                self.updateWorkbench(result)
+                self.updateMain {
                     self.captureState = .idle
                 }
             } catch {
-                publishError(error)
+                self.publishError(error)
             }
         }
     }
 
     func exportDocument(format: String = "markdown") {
-        Task {
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
             do {
-                try sidecarManager.startIfNeeded(ensureReady: { [weak self] in
+                try self.sidecarManager.startIfNeeded(ensureReady: { [weak self] in
                     guard let self else { return }
                     _ = try self.rpcClient.ensureReady(timeoutSec: 6)
                 })
-                try ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
-                guard let meetingID = currentBuildTargetID() else {
+                try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
+                guard let meetingID = self.currentBuildTargetID() else {
                     throw NSError(domain: "InsightKit", code: -3, userInfo: [NSLocalizedDescriptionKey: "当前无会话，无法导出文档"])
                 }
-                let result = try rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "txt")
-                updateMain {
+                let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "txt")
+                self.updateMain {
                     self.lastExportPath = result.path
                 }
             } catch {
-                publishError(error)
+                self.publishError(error)
             }
         }
     }
@@ -393,6 +571,7 @@ final class LiveSessionViewModel: ObservableObject {
         }
         syncSessionHandleFromState()
         resetSessionUI()
+        prepareForLiveEntry()
         refreshSidecarStatus()
     }
 
@@ -452,7 +631,7 @@ final class LiveSessionViewModel: ObservableObject {
                 let chunks = try self.chunkAssembler.append(samples: samples)
                 guard let meetingID = self.currentActiveMeetingID() else { return }
                 for chunk in chunks {
-                    try self.processChunk(chunk, meetingID: meetingID)
+                    self.enqueueChunkForProcessing(chunk, meetingID: meetingID)
                 }
             } catch {
                 self.publishError(error)
@@ -460,9 +639,103 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    private func enqueueChunkForProcessing(_ chunk: AudioChunk, meetingID: String) {
+        if shouldHoldChunksForWarmup {
+            let update = warmupBacklogPolicy.enqueue(chunk, into: queuedChunks)
+            for dropped in update.droppedExisting {
+                try? FileManager.default.removeItem(at: dropped.url)
+            }
+            if update.droppedIncoming {
+                try? FileManager.default.removeItem(at: chunk.url)
+            }
+            queuedChunks = update.queue
+            let droppedCount = update.droppedExisting.count + (update.droppedIncoming ? 1 : 0)
+            updateMain {
+                if droppedCount > 0 {
+                    self.metrics.droppedChunks += droppedCount
+                }
+                self.metrics.queueDepth = self.queuedChunks.count
+                self.liveWarmup.bufferedChunks = self.queuedChunks.count
+                self.liveWarmup.bufferedAudioMs = update.bufferedAudioMs
+            }
+            return
+        }
+
+        if queuedChunks.count >= maxQueuedChunks {
+            if let idx = queuedChunks.firstIndex(where: { $0.isLikelySilent }) {
+                let dropped = queuedChunks.remove(at: idx)
+                try? FileManager.default.removeItem(at: dropped.url)
+                updateMain {
+                    self.metrics.droppedChunks += 1
+                }
+            } else if chunk.isLikelySilent {
+                try? FileManager.default.removeItem(at: chunk.url)
+                updateMain {
+                    self.metrics.droppedChunks += 1
+                    self.metrics.queueDepth = self.queuedChunks.count
+                }
+                return
+            } else if let dropped = queuedChunks.first {
+                queuedChunks.removeFirst()
+                try? FileManager.default.removeItem(at: dropped.url)
+                updateMain {
+                    self.metrics.droppedChunks += 1
+                }
+            }
+        }
+
+        queuedChunks.append(chunk)
+        updateMain {
+            self.metrics.queueDepth = self.queuedChunks.count
+            self.liveWarmup.bufferedChunks = self.queuedChunks.count
+            self.liveWarmup.bufferedAudioMs = self.queuedChunks.bufferedAudioMs
+        }
+        pumpChunkQueueIfNeeded(meetingID: meetingID)
+    }
+
+    private func pumpChunkQueueIfNeeded(meetingID: String) {
+        guard !chunkInFlight else {
+            return
+        }
+        guard !queuedChunks.isEmpty else {
+            updateMain {
+                self.metrics.queueDepth = 0
+                self.liveWarmup.bufferedChunks = 0
+                self.liveWarmup.bufferedAudioMs = 0
+            }
+            return
+        }
+        guard isRunning else {
+            queuedChunks.removeAll(keepingCapacity: false)
+            chunkInFlight = false
+            updateMain {
+                self.metrics.queueDepth = 0
+                self.liveWarmup.bufferedChunks = 0
+                self.liveWarmup.bufferedAudioMs = 0
+            }
+            return
+        }
+
+        chunkInFlight = true
+        let chunk = queuedChunks.removeFirst()
+        updateMain {
+            self.metrics.queueDepth = self.queuedChunks.count
+            self.liveWarmup.bufferedChunks = self.queuedChunks.count
+            self.liveWarmup.bufferedAudioMs = self.queuedChunks.bufferedAudioMs
+        }
+
+        do {
+            try processChunk(chunk, meetingID: meetingID)
+        } catch {
+            publishError(error)
+        }
+
+        chunkInFlight = false
+        pumpChunkQueueIfNeeded(meetingID: meetingID)
+    }
+
     private func processChunk(_ chunk: AudioChunk, meetingID: String) throws {
         updateMain {
-            self.captureState = .transcribing
             self.captureHealth.lastChunkAt = Date()
         }
 
@@ -477,7 +750,7 @@ final class LiveSessionViewModel: ObservableObject {
 
         guard !segments.isEmpty else {
             updateMain {
-                self.captureState = .capturing
+                self.captureState = self.activeCaptureState
                 self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunk.index + 1)
             }
             return
@@ -486,22 +759,18 @@ final class LiveSessionViewModel: ObservableObject {
         let ingested = try rpcClient.transcriptDelta(meetingID: meetingID, segments: segments)
         let now = Date()
 
-        updateMain {
-            self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunk.index + 1)
-            self.metrics.latencyMs = Int(now.timeIntervalSince(t0) * 1000)
-            self.metrics.segmentsIngested += ingested
-            self.transcriptSegments.append(contentsOf: segments.map {
-                TranscriptSegment(
-                    startMs: $0.startMs,
-                    endMs: $0.endMs,
-                    speaker: $0.speaker.isEmpty ? "未标注" : $0.speaker,
-                    source: $0.source,
-                    text: $0.text
-                )
-            })
-            self.transcriptSegments.sort { $0.startMs < $1.startMs }
-            self.captureHealth.lastTranscriptAt = now
+        // Prepare all values before dispatching to main thread.
+        let newSegments = segments.map {
+            TranscriptSegment(
+                startMs: $0.startMs,
+                endMs: $0.endMs,
+                speaker: $0.speaker.isEmpty ? "未标注" : $0.speaker,
+                source: $0.source,
+                text: $0.text
+            )
         }
+        let latencyMs = Int(now.timeIntervalSince(t0) * 1000)
+        let chunkIdx = chunk.index + 1
 
         var shouldRefresh = false
         stateQueue.sync {
@@ -511,12 +780,23 @@ final class LiveSessionViewModel: ObservableObject {
         if shouldRefresh {
             let refreshSuspended = stateQueue.sync { insightRefreshSuspended }
             if refreshSuspended {
+                // Fix 3: Single batched update for paused-analysis path.
                 updateMain {
-                    self.captureState = .capturing
+                    self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
+                    self.metrics.latencyMs = latencyMs
+                    self.metrics.segmentsIngested += ingested
+                    if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
+                        self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
+                    }
+                    self.transcriptSegments.append(contentsOf: newSegments)
+                    self.transcriptSegments.sort { $0.startMs < $1.startMs }
+                    self.captureHealth.lastTranscriptAt = now
+                    self.captureState = self.activeCaptureState
                     self.metrics.provider = "analysis-paused"
                 }
                 return
             }
+            // Insight refresh path.
             updateMain {
                 self.captureState = .refreshing
             }
@@ -526,8 +806,19 @@ final class LiveSessionViewModel: ObservableObject {
                     liveCoordinator.markRefreshed(at: now)
                     insightRefreshSuspended = false
                 }
+                // Fix 3: Single batched update combining metrics + segments + workbench.
                 updateMain {
+                    self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
+                    self.metrics.latencyMs = latencyMs
+                    self.metrics.segmentsIngested += ingested
+                    if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
+                        self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
+                    }
+                    self.transcriptSegments.append(contentsOf: newSegments)
+                    self.transcriptSegments.sort { $0.startMs < $1.startMs }
+                    self.captureHealth.lastTranscriptAt = now
                     self.analysisRuntimeState = .ready
+                    self.captureState = self.activeCaptureState
                 }
                 updateWorkbench(result)
             } catch {
@@ -537,7 +828,16 @@ final class LiveSessionViewModel: ObservableObject {
                         insightRefreshSuspended = true
                     }
                     updateMain {
-                        self.captureState = .capturing
+                        self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
+                        self.metrics.latencyMs = latencyMs
+                        self.metrics.segmentsIngested += ingested
+                        if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
+                            self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
+                        }
+                        self.transcriptSegments.append(contentsOf: newSegments)
+                        self.transcriptSegments.sort { $0.startMs < $1.startMs }
+                        self.captureHealth.lastTranscriptAt = now
+                        self.captureState = self.activeCaptureState
                         self.metrics.provider = "analysis-paused"
                         if self.isProviderProbeTimeout(error) {
                             self.analysisRuntimeState = .pausedTimeout
@@ -551,10 +851,21 @@ final class LiveSessionViewModel: ObservableObject {
                     throw error
                 }
             }
+            return
         }
 
+        // Fix 3: Single batched update for no-refresh path.
         updateMain {
-            self.captureState = .capturing
+            self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
+            self.metrics.latencyMs = latencyMs
+            self.metrics.segmentsIngested += ingested
+            if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
+                self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
+            }
+            self.transcriptSegments.append(contentsOf: newSegments)
+            self.transcriptSegments.sort { $0.startMs < $1.startMs }
+            self.captureHealth.lastTranscriptAt = now
+            self.captureState = self.activeCaptureState
         }
     }
 
@@ -648,6 +959,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     private func resetSessionUI() {
+        cancelWarmupTasks()
         captureState = .idle
         transcriptSegments = []
         workbench = .empty
@@ -658,7 +970,13 @@ final class LiveSessionViewModel: ObservableObject {
         lastExportPath = ""
         analysisRuntimeState = .ready
         captureHealth = .empty
+        asrWarmStatus = ASRWarmStatus(ready: false, state: .idle, inProgress: false, attempt: 0, lastWarmMs: 0, lastError: "")
+        liveWarmup = .empty
         lastCaptureHintAt = nil
+        queuedChunks.removeAll(keepingCapacity: false)
+        chunkInFlight = false
+        warmupFailureCount = 0
+        warmupRetryScheduled = false
         chunkAssembler.reset()
     }
 
@@ -711,6 +1029,281 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    private var shouldHoldChunksForWarmup: Bool {
+        !asrWarmStatus.ready
+    }
+
+    private var activeCaptureState: CaptureState {
+        LiveCaptureStateMapper.captureState(
+            warmReady: asrWarmStatus.ready,
+            hasTranscript: metrics.firstSegmentMs > 0 || !transcriptSegments.isEmpty
+        )
+    }
+
+    private func cancelWarmupTasks(cancelRetry: Bool = true) {
+        warmupKickTask?.cancel()
+        warmupKickTask = nil
+        warmupPollTask?.cancel()
+        warmupPollTask = nil
+        if cancelRetry {
+            warmupRetryTask?.cancel()
+            warmupRetryTask = nil
+        }
+    }
+
+    private func performRPC<T>(_ operation: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            rpcQueue.async {
+                do {
+                    continuation.resume(returning: try operation())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func beginWarmupLifecycle(
+        meetingID: String,
+        startupAt: Date,
+        engine: LocalASREngine,
+        model: String,
+        resetFailures: Bool = true
+    ) {
+        cancelWarmupTasks(cancelRetry: false)
+        if resetFailures {
+            stateQueue.sync {
+                warmupFailureCount = 0
+                warmupRetryScheduled = false
+            }
+        }
+        updateMain {
+            self.captureState = .warmingModel
+            self.liveWarmup.state = self.asrWarmStatus.ready ? .ready : .loading
+            self.liveWarmup.attempt = max(self.liveWarmup.attempt, self.asrWarmStatus.attempt)
+            self.liveWarmup.isRetryScheduled = false
+            self.liveWarmup.automaticRetryCount = self.stateQueue.sync { self.warmupFailureCount }
+            if self.asrWarmStatus.ready {
+                self.liveWarmup.lastError = ""
+            }
+        }
+
+        if asrWarmStatus.ready {
+            markWarmReady(meetingID: meetingID, startupAt: startupAt, backend: asrBackendStatus, warm: asrWarmStatus)
+            return
+        }
+
+        warmupKickTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runWarmupKick(meetingID: meetingID, startupAt: startupAt, engine: engine, model: model)
+        }
+        warmupPollTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runWarmupPoll(meetingID: meetingID, startupAt: startupAt, engine: engine, model: model)
+        }
+    }
+
+    private func runWarmupKick(
+        meetingID: String,
+        startupAt: Date,
+        engine: LocalASREngine,
+        model: String
+    ) async {
+        do {
+            let result = try await performRPC {
+                try self.rpcClient.asrPrewarm(model: model, engine: engine, timeoutSec: 20)
+            }
+            applyWarmSnapshot(result.warm, backend: result.backend)
+            if result.warm.ready || result.state == .ready {
+                markWarmReady(meetingID: meetingID, startupAt: startupAt, backend: result.backend, warm: result.warm)
+            } else if result.state == .failed || result.warm.state == .failed {
+                await handleWarmFailure(
+                    message: result.error.isEmpty ? result.warm.lastError : result.error,
+                    meetingID: meetingID,
+                    startupAt: startupAt,
+                    engine: engine,
+                    model: model,
+                    attempt: max(result.attempt, result.warm.attempt)
+                )
+            }
+        } catch {
+            await handleWarmFailure(
+                message: error.localizedDescription,
+                meetingID: meetingID,
+                startupAt: startupAt,
+                engine: engine,
+                model: model,
+                attempt: max(1, asrWarmStatus.attempt)
+            )
+        }
+    }
+
+    private func runWarmupPoll(
+        meetingID: String,
+        startupAt: Date,
+        engine: LocalASREngine,
+        model: String
+    ) async {
+        while !Task.isCancelled {
+            if !isRunning || currentActiveMeetingID() != meetingID {
+                return
+            }
+            do {
+                let status = try await performRPC {
+                    try self.rpcClient.asrRuntimeStatus(engine: engine)
+                }
+                applyWarmSnapshot(status.warm, backend: status.backend)
+                if status.warm.ready {
+                    markWarmReady(meetingID: meetingID, startupAt: startupAt, backend: status.backend, warm: status.warm)
+                    return
+                }
+                if status.warm.state == .failed {
+                    await handleWarmFailure(
+                        message: status.warm.lastError,
+                        meetingID: meetingID,
+                        startupAt: startupAt,
+                        engine: engine,
+                        model: model,
+                        attempt: status.warm.attempt
+                    )
+                    return
+                }
+            } catch {
+                await handleWarmFailure(
+                    message: error.localizedDescription,
+                    meetingID: meetingID,
+                    startupAt: startupAt,
+                    engine: engine,
+                    model: model,
+                    attempt: max(1, asrWarmStatus.attempt)
+                )
+                return
+            }
+            try? await Task.sleep(nanoseconds: warmupPollIntervalNs)
+        }
+    }
+
+    private func applyWarmSnapshot(_ warm: ASRWarmStatus, backend: ASRBackendStatus) {
+        updateMain {
+            self.asrBackendStatus = backend
+            self.asrWarmStatus = warm
+            self.liveWarmup.state = warm.state
+            self.liveWarmup.attempt = max(self.liveWarmup.attempt, warm.attempt)
+            self.liveWarmup.lastError = warm.lastError
+            self.liveWarmup.isRetryScheduled = self.stateQueue.sync { self.warmupRetryScheduled }
+            self.liveWarmup.automaticRetryCount = self.stateQueue.sync { self.warmupFailureCount }
+        }
+    }
+
+    private func markWarmReady(
+        meetingID: String,
+        startupAt: Date,
+        backend: ASRBackendStatus,
+        warm: ASRWarmStatus
+    ) {
+        let warmReadyMs = max(warm.lastWarmMs, Int(Date().timeIntervalSince(startupAt) * 1000))
+        stateQueue.sync {
+            warmupRetryScheduled = false
+        }
+        updateMain {
+            self.asrBackendStatus = backend
+            self.asrWarmStatus = warm
+            if self.metrics.warmReadyMs == 0 {
+                self.metrics.warmReadyMs = warmReadyMs
+            } else {
+                self.metrics.warmReadyMs = max(self.metrics.warmReadyMs, warmReadyMs)
+            }
+            self.liveWarmup.state = .ready
+            self.liveWarmup.attempt = max(self.liveWarmup.attempt, warm.attempt)
+            self.liveWarmup.lastError = ""
+            self.liveWarmup.isRetryScheduled = false
+            self.captureState = self.activeCaptureState
+        }
+        pipelineQueue.async { [weak self] in
+            guard let self else { return }
+            self.pumpChunkQueueIfNeeded(meetingID: meetingID)
+        }
+    }
+
+    private func handleWarmFailure(
+        message: String,
+        meetingID: String,
+        startupAt: Date,
+        engine: LocalASREngine,
+        model: String,
+        attempt: Int
+    ) async {
+        guard isRunning, currentActiveMeetingID() == meetingID else {
+            return
+        }
+
+        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "模型预热失败。"
+            : message
+
+        let decision: WarmupRetryAction = stateQueue.sync {
+            if warmupRetryScheduled {
+                return .retry(afterSeconds: warmupRetryPolicy.retryDelaySec)
+            }
+            warmupFailureCount += 1
+            return warmupRetryPolicy.action(forFailureCount: warmupFailureCount)
+        }
+
+        let failedWarm = ASRWarmStatus(
+            ready: false,
+            state: .failed,
+            inProgress: false,
+            attempt: max(1, attempt),
+            lastWarmMs: asrWarmStatus.lastWarmMs,
+            lastError: normalizedMessage
+        )
+        applyWarmSnapshot(failedWarm, backend: asrBackendStatus)
+
+        switch decision {
+        case .retry(let afterSeconds):
+            let shouldSchedule = stateQueue.sync {
+                if warmupRetryScheduled {
+                    return false
+                }
+                warmupRetryScheduled = true
+                return true
+            }
+            guard shouldSchedule else { return }
+
+            updateMain {
+                self.captureState = .warmingModel
+                self.errorMessage = "本地语音识别预热失败，\(afterSeconds)s 后自动重试。"
+                self.liveWarmup.isRetryScheduled = true
+                self.liveWarmup.automaticRetryCount = self.stateQueue.sync { self.warmupFailureCount }
+            }
+
+            warmupRetryTask?.cancel()
+            warmupRetryTask = Task { [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(nanoseconds: UInt64(afterSeconds) * 1_000_000_000)
+                guard !Task.isCancelled, self.isRunning, self.currentActiveMeetingID() == meetingID else {
+                    return
+                }
+                self.stateQueue.sync {
+                    self.warmupRetryScheduled = false
+                }
+                self.warmupRetryTask = nil
+                self.beginWarmupLifecycle(
+                    meetingID: meetingID,
+                    startupAt: startupAt,
+                    engine: engine,
+                    model: model,
+                    resetFailures: false
+                )
+            }
+        case .failSession:
+            updateMain {
+                self.errorMessage = normalizedMessage
+            }
+            stopLiveSession(finalState: .error(normalizedMessage))
+        }
+    }
+
     private func syncSessionHandleFromState() {
         let handle = stateQueue.sync { _sessionState }
         updateMain {
@@ -737,6 +1330,22 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    private func probeProvidersInBackground() {
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.isRunning else { return }
+            do {
+                try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: true)
+            } catch {
+                self.updateMain {
+                    if self.errorMessage == nil || self.errorMessage?.isEmpty == true {
+                        self.errorMessage = "智能分析暂不可用，转写继续。请在设置中完成服务配置后重试。"
+                    }
+                }
+            }
+        }
+    }
+
     private func ensureRuntimeReady(requireASR: Bool, requireProvider: Bool, allowProviderProbeFailure: Bool) throws {
         func restartAndRetry() throws {
             try sidecarManager.rebootstrap(ensureReady: { [weak self] in
@@ -759,10 +1368,18 @@ final class LiveSessionViewModel: ObservableObject {
                     throw error
                 }
             }
+            updateMain {
+                self.asrBackendStatus = asr.backend
+                self.asrWarmStatus = asr.warm
+            }
             if !asr.ready {
                 if AppConfigStore.shared.config.download.autoBootstrapEnabled {
                     _ = try rpcClient.asrRuntimeBootstrap(model: selectedModel, engine: selectedEngine)
                     let retried = try rpcClient.asrRuntimeStatus(engine: selectedEngine)
+                    updateMain {
+                        self.asrBackendStatus = retried.backend
+                        self.asrWarmStatus = retried.warm
+                    }
                     if retried.ready {
                         return
                     }
@@ -885,6 +1502,29 @@ final class LiveSessionViewModel: ObservableObject {
 
     private func recordInputLevel(buffer: AVAudioPCMBuffer, source: AudioMixBus.Source) {
         let level = rmsLevel(buffer)
+        let now = Date()
+        let minInterval: TimeInterval = 0.067 // ~15 Hz
+        let threshold: Float = 0.02
+
+        switch source {
+        case .microphone:
+            if let last = lastMicLevelDispatch,
+               now.timeIntervalSince(last) < minInterval,
+               abs(level - lastMicLevel) < threshold {
+                return
+            }
+            lastMicLevel = level
+            lastMicLevelDispatch = now
+        case .systemAudio:
+            if let last = lastSystemLevelDispatch,
+               now.timeIntervalSince(last) < minInterval,
+               abs(level - lastSystemLevel) < threshold {
+                return
+            }
+            lastSystemLevel = level
+            lastSystemLevelDispatch = now
+        }
+
         updateMain {
             switch source {
             case .microphone:
@@ -926,6 +1566,12 @@ final class LiveSessionViewModel: ObservableObject {
     @MainActor
     private func evaluateCaptureHealthHint() {
         guard isRunning else { return }
+        switch captureState {
+        case .preparingRuntime, .warmingModel:
+            return
+        default:
+            break
+        }
         let now = Date()
         if let last = lastCaptureHintAt, now.timeIntervalSince(last) < 10 {
             return

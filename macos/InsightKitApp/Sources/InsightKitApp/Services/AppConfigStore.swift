@@ -152,16 +152,32 @@ final class AppConfigStore: ObservableObject {
     }
 
     func sidecarEnvironment() -> [String: String] {
+        Self.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: ProcessInfo.processInfo.environment
+        ) { [keychain] vendor, allowUserInteraction in
+            let account = "vendor.\(vendor.rawValue).api_key"
+            let policy: KeychainService.InteractionPolicy = allowUserInteraction ? .allowUI : .failIfInteractionRequired
+            return (try? keychain.readSecret(account: account, interactionPolicy: policy)) ?? ""
+        }
+    }
+
+    static func buildSidecarEnvironment(
+        config: RuntimeConfigV2,
+        processEnvironment: [String: String],
+        apiKeyLookup: (_ vendor: ProviderVendor, _ allowUserInteraction: Bool) -> String
+    ) -> [String: String] {
         var env: [String: String] = [:]
 
+        let profilesByVendor = Dictionary(uniqueKeysWithValues: config.analysis.providers.map { ($0.vendor, $0) })
         let activeVendor = config.analysis.selectedVendor
-        let activeProfile = profile(for: activeVendor)
+        let activeProfile = profilesByVendor[activeVendor] ?? Self.defaultConfig().analysis.providers.first(where: { $0.vendor == activeVendor })!
         env["INSIGHTKIT_PROVIDER_VENDOR"] = activeVendor.rawValue
         env["INSIGHTKIT_PROVIDER_MODEL"] = activeProfile.modelID
         env["INSIGHTKIT_STRICT_MODE"] = config.strict.strictMode ? "1" : "0"
 
         env["INSIGHTKIT_ASR_ENGINE"] = config.asr.engine.rawValue
-        env["INSIGHTKIT_ASR_MODEL"] = currentASRModel()
+        env["INSIGHTKIT_ASR_MODEL"] = Self.currentASRModel(from: config)
         env["INSIGHTKIT_MODEL_DIR"] = config.asr.modelDir
         env["INSIGHTKIT_VAD_ENABLED"] = config.asr.vadEnabled ? "1" : "0"
         env["INSIGHTKIT_DIARIZATION_ENABLED"] = config.asr.diarizationEnabled ? "1" : "0"
@@ -174,27 +190,27 @@ final class AppConfigStore: ObservableObject {
             case .openai:
                 env["OPENAI_BASE_URL"] = profile.baseURL
                 env["OPENAI_MODEL"] = profile.modelID
-                env["OPENAI_API_KEY"] = ((try? keychain.readSecret(account: apiKeyAccount(for: .openai))) ?? "")
+                env["OPENAI_API_KEY"] = apiKeyLookup(.openai, false)
             case .gemini:
                 env["GEMINI_BASE_URL"] = profile.baseURL
                 env["GEMINI_MODEL"] = profile.modelID
-                env["GEMINI_API_KEY"] = ((try? keychain.readSecret(account: apiKeyAccount(for: .gemini))) ?? "")
+                env["GEMINI_API_KEY"] = apiKeyLookup(.gemini, false)
             case .deepseek:
                 env["DEEPSEEK_BASE_URL"] = profile.baseURL
                 env["DEEPSEEK_MODEL"] = profile.modelID
-                env["DEEPSEEK_API_KEY"] = ((try? keychain.readSecret(account: apiKeyAccount(for: .deepseek))) ?? "")
+                env["DEEPSEEK_API_KEY"] = apiKeyLookup(.deepseek, false)
             case .qwen:
                 env["QWEN_BASE_URL"] = profile.baseURL
                 env["QWEN_MODEL"] = profile.modelID
-                env["QWEN_API_KEY"] = ((try? keychain.readSecret(account: apiKeyAccount(for: .qwen))) ?? "")
+                env["QWEN_API_KEY"] = apiKeyLookup(.qwen, false)
             case .doubao:
                 env["DOUBAO_BASE_URL"] = profile.baseURL
                 env["DOUBAO_MODEL"] = profile.modelID
-                env["DOUBAO_API_KEY"] = ((try? keychain.readSecret(account: apiKeyAccount(for: .doubao))) ?? "")
+                env["DOUBAO_API_KEY"] = apiKeyLookup(.doubao, false)
             }
         }
 
-        if let token = ProcessInfo.processInfo.environment["HF_TOKEN"], !token.isEmpty {
+        if let token = processEnvironment["HF_TOKEN"], !token.isEmpty {
             env["HF_TOKEN"] = token
         }
         return env
@@ -211,6 +227,10 @@ final class AppConfigStore: ObservableObject {
     }
 
     func currentASRModel() -> String {
+        Self.currentASRModel(from: config)
+    }
+
+    private static func currentASRModel(from config: RuntimeConfigV2) -> String {
         switch config.asr.engine {
         case .whisper:
             return config.asr.whisperProfile.model

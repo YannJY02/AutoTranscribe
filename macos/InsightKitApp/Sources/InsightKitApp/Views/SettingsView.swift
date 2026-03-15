@@ -41,9 +41,15 @@ struct SettingsView: View {
     @State private var providerProbeResult: ProviderProbeResult?
     @State private var providerProbeAt: Date?
     @State private var lastAppliedConfigRevision: Int = -1
+    @State private var asrRuntimeSnapshot: ASRRuntimeStatus?
+    @State private var asrRuntimeUpdatedAt: Date?
 
-    private let rpc = InsightRPCClient()
-    private let sidecarManager = SidecarManager()
+    /// Fix 4: Reuse shared instances to avoid spawning Python subprocesses
+    /// every time the settings sheet opens.
+    private static let sharedRPC = InsightRPCClient()
+    private static let sharedSidecarManager = SidecarManager()
+    private var rpc: InsightRPCClient { Self.sharedRPC }
+    private var sidecarManager: SidecarManager { Self.sharedSidecarManager }
 
     // MARK: - Computed helpers
 
@@ -98,7 +104,12 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(16)
         .frame(minWidth: 600, idealWidth: 680)
-        .onAppear { syncFromStore() }
+        .onAppear {
+            syncFromStore()
+            Task {
+                try? await refreshASRRuntimeStatus()
+            }
+        }
         .onDisappear {
             flushVendorToStore()
             saveCurrentVendorAPIKey()
@@ -386,6 +397,48 @@ struct SettingsView: View {
                 }
                 .disabled(isRunningTask)
             }
+
+            if let runtime = asrRuntimeSnapshot {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("配置设备：\(runtime.backend.configuredDevice) · 配置计算类型：\(runtime.backend.configuredComputeType)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("运行设备：\(runtime.backend.device) · 运行计算类型：\(runtime.backend.computeType)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("后端解析：\(runtime.backend.resolved.isEmpty ? "待解析" : runtime.backend.resolved)")
+                        .font(.system(size: 12, weight: .semibold))
+                    if !runtime.backend.supportedComputeTypes.isEmpty {
+                        Text("支持计算类型：\(runtime.backend.supportedComputeTypes.joined(separator: ", "))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(runtime.warm.ready
+                         ? "模型预热：\(runtime.warm.state.rawValue)（\(runtime.warm.lastWarmMs)ms）"
+                         : "模型预热：\(runtime.warm.state.rawValue) · attempt \(runtime.warm.attempt)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    if !runtime.warm.lastError.isEmpty {
+                        Text("最近错误：\(runtime.warm.lastError)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    if let asrRuntimeUpdatedAt {
+                        Text("最近状态采样：\(asrRuntimeUpdatedAt.formatted(date: .abbreviated, time: .standard))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(NSColor.windowBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.blue.opacity(0.22), lineWidth: 1)
+                )
+            }
         }
     }
 
@@ -582,6 +635,7 @@ struct SettingsView: View {
         configStore.updateASREngine(asrEngine)
         try await ensureSidecarInSyncIfNeeded()
         let result = try rpc.asrRuntimeBootstrap(model: asrModel, engine: asrEngine)
+        try await refreshASRRuntimeStatus()
         await MainActor.run {
             statusMessage = result.ok ? "语音识别运行时已就绪。" : "语音识别修复失败，请查看日志后重试。"
         }
@@ -592,6 +646,7 @@ struct SettingsView: View {
         saveCurrentVendorAPIKey()
         let ensureReadyProbe = { [rpc] in _ = try rpc.ensureReady(timeoutSec: 6) }
         try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+        try await refreshASRRuntimeStatus()
         await MainActor.run {
             lastAppliedConfigRevision = configStore.configRevision
             statusMessage = "Sidecar 已重启并加载新配置。"
@@ -602,6 +657,7 @@ struct SettingsView: View {
         flushVendorToStore()
         saveCurrentVendorAPIKey()
         try await ensureSidecarInSyncIfNeeded()
+        try await refreshASRRuntimeStatus()
         let report = try rpc.diagnosticsQuickCheck(probeTimeoutSec: 6)
         let status = try rpc.providersStatus(probeActive: false)
         let active = status.vendors.first(where: { $0.vendor == selectedVendor })
@@ -646,6 +702,14 @@ struct SettingsView: View {
             await MainActor.run {
                 lastAppliedConfigRevision = configStore.configRevision
             }
+        }
+    }
+
+    private func refreshASRRuntimeStatus() async throws {
+        let status = try rpc.asrRuntimeStatus(engine: asrEngine)
+        await MainActor.run {
+            asrRuntimeSnapshot = status
+            asrRuntimeUpdatedAt = Date()
         }
     }
 }

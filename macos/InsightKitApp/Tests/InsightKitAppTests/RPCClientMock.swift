@@ -11,6 +11,10 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionStatusError: Error?
     var providersStatusError: Error?
     var providerProbeError: Error?
+    var asrPrewarmError: Error?
+    var asrPrewarmCalls: [(model: String, engine: LocalASREngine?, timeoutSec: Int)] = []
+    var asrRuntimeStatusQueue: [ASRRuntimeStatus] = []
+    var asrPrewarmQueue: [ASRPrewarmResult] = []
 
     var transcriptionStatusStub = TranscriptionStatusResult(
         watcher: TranscriptionWatcherState(),
@@ -111,7 +115,10 @@ final class RPCClientMock: InsightRPCClientProtocol {
     }
 
     func asrRuntimeStatus(engine: LocalASREngine?) throws -> ASRRuntimeStatus {
-        ASRRuntimeStatus(
+        if !asrRuntimeStatusQueue.isEmpty {
+            return asrRuntimeStatusQueue.removeFirst()
+        }
+        return ASRRuntimeStatus(
             ready: true,
             pythonExecutable: "/usr/bin/python3",
             pythonVersion: "3.11.0",
@@ -125,7 +132,23 @@ final class RPCClientMock: InsightRPCClientProtocol {
             diarizationReady: false,
             diarizationDegraded: true,
             diarizationReason: "missing hf token",
-            readyByEngine: ["whisper": true, "funasr": false]
+            readyByEngine: ["whisper": true, "funasr": false],
+            backend: ASRBackendStatus(
+                configuredDevice: "auto",
+                configuredComputeType: "int8",
+                device: "auto",
+                computeType: "int8",
+                resolved: "cpu",
+                supportedComputeTypes: ["int8", "float32"]
+            ),
+            warm: ASRWarmStatus(
+                ready: false,
+                state: .idle,
+                inProgress: false,
+                attempt: 0,
+                lastWarmMs: 0,
+                lastError: ""
+            )
         )
     }
 
@@ -136,6 +159,44 @@ final class RPCClientMock: InsightRPCClientProtocol {
                 .init(name: "bootstrap", ok: true, detail: model),
             ],
             status: try asrRuntimeStatus(engine: engine)
+        )
+    }
+
+    func asrPrewarm(model: String, engine: LocalASREngine?, timeoutSec: Int) throws -> ASRPrewarmResult {
+        asrPrewarmCalls.append((model: model, engine: engine, timeoutSec: timeoutSec))
+        if let asrPrewarmError {
+            throw asrPrewarmError
+        }
+        if !asrPrewarmQueue.isEmpty {
+            return asrPrewarmQueue.removeFirst()
+        }
+        return ASRPrewarmResult(
+            ok: true,
+            engine: engine?.rawValue ?? "whisper",
+            model: model,
+            state: .ready,
+            started: true,
+            inProgress: false,
+            attempt: 1,
+            watchdogSec: timeoutSec,
+            warmMs: 1200,
+            backend: ASRBackendStatus(
+                configuredDevice: "auto",
+                configuredComputeType: "int8",
+                device: "auto",
+                computeType: "int8",
+                resolved: "cpu",
+                supportedComputeTypes: ["int8", "float32"]
+            ),
+            warm: ASRWarmStatus(
+                ready: true,
+                state: .ready,
+                inProgress: false,
+                attempt: 1,
+                lastWarmMs: 1200,
+                lastError: ""
+            ),
+            error: ""
         )
     }
 

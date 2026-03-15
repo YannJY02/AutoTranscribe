@@ -5,6 +5,11 @@ struct AudioChunk: Hashable {
     let url: URL
     let startMs: Int
     let endMs: Int
+    let rms: Float
+
+    var isLikelySilent: Bool {
+        rms < 0.015
+    }
 }
 
 final class ChunkAssembler {
@@ -26,7 +31,8 @@ final class ChunkAssembler {
     let chunkDurationSec: Double
 
     private let chunkDir: URL
-    private let chunkSamples: Int
+    private let steadyChunkSamples: Int
+    private let firstChunkSamples: Int
     private let maxRetainedChunkFiles: Int
     private var pending: [Float] = []
     private var emittedSamples: Int = 0
@@ -35,13 +41,15 @@ final class ChunkAssembler {
 
     init(
         chunkDurationSec: Double = 8,
+        firstChunkDurationSec: Double = 2,
         sampleRate: Int = 16_000,
         chunkDir: URL? = nil,
         maxRetainedChunkFiles: Int = 200
     ) {
         self.chunkDurationSec = chunkDurationSec
         self.sampleRate = sampleRate
-        self.chunkSamples = Int(chunkDurationSec * Double(sampleRate))
+        self.steadyChunkSamples = max(1, Int(chunkDurationSec * Double(sampleRate)))
+        self.firstChunkSamples = max(1, Int(firstChunkDurationSec * Double(sampleRate)))
         self.maxRetainedChunkFiles = max(20, maxRetainedChunkFiles)
 
         if let chunkDir {
@@ -66,9 +74,10 @@ final class ChunkAssembler {
         pending.append(contentsOf: samples)
 
         var chunks: [AudioChunk] = []
-        while pending.count >= chunkSamples {
-            let chunkData = Array(pending.prefix(chunkSamples))
-            pending.removeFirst(chunkSamples)
+        while pending.count >= currentChunkSamplesTarget() {
+            let target = currentChunkSamplesTarget()
+            let chunkData = Array(pending.prefix(target))
+            pending.removeFirst(target)
             chunks.append(try emitChunk(samples: chunkData))
         }
         return chunks
@@ -100,6 +109,7 @@ final class ChunkAssembler {
     }
 
     private func emitChunk(samples: [Float]) throws -> AudioChunk {
+        let rms = computeRMS(samples)
         let startMs = Int((Double(emittedSamples) / Double(sampleRate)) * 1000)
         emittedSamples += samples.count
         let endMs = Int((Double(emittedSamples) / Double(sampleRate)) * 1000)
@@ -117,7 +127,20 @@ final class ChunkAssembler {
         createdChunkURLs.append(url)
         cleanupOverflowChunkFilesIfNeeded()
 
-        return AudioChunk(index: chunkIndex - 1, url: url, startMs: startMs, endMs: endMs)
+        return AudioChunk(index: chunkIndex - 1, url: url, startMs: startMs, endMs: endMs, rms: rms)
+    }
+
+    private func currentChunkSamplesTarget() -> Int {
+        chunkIndex == 0 ? firstChunkSamples : steadyChunkSamples
+    }
+
+    private func computeRMS(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var energy: Float = 0
+        for sample in samples {
+            energy += sample * sample
+        }
+        return sqrt(energy / Float(samples.count))
     }
 
     private func cleanupOverflowChunkFilesIfNeeded() {

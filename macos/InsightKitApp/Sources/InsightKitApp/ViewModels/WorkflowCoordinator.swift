@@ -14,6 +14,8 @@ final class WorkflowCoordinator: ObservableObject {
     private let capabilityClient: InsightRPCClientProtocol
     private var capabilities: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
+    /// Dedicated GCD queue for blocking RPC I/O.
+    private let rpcQueue = DispatchQueue(label: "InsightKit.WorkflowCoordinator.RPC", qos: .userInitiated)
 
     init(
         liveViewModel: LiveSessionViewModel = LiveSessionViewModel(),
@@ -109,9 +111,19 @@ final class WorkflowCoordinator: ObservableObject {
                     chunkIndex: liveViewModel.metrics.chunkIndex,
                     segmentsIngested: liveViewModel.metrics.segmentsIngested,
                     latencyMs: liveViewModel.metrics.latencyMs,
+                    queueDepth: liveViewModel.metrics.queueDepth,
+                    droppedChunks: liveViewModel.metrics.droppedChunks,
+                    warmReadyMs: liveViewModel.metrics.warmReadyMs,
+                    firstSegmentMs: liveViewModel.metrics.firstSegmentMs,
                     provider: liveViewModel.metrics.provider,
                     needsReviewCount: liveViewModel.metrics.needsReviewCount,
                     analysisState: liveViewModel.analysisRuntimeState.userLabel,
+                    warmState: liveViewModel.asrWarmStatus.state.rawValue,
+                    warmAttempt: liveViewModel.asrWarmStatus.attempt,
+                    warmError: liveViewModel.asrWarmStatus.lastError,
+                    backendDevice: liveViewModel.asrBackendStatus.configuredDevice,
+                    backendComputeType: liveViewModel.asrBackendStatus.configuredComputeType,
+                    backendResolved: liveViewModel.asrBackendStatus.resolved,
                     lastChunkAt: liveViewModel.captureHealth.lastChunkAt,
                     lastTranscriptAt: liveViewModel.captureHealth.lastTranscriptAt,
                     inputLevelMic: liveViewModel.captureHealth.inputLevelMic,
@@ -132,9 +144,19 @@ final class WorkflowCoordinator: ObservableObject {
                     chunkIndex: 0,
                     segmentsIngested: transcriptionViewModel.metrics.segmentsIngested,
                     latencyMs: transcriptionViewModel.metrics.latencyMs,
+                    queueDepth: 0,
+                    droppedChunks: 0,
+                    warmReadyMs: 0,
+                    firstSegmentMs: 0,
                     provider: transcriptionViewModel.metrics.provider,
                     needsReviewCount: transcriptionViewModel.metrics.needsReviewCount,
                     analysisState: transcriptionViewModel.analysisRuntimeState.userLabel,
+                    warmState: "",
+                    warmAttempt: 0,
+                    warmError: "",
+                    backendDevice: "",
+                    backendComputeType: "",
+                    backendResolved: "",
                     lastChunkAt: nil,
                     lastTranscriptAt: nil,
                     inputLevelMic: 0,
@@ -153,6 +175,7 @@ final class WorkflowCoordinator: ObservableObject {
 
     func openLive() {
         transcriptionViewModel.endMonitoring()
+        liveViewModel.prepareForLiveEntry()
         route = .live
         appState.activeRoute = .live
         refreshSidecarCapabilities()
@@ -191,6 +214,9 @@ final class WorkflowCoordinator: ObservableObject {
         appState.preemptionState = .preempting(jobID: preemptedID)
         transcriptionViewModel.preemptForLive()
         transcriptionViewModel.endMonitoring()
+        if route != .live {
+            liveViewModel.prepareForLiveEntry()
+        }
         route = .live
         appState.activeRoute = .live
         liveViewModel.startLiveSession()
@@ -209,18 +235,18 @@ final class WorkflowCoordinator: ObservableObject {
     }
 
     func refreshSidecarCapabilities() {
-        Task.detached { [weak self] in
+        rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 let version = try self.capabilityClient.sidecarVersion()
                 let actions = (version["capabilities"] as? [String]) ?? []
                 let set = Set(actions)
-                await MainActor.run {
+                DispatchQueue.main.async {
                     self.capabilities = set
                 }
             } catch {
                 // 能力未知时保守降级，仅保留已可确认的最小动作。
-                await MainActor.run {
+                DispatchQueue.main.async {
                     self.capabilities = []
                 }
             }

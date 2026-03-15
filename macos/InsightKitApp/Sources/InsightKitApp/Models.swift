@@ -89,10 +89,21 @@ enum AudioInputMode: String, CaseIterable, Identifiable {
     case mixed = "混音"
 
     var id: String { rawValue }
+
+    var requiresSystemAudioSource: Bool {
+        switch self {
+        case .microphone:
+            return false
+        case .systemAudio, .mixed:
+            return true
+        }
+    }
 }
 
 enum CaptureState: Equatable {
     case idle
+    case preparingRuntime
+    case warmingModel
     case capturing
     case transcribing
     case refreshing
@@ -103,8 +114,12 @@ enum CaptureState: Equatable {
         switch self {
         case .idle:
             return "待机"
+        case .preparingRuntime:
+            return "准备运行时"
+        case .warmingModel:
+            return "预热模型"
         case .capturing:
-            return "采集中"
+            return "可转写"
         case .transcribing:
             return "转写中"
         case .refreshing:
@@ -299,6 +314,10 @@ struct LiveSessionMetrics {
     var lastRefreshAt: Date?
     var provider: String = ""
     var needsReviewCount: Int = 0
+    var queueDepth: Int = 0
+    var droppedChunks: Int = 0
+    var warmReadyMs: Int = 0
+    var firstSegmentMs: Int = 0
 }
 
 struct InsightRefreshResult {
@@ -360,9 +379,19 @@ struct BottomDebugPayload: Equatable {
     var chunkIndex: Int = 0
     var segmentsIngested: Int = 0
     var latencyMs: Int = 0
+    var queueDepth: Int = 0
+    var droppedChunks: Int = 0
+    var warmReadyMs: Int = 0
+    var firstSegmentMs: Int = 0
     var provider: String = ""
     var needsReviewCount: Int = 0
     var analysisState: String = ""
+    var warmState: String = ""
+    var warmAttempt: Int = 0
+    var warmError: String = ""
+    var backendDevice: String = ""
+    var backendComputeType: String = ""
+    var backendResolved: String = ""
     var lastChunkAt: Date?
     var lastTranscriptAt: Date?
     var inputLevelMic: Float = 0
@@ -529,6 +558,41 @@ struct RuntimeConfigV2: Codable, Equatable {
 
 typealias RuntimeConfigV1 = RuntimeConfigV2
 
+struct ASRBackendStatus: Equatable {
+    let configuredDevice: String
+    let configuredComputeType: String
+    let device: String
+    let computeType: String
+    let resolved: String
+    let supportedComputeTypes: [String]
+}
+
+enum ASRWarmState: String, Equatable {
+    case idle
+    case loading
+    case warming
+    case ready
+    case failed
+
+    var isInProgress: Bool {
+        switch self {
+        case .loading, .warming:
+            return true
+        case .idle, .ready, .failed:
+            return false
+        }
+    }
+}
+
+struct ASRWarmStatus: Equatable {
+    let ready: Bool
+    let state: ASRWarmState
+    let inProgress: Bool
+    let attempt: Int
+    let lastWarmMs: Int
+    let lastError: String
+}
+
 struct ASRRuntimeStatus: Equatable {
     let ready: Bool
     let pythonExecutable: String
@@ -544,6 +608,8 @@ struct ASRRuntimeStatus: Equatable {
     let diarizationDegraded: Bool
     let diarizationReason: String
     let readyByEngine: [String: Bool]
+    let backend: ASRBackendStatus
+    let warm: ASRWarmStatus
 }
 
 struct ASRBootstrapResult: Equatable {
@@ -556,6 +622,33 @@ struct ASRBootstrapResult: Equatable {
     let ok: Bool
     let steps: [Step]
     let status: ASRRuntimeStatus
+}
+
+struct ASRPrewarmResult: Equatable {
+    let ok: Bool
+    let engine: String
+    let model: String
+    let state: ASRWarmState
+    let started: Bool
+    let inProgress: Bool
+    let attempt: Int
+    let watchdogSec: Int
+    let warmMs: Int
+    let backend: ASRBackendStatus
+    let warm: ASRWarmStatus
+    let error: String
+}
+
+struct LiveWarmupSnapshot: Equatable {
+    var state: ASRWarmState = .idle
+    var attempt: Int = 0
+    var bufferedChunks: Int = 0
+    var bufferedAudioMs: Int = 0
+    var automaticRetryCount: Int = 0
+    var isRetryScheduled: Bool = false
+    var lastError: String = ""
+
+    static let empty = LiveWarmupSnapshot()
 }
 
 enum ProviderProbeErrorCode: String, Codable, Equatable {

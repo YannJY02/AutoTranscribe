@@ -39,6 +39,8 @@ final class InsightRPCClient {
         var timeoutSec: Int
         /// 专用于 asr.transcribe_chunk 的超时（模型推理可能远超全局超时）
         var asrChunkTimeoutSec: Int
+        /// 专用于 provider 探测的超时（短超时 + 禁重试，避免阻塞主流程）
+        var providerProbeTimeoutSec: Int
         var maxRetries: Int
         var breakerThreshold: Int
         var breakerCooldownSec: Int
@@ -48,6 +50,7 @@ final class InsightRPCClient {
                 socketPath: InsightRuntimeDefaults.socketPath,
                 timeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_TIMEOUT_SEC"] ?? "8") ?? 8,
                 asrChunkTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_CHUNK_TIMEOUT_SEC"] ?? "120") ?? 120,
+                providerProbeTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_PROVIDER_PROBE_RPC_TIMEOUT_SEC"] ?? "6") ?? 6,
                 maxRetries: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_MAX_RETRIES"] ?? "1") ?? 1,
                 breakerThreshold: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_THRESHOLD"] ?? "4") ?? 4,
                 breakerCooldownSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_COOLDOWN"] ?? "10") ?? 10
@@ -57,6 +60,9 @@ final class InsightRPCClient {
 
     private let config: Config
     private let stateQueue = DispatchQueue(label: "InsightKit.RPCClient.State")
+    /// Dedicated queue for blocking socket I/O – keeps the Swift cooperative
+    /// thread pool free so SwiftUI and other async work never stalls.
+    private let ioQueue = DispatchQueue(label: "InsightKit.RPCClient.IO", qos: .userInitiated)
     private var consecutiveFailures = 0
     private var breakerOpenedAt: Date?
 
@@ -246,10 +252,48 @@ final class InsightRPCClient {
         )
     }
 
+    func asrPrewarm(model: String, engine: LocalASREngine? = nil, timeoutSec: Int = 20) throws -> ASRPrewarmResult {
+        var params: [String: Any] = [
+            "model": model,
+            "timeout_sec": max(3, timeoutSec),
+        ]
+        if let engine {
+            params["engine"] = engine.rawValue
+        }
+        let result = try callWithRetry(
+            method: "asr.prewarm",
+            params: params,
+            overrideTimeoutSec: max(config.timeoutSec, timeoutSec),
+            maxRetriesOverride: 0
+        )
+        let backendRaw = result["backend"] as? [String: Any] ?? [:]
+        let warmRaw = result["warm"] as? [String: Any] ?? [:]
+        let warmStatus = decodeASRWarmStatus(warmRaw, fallbackPayload: result)
+        return ASRPrewarmResult(
+            ok: (result["ok"] as? Bool) ?? false,
+            engine: (result["engine"] as? String) ?? (engine?.rawValue ?? ""),
+            model: (result["model"] as? String) ?? model,
+            state: decodeASRWarmState(
+                raw: result["state"] as? String,
+                ready: warmStatus.ready || ((result["ok"] as? Bool) ?? false)
+            ),
+            started: (result["started"] as? Bool) ?? false,
+            inProgress: (result["in_progress"] as? Bool) ?? warmStatus.inProgress,
+            attempt: (result["attempt"] as? Int) ?? warmStatus.attempt,
+            watchdogSec: (result["watchdog_sec"] as? Int) ?? max(3, timeoutSec),
+            warmMs: (result["warm_ms"] as? Int) ?? 0,
+            backend: decodeASRBackendStatus(backendRaw),
+            warm: warmStatus,
+            error: (result["error"] as? String) ?? ""
+        )
+    }
+
     func providersStatus(probeActive: Bool = false) throws -> AnalysisProvidersStatus {
         let result = try callWithRetry(
             method: "analysis.providers.status",
-            params: ["probe_active": probeActive]
+            params: ["probe_active": probeActive],
+            overrideTimeoutSec: max(1, config.providerProbeTimeoutSec),
+            maxRetriesOverride: 0
         )
         let selectedRaw = (result["selected_vendor"] as? String) ?? ProviderVendor.openai.rawValue
         let selectedVendor = ProviderVendor(rawValue: selectedRaw) ?? .openai
@@ -302,6 +346,9 @@ final class InsightRPCClient {
                 "base_url": baseURL,
                 "force_refresh": forceRefresh,
             ]
+            ,
+            overrideTimeoutSec: max(1, config.providerProbeTimeoutSec),
+            maxRetriesOverride: 0
         )
         let vendorRaw = (result["vendor"] as? String) ?? vendor.rawValue
         let resolvedVendor = ProviderVendor(rawValue: vendorRaw) ?? vendor
@@ -474,6 +521,8 @@ final class InsightRPCClient {
         let model = result["model"] as? [String: Any] ?? [:]
         let vad = result["vad"] as? [String: Any] ?? [:]
         let diar = result["speaker_diarization"] as? [String: Any] ?? [:]
+        let backend = result["backend"] as? [String: Any] ?? [:]
+        let warm = result["warm"] as? [String: Any] ?? [:]
         let readyRaw = result["ready_by_engine"] as? [String: Any] ?? [:]
         var readyByEngine: [String: Bool] = [:]
         for (key, value) in readyRaw {
@@ -498,18 +547,58 @@ final class InsightRPCClient {
             diarizationReady: (diar["ready"] as? Bool) ?? false,
             diarizationDegraded: (diar["degraded"] as? Bool) ?? false,
             diarizationReason: (diar["reason"] as? String) ?? "",
-            readyByEngine: readyByEngine
+            readyByEngine: readyByEngine,
+            backend: decodeASRBackendStatus(backend),
+            warm: decodeASRWarmStatus(warm)
         )
     }
 
-    private func callWithRetry(method: String, params: [String: Any], overrideTimeoutSec: Int? = nil) throws -> [String: Any] {
+    private func decodeASRBackendStatus(_ payload: [String: Any]) -> ASRBackendStatus {
+        ASRBackendStatus(
+            configuredDevice: (payload["configured_device"] as? String) ?? (payload["device"] as? String) ?? "auto",
+            configuredComputeType: (payload["configured_compute_type"] as? String) ?? (payload["compute_type"] as? String) ?? "int8",
+            device: (payload["device"] as? String) ?? "auto",
+            computeType: (payload["compute_type"] as? String) ?? "int8",
+            resolved: (payload["resolved"] as? String) ?? "",
+            supportedComputeTypes: (payload["supported_compute_types"] as? [String]) ?? []
+        )
+    }
+
+    private func decodeASRWarmStatus(_ payload: [String: Any], fallbackPayload: [String: Any] = [:]) -> ASRWarmStatus {
+        let ready = (payload["ready"] as? Bool) ?? (fallbackPayload["ok"] as? Bool) ?? false
+        let state = decodeASRWarmState(raw: payload["state"] as? String ?? fallbackPayload["state"] as? String, ready: ready)
+        let lastError = (payload["last_error"] as? String) ?? (fallbackPayload["error"] as? String) ?? ""
+        return ASRWarmStatus(
+            ready: ready,
+            state: state,
+            inProgress: (payload["in_progress"] as? Bool) ?? (fallbackPayload["in_progress"] as? Bool) ?? state.isInProgress,
+            attempt: (payload["attempt"] as? Int) ?? (fallbackPayload["attempt"] as? Int) ?? (ready ? 1 : 0),
+            lastWarmMs: (payload["last_warm_ms"] as? Int) ?? (fallbackPayload["warm_ms"] as? Int) ?? 0,
+            lastError: lastError
+        )
+    }
+
+    private func decodeASRWarmState(raw: String?, ready: Bool) -> ASRWarmState {
+        if let raw, let state = ASRWarmState(rawValue: raw) {
+            return state
+        }
+        return ready ? .ready : .idle
+    }
+
+    private func callWithRetry(
+        method: String,
+        params: [String: Any],
+        overrideTimeoutSec: Int? = nil,
+        maxRetriesOverride: Int? = nil
+    ) throws -> [String: Any] {
         try checkBreakerState(method: method)
         let countFailureForMethod = shouldCountFailure(method: method)
         let clearBreakerOnSuccess = shouldClearBreakerOnSuccess(method: method)
         let timeoutSec = overrideTimeoutSec.map { max(1, $0) } ?? config.timeoutSec
+        let maxRetries = max(0, maxRetriesOverride ?? config.maxRetries)
 
         var lastError: Error?
-        for attempt in 0...max(0, config.maxRetries) {
+        for attempt in 0...maxRetries {
             do {
                 let result = try callSync(method: method, params: params, timeoutSec: timeoutSec)
                 if clearBreakerOnSuccess {
@@ -521,13 +610,28 @@ final class InsightRPCClient {
                 if countFailureForMethod {
                     markFailure()
                 }
-                if attempt >= config.maxRetries {
+                if attempt >= maxRetries {
                     break
                 }
             }
         }
 
         throw lastError ?? RPCError.timeout(method)
+    }
+
+    /// Async variant that runs blocking socket I/O on the dedicated `ioQueue`
+    /// instead of the Swift cooperative thread pool.
+    func callWithRetryAsync(method: String, params: [String: Any], overrideTimeoutSec: Int? = nil) async throws -> [String: Any] {
+        try await withCheckedThrowingContinuation { continuation in
+            ioQueue.async { [self] in
+                do {
+                    let result = try callWithRetry(method: method, params: params, overrideTimeoutSec: overrideTimeoutSec)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     private func checkBreakerState(method: String) throws {
@@ -550,12 +654,25 @@ final class InsightRPCClient {
 
     private func shouldUseBreaker(method: String) -> Bool {
         // Sidecar lifecycle probes run during startup; they should not be blocked by stale breaker state.
-        !method.hasPrefix("sidecar.")
+        if method.hasPrefix("sidecar.") {
+            return false
+        }
+        // Provider probing may fail frequently due transient networking/auth; avoid poisoning transport breaker.
+        if method == "analysis.provider.probe" || method == "analysis.providers.status" {
+            return false
+        }
+        return true
     }
 
     private func shouldCountFailure(method: String) -> Bool {
         // Sidecar probes may fail transiently while process/socket is booting; do not poison global circuit.
-        !method.hasPrefix("sidecar.")
+        if method.hasPrefix("sidecar.") {
+            return false
+        }
+        if method == "analysis.provider.probe" || method == "analysis.providers.status" {
+            return false
+        }
+        return true
     }
 
     private func shouldClearBreakerOnSuccess(method: String) -> Bool {

@@ -2,6 +2,24 @@ import XCTest
 @testable import InsightKitApp
 
 final class WorkflowCoordinatorTests: XCTestCase {
+    func testOpenLiveResetsPreparedInputModeToMicrophone() {
+        let live = LiveSessionViewModel()
+        live.inputMode = .mixed
+
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(liveViewModel: live, transcriptionViewModel: tx)
+
+        coordinator.openLive()
+
+        XCTAssertEqual(coordinator.route, .live)
+        XCTAssertEqual(live.inputMode, .microphone)
+    }
+
     func testRouteSwitchingUpdatesAppState() {
         let live = LiveSessionViewModel()
         let tx = TranscriptionSessionViewModel(
