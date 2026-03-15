@@ -31,7 +31,7 @@ class TestTranscriptionImportRPC(unittest.TestCase):
                     "insight_package": {},
                 }
 
-            with mock.patch("insightkit.ipc.server.run_transcription_job", side_effect=fake_runner):
+            with mock.patch("insightkit.ipc.job_queue.run_transcription_job", side_effect=fake_runner):
                 imported = server._transcription_import_file({"file_path": str(media)})
                 self.assertIn("job_id", imported)
                 job_id = imported["job_id"]

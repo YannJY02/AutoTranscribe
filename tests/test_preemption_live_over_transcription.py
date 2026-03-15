@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest import mock
 
 from insightkit.data.store import InsightStore
-from insightkit.ipc import server as server_module
 from insightkit.ipc.server import InsightRPCServer
+from scripts.transcription_runner import JobCancelled
 
 
 class TestPreemptionLiveOverTranscription(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestPreemptionLiveOverTranscription(unittest.TestCase):
                 cb = kwargs.get("on_progress")
                 for idx in range(30):
                     if cancel_event is not None and cancel_event.is_set():
-                        raise server_module.JobCancelled("job cancelled")
+                        raise JobCancelled("job cancelled")
                     if cb:
                         cb(min(95, idx * 3), "running")
                     time.sleep(0.05)
@@ -37,7 +37,7 @@ class TestPreemptionLiveOverTranscription(unittest.TestCase):
                     "insight_package": {},
                 }
 
-            with mock.patch("insightkit.ipc.server.run_transcription_job", side_effect=fake_runner):
+            with mock.patch("insightkit.ipc.job_queue.run_transcription_job", side_effect=fake_runner):
                 imported = server._transcription_import_file({"file_path": str(media)})
                 job_id = imported["job_id"]
 

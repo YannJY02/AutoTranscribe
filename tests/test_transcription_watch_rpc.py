@@ -31,7 +31,7 @@ class TestTranscriptionWatchRPC(unittest.TestCase):
                     "insight_package": {},
                 }
 
-            with mock.patch("insightkit.ipc.server.run_transcription_job", side_effect=fake_runner):
+            with mock.patch("insightkit.ipc.job_queue.run_transcription_job", side_effect=fake_runner):
                 started = server._transcription_watch_start({"dirs": [str(watch_dir)]})
                 self.assertEqual(started["state"], "running")
 

@@ -29,10 +29,10 @@ class TestProviderProbeSelectedVendor(unittest.TestCase):
             }
 
             with (
-                mock.patch("insightkit.ipc.server.providers_status", return_value=providers_payload),
+                mock.patch("insightkit.ipc.provider_probe.providers_status", return_value=providers_payload),
                 mock.patch.object(
-                    server,
-                    "_probe_provider_cached",
+                    server._provider_probe,
+                    "_probe_cached",
                     return_value={
                         "ok": True,
                         "code": "ok",

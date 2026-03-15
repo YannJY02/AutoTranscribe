@@ -41,9 +41,9 @@ class TestQuickCheckProbeTimeoutWarn(unittest.TestCase):
 
             with (
                 mock.patch.object(server, "_sidecar_status", return_value={"pid": 1, "ready": True}),
-                mock.patch("insightkit.ipc.server.runtime_status", return_value={"ready": True, "engine": "whisper", "model": {"name": "large-v3"}}),
-                mock.patch("insightkit.ipc.server.providers_status", return_value=providers_payload),
-                mock.patch.object(server, "_probe_provider_cached", side_effect=_slow_probe),
+                mock.patch("insightkit.ipc.provider_probe.runtime_status", return_value={"ready": True, "engine": "whisper", "model": {"name": "large-v3"}}),
+                mock.patch("insightkit.ipc.provider_probe.providers_status", return_value=providers_payload),
+                mock.patch.object(server._provider_probe, "_probe_cached", side_effect=_slow_probe),
             ):
                 report = server._diagnostics_quick_check({"probe_timeout_sec": 1})
                 probe = next((item for item in report.get("checks", []) if item.get("id") == "analysis_provider_probe"), {})

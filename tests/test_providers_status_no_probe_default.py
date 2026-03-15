@@ -29,8 +29,8 @@ class TestProvidersStatusNoProbeDefault(unittest.TestCase):
             }
 
             with (
-                mock.patch("insightkit.ipc.server.providers_status", return_value=providers_payload),
-                mock.patch.object(server, "_probe_provider_cached") as probe_mock,
+                mock.patch("insightkit.ipc.provider_probe.providers_status", return_value=providers_payload),
+                mock.patch.object(server._provider_probe, "_probe_cached") as probe_mock,
             ):
                 result = server._analysis_providers_status({})
                 self.assertIn("active_probe_ok", result)

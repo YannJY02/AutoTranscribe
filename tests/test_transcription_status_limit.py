@@ -12,9 +12,9 @@ class TestTranscriptionStatusLimit(unittest.TestCase):
             db = Path(tmp) / "insightkit.db"
             server = InsightRPCServer(socket_path=Path(tmp) / "sock", store=InsightStore(db))
 
-            with server._tx_lock:
+            with server._job_queue._lock:
                 for idx in range(6):
-                    server._tx_jobs[str(idx)] = {
+                    server._job_queue._jobs[str(idx)] = {
                         "id": str(idx),
                         "meeting_id": f"m-{idx}",
                         "source_path": f"/tmp/{idx}.wav",
@@ -27,7 +27,7 @@ class TestTranscriptionStatusLimit(unittest.TestCase):
                         "started_at": f"2026-03-04T00:00:0{idx}Z",
                         "ended_at": "",
                     }
-                    server._tx_queue.append(str(idx))
+                    server._job_queue._queue.append(str(idx))
 
             full = server._transcription_status({})
             limited = server._transcription_status({"limit": 2})
