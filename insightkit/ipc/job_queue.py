@@ -11,6 +11,7 @@ from typing import Any
 
 from insightkit.data.store import InsightStore
 from insightkit.insights.service import InsightService
+from insightkit.ipc.push_broker import PushBroker
 from insightkit.ipc.watch_bridge import WatchBridge
 from scripts.transcription_runner import JobCancelled, run_transcription_job
 
@@ -21,10 +22,12 @@ class JobQueue:
         store: InsightStore,
         insight_service: InsightService,
         watch_bridge: WatchBridge,
+        push_broker: PushBroker | None = None,
     ):
         self.store = store
         self.insight_service = insight_service
         self._watch_bridge = watch_bridge
+        self._push_broker = push_broker
         self._lock = threading.RLock()
         self._queue: list[str] = []
         self._jobs: dict[str, dict[str, Any]] = {}
@@ -197,6 +200,10 @@ class JobQueue:
                             "segments_count": int(result.get("segments_count", 0)),
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }
+                    if self._push_broker is not None and j.get("state") == "completed":
+                        self._push_broker.emit("transcription.completed", {
+                            "job_id": j["id"], "meeting_id": j.get("meeting_id", ""), "state": j["state"],
+                        })
             except JobCancelled:
                 with self._lock:
                     j = self._jobs.get(job["id"], job)
@@ -233,6 +240,10 @@ class JobQueue:
             job["progress"] = int(max(0, min(100, progress)))
             job["stage"] = stage
             self._persist_job_locked(job)
+        if self._push_broker is not None:
+            self._push_broker.emit("transcription.progress", {
+                "job_id": job_id, "progress": job["progress"], "stage": stage,
+            })
 
     def _persist_job_locked(self, job: dict[str, Any]) -> None:
         self.store.upsert_transcription_job(

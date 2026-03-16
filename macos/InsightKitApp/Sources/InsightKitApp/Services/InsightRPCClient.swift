@@ -11,6 +11,8 @@ final class InsightRPCClient {
         case timeout(String)
         case invalidResponse
         case remoteError(String)
+        case persistentNotConnected
+        case handshakeFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -30,6 +32,10 @@ final class InsightRPCClient {
                 return "Insight 侧车响应格式无效。"
             case .remoteError(let message):
                 return "Insight 侧车错误: \(message)"
+            case .persistentNotConnected:
+                return "持久连接未建立。"
+            case .handshakeFailed(let reason):
+                return "持久连接握手失败: \(reason)"
             }
         }
     }
@@ -66,9 +72,59 @@ final class InsightRPCClient {
     private var consecutiveFailures = 0
     private var breakerOpenedAt: Date?
 
+    // MARK: - Persistent connection state
+    private var persistentFD: Int32 = -1
+    private var persistentReader: RPCFrameBuffer?
+    private(set) var usePersistent = false
+
     init(config: Config = .default()) {
         self.config = config
     }
+
+    // MARK: - Persistent connection lifecycle
+
+    /// Open a persistent NDJSON connection and perform the handshake.
+    /// After success, all RPC calls route through the persistent socket.
+    func connectPersistent() throws {
+        disconnectPersistent()
+        let fd = try openUnixSocket(timeoutSec: config.timeoutSec)
+
+        var hsLine = try JSONEncoder().encode(RPCHandshake(version: "1.0", push: true))
+        hsLine.append(UInt8(ascii: "\n"))
+        let hsSent = hsLine.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+        if hsSent <= 0 { Darwin.close(fd); throw RPCError.sendFailed }
+
+        let reader = RPCFrameBuffer()
+        var rawBuf = [UInt8](repeating: 0, count: 4096)
+        var ackReceived = false
+        while !ackReceived {
+            let n = Darwin.read(fd, &rawBuf, rawBuf.count)
+            if n < 0 {
+                Darwin.close(fd)
+                let isTimeout = errno == EAGAIN || errno == EWOULDBLOCK
+                throw RPCError.handshakeFailed(isTimeout ? "timeout waiting for ack" : "read error: \(String(cString: strerror(errno)))")
+            }
+            if n == 0 { Darwin.close(fd); throw RPCError.handshakeFailed("connection closed before ack") }
+            for frame in reader.append(Data(rawBuf[0..<n])) {
+                guard let obj = try? JSONSerialization.jsonObject(with: frame) as? [String: Any],
+                      obj["insightkit"] != nil
+                else { Darwin.close(fd); throw RPCError.handshakeFailed("invalid ack payload") }
+                ackReceived = true
+            }
+        }
+        self.persistentFD = fd
+        self.persistentReader = reader
+        self.usePersistent = true
+    }
+
+    /// Close the persistent connection and revert to short-lived sockets.
+    func disconnectPersistent() {
+        if persistentFD >= 0 { Darwin.close(persistentFD); persistentFD = -1 }
+        persistentReader = nil
+        usePersistent = false
+    }
+
+    var isPersistentConnected: Bool { usePersistent && persistentFD >= 0 }
 
     func sessionStart(meetingID: String, title: String, source: String) throws {
         _ = try callWithRetry(method: "session.start", params: [
@@ -697,40 +753,15 @@ final class InsightRPCClient {
     }
 
     private func callSync(method: String, params: [String: Any], timeoutSec: Int? = nil) throws -> [String: Any] {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else {
-            throw RPCError.socketCreateFailed
+        // Route through persistent connection when available
+        if usePersistent, persistentFD >= 0 {
+            return try callPersistent(method: method, params: params, timeoutSec: timeoutSec)
         }
+
+        // Legacy short-lived connection path
+        let effectiveTimeout = max(1, timeoutSec ?? config.timeoutSec)
+        let fd = try openUnixSocket(timeoutSec: effectiveTimeout)
         defer { _ = close(fd) }
-
-        setSocketTimeout(fd: fd, timeoutSec: max(1, timeoutSec ?? config.timeoutSec))
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-
-        let pathBytes = config.socketPath.utf8CString
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        if pathBytes.count > capacity {
-            throw RPCError.socketPathTooLong
-        }
-
-        withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
-            buffer.initializeMemory(as: CChar.self, repeating: 0)
-            _ = pathBytes.withUnsafeBytes { src in
-                memcpy(buffer.baseAddress, src.baseAddress, min(buffer.count, src.count))
-            }
-        }
-
-        let connectResult = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockAddr in
-                Darwin.connect(fd, sockAddr, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-
-        if connectResult != 0 {
-            let reason = String(cString: strerror(errno))
-            throw RPCError.connectFailed(reason)
-        }
 
         let payload: [String: Any] = [
             "jsonrpc": "2.0",
@@ -771,15 +802,92 @@ final class InsightRPCClient {
             throw RPCError.invalidResponse
         }
 
-        if let err = root["error"] as? [String: Any] {
-            let message = err["message"] as? String ?? "unknown error"
-            throw RPCError.remoteError(message)
+        return try extractRPCResult(root)
+    }
+
+    // MARK: - Persistent connection RPC
+
+    /// Send an RPC request over the persistent NDJSON socket and wait for the response.
+    private func callPersistent(method: String, params: [String: Any], timeoutSec: Int? = nil) throws -> [String: Any] {
+        guard persistentFD >= 0, let reader = persistentReader else {
+            throw RPCError.persistentNotConnected
+        }
+        setSocketTimeout(fd: persistentFD, timeoutSec: max(1, timeoutSec ?? config.timeoutSec))
+
+        let requestID = Int.random(in: 1...Int(Int32.max))
+        let payload: [String: Any] = ["id": requestID, "method": method, "params": params]
+        var line = try JSONSerialization.data(withJSONObject: payload)
+        line.append(UInt8(ascii: "\n"))
+
+        let sent = line.withUnsafeBytes { Darwin.write(persistentFD, $0.baseAddress, $0.count) }
+        if sent <= 0 {
+            disconnectPersistent()
+            throw RPCError.sendFailed
         }
 
-        guard let result = root["result"] as? [String: Any] else {
-            throw RPCError.invalidResponse
+        // Read NDJSON frames until the response matching our request ID arrives.
+        var rawBuf = [UInt8](repeating: 0, count: 8192)
+        while true {
+            let n = Darwin.read(persistentFD, &rawBuf, rawBuf.count)
+            if n < 0 {
+                if errno == EAGAIN || errno == EWOULDBLOCK { throw RPCError.timeout(method) }
+                disconnectPersistent(); throw RPCError.receiveFailed
+            }
+            if n == 0 { disconnectPersistent(); throw RPCError.receiveFailed }
+
+            for frame in reader.append(Data(rawBuf[0..<n])) {
+                guard let obj = try JSONSerialization.jsonObject(with: frame) as? [String: Any] else { continue }
+                if obj["event"] != nil { continue }
+                if let respID = obj["id"] as? Int, respID == requestID {
+                    return try extractRPCResult(obj)
+                }
+            }
         }
+    }
+
+    /// Extract `result` from a parsed RPC response, throwing on error payloads.
+    private func extractRPCResult(_ root: [String: Any]) throws -> [String: Any] {
+        if let err = root["error"] as? [String: Any] {
+            throw RPCError.remoteError(err["message"] as? String ?? "unknown error")
+        }
+        guard let result = root["result"] as? [String: Any] else { throw RPCError.invalidResponse }
         return result
+    }
+
+    // MARK: - Socket helpers
+
+    /// Create a Unix domain socket, connect to `config.socketPath`, and configure timeouts.
+    /// The caller owns the returned fd and must close it.
+    private func openUnixSocket(timeoutSec: Int) throws -> Int32 {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw RPCError.socketCreateFailed }
+        setSocketTimeout(fd: fd, timeoutSec: max(1, timeoutSec))
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = config.socketPath.utf8CString
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        if pathBytes.count > capacity {
+            Darwin.close(fd)
+            throw RPCError.socketPathTooLong
+        }
+        withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
+            buffer.initializeMemory(as: CChar.self, repeating: 0)
+            _ = pathBytes.withUnsafeBytes { src in
+                memcpy(buffer.baseAddress, src.baseAddress, min(buffer.count, src.count))
+            }
+        }
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockAddr in
+                Darwin.connect(fd, sockAddr, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        if result != 0 {
+            let reason = String(cString: strerror(errno))
+            Darwin.close(fd)
+            throw RPCError.connectFailed(reason)
+        }
+        return fd
     }
 
     private func setSocketTimeout(fd: Int32, timeoutSec: Int) {

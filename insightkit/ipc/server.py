@@ -19,6 +19,7 @@ from insightkit.ipc.asr_dispatcher import ASRDispatcher
 from insightkit.ipc.insight_coord import InsightCoordinator
 from insightkit.ipc.job_queue import JobQueue
 from insightkit.ipc.provider_probe import ProviderProbe
+from insightkit.ipc.push_broker import PushBroker
 from insightkit.ipc.session_handler import SessionHandler
 from insightkit.ipc.watch_bridge import WatchBridge
 
@@ -47,6 +48,7 @@ class InsightRPCServer:
         self._last_latency_ms = 0
 
         # Delegate modules.
+        self._push_broker = PushBroker()
         self._session_handler = SessionHandler(store=self.store)
         self._insight_coord = InsightCoordinator(store=self.store, insight_service=self.insight_service)
         self._asr_dispatcher = ASRDispatcher()
@@ -56,6 +58,7 @@ class InsightRPCServer:
             store=self.store,
             insight_service=self.insight_service,
             watch_bridge=self._watch_bridge,
+            push_broker=self._push_broker,
         )
 
     def serve_forever(self) -> None:
@@ -89,20 +92,62 @@ class InsightRPCServer:
     def _handle_conn(self, conn: socket.socket) -> None:
         with conn:
             try:
-                data = conn.recv(4 * 1024 * 1024)
-                if not data:
+                reader = conn.makefile("rb")
+                first_line = reader.readline()
+                if not first_line:
                     return
-                req = json.loads(data.decode("utf-8"))
-                response = self._dispatch(req)
+                first_msg = json.loads(first_line.decode("utf-8"))
+
+                if "insightkit" in first_msg:
+                    self._handle_persistent(conn, reader, first_msg)
+                else:
+                    self._handle_legacy(conn, first_msg)
             except Exception as exc:
-                self._last_error_code = "bad_request"
-                response = {"id": None, "error": {"code": -32000, "message": str(exc)}}
-            try:
-                conn.sendall(json.dumps(response, ensure_ascii=False).encode("utf-8"))
-            except (BrokenPipeError, ConnectionResetError):
-                logger.debug("client disconnected before response send")
-            except OSError as exc:
-                logger.debug("socket send failed: %s", exc)
+                logger.debug("connection handler error: %s", exc)
+
+    def _handle_legacy(self, conn: socket.socket, first_msg: dict[str, Any]) -> None:
+        try:
+            response = self._dispatch(first_msg)
+        except Exception as exc:
+            self._last_error_code = "bad_request"
+            response = {"id": None, "error": {"code": -32000, "message": str(exc)}}
+        try:
+            conn.sendall(json.dumps(response, ensure_ascii=False).encode("utf-8"))
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            logger.debug("legacy client disconnected before response send")
+
+    def _handle_persistent(self, conn: socket.socket, reader: Any, handshake: dict[str, Any]) -> None:
+        # Send handshake confirmation
+        ack = json.dumps(
+            {"insightkit": handshake.get("insightkit", "1.0"), "push": True},
+            ensure_ascii=False, separators=(",", ":"),
+        ) + "\n"
+        conn.sendall(ack.encode("utf-8"))
+
+        self._push_broker.register(conn)
+        try:
+            while self._active:
+                line = reader.readline()
+                if not line:
+                    break
+                try:
+                    req = json.loads(line.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    err_resp = json.dumps(
+                        {"id": None, "error": {"code": -32700, "message": str(exc)}},
+                        ensure_ascii=False, separators=(",", ":"),
+                    ) + "\n"
+                    conn.sendall(err_resp.encode("utf-8"))
+                    continue
+                response = self._dispatch(req)
+                resp_line = json.dumps(
+                    response, ensure_ascii=False, separators=(",", ":"),
+                ) + "\n"
+                conn.sendall(resp_line.encode("utf-8"))
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            logger.debug("persistent client disconnected")
+        finally:
+            self._push_broker.unregister(conn)
 
     def _dispatch(self, req: dict[str, Any]) -> dict[str, Any]:
         started_at = time.perf_counter()

@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -5,6 +6,16 @@ from pathlib import Path
 
 from insightkit.data.store import InsightStore
 from insightkit.ipc.server import InsightRPCServer
+
+
+class _FakeReader:
+    """Simulates the file-like object returned by conn.makefile("rb")."""
+
+    def __init__(self, data: bytes):
+        self._stream = io.BytesIO(data)
+
+    def readline(self) -> bytes:
+        return self._stream.readline()
 
 
 class _BrokenPipeConn:
@@ -17,8 +28,12 @@ class _BrokenPipeConn:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def recv(self, _n: int) -> bytes:
-        return self._payload
+    def makefile(self, _mode: str) -> _FakeReader:
+        # Ensure payload ends with newline so readline() returns the full line
+        data = self._payload
+        if not data.endswith(b"\n"):
+            data = data + b"\n"
+        return _FakeReader(data)
 
     def sendall(self, _data: bytes) -> None:
         raise BrokenPipeError(32, "Broken pipe")
