@@ -364,7 +364,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(InsightTheme.panel)
+        .background(InsightTheme.surface)
         .overlay(
             Rectangle()
                 .fill(InsightTheme.border.opacity(0.55))
@@ -416,7 +416,7 @@ struct ContentView: View {
     private func bannerPalette(for level: BannerLevel) -> (background: Color, border: Color) {
         switch level {
         case .info:
-            return (InsightTheme.panel, InsightTheme.border.opacity(0.55))
+            return (InsightTheme.surface, InsightTheme.border.opacity(0.55))
         case .warning:
             return (InsightTheme.warningSurface, InsightTheme.warningBorder)
         case .error:

@@ -94,7 +94,7 @@ struct BottomStatusBarView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .frame(height: 46)
-            .background(InsightTheme.panel)
+            .background(InsightTheme.surface)
         }
     }
 
@@ -106,7 +106,7 @@ struct BottomStatusBarView: View {
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(InsightTheme.background.opacity(emphasized ? 0.85 : 0.6))
+                    .fill(InsightTheme.canvas.opacity(emphasized ? 0.85 : 0.6))
             )
             .overlay(
                 Capsule()
