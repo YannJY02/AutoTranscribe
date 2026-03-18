@@ -70,19 +70,7 @@ struct ContentView: View {
                     }
                 )
             case .importMedia:
-                // Placeholder — Step 6 will replace with ImportWorkspaceView
-                VStack {
-                    Spacer()
-                    Text("导入转写工作区")
-                        .font(InsightTypography.title)
-                        .foregroundStyle(InsightTheme.textSecondary)
-                    Text("即将推出")
-                        .font(InsightTypography.caption)
-                        .foregroundStyle(InsightTheme.textTertiary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(InsightTheme.canvas)
+                ImportWorkspaceView(viewModel: coordinator.importViewModel)
             case .records:
                 // Placeholder — Step 7 will replace with RecordsView
                 VStack {

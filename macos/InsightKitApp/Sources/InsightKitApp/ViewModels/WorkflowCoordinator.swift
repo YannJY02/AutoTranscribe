@@ -10,6 +10,7 @@ final class WorkflowCoordinator: ObservableObject {
 
     var liveViewModel: LiveSessionViewModel
     var transcriptionViewModel: TranscriptionSessionViewModel
+    var importViewModel: ImportSessionViewModel
 
     private let capabilityClient: InsightRPCClientProtocol
     private var capabilities: Set<String> = []
@@ -20,10 +21,12 @@ final class WorkflowCoordinator: ObservableObject {
     init(
         liveViewModel: LiveSessionViewModel = LiveSessionViewModel(),
         transcriptionViewModel: TranscriptionSessionViewModel = TranscriptionSessionViewModel(autoRefresh: false, autoPolling: false),
+        importViewModel: ImportSessionViewModel = ImportSessionViewModel(),
         capabilityClient: InsightRPCClientProtocol = InsightRPCClient()
     ) {
         self.liveViewModel = liveViewModel
         self.transcriptionViewModel = transcriptionViewModel
+        self.importViewModel = importViewModel
         self.capabilityClient = capabilityClient
         bridgeChildObjectChanges()
         bindStates()
@@ -310,6 +313,12 @@ final class WorkflowCoordinator: ObservableObject {
             .store(in: &cancellables)
 
         transcriptionViewModel.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        importViewModel.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
