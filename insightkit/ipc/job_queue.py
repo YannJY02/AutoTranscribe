@@ -198,6 +198,7 @@ class JobQueue:
                             "job": self._job_view(j),
                             "meeting_id": result.get("meeting_id", j.get("meeting_id", "")),
                             "segments_count": int(result.get("segments_count", 0)),
+                            "record_path": str(result.get("record_path", "")),
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }
                     if self._push_broker is not None and j.get("state") == "completed":

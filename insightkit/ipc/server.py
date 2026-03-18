@@ -185,6 +185,7 @@ class InsightRPCServer:
             "transcription.cancel_job": self._transcription_cancel_job,
             "module.capabilities": self._module_capabilities,
             "module.run": self._module_run,
+            "records.save": self._records_save,
         }
         if method not in handlers:
             self._last_error_code = "method_not_found"
@@ -363,9 +364,41 @@ class InsightRPCServer:
                 "transcription.watch.stop",
                 "transcription.status",
                 "transcription.cancel_job",
+                "records.save",
             ],
             "transport": "unix_socket_jsonrpc",
         }
+
+    def _records_save(self, params: dict[str, Any]) -> dict[str, Any]:
+        from insightkit.records.record_writer import RecordWriter, detect_media_type, detect_duration
+        import os
+        meeting_id = str(params.get("meeting_id", "") or "").strip()
+        if not meeting_id:
+            raise ValueError("meeting_id is required")
+        title = str(params.get("title", "") or meeting_id)
+        source_path = str(params.get("source_path", "") or "")
+        segments = params.get("segments") or []
+        insight_package = params.get("insight_package") or None
+        media_type = str(params.get("media_type", "") or "") or detect_media_type(source_path)
+        record_source = str(params.get("record_source", "") or "live")
+        duration_sec = float(params.get("duration_sec") or detect_duration(segs=segments))
+        notes_md = str(params.get("notes_md", "") or "")
+        records_root = os.getenv("INSIGHTKIT_RECORDS_ROOT", str(
+            __import__("pathlib").Path.home() / "Documents" / "InsightKit" / "Records"
+        ))
+        record_path = RecordWriter().write_record(
+            root_dir=records_root,
+            meeting_id=meeting_id,
+            title=title,
+            source_path=source_path,
+            segments=segments,
+            insight_package=insight_package,
+            media_type=media_type,
+            record_source=record_source,
+            duration_sec=duration_sec,
+            notes_md=notes_md,
+        )
+        return {"ok": True, "record_path": str(record_path)}
 
     def _module_run(self, params: dict[str, Any]) -> dict[str, Any]:
         action = params.get("action", "insight.build_final")

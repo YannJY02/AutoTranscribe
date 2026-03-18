@@ -6,10 +6,16 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+import os
+
 try:
     from scripts.transcriber import transcribe
 except ModuleNotFoundError:
     from transcriber import transcribe
+
+from insightkit.records.record_writer import RecordWriter, detect_media_type, detect_duration
+
+_DEFAULT_RECORDS_ROOT = str(Path.home() / "Documents" / "InsightKit" / "Records")
 
 ProgressCallback = Callable[[int, str], None]
 
@@ -86,6 +92,22 @@ def run_transcription_job(
     progress(82, "building_final")
     package = insight_service.build_final(transcript_rows)
 
+    # ── Write record folder ───────────────────────────────────────────────
+    records_root = os.getenv("INSIGHTKIT_RECORDS_ROOT", _DEFAULT_RECORDS_ROOT)
+    media_type = detect_media_type(str(src))
+    duration_sec = detect_duration(segs=transcript_rows)
+    record_path = RecordWriter().write_record(
+        root_dir=records_root,
+        meeting_id=meeting_id,
+        title=title,
+        source_path=str(src),
+        segments=transcript_rows,
+        insight_package=package,
+        media_type=media_type,
+        record_source="imported",
+        duration_sec=duration_sec,
+    )
+
     progress(100, "completed")
     store.update_meeting_status(meeting_id, "stopped")
     return {
@@ -94,4 +116,5 @@ def run_transcription_job(
         "source_path": str(src),
         "segments_count": len(transcript_rows),
         "insight_package": package,
+        "record_path": str(record_path),
     }
