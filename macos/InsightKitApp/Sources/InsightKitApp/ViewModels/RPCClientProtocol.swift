@@ -26,6 +26,17 @@ protocol InsightRPCClientProtocol {
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus
     func providerProbe(vendor: ProviderVendor, model: String, baseURL: String, forceRefresh: Bool) throws -> ProviderProbeResult
     func diagnosticsQuickCheck(probeTimeoutSec: Int) throws -> DiagnosticReport
+    func recordsSave(
+        meetingID: String,
+        title: String,
+        sourcePath: String,
+        segments: [[String: Any]],
+        insightPackage: [String: Any]?,
+        mediaType: String,
+        recordSource: String,
+        durationSec: Double,
+        notesMD: String
+    ) throws -> String  // returns record_path
 }
 
 extension InsightRPCClientProtocol {

@@ -31,6 +31,9 @@ final class WorkflowCoordinator: ObservableObject {
         self.importViewModel = importViewModel
         self.recordsService = recordsService
         self.capabilityClient = capabilityClient
+        // Phase 5: inject recordsService into child ViewModels
+        liveViewModel.recordsService = recordsService
+        importViewModel.recordsService = recordsService
         bridgeChildObjectChanges()
         bindStates()
         refreshSidecarCapabilities()

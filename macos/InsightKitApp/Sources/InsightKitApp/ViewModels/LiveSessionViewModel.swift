@@ -100,6 +100,11 @@ final class LiveSessionViewModel: ObservableObject {
     let videoCaptureService = VideoCaptureService()
     var recordingDurationTimer: Timer?
 
+    // Phase 5: Records persistence
+    var recordsService: RecordsIndexService?
+    var temporaryRecordingURL: URL?
+    var lastInsightPackage: InsightPackageV1?
+
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
         sidecarManager: SidecarManager = SidecarManager(),
@@ -392,6 +397,10 @@ final class LiveSessionViewModel: ObservableObject {
                 self.captureState = finalState
                 self.sessionPhase = .postSession
             }
+            // Save record folder after session ends
+            if let meetingID = activeMeetingID {
+                self.saveToRecords(meetingID: meetingID)
+            }
         }
     }
 
@@ -414,6 +423,7 @@ final class LiveSessionViewModel: ObservableObject {
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 self.updateWorkbench(result)
                 self.updateMain {
+                    self.lastInsightPackage = result.package
                     self.captureState = .idle
                 }
             } catch {

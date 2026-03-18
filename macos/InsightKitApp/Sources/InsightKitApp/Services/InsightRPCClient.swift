@@ -477,6 +477,34 @@ final class InsightRPCClient {
         }
     }
 
+    func recordsSave(
+        meetingID: String,
+        title: String,
+        sourcePath: String,
+        segments: [[String: Any]],
+        insightPackage: [String: Any]?,
+        mediaType: String,
+        recordSource: String,
+        durationSec: Double,
+        notesMD: String
+    ) throws -> String {
+        var params: [String: Any] = [
+            "meeting_id": meetingID,
+            "title": title,
+            "source_path": sourcePath,
+            "segments": segments,
+            "media_type": mediaType,
+            "record_source": recordSource,
+            "duration_sec": durationSec,
+            "notes_md": notesMD,
+        ]
+        if let pkg = insightPackage {
+            params["insight_package"] = pkg
+        }
+        let result = try callWithRetry(method: "records.save", params: params)
+        return (result["record_path"] as? String) ?? ""
+    }
+
     private func decodeWatchResult(_ result: [String: Any]) -> TranscriptionWatchResult {
         let stateRaw = (result["state"] as? String) ?? "stopped"
         let dirs = (result["dirs"] as? [String]) ?? []
