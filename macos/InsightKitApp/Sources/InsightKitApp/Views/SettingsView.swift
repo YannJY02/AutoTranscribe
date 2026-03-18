@@ -10,6 +10,7 @@ struct SettingsView: View {
     }
 
     @ObservedObject private var configStore = AppConfigStore.shared
+    private let recordsService = RecordsIndexService()
 
     @State private var selectedVendor: ProviderVendor = .openai
     @State private var vendorBaseURL: String = ""
@@ -79,6 +80,7 @@ struct SettingsView: View {
         Form {
             vendorSection
             asrSection
+            storageSection
 
             if !statusMessage.isEmpty {
                 Section {
@@ -438,6 +440,45 @@ struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(Color.blue.opacity(0.22), lineWidth: 1)
                 )
+            }
+        }
+    }
+
+    // MARK: - Storage Section
+
+    @ViewBuilder
+    private var storageSection: some View {
+        Section("转写记录存储") {
+            LabeledContent("存储目录") {
+                HStack {
+                    Text(recordsService.rootDirectory.path)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button("更改") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseFiles = false
+                        panel.canChooseDirectories = true
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            recordsService.rootDirectory = url
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+
+            HStack {
+                Text("已用空间：\(recordsService.storageUsedLabel)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("在 Finder 中打开") {
+                    NSWorkspace.shared.open(recordsService.rootDirectory)
+                }
+                .controlSize(.small)
             }
         }
     }

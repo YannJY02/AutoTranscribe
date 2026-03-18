@@ -72,19 +72,7 @@ struct ContentView: View {
             case .importMedia:
                 ImportWorkspaceView(viewModel: coordinator.importViewModel)
             case .records:
-                // Placeholder — Step 7 will replace with RecordsView
-                VStack {
-                    Spacer()
-                    Text("转写记录")
-                        .font(InsightTypography.title)
-                        .foregroundStyle(InsightTheme.textSecondary)
-                    Text("即将推出")
-                        .font(InsightTypography.caption)
-                        .foregroundStyle(InsightTheme.textTertiary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(InsightTheme.canvas)
+                RecordsView(recordsService: coordinator.recordsService)
             }
         }
         .sheet(isPresented: $coordinator.liveViewModel.isSystemAudioPickerPresented) {
