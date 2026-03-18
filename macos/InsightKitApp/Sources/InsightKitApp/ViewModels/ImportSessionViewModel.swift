@@ -26,6 +26,9 @@ final class ImportSessionViewModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var importStartTime: Date?
 
+    // Phase 5: injected by WorkflowCoordinator
+    var recordsService: RecordsIndexService?
+
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
         sidecarManager: SidecarManager = SidecarManager()
@@ -67,6 +70,14 @@ final class ImportSessionViewModel: ObservableObject {
         }
     }
 
+    func saveNotesToRecord() {
+        guard let meetingID = currentMeetingID, let service = recordsService else { return }
+        let notesURL = service.rootDirectory
+            .appendingPathComponent(meetingID)
+            .appendingPathComponent("notes.md")
+        NotesFileIO.write(notes, to: notesURL)
+    }
+
     func resetToSelecting() {
         pollTask?.cancel()
         pollTask = nil
@@ -82,6 +93,7 @@ final class ImportSessionViewModel: ObservableObject {
         importElapsed = 0
         errorMessage = nil
         currentMeetingID = nil
+        recordsService?.refreshIndex()
     }
 
     func buildFinalInsight() {
@@ -177,6 +189,28 @@ final class ImportSessionViewModel: ObservableObject {
             pollTask?.cancel()
             pollTask = nil
             sessionPhase = .reviewing
+            // Load transcript and insight on rpcQueue, update UI on main
+            let meetingID = job.meetingID
+            rpcQueue.async { [weak self] in
+                guard let self else { return }
+                // Load transcript segments
+                let segments = (try? self.rpcClient.transcriptList(meetingID: meetingID, limit: 2000)) ?? []
+                // Load insight (build_final may already be done by RecordWriter)
+                let insightResult = try? self.rpcClient.buildFinal(meetingID: meetingID)
+                DispatchQueue.main.async {
+                    self.transcriptEntries = segments.map { seg in
+                        TranscriptEntry(
+                            timestamp: TimeInterval(seg.startMs) / 1000.0,
+                            speaker: seg.speaker,
+                            text: seg.text
+                        )
+                    }
+                    if let result = insightResult {
+                        self.applyInsightResult(result)
+                    }
+                    self.recordsService?.refreshIndex()
+                }
+            }
         } else if job.state == .failed {
             pollTask?.cancel()
             pollTask = nil
