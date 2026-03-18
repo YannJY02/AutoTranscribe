@@ -4,6 +4,8 @@ enum WorkflowRoute: String, CaseIterable, Identifiable {
     case home = "首页"
     case live = "实时语音总结"
     case transcription = "转写总结"
+    case importMedia = "导入转写"
+    case records = "转写记录"
 
     var id: String { rawValue }
 }

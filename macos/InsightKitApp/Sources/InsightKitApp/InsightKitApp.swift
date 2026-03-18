@@ -53,7 +53,7 @@ struct InsightKitApp: App {
                         coordinator.liveViewModel.readingMode.toggle()
                     case .transcription:
                         coordinator.transcriptionViewModel.readingMode.toggle()
-                    case .home:
+                    case .home, .importMedia, .records:
                         break
                     }
                 }
@@ -66,7 +66,7 @@ struct InsightKitApp: App {
                         coordinator.liveViewModel.focusMode.toggle()
                     case .transcription:
                         coordinator.transcriptionViewModel.focusMode.toggle()
-                    case .home:
+                    case .home, .importMedia, .records:
                         break
                     }
                 }
@@ -79,7 +79,7 @@ struct InsightKitApp: App {
                         coordinator.liveViewModel.isExecutionPanelVisible.toggle()
                     case .transcription:
                         coordinator.transcriptionViewModel.isExecutionPanelVisible.toggle()
-                    case .home:
+                    case .home, .importMedia, .records:
                         break
                     }
                 }

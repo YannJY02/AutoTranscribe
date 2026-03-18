@@ -52,6 +52,12 @@ struct ContentView: View {
                     onOpenTranscription: {
                         coordinator.openTranscription()
                     },
+                    onOpenImport: {
+                        coordinator.openImport()
+                    },
+                    onOpenRecords: {
+                        coordinator.openRecords()
+                    },
                     statusSummary: homeStatusSummary
                 )
             case .live:
@@ -63,6 +69,34 @@ struct ContentView: View {
                         isImportPickerPresented = true
                     }
                 )
+            case .importMedia:
+                // Placeholder — Step 6 will replace with ImportWorkspaceView
+                VStack {
+                    Spacer()
+                    Text("导入转写工作区")
+                        .font(InsightTypography.title)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                    Text("即将推出")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(InsightTheme.canvas)
+            case .records:
+                // Placeholder — Step 7 will replace with RecordsView
+                VStack {
+                    Spacer()
+                    Text("转写记录")
+                        .font(InsightTypography.title)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                    Text("即将推出")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(InsightTheme.canvas)
             }
         }
         .sheet(isPresented: $coordinator.liveViewModel.isSystemAudioPickerPresented) {
@@ -287,6 +321,11 @@ struct ContentView: View {
                         coordinator.refreshSidecarCapabilities()
                     }
                 }
+            }
+
+        case .importMedia, .records:
+            ToolbarItemGroup(placement: .primaryAction) {
+                EmptyView()
             }
         }
     }

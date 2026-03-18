@@ -85,19 +85,19 @@ final class WorkflowCoordinator: ObservableObject {
 
     var currentPhaseLabel: String {
         switch route {
-        case .home:
+        case .home, .records:
             return ""
         case .live:
             return livePhase.rawValue
-        case .transcription:
+        case .transcription, .importMedia:
             return transcriptionPhase.rawValue
         }
     }
 
     var bottomStatusPayload: BottomStatusPayload {
         switch route {
-        case .home:
-            return BottomStatusPayload(routeTitle: "首页", stateLabel: "待命")
+        case .home, .records:
+            return BottomStatusPayload(routeTitle: route.rawValue, stateLabel: "待命")
         case .live:
             return BottomStatusPayload(
                 routeTitle: "实时语音总结",
@@ -130,7 +130,7 @@ final class WorkflowCoordinator: ObservableObject {
                     inputLevelSystem: liveViewModel.captureHealth.inputLevelSystem
                 )
             )
-        case .transcription:
+        case .transcription, .importMedia:
             let currentJobState = displayState(transcriptionViewModel.activeJob?.state)
             return BottomStatusPayload(
                 routeTitle: "转写总结",
@@ -179,6 +179,17 @@ final class WorkflowCoordinator: ObservableObject {
         route = .live
         appState.activeRoute = .live
         refreshSidecarCapabilities()
+    }
+
+    func openImport() {
+        route = .importMedia
+        appState.activeRoute = .importMedia
+        refreshSidecarCapabilities()
+    }
+
+    func openRecords() {
+        route = .records
+        appState.activeRoute = .records
     }
 
     func openTranscription() {
