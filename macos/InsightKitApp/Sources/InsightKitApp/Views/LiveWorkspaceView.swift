@@ -20,54 +20,27 @@ struct LiveWorkspaceView: View {
         .background(viewModel.readingMode ? InsightTheme.canvas : InsightTheme.surface)
     }
 
-    // MARK: - Left Panel: Transcript Stream (legacy) — Step 5c replaces with ChapterSidebarView
+    // MARK: - Left Panel
 
     private var leftPanel: some View {
-        TranscriptStreamView(
-            searchText: $viewModel.searchText,
-            selectedEvidence: $viewModel.selectedEvidence,
-            segments: viewModel.transcriptSegments
-        )
+        ChapterSidebarView(dataSource: viewModel)
     }
 
-    // MARK: - Center Panel: Workbench (legacy) — Step 5c replaces with LiveCenterView
+    // MARK: - Center Panel
 
     private var centerPanel: some View {
-        InsightWorkbenchView(
-            selectedTab: $viewModel.selectedTab,
-            state: viewModel.workbench,
-            focusMode: viewModel.focusMode,
-            onEvidenceSelected: { range in
-                viewModel.selectEvidence(range)
+        LiveCenterView(
+            dataSource: viewModel,
+            sources: $sourceToggles,
+            onDeviceSelect: { id in
+                viewModel.selectedSystemSourceID = id
             }
         )
     }
 
-    // MARK: - Right Panel: Execution Panel (legacy) — Step 5c replaces with TimestampNotesEditor
+    // MARK: - Right Panel
 
-    @ViewBuilder
     private var rightPanel: some View {
-        if viewModel.isExecutionPanelVisible {
-            ExecutionPanelView(
-                actions: $viewModel.actionItems,
-                onStatusChange: { id, status in
-                    viewModel.updateActionStatus(id: id, status: status)
-                },
-                onOwnerChange: { id, owner in
-                    viewModel.updateActionOwner(id: id, owner: owner)
-                },
-                onDueAtChange: { id, dueAt in
-                    viewModel.updateActionDueAt(id: id, dueAt: dueAt)
-                }
-            )
-        } else {
-            VStack {
-                Spacer()
-                Text("执行面板已隐藏")
-                    .font(InsightTypography.caption)
-                    .foregroundStyle(InsightTheme.textTertiary)
-                Spacer()
-            }
-        }
+        TimestampNotesEditor(dataSource: viewModel)
     }
 }
