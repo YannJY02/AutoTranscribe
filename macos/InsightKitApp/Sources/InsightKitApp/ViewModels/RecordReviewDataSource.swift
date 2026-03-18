@@ -15,9 +15,12 @@ final class RecordReviewDataSource: ObservableObject {
     let metadata: RecordMetadata
     let recordPath: URL
     private let notesFileURL: URL
+    private let rpcQueue = DispatchQueue(label: "InsightKit.RecordReview.RPC", qos: .userInitiated)
+    private let rpcClient: InsightRPCClientProtocol?
 
-    init(metadata: RecordMetadata, rootDirectory: URL) {
+    init(metadata: RecordMetadata, rootDirectory: URL, rpcClient: InsightRPCClientProtocol? = nil) {
         self.metadata = metadata
+        self.rpcClient = rpcClient
         self.recordPath = rootDirectory.appendingPathComponent(metadata.id)
         self.notesFileURL = recordPath.appendingPathComponent("notes.md")
         self.recordingDuration = metadata.duration
@@ -41,23 +44,7 @@ final class RecordReviewDataSource: ObservableObject {
     }
 
     private func loadNotes() {
-        guard let content = try? String(contentsOf: notesFileURL, encoding: .utf8) else { return }
-        // Parse simple format: each line is "MM:SS text"
-        let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
-        notes = lines.compactMap { line in
-            let parts = line.split(separator: " ", maxSplits: 1)
-            guard parts.count == 2 else {
-                return TimestampedNote(text: line, timestamp: 0)
-            }
-            let timeParts = parts[0].split(separator: ":")
-            let seconds: TimeInterval
-            if timeParts.count == 2, let m = Int(timeParts[0]), let s = Int(timeParts[1]) {
-                seconds = TimeInterval(m * 60 + s)
-            } else {
-                seconds = 0
-            }
-            return TimestampedNote(text: String(parts[1]), timestamp: seconds)
-        }
+        notes = NotesFileIO.read(from: notesFileURL)
     }
 
     private func loadTranscript() {
@@ -100,12 +87,7 @@ final class RecordReviewDataSource: ObservableObject {
     // MARK: - Save Notes
 
     func saveNotes() {
-        let content = notes.map { note in
-            let mins = Int(note.timestamp) / 60
-            let secs = Int(note.timestamp) % 60
-            return String(format: "%02d:%02d %@", mins, secs, note.text)
-        }.joined(separator: "\n")
-        try? content.write(to: notesFileURL, atomically: true, encoding: .utf8)
+        NotesFileIO.write(notes, to: notesFileURL)
     }
 
     func revealInFinder() {
@@ -127,7 +109,40 @@ extension RecordReviewDataSource: ChapterSidebarDataSource {
     }
 
     func onGenerateMinutes() {
-        // Would call RPC to generate — placeholder
+        guard let client = rpcClient else { return }
+        let meetingID = metadata.id
+        let minutesURL = recordPath.appendingPathComponent("minutes.json")
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
+            guard let result = try? client.buildFinal(meetingID: meetingID) else { return }
+            let pkg = result.package
+            let highlights = pkg.highlightInsights.map { $0.quote }
+            let keyDecisions = pkg.decisionLedger.map { $0.decision }
+            let actionItems = pkg.actionTracks.map { $0.task }
+            let minutesDict: [String: Any] = [
+                "structured_summary": pkg.sessionOverview.overview,
+                "highlights": highlights,
+                "key_decisions": keyDecisions,
+                "action_items": actionItems,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: minutesDict, options: .prettyPrinted) {
+                try? data.write(to: minutesURL)
+            }
+            let chapters: [ChapterSummary] = pkg.timelineBeats.map {
+                ChapterSummary(timestamp: 0, title: $0.title, summary: $0.summary)
+            }
+            let smartMinutes = SmartMinutes(
+                structuredSummary: pkg.sessionOverview.overview,
+                highlights: highlights,
+                keyDecisions: keyDecisions,
+                actionItems: actionItems,
+                chapters: chapters
+            )
+            DispatchQueue.main.async {
+                self.smartMinutesData = smartMinutes
+                self.chapters = chapters
+            }
+        }
     }
 }
 
