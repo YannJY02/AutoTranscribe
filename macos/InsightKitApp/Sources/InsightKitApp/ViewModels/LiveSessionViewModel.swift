@@ -89,6 +89,17 @@ final class LiveSessionViewModel: ObservableObject {
     var lastMicLevel: Float = 0
     var lastSystemLevel: Float = 0
 
+    // Phase 4: Panel protocol support
+    @Published var sessionPhase: SessionPhase = .preparing
+    @Published var chapters: [ChapterSummary] = []
+    @Published var smartMinutesData: SmartMinutes?
+    @Published var notes: [TimestampedNote] = []
+    @Published var currentPlaybackTime: TimeInterval?
+    @Published var recordingDuration: TimeInterval = 0
+    @Published var mediaURL: URL?
+    let videoCaptureService = VideoCaptureService()
+    var recordingDurationTimer: Timer?
+
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
         sidecarManager: SidecarManager = SidecarManager(),
@@ -248,6 +259,7 @@ final class LiveSessionViewModel: ObservableObject {
 
         mixBus.setMode(selectedMode)
         captureState = .preparingRuntime
+        sessionPhase = .running
         analysisRuntimeState = .ready
         captureHealth = CaptureHealthSnapshot(
             sessionStartedAt: startupAt,
@@ -305,6 +317,7 @@ final class LiveSessionViewModel: ObservableObject {
                             try await self.systemAudioCapture.start(sourceID: sourceID)
                         }
                         self.permissionState = .granted
+                        self.startRecordingDurationTimer()
                         self.beginWarmupLifecycle(
                             meetingID: meetingID,
                             startupAt: startupAt,
@@ -338,6 +351,7 @@ final class LiveSessionViewModel: ObservableObject {
         captureMonitorTask?.cancel()
         captureMonitorTask = nil
         cancelWarmupTasks()
+        stopRecordingDurationTimer()
 
         micCapture.stop()
         Task {
@@ -376,6 +390,7 @@ final class LiveSessionViewModel: ObservableObject {
             self.updateMain {
                 self.metrics.queueDepth = 0
                 self.captureState = finalState
+                self.sessionPhase = .postSession
             }
         }
     }
@@ -534,6 +549,15 @@ final class LiveSessionViewModel: ObservableObject {
         warmupFailureCount = 0
         warmupRetryScheduled = false
         chunkAssembler.reset()
+        // Phase 4 panel state
+        sessionPhase = .preparing
+        chapters = []
+        smartMinutesData = nil
+        notes = []
+        currentPlaybackTime = nil
+        recordingDuration = 0
+        mediaURL = nil
+        stopRecordingDurationTimer()
     }
 
     func syncSessionHandleFromState() {
@@ -557,5 +581,21 @@ final class LiveSessionViewModel: ObservableObject {
         case .systemAudio: return "system"
         case .mixed: return "mixed"
         }
+    }
+
+    // MARK: - Recording Duration Timer
+
+    func startRecordingDurationTimer() {
+        stopRecordingDurationTimer()
+        let startTime = Date()
+        recordingDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.recordingDuration = Date().timeIntervalSince(startTime)
+        }
+    }
+
+    func stopRecordingDurationTimer() {
+        recordingDurationTimer?.invalidate()
+        recordingDurationTimer = nil
     }
 }
