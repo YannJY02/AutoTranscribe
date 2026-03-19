@@ -233,6 +233,20 @@ final class RPCClientMock: InsightRPCClientProtocol {
         return diagnosticsReportStub
     }
 
+    func recordsSave(
+        meetingID: String,
+        title: String,
+        sourcePath: String,
+        segments: [[String: Any]],
+        insightPackage: [String: Any]?,
+        mediaType: String,
+        recordSource: String,
+        durationSec: Double,
+        notesMD: String
+    ) throws -> String {
+        "/tmp/mock-records/\(meetingID)"
+    }
+
     private func fakeInsightResult() -> InsightRefreshResult {
         let package = InsightPackageV1(
             sessionOverview: .init(title: "demo", overview: "overview", topics: ["t1"]),
