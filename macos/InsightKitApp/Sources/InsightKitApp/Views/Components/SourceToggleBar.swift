@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct SourceToggleItem: Identifiable {
+struct SourceToggleItem: Identifiable, Equatable {
     let id: String
     let icon: String
     let label: String

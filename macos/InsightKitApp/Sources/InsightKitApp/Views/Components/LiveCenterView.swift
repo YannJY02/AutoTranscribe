@@ -130,10 +130,10 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             SmartMinutesSheet(
                 duration: dataSource.recordingDuration,
                 onGenerate: {
-                    showMinutesSheet = false
+                    dataSource.onGenerateMinutes()
                 },
                 onSkip: {
-                    showMinutesSheet = false
+                    dataSource.onSkipMinutes()
                 }
             )
             Spacer()

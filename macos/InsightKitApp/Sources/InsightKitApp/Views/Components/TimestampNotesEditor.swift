@@ -20,27 +20,37 @@ struct TimestampNotesEditor<DataSource: NotesEditorDataSource>: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
-                            ForEach(dataSource.notes) { note in
-                                noteRow(note)
-                                    .id(note.id)
+                if dataSource.notes.isEmpty {
+                    Text("录制中，可在下方输入笔记")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, InsightSpacing.lg)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
+                                ForEach(dataSource.notes) { note in
+                                    noteRow(note)
+                                        .id(note.id)
+                                }
                             }
+                            .padding(.horizontal, InsightSpacing.lg)
                         }
-                        .padding(.horizontal, InsightSpacing.lg)
-                    }
-                    .onChange(of: dataSource.currentPlaybackTime) { _ in
-                        if let time = dataSource.currentPlaybackTime,
-                           let closest = dataSource.notes.min(by: {
-                               abs($0.timestamp - time) < abs($1.timestamp - time)
-                           }) {
-                            withAnimation(InsightAnimation.noteHighlight) {
-                                proxy.scrollTo(closest.id, anchor: .center)
+                        .onChange(of: dataSource.currentPlaybackTime) { _ in
+                            if let time = dataSource.currentPlaybackTime,
+                               let closest = dataSource.notes.min(by: {
+                                   abs($0.timestamp - time) < abs($1.timestamp - time)
+                               }) {
+                                withAnimation(InsightAnimation.noteHighlight) {
+                                    proxy.scrollTo(closest.id, anchor: .center)
+                                }
                             }
                         }
                     }
                 }
+
+                Spacer()
 
                 if dataSource.isEditable {
                     Divider()
@@ -93,7 +103,7 @@ struct TimestampNotesEditor<DataSource: NotesEditorDataSource>: View {
 
     private func submitNote() {
         guard !newNoteText.isEmpty else { return }
-        let time = dataSource.currentPlaybackTime ?? 0
+        let time = dataSource.currentPlaybackTime ?? dataSource.recordingTime
         dataSource.onNoteCreated(newNoteText, at: time)
         newNoteText = ""
     }

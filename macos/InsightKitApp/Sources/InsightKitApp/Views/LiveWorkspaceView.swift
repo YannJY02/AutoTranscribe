@@ -18,6 +18,17 @@ struct LiveWorkspaceView: View {
             right: rightPanel
         )
         .background(viewModel.readingMode ? InsightTheme.canvas : InsightTheme.surface)
+        .onChange(of: cameraToggleEnabled) { _, isEnabled in
+            if isEnabled {
+                viewModel.startCameraPreview()
+            } else {
+                viewModel.stopCameraPreview()
+            }
+        }
+    }
+
+    private var cameraToggleEnabled: Bool {
+        sourceToggles.first(where: { $0.id == "camera" })?.isEnabled ?? false
     }
 
     // MARK: - Left Panel

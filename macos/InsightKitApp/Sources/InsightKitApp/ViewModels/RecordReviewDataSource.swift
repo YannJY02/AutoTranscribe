@@ -163,12 +163,16 @@ extension RecordReviewDataSource: CenterStageDataSource {
     func onSeek(to time: TimeInterval) {
         currentPlaybackTime = time
     }
+
+    func onSkipMinutes() {}
 }
 
 // MARK: - NotesEditorDataSource
 
 extension RecordReviewDataSource: NotesEditorDataSource {
     var isEditable: Bool { true }
+
+    var recordingTime: TimeInterval { 0 }
 
     func onNoteCreated(_ text: String, at time: TimeInterval) {
         let note = TimestampedNote(text: text, timestamp: time)

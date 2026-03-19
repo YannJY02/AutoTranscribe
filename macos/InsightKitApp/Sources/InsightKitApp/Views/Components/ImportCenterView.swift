@@ -37,6 +37,7 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
                 }
             )
             .frame(maxWidth: 500, maxHeight: 300)
+            .accessibilityIdentifier("import_file_drop_zone")
             Spacer()
         }
         .padding(InsightSpacing.panelPadding)

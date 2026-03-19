@@ -425,6 +425,7 @@ final class LiveSessionViewModel: ObservableObject {
                 self.updateMain {
                     self.lastInsightPackage = result.package
                     self.captureState = .idle
+                    self.sessionPhase = .reviewing
                 }
             } catch {
                 self.publishError(error)
@@ -497,6 +498,42 @@ final class LiveSessionViewModel: ObservableObject {
     func openScreenRecordingSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Camera Preview
+
+    func startCameraPreview() {
+        videoCaptureService.checkCameraPermission()
+        switch videoCaptureService.cameraPermission {
+        case .denied:
+            // Already denied — open settings instead of crashing
+            videoCaptureService.openCameraSettings()
+            return
+        case .unknown:
+            // Not determined — request permission (requires NSCameraUsageDescription)
+            Task { @MainActor in
+                let granted = await videoCaptureService.requestCameraPermission()
+                if granted {
+                    startCameraCapture()
+                }
+            }
+        case .granted:
+            startCameraCapture()
+        }
+    }
+
+    private func startCameraCapture() {
+        videoCaptureService.enumerateCameras()
+        // enumerateCameras dispatches to main async; wait briefly for results
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard let firstCamera = self.videoCaptureService.availableCameras.first else { return }
+            try? self.videoCaptureService.startCamera(deviceID: firstCamera.id)
+        }
+    }
+
+    func stopCameraPreview() {
+        videoCaptureService.stopCapture()
     }
 
     // MARK: - Private Helpers

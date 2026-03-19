@@ -62,6 +62,7 @@ struct ContentView: View {
                 )
             case .live:
                 LiveWorkspaceView(viewModel: coordinator.liveViewModel)
+                    .accessibilityIdentifier("live_workspace")
             case .transcription:
                 TranscriptionWorkspaceView(
                     viewModel: coordinator.transcriptionViewModel,
@@ -71,8 +72,10 @@ struct ContentView: View {
                 )
             case .importMedia:
                 ImportWorkspaceView(viewModel: coordinator.importViewModel)
+                    .accessibilityIdentifier("import_workspace")
             case .records:
                 RecordsView(recordsService: coordinator.recordsService)
+                    .accessibilityIdentifier("records_view")
             }
         }
         .sheet(isPresented: $coordinator.liveViewModel.isSystemAudioPickerPresented) {
@@ -201,19 +204,6 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
 
                 case .livePostSession:
-                    Button("生成定稿洞察") {
-                        coordinator.liveViewModel.buildFinalInsight()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(InsightTheme.accent)
-                    .disabled(!coordinator.canBuildLiveFinal)
-
-                    Button("导出 Markdown") {
-                        coordinator.liveViewModel.exportDocument(format: "markdown")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!coordinator.canExportLive)
-
                     Button("新建会话") {
                         coordinator.resetLiveSession()
                     }
@@ -225,12 +215,6 @@ struct ContentView: View {
                 Menu("更多操作") {
                     Toggle("阅读模式", isOn: $coordinator.liveViewModel.readingMode)
                     Toggle("聚焦模式", isOn: $coordinator.liveViewModel.focusMode)
-                    Toggle("显示执行面板", isOn: $coordinator.liveViewModel.isExecutionPanelVisible)
-                    Divider()
-                    Button("刷新侧车状态") {
-                        coordinator.liveViewModel.refreshSidecarStatus()
-                        coordinator.refreshSidecarCapabilities()
-                    }
                 }
             }
 

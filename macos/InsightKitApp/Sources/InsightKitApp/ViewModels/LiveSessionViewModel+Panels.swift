@@ -60,13 +60,21 @@ extension LiveSessionViewModel: CenterStageDataSource {
     func onSeek(to time: TimeInterval) {
         currentPlaybackTime = time
     }
+
+    func onSkipMinutes() {
+        sessionPhase = .reviewing
+    }
 }
 
 // MARK: - NotesEditorDataSource
 
 extension LiveSessionViewModel: NotesEditorDataSource {
     var isEditable: Bool {
-        sessionPhase == .running || sessionPhase == .reviewing
+        sessionPhase == .running || sessionPhase == .postSession || sessionPhase == .reviewing
+    }
+
+    var recordingTime: TimeInterval {
+        recordingDuration
     }
 
     func onNoteCreated(_ text: String, at time: TimeInterval) {

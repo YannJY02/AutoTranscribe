@@ -206,6 +206,8 @@ cat > "$contents_dir/Info.plist" <<EOF
   <string>InsightKit 需要麦克风权限用于会议录音和实时转写。</string>
   <key>NSScreenCaptureUsageDescription</key>
   <string>InsightKit 需要屏幕录制权限用于系统音频采集与实时洞察。</string>
+  <key>NSCameraUsageDescription</key>
+  <string>InsightKit 需要摄像头权限用于视频捕获。</string>
 </dict>
 </plist>
 EOF

@@ -7,11 +7,20 @@ extension LiveSessionViewModel {
     /// Called after stopLiveSession completes. Serializes transcript + insight
     /// and calls the records.save RPC to persist the record folder via Python RecordWriter.
     func saveToRecords(meetingID: String) {
+        // Capture @Published state on the calling thread to avoid data races.
+        // These properties are mutated on main; reading them here (pipelineQueue)
+        // is safe because stopLiveSession already stopped all producers and
+        // updated UI state before invoking this method.
+        let capturedSegments = self.transcriptSegments
+        let capturedPackage = self.lastInsightPackage
+        let capturedRecordingURL = self.temporaryRecordingURL
+        let capturedDuration = self.recordingDuration
+        let capturedNotes = self.notes
+
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
-                // Build segments array from current transcriptSegments
-                let segments: [[String: Any]] = self.transcriptSegments.map { seg in
+                let segments: [[String: Any]] = capturedSegments.map { seg in
                     [
                         "start_ms": seg.startMs,
                         "end_ms": seg.endMs,
@@ -20,30 +29,25 @@ extension LiveSessionViewModel {
                     ]
                 }
 
-                // Serialize insight package if available
                 var insightPackage: [String: Any]? = nil
-                if let pkg = self.lastInsightPackage {
+                if let pkg = capturedPackage {
                     let data = try JSONEncoder().encode(pkg)
                     insightPackage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 }
 
-                // Determine media file path
-                let sourcePath = self.temporaryRecordingURL?.path ?? ""
+                let sourcePath = capturedRecordingURL?.path ?? ""
 
-                // Determine media type
                 let mediaType: String
-                if let url = self.temporaryRecordingURL {
+                if let url = capturedRecordingURL {
                     let ext = url.pathExtension.lowercased()
                     mediaType = ["mp4", "mov", "mkv", "avi", "webm"].contains(ext) ? "video" : "audio"
                 } else {
                     mediaType = "audio"
                 }
 
-                // Duration from recording timer
-                let durationSec = self.recordingDuration
+                let durationSec = capturedDuration
 
-                // Serialize notes using NotesFileIO
-                let notesMD = NotesFileIO.serialize(self.notes)
+                let notesMD = NotesFileIO.serialize(capturedNotes)
 
                 let recordPath = try self.rpcClient.recordsSave(
                     meetingID: meetingID,

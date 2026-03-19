@@ -283,6 +283,10 @@ extension ImportSessionViewModel: CenterStageDataSource {
     func onSeek(to time: TimeInterval) {
         currentPlaybackTime = time
     }
+
+    func onSkipMinutes() {
+        sessionPhase = .reviewing
+    }
 }
 
 // MARK: - NotesEditorDataSource
@@ -291,6 +295,8 @@ extension ImportSessionViewModel: NotesEditorDataSource {
     var isEditable: Bool {
         sessionPhase == .processing || sessionPhase == .reviewing
     }
+
+    var recordingTime: TimeInterval { 0 }
 
     func onNoteCreated(_ text: String, at time: TimeInterval) {
         let note = TimestampedNote(text: text, timestamp: time)

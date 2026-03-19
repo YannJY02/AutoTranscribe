@@ -10,13 +10,16 @@ struct SessionShell<Left: View, Center: View, Right: View>: View {
             left
                 .frame(minWidth: 260, maxWidth: 360)
                 .background(InsightTheme.surface)
+                .accessibilityIdentifier("session_panel_left")
             center
                 .frame(minWidth: 480)
                 .layoutPriority(1)
                 .background(InsightTheme.surfaceAlt)
+                .accessibilityIdentifier("session_panel_center")
             right
                 .frame(minWidth: 280, maxWidth: 380)
                 .background(InsightTheme.surface)
+                .accessibilityIdentifier("session_panel_right")
         }
         .background(InsightTheme.canvas)
     }

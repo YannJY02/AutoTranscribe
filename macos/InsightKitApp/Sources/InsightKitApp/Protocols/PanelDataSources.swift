@@ -24,6 +24,8 @@ protocol CenterStageDataSource: ObservableObject {
     func onPauseRecording()
     func onTranscriptEntryTapped(_ entry: TranscriptEntry)
     func onSeek(to time: TimeInterval)
+    func onGenerateMinutes()
+    func onSkipMinutes()
 }
 
 // MARK: - Notes Editor
@@ -31,6 +33,7 @@ protocol CenterStageDataSource: ObservableObject {
 protocol NotesEditorDataSource: ObservableObject {
     var notes: [TimestampedNote] { get }
     var currentPlaybackTime: TimeInterval? { get }
+    var recordingTime: TimeInterval { get }
     var isEditable: Bool { get }
     func onNoteCreated(_ text: String, at time: TimeInterval)
     func onNoteUpdated(_ note: TimestampedNote)

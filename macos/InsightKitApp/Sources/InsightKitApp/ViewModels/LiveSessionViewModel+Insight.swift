@@ -63,7 +63,27 @@ extension LiveSessionViewModel {
             self.metrics.provider = result.provider
             self.metrics.needsReviewCount = result.needsReviewCount
             self.metrics.lastRefreshAt = result.updatedAt ?? Date()
+
+            // Sync timeline beats → chapters for sidebar
+            self.chapters = package.timelineBeats.map { beat in
+                ChapterSummary(
+                    timestamp: Self.parseTimestamp(beat.timestamp),
+                    title: beat.title,
+                    summary: beat.summary
+                )
+            }
         }
+    }
+
+    /// Parse "MM:SS" timestamp string to TimeInterval.
+    private static func parseTimestamp(_ str: String) -> TimeInterval {
+        let parts = str.split(separator: ":").compactMap { Double($0) }
+        if parts.count == 2 {
+            return parts[0] * 60 + parts[1]
+        } else if parts.count == 3 {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        }
+        return 0
     }
 
     func syncActionTracksToWorkbench() {
