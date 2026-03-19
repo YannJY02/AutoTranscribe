@@ -8,4 +8,9 @@ script = ""
 [[actions]]
 name = "运行"
 icon = "run"
-command = "open /Users/yann.jy/Applications/InsightKit.app"
+command = "./scripts/dev_build.sh"
+
+[[actions]]
+name = "发布"
+icon = "tool"
+command = "./scripts/release_build.sh"

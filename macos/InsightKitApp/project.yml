@@ -1,0 +1,61 @@
+name: InsightKitUITestHost
+options:
+  bundleIdPrefix: com.yannjy
+  deploymentTarget:
+    macOS: "14.0"
+  generateEmptyDirectories: true
+
+targets:
+  InsightKitApp:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/InsightKitApp
+    entitlements:
+      path: InsightKitApp.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+        com.apple.security.device.camera: true
+        com.apple.security.app-sandbox: false
+    info:
+      path: InsightKitApp-Info.plist
+      properties:
+        NSMicrophoneUsageDescription: "InsightKit 需要麦克风权限用于会议录音和实时转写。"
+        NSScreenCaptureUsageDescription: "InsightKit 需要屏幕录制权限用于系统音频采集与实时洞察。"
+        NSCameraUsageDescription: "InsightKit 需要摄像头权限用于视频捕获。"
+        CFBundleName: InsightKit
+        CFBundleDisplayName: InsightKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit
+        PRODUCT_NAME: InsightKitApp
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
+
+  InsightKitUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: UITests
+    dependencies:
+      - target: InsightKitApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit.uitests
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        TEST_TARGET_NAME: InsightKitApp
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  InsightKitApp:
+    build:
+      targets:
+        InsightKitApp: all
+        InsightKitUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - InsightKitUITests

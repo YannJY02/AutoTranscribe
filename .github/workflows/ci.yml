@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-tests:
+    name: Python Unit Tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]" 2>/dev/null || pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -m "not integration and not requires_model and not slow" \
+            --cov=insightkit \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage-python.xml \
+            -v
+
+      - name: Upload Python coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-coverage
+          path: coverage-python.xml
+
+  swift-tests:
+    name: Swift Unit Tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Run Swift unit tests
+        working-directory: macos/InsightKitApp
+        run: |
+          swift test \
+            --enable-code-coverage \
+            2>&1 | tee /tmp/swift-test.log
+          grep -E "passed|failed|error" /tmp/swift-test.log | tail -5
+
+      - name: Upload Swift test log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swift-test-log
+          path: /tmp/swift-test.log
+
+  xcuitests:
+    name: XCUITests (macOS)
+    runs-on: macos-15
+    # Only run on main branch pushes to save CI minutes
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate xcodeproj
+        working-directory: macos/InsightKitApp
+        run: xcodegen generate
+
+      - name: Run XCUITests
+        working-directory: macos/InsightKitApp
+        run: |
+          xcodebuild test \
+            -project InsightKitUITestHost.xcodeproj \
+            -scheme InsightKitApp \
+            -destination 'platform=macOS' \
+            -only-testing:InsightKitUITests \
+            -resultBundlePath TestResults.xcresult \
+            2>&1 | grep -E "(passed|failed|TEST SUCCEEDED|TEST FAILED|Executed)"
+
+      - name: Upload XCUITest results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcuitest-results
+          path: macos/InsightKitApp/TestResults.xcresult

@@ -40,3 +40,8 @@ venv/
 # ── IDE ───────────────────────────────────────────────────
 .vscode/
 .idea/
+
+# ── Xcode (generated from SPM) ───────────────────────────
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
