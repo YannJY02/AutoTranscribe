@@ -81,7 +81,11 @@ class InsightCoordinator:
     def document_export(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = params["meeting_id"]
         export_format = params.get("format", "markdown")
-        output_dir = Path(params.get("output_dir", "txt"))
+        raw_output_dir = params.get("output_dir", "")
+        if raw_output_dir and Path(raw_output_dir).is_absolute():
+            output_dir = Path(raw_output_dir)
+        else:
+            output_dir = Path.home() / "Documents" / "InsightKit" / "exports"
         output_dir.mkdir(parents=True, exist_ok=True)
         meeting = self.store.get_meeting(meeting_id) or {}
         title = str(meeting.get("title", "未命名会话") or "未命名会话")

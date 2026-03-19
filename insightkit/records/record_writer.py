@@ -108,10 +108,11 @@ class RecordWriter:
         (record_dir / "notes.md").write_text(notes_md, encoding="utf-8")
 
         # ── recording.{ext} ───────────────────────────────────────────────
-        src = Path(source_path)
-        if src.exists():
-            dest = record_dir / f"recording{src.suffix}"
-            self._copy_or_hardlink(src, dest)
+        if source_path and source_path.strip():
+            src = Path(source_path)
+            if src.exists() and src.is_file():
+                dest = record_dir / f"recording{src.suffix}"
+                self._copy_or_hardlink(src, dest)
 
         return record_dir
 

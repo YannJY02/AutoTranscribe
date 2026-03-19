@@ -206,7 +206,7 @@ def _default_profiles() -> dict[str, ProviderProfile]:
         "openai": ProviderProfile(
             vendor="openai",
             base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip(),
-            model_id=os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini",
+            model_id=os.getenv("OPENAI_MODEL", "gpt-4.1").strip() or "gpt-4.1",
             api_key_env="OPENAI_API_KEY",
         ),
         "gemini": ProviderProfile(

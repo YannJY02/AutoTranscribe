@@ -514,7 +514,13 @@ def _speech_exists(audio_path: Path) -> bool:
 
     vad_model = _load_silero_model()
     waveform = read_audio(str(audio_path), sampling_rate=16000)
-    speech = get_speech_timestamps(waveform, vad_model, sampling_rate=16000)
+    speech = get_speech_timestamps(
+        waveform,
+        vad_model,
+        sampling_rate=16000,
+        threshold=0.3,
+        min_speech_duration_ms=100,
+    )
     return len(speech) > 0
 
 

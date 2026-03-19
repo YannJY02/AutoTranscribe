@@ -29,7 +29,7 @@ class InsightService:
     def __init__(
         self,
         provider: ProviderAdapter | None = None,
-        model: str = "gpt-4.1-mini",
+        model: str = "gpt-4.1",
         default_vendor: str | None = None,
         strict_mode: bool | None = None,
     ):
