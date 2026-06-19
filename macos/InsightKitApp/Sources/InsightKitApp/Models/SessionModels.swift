@@ -80,6 +80,11 @@ struct SessionHandle: Equatable {
     }
 }
 
+struct MediaSeekRequest: Equatable, Identifiable {
+    let id = UUID()
+    let time: TimeInterval
+}
+
 struct LiveSessionMetrics {
     var chunkIndex: Int = 0
     var latencyMs: Int = 0

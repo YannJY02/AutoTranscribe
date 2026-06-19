@@ -33,7 +33,9 @@ SAMPLE_INSIGHT = {
          "status": "open", "needs_review": False,
          "evidence_span": {"start_ms": 0, "end_ms": 0}},
     ],
-    "timeline_beats": [],
+    "timeline_beats": [
+        {"timestamp": "00:00", "title": "Greeting", "summary": "Hello world."},
+    ],
     "provenance_links": [],
     "speaker_perspectives": [],
 }
@@ -170,6 +172,7 @@ class TestRecordE2E:
         assert "Hello world." in minutes["highlights"]
         assert "test decision" in minutes["key_decisions"]
         assert "test task" in minutes["action_items"]
+        assert minutes["timeline_beats"][0]["timestamp"] == "00:00"
 
     def test_records_save_rpc_registered(self):
         """Verify records.save RPC handler is registered in the server."""

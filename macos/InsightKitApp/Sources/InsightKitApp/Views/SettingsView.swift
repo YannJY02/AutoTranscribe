@@ -13,6 +13,7 @@ struct SettingsView: View {
     private let recordsService = RecordsIndexService()
 
     @State private var selectedVendor: ProviderVendor = .openai
+    @State private var loadedVendor: ProviderVendor = .openai
     @State private var vendorBaseURL: String = ""
     @State private var vendorModelID: String = ""
     @State private var vendorAPIKey: String = ""
@@ -33,6 +34,7 @@ struct SettingsView: View {
 
     @State private var useCustomWhisperModel: Bool = false
     @State private var useCustomFunasrModel: Bool = false
+    @State private var useCustomQwenModel: Bool = false
 
     @State private var savedFeedback: Bool = false
     @State private var savedFeedbackTask: Task<Void, Never>? = nil
@@ -47,10 +49,18 @@ struct SettingsView: View {
 
     /// Fix 4: Reuse shared instances to avoid spawning Python subprocesses
     /// every time the settings sheet opens.
-    private static let sharedRPC = InsightRPCClient()
+    private static let sharedRPC: InsightRPCClient = {
+        var config = InsightRPCClient.Config.default()
+        config.providerProbeTimeoutSec = max(config.providerProbeTimeoutSec, 30)
+        return InsightRPCClient(config: config)
+    }()
     private static let sharedSidecarManager = SidecarManager()
     private var rpc: InsightRPCClient { Self.sharedRPC }
     private var sidecarManager: SidecarManager { Self.sharedSidecarManager }
+
+    static func shutdownSharedSidecar() {
+        sharedSidecarManager.stop()
+    }
 
     // MARK: - Computed helpers
 
@@ -71,7 +81,7 @@ struct SettingsView: View {
     }
 
     private var selectedVendorKeyWarning: String? {
-        validateAPIKeyFormat(vendor: selectedVendor, key: configStore.apiKeyValue(for: selectedVendor))
+        validateAPIKeyFormat(vendor: loadedVendor, key: configStore.apiKeyValue(for: loadedVendor))
     }
 
     // MARK: - Body
@@ -130,6 +140,7 @@ struct SettingsView: View {
                 }
             }
             .onChange(of: selectedVendor) { oldVendor, newVendor in
+                guard !isLoadingVendorFields else { return }
                 switchVendor(from: oldVendor, to: newVendor)
             }
 
@@ -200,11 +211,11 @@ struct SettingsView: View {
             // Status row
             HStack {
                 Label(
-                    configStore.hasAPIKey(for: selectedVendor) ? "Key: ✓ 已保存" : "Key: 未保存",
-                    systemImage: configStore.hasAPIKey(for: selectedVendor) ? "key.fill" : "key"
+                    configStore.hasAPIKey(for: loadedVendor) ? "Key: ✓ 已保存" : "Key: 未保存",
+                    systemImage: configStore.hasAPIKey(for: loadedVendor) ? "key.fill" : "key"
                 )
                 .font(.caption)
-                .foregroundStyle(configStore.hasAPIKey(for: selectedVendor) ? .green : .secondary)
+                .foregroundStyle(configStore.hasAPIKey(for: loadedVendor) ? .green : .secondary)
 
                 Spacer()
 
@@ -216,7 +227,7 @@ struct SettingsView: View {
                 }
 
                 Button("清除 API Key", role: .destructive) {
-                    try? configStore.setAPIKey("", for: selectedVendor)
+                    try? configStore.setAPIKey("", for: loadedVendor)
                     vendorAPIKey = ""
                     showSavedFeedback()
                 }
@@ -311,6 +322,7 @@ struct SettingsView: View {
                 asrModelDir = configStore.defaultModelDir(for: newEngine)
                 useCustomWhisperModel = false
                 useCustomFunasrModel = false
+                useCustomQwenModel = false
                 autoSaveASR()
             }
 
@@ -340,7 +352,7 @@ struct SettingsView: View {
                         else { autoSaveASR() }
                     }
                 }
-            } else {
+            } else if asrEngine == .funasr {
                 if useCustomFunasrModel {
                     HStack {
                         TextField("自定义 FunASR 模型名", text: $asrModel)
@@ -362,6 +374,31 @@ struct SettingsView: View {
                     }
                     .onChange(of: asrModel) { _, v in
                         if v == "__custom__" { useCustomFunasrModel = true; asrModel = "" }
+                        else { autoSaveASR() }
+                    }
+                }
+            } else {
+                if useCustomQwenModel {
+                    HStack {
+                        TextField("自定义 Qwen3-ASR 模型名", text: $asrModel)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: asrModel) { _, _ in autoSaveASR() }
+                        Button("使用预设") {
+                            useCustomQwenModel = false
+                            asrModel = configStore.defaultModelName(for: .qwenmlx)
+                            autoSaveASR()
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                } else {
+                    Picker("Qwen3-ASR 模型", selection: $asrModel) {
+                        ForEach(AppConfigStore.qwenPresets, id: \.self) { Text($0).tag($0) }
+                        Divider()
+                        Text("自定义…").tag("__custom__")
+                    }
+                    .onChange(of: asrModel) { _, v in
+                        if v == "__custom__" { useCustomQwenModel = true; asrModel = "" }
                         else { autoSaveASR() }
                     }
                 }
@@ -402,6 +439,7 @@ struct SettingsView: View {
 
             if let runtime = asrRuntimeSnapshot {
                 VStack(alignment: .leading, spacing: 6) {
+                    asrRuntimeReadinessStatus(runtime)
                     Text("配置设备：\(runtime.backend.configuredDevice) · 配置计算类型：\(runtime.backend.configuredComputeType)")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -441,6 +479,31 @@ struct SettingsView: View {
                         .stroke(Color.blue.opacity(0.22), lineWidth: 1)
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private func asrRuntimeReadinessStatus(_ runtime: ASRRuntimeStatus) -> some View {
+        if let message = runtime.userVisibleReadinessMessage {
+            let isModelMissing = !runtime.modelExists
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(isModelMissing ? InsightTheme.error : InsightTheme.warning)
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isModelMissing ? InsightTheme.errorSurface : InsightTheme.warningSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isModelMissing ? InsightTheme.errorBorder : InsightTheme.warningBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityIdentifier(runtime.userVisibleReadinessAccessibilityIdentifier ?? "settings_asr_runtime_warning_status")
         }
     }
 
@@ -490,7 +553,7 @@ struct SettingsView: View {
         let base = vendorBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = vendorModelID.trimmingCharacters(in: .whitespacesAndNewlines)
         persistVendorDraft(
-            vendor: selectedVendor,
+            vendor: loadedVendor,
             baseURL: base,
             modelID: model,
             useCustomModel: vendorUseCustomModel
@@ -547,7 +610,7 @@ struct SettingsView: View {
     private func saveCurrentVendorAPIKey() {
         let trimmed = vendorAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return }
-        try? configStore.setAPIKey(trimmed, for: selectedVendor)
+        try? configStore.setAPIKey(trimmed, for: loadedVendor)
         showSavedFeedback()
     }
 
@@ -572,16 +635,24 @@ struct SettingsView: View {
     /// 4. Load new vendor's baseURL + modelID from store
     /// 5. isLoadingVendorFields = false
     private func switchVendor(from oldVendor: ProviderVendor, to newVendor: ProviderVendor) {
+        _ = oldVendor
+        providerProbeResult = nil
+        providerProbeAt = nil
+        statusMessage = ""
+        savedFeedbackTask?.cancel()
+        savedFeedback = false
+
+        let fieldVendor = loadedVendor
         let oldBase = vendorBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let oldModel = vendorModelID.trimmingCharacters(in: .whitespacesAndNewlines)
         let oldKey = vendorAPIKey
         persistVendorDraft(
-            vendor: oldVendor,
+            vendor: fieldVendor,
             baseURL: oldBase,
             modelID: oldModel,
             useCustomModel: vendorUseCustomModel
         )
-        saveAPIKey(oldKey, for: oldVendor)
+        saveAPIKey(oldKey, for: fieldVendor)
 
         configStore.updateSelectedVendor(newVendor)
 
@@ -598,6 +669,7 @@ struct SettingsView: View {
         vendorUseCustomModel = draft?.useCustomModel
             ?? !AppConfigStore.modelPresets(for: newVendor).contains(profile.modelID)
         loadAPIKey(for: newVendor)
+        loadedVendor = newVendor
     }
 
     // MARK: - Initial sync
@@ -617,6 +689,7 @@ struct SettingsView: View {
 
         isLoadingVendorFields = true
         selectedVendor = config.analysis.selectedVendor
+        loadedVendor = selectedVendor
         let profile = configStore.profile(for: selectedVendor)
         vendorBaseURL = profile.baseURL
         vendorModelID = profile.modelID
@@ -632,6 +705,7 @@ struct SettingsView: View {
         strictMode = config.strict.strictMode
         useCustomWhisperModel = !AppConfigStore.whisperPresets.contains(config.asr.whisperProfile.model)
         useCustomFunasrModel = !AppConfigStore.funasrPresets.contains(config.asr.funasrProfile.model)
+        useCustomQwenModel = !AppConfigStore.qwenPresets.contains(config.asr.qwenProfile.model)
         lastAppliedConfigRevision = -1
     }
 

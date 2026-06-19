@@ -59,6 +59,7 @@ extension LiveSessionViewModel: CenterStageDataSource {
 
     func onSeek(to time: TimeInterval) {
         currentPlaybackTime = time
+        mediaSeekRequest = MediaSeekRequest(time: time)
     }
 
     func onSkipMinutes() {

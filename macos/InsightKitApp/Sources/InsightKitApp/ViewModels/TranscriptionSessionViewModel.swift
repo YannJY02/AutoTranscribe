@@ -29,6 +29,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
     private let bootstrapSidecar: Bool
+    var recordsService: RecordsIndexService?
 
     private var pollTask: Task<Void, Never>?
     private var knownCompletedJobIDs: Set<String> = []
@@ -60,7 +61,12 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     deinit {
-        pollTask?.cancel()
+        shutdown()
+    }
+
+    func shutdown() {
+        endMonitoring()
+        sidecarManager.stop()
     }
 
     var canBuildFinal: Bool {
@@ -69,6 +75,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
 
     var canExportDocument: Bool {
         currentMeetingID != nil
+    }
+
+    var hasPersistedRecordForExport: Bool {
+        RecordDocumentExporter.hasPersistedRecord(meetingID: currentMeetingID, recordsService: recordsService)
     }
 
     var activeJob: TranscriptionJob? {
@@ -88,7 +98,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
-                try self.ensureRuntimeReady(requireASR: true, requireProvider: true, allowProviderProbeFailure: true)
+                try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
+                self.refreshProviderStateNonBlocking()
                 _ = try self.rpcClient.transcriptionImport(filePath: path, title: title)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
@@ -104,7 +115,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
-                try self.ensureRuntimeReady(requireASR: true, requireProvider: true, allowProviderProbeFailure: true)
+                try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
+                self.refreshProviderStateNonBlocking()
                 _ = try self.rpcClient.transcriptionWatchStart(dirs: dirs)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
@@ -172,7 +184,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
-                try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
+                try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 let transcripts = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
                 DispatchQueue.main.async { self.updateArtifactsSync(result: result, transcript: transcripts) }
@@ -193,9 +205,19 @@ final class TranscriptionSessionViewModel: ObservableObject {
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
+                if let url = try RecordDocumentExporter.exportIfPersistedRecordExists(
+                    format: format,
+                    meetingID: meetingID,
+                    recordsService: self.recordsService
+                ) {
+                    DispatchQueue.main.async {
+                        self.lastExportPath = url.path
+                    }
+                    return
+                }
                 try self.ensureSidecarReady()
-                try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
-                let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "txt")
+                try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
+                let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
                 DispatchQueue.main.async {
                     self.lastExportPath = result.path
                 }
@@ -454,6 +476,29 @@ final class TranscriptionSessionViewModel: ObservableObject {
         return lower.contains("调用超时: analysis.provider.probe")
             || lower.contains("调用超时: analysis.providers.status")
             || lower.contains("probe_timeout")
+    }
+
+    private func refreshProviderStateNonBlocking() {
+        do {
+            let providers = try rpcClient.providersStatus(probeActive: false)
+            if providers.activeReady {
+                DispatchQueue.main.async {
+                    self.analysisRuntimeState = .ready
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                self.analysisRuntimeState = .missingConfig
+                self.inlineError = InlineErrorState(
+                    message: "智能分析未配置，转写继续，定稿将使用本地提取草稿。",
+                    occurredAt: Date()
+                )
+            }
+        } catch {
+            if isProviderProbeTimeout(error) {
+                publishProviderSoftFailure("智能分析探测超时，转写继续、洞察已暂停。")
+            }
+        }
     }
 
     private func publishProviderSoftFailure(_ message: String) {

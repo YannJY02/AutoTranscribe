@@ -1,10 +1,8 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var coordinator: WorkflowCoordinator
-    @State private var isImportPickerPresented = false
 
     init(coordinator: WorkflowCoordinator = WorkflowCoordinator()) {
         self.coordinator = coordinator
@@ -58,7 +56,8 @@ struct ContentView: View {
                     onOpenRecords: {
                         coordinator.openRecords()
                     },
-                    statusSummary: homeStatusSummary
+                    statusSummary: homeStatusSummary,
+                    recentRecords: Array(coordinator.recordsService.records.prefix(3))
                 )
             case .live:
                 LiveWorkspaceView(viewModel: coordinator.liveViewModel)
@@ -67,7 +66,7 @@ struct ContentView: View {
                 TranscriptionWorkspaceView(
                     viewModel: coordinator.transcriptionViewModel,
                     onImportRequest: {
-                        isImportPickerPresented = true
+                        openTranscriptionImportPicker()
                     }
                 )
             case .importMedia:
@@ -98,21 +97,6 @@ struct ContentView: View {
                 }
             )
         }
-        .fileImporter(
-            isPresented: $isImportPickerPresented,
-            allowedContentTypes: [.audio, .movie],
-            allowsMultipleSelection: true
-        ) { result in
-            switch result {
-            case .success(let urls):
-                for url in urls {
-                    coordinator.transcriptionViewModel.importFile(path: url.path, title: url.deletingPathExtension().lastPathComponent)
-                }
-                coordinator.openTranscription()
-            case .failure(let error):
-                coordinator.publishInfoBanner("导入文件失败：\(error.localizedDescription)")
-            }
-        }
         .toolbar {
             toolbarContent
         }
@@ -135,9 +119,16 @@ struct ContentView: View {
             coordinator.refreshSidecarCapabilities()
             coordinator.liveViewModel.reloadSystemAudioSources()
             coordinator.liveViewModel.refreshSidecarStatus()
+            coordinator.recordsService.refreshIndexAsync()
             if coordinator.route == .transcription, coordinator.supportsTranscriptionFlow {
                 coordinator.transcriptionViewModel.beginMonitoring()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            coordinator.shutdown()
+        }
+        .onOpenURL { url in
+            coordinator.handleIncomingURL(url)
         }
     }
 
@@ -223,7 +214,7 @@ struct ContentView: View {
                 switch coordinator.transcriptionPhase {
                 case .transcriptionIntake:
                     Button("导入文件") {
-                        isImportPickerPresented = true
+                        openTranscriptionImportPicker()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(InsightTheme.accent)
@@ -235,7 +226,7 @@ struct ContentView: View {
 
                 case .transcriptionProcessing:
                     Button("导入文件") {
-                        isImportPickerPresented = true
+                        openTranscriptionImportPicker()
                     }
                     .buttonStyle(.bordered)
 
@@ -251,7 +242,7 @@ struct ContentView: View {
 
                 case .transcriptionFinalize:
                     Button("导入文件") {
-                        isImportPickerPresented = true
+                        openTranscriptionImportPicker()
                     }
                     .buttonStyle(.bordered)
 
@@ -264,6 +255,12 @@ struct ContentView: View {
 
                     Button("导出 Markdown") {
                         coordinator.transcriptionViewModel.exportDocument(format: "markdown")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!coordinator.canExportTranscription)
+
+                    Button("导出 PDF") {
+                        coordinator.transcriptionViewModel.exportDocument(format: "pdf")
                     }
                     .buttonStyle(.bordered)
                     .disabled(!coordinator.canExportTranscription)
@@ -327,6 +324,23 @@ struct ContentView: View {
             ]
             : coordinator.transcriptionViewModel.watcherState.dirs
         coordinator.transcriptionViewModel.startWatcher(dirs: dirs)
+    }
+
+    private func openTranscriptionImportPicker() {
+        let panel = NSOpenPanel()
+        SupportedMediaTypes.configureOpenPanel(panel, allowsMultipleSelection: true)
+        guard panel.runModal() == .OK else { return }
+        let unsupported = panel.urls.filter { !SupportedMediaTypes.isSupportedFile($0) }
+        if !unsupported.isEmpty {
+            let names = unsupported.map(\.lastPathComponent).joined(separator: "、")
+            coordinator.publishInfoBanner("已跳过不支持的文件格式：\(names)。支持 mp3、m4a、wav、mp4、mov、mkv。")
+        }
+        let supported = panel.urls.filter(SupportedMediaTypes.isSupportedFile)
+        guard !supported.isEmpty else { return }
+        for url in supported {
+            coordinator.transcriptionViewModel.importFile(path: url.path, title: url.deletingPathExtension().lastPathComponent)
+        }
+        coordinator.openTranscription()
     }
 
     private var permissionRecoveryBar: some View {

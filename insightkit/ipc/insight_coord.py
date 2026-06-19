@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from insightkit.data.store import InsightStore
-from insightkit.insights.render import render_insight_markdown
+from insightkit.insights.render import render_insight_markdown, write_insight_pdf
 from insightkit.insights.service import InsightService
 
 
@@ -59,13 +59,27 @@ class InsightCoordinator:
         strict_mode_raw = params.get("strict_mode")
         strict_mode = None if strict_mode_raw is None else bool(strict_mode_raw)
         segments = self.store.list_segments(meeting_id)
-        package = self.insight_service.build_final(
-            segments,
-            provider_vendor=provider_vendor,
-            provider_model=provider_model,
-            strict_mode=strict_mode,
-        )
+        try:
+            package = self.insight_service.build_final(
+                segments,
+                provider_vendor=provider_vendor,
+                provider_model=provider_model,
+                strict_mode=strict_mode,
+            )
+        except Exception:
+            stored = self.store.get_insight_package(meeting_id)
+            if stored is not None:
+                package = stored["payload"]
+                self.insight_service.last_call_meta = {
+                    "vendor": "stored",
+                    "model": "cached",
+                    "strict_mode": False,
+                }
+            else:
+                package = self.insight_service.build_local_extractive(segments)
         call_meta = self.insight_service.last_call_meta
+        updated_at = datetime.now(timezone.utc).isoformat()
+        self.store.upsert_insight_package(meeting_id, package, updated_at)
         return {
             "meeting_id": meeting_id,
             "mode": "final",
@@ -75,23 +89,33 @@ class InsightCoordinator:
             "provider_model": str(call_meta.get("model", "")),
             "strict_mode": bool(call_meta.get("strict_mode", False)),
             "needs_review_count": self._count_needs_review(package),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": updated_at,
         }
 
     def document_export(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = params["meeting_id"]
         export_format = params.get("format", "markdown")
-        raw_output_dir = params.get("output_dir", "")
-        if raw_output_dir and Path(raw_output_dir).is_absolute():
-            output_dir = Path(raw_output_dir)
-        else:
-            output_dir = Path.home() / "Documents" / "InsightKit" / "exports"
+        output_dir = self._resolve_output_dir(params.get("output_dir", ""))
         output_dir.mkdir(parents=True, exist_ok=True)
         meeting = self.store.get_meeting(meeting_id) or {}
         title = str(meeting.get("title", "未命名会话") or "未命名会话")
         segments = self.store.list_segments(meeting_id)
-        package = self.insight_service.build_final(segments)
-        rendered = render_insight_markdown(package, title=title)
+        job = self.store.get_latest_transcription_job_for_meeting(meeting_id)
+        source_path = str(job.get("source_path", "") if job else "")
+        try:
+            package = self.insight_service.build_final(segments)
+        except Exception:
+            stored = self.store.get_insight_package(meeting_id)
+            package = stored["payload"] if stored is not None else self.insight_service.build_local_extractive(segments)
+        self.store.upsert_insight_package(meeting_id, package, datetime.now(timezone.utc).isoformat())
+        rendered = render_insight_markdown(
+            package,
+            title=title,
+            meeting=meeting,
+            transcript=segments,
+            meeting_id=meeting_id,
+            source_path=source_path,
+        )
 
         ts = int(time.time())
         if export_format == "json":
@@ -100,6 +124,17 @@ class InsightCoordinator:
         elif export_format == "txt":
             out = output_dir / f"{meeting_id}_{ts}.txt"
             out.write_text(rendered, encoding="utf-8")
+        elif export_format == "pdf":
+            out = output_dir / f"{meeting_id}_{ts}.pdf"
+            write_insight_pdf(
+                package,
+                title=title,
+                output_path=out,
+                meeting=meeting,
+                transcript=segments,
+                meeting_id=meeting_id,
+                source_path=source_path,
+            )
         else:
             out = output_dir / f"{meeting_id}_{ts}.md"
             out.write_text(rendered, encoding="utf-8")
@@ -109,6 +144,17 @@ class InsightCoordinator:
             "meeting_id": meeting_id,
             "mode": "final",
         }
+
+    @staticmethod
+    def _resolve_output_dir(raw_output_dir: Any) -> Path:
+        raw = str(raw_output_dir or "").strip()
+        if not raw or raw == "txt":
+            return Path.home() / "Documents" / "InsightKit" / "exports"
+
+        output_dir = Path(raw).expanduser()
+        if output_dir.is_absolute():
+            return output_dir
+        return Path.cwd() / output_dir
 
     @staticmethod
     def _count_needs_review(payload: dict[str, Any]) -> int:

@@ -72,18 +72,26 @@ extension LiveSessionViewModel {
                     summary: beat.summary
                 )
             }
+
+            self.smartMinutesData = SmartMinutes(
+                structuredSummary: package.sessionOverview.overview,
+                highlights: package.highlightInsights.map(\.quote),
+                speakerSummaries: package.speakerPerspectives.map {
+                    SpeakerMinutesSummary(
+                        speakerName: $0.speaker,
+                        summary: $0.viewpoints.joined(separator: "\n")
+                    )
+                },
+                keyDecisions: package.decisionLedger.map(\.decision),
+                actionItems: package.actionTracks.map(\.task),
+                chapters: self.chapters
+            )
         }
     }
 
     /// Parse "MM:SS" timestamp string to TimeInterval.
     private static func parseTimestamp(_ str: String) -> TimeInterval {
-        let parts = str.split(separator: ":").compactMap { Double($0) }
-        if parts.count == 2 {
-            return parts[0] * 60 + parts[1]
-        } else if parts.count == 3 {
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        }
-        return 0
+        TimestampNormalizer.parse(str)
     }
 
     func syncActionTracksToWorkbench() {

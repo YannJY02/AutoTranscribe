@@ -69,6 +69,7 @@ final class LiveASRService {
 
         let args = [pythonBinary, scriptPath, "--wav", wavPath, "--offset-ms", "\(offsetMs)"]
         process.arguments = args
+        process.environment = PythonRuntimeEnvironment.prepared(from: ProcessInfo.processInfo.environment)
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

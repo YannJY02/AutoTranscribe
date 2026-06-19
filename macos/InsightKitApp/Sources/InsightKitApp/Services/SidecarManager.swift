@@ -41,7 +41,7 @@ final class SidecarManager {
     private let _candidatesLock = NSLock()
 
     init(
-        pythonBinary: String = SidecarManager.resolvePreferredPythonBinary(),
+        pythonBinary: String = SidecarManager.resolveConfiguredPythonBinary(),
         socketPath: String = InsightRuntimeDefaults.socketPath,
         startupTimeoutSec: Int = Int(ProcessInfo.processInfo.environment["INSIGHTKIT_SIDECAR_START_TIMEOUT"] ?? "8") ?? 8
     ) {
@@ -101,19 +101,20 @@ final class SidecarManager {
             p.arguments = [candidate, sidecarScript]
             p.standardInput = FileHandle.nullDevice
 
-            var env = ProcessInfo.processInfo.environment
+            var env = PythonRuntimeEnvironment.prepared(
+                from: ProcessInfo.processInfo.environment,
+                runtimeRoot: runtimeRoot
+            )
             env["INSIGHTKIT_SOCKET"] = socketPath
-            env["INSIGHTKIT_RUNTIME_ROOT"] = runtimeRoot
             env["INSIGHTKIT_PYTHON_RESOLVED"] = candidate
+            env["INSIGHTKIT_RECORDS_ROOT"] = RecordsIndexService.currentRootDirectory().path
+            if let appBuild = appBuildVersion() {
+                env["INSIGHTKIT_BUILD"] = appBuild
+            }
             for (key, value) in AppConfigStore.shared.sidecarEnvironment() {
                 env[key] = value
             }
 
-            let existingPythonPath = env["PYTHONPATH", default: ""]
-            let mergedPythonPath = [runtimeRoot, existingPythonPath]
-                .filter { !$0.isEmpty }
-                .joined(separator: ":")
-            env["PYTHONPATH"] = mergedPythonPath
             p.environment = env
 
             p.standardOutput = sidecarLogHandle ?? FileHandle.nullDevice
@@ -157,6 +158,16 @@ final class SidecarManager {
             return false
         }
         return lhs != rhs
+    }
+
+    static func bestEffortShutdownSocketOwner(
+        socketPath: String = InsightRuntimeDefaults.socketPath,
+        timeoutSec: Int = 1
+    ) {
+        let manager = SidecarManager(socketPath: socketPath, startupTimeoutSec: 3)
+        _ = try? manager.requestRemoteShutdown(timeoutSec: max(1, timeoutSec))
+        Thread.sleep(forTimeInterval: 0.1)
+        manager.removeStaleSocketIfNeeded()
     }
 
     func rebootstrap(ensureReady: (() throws -> Void)? = nil) throws {
@@ -455,11 +466,11 @@ final class SidecarManager {
         return scriptURL.deletingLastPathComponent().deletingLastPathComponent().path
     }
 
-    private static func resolvePreferredPythonBinary() -> String {
+    private static func resolveConfiguredPythonBinary() -> String {
         if let env = ProcessInfo.processInfo.environment["INSIGHTKIT_PYTHON"], !env.isEmpty {
             return env
         }
-        return rankedPythonBinaries().first ?? "python3"
+        return ""
     }
 
     /// 返回已排序的 Python 候选列表（懒加载 + 缓存）。
@@ -479,7 +490,10 @@ final class SidecarManager {
         if let env = ProcessInfo.processInfo.environment["INSIGHTKIT_PYTHON"], !env.isEmpty {
             return [env]
         }
-        var ordered: [String] = [preferred]
+        var ordered: [String] = []
+        if !preferred.isEmpty {
+            ordered.append(preferred)
+        }
         for candidate in rankedPythonBinaries() where !ordered.contains(candidate) {
             ordered.append(candidate)
         }

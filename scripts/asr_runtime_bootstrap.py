@@ -12,15 +12,53 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    from .asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL,
+        QWEN_MLX_DEFAULT_MODEL,
+        QWEN_MLX_ENGINE,
+        QWEN_MLX_FORCED_ALIGNER_MODEL,
+        WHISPER_DEFAULT_MODEL,
+        is_funasr_nano_model,
+        qwen_mlx_repo_for_model,
+        whisper_repo_for_model,
+    )
+except ImportError:
+    from asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL,
+        QWEN_MLX_DEFAULT_MODEL,
+        QWEN_MLX_ENGINE,
+        QWEN_MLX_FORCED_ALIGNER_MODEL,
+        WHISPER_DEFAULT_MODEL,
+        is_funasr_nano_model,
+        qwen_mlx_repo_for_model,
+        whisper_repo_for_model,
+    )
+
 DEFAULT_ENGINE = os.getenv("INSIGHTKIT_ASR_ENGINE", "whisper").strip().lower() or "whisper"
 DEFAULT_WHISPER_MODEL = (
     os.getenv("INSIGHTKIT_WHISPER_MODEL", "").strip()
     or os.getenv("INSIGHTKIT_ASR_MODEL", "").strip()
-    or "large-v3"
+    or WHISPER_DEFAULT_MODEL
 )
 DEFAULT_FUNASR_MODEL = (
     os.getenv("INSIGHTKIT_FUNASR_ASR_MODEL", "").strip()
-    or "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
+    or FUNASR_DEFAULT_ASR_MODEL
+)
+DEFAULT_QWEN_MLX_MODEL = (
+    os.getenv("INSIGHTKIT_QWEN_MLX_MODEL", "").strip()
+    or os.getenv("INSIGHTKIT_QWEN_ASR_MODEL", "").strip()
+    or QWEN_MLX_DEFAULT_MODEL
+)
+DEFAULT_QWEN_FORCED_ALIGNER_MODEL = (
+    os.getenv("INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL", "").strip()
+    or QWEN_MLX_FORCED_ALIGNER_MODEL
 )
 MODEL_DIR = Path(
     os.getenv(
@@ -30,16 +68,44 @@ MODEL_DIR = Path(
 ).expanduser()
 WHISPER_ROOT = MODEL_DIR / "faster-whisper"
 FUNASR_ROOT = MODEL_DIR / "funasr"
+QWEN_MLX_ROOT = MODEL_DIR / "qwen3-asr"
 
 FUNASR_DEFAULTS = {
     "asr": DEFAULT_FUNASR_MODEL,
-    "vad": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
-    "punc": "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
-    "spk": "iic/speech_campplus_sv_zh-cn_16k-common",
+    "vad": FUNASR_VAD_MODEL,
+    "punc": FUNASR_PUNC_MODEL,
+    "spk": FUNASR_SPK_MODEL,
 }
 
 
+def _hf_auth_token() -> str:
+    token = (
+        os.getenv("PYANNOTE_AUTH_TOKEN", "").strip()
+        or os.getenv("HF_TOKEN", "").strip()
+        or os.getenv("HUGGINGFACE_TOKEN", "").strip()
+        or os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip()
+    )
+    if token:
+        return token
+    try:
+        from huggingface_hub import get_token
+
+        return (get_token() or "").strip()
+    except Exception:
+        return ""
+
+
 def _backend_status(engine: str) -> dict[str, Any]:
+    if engine == QWEN_MLX_ENGINE:
+        compute = os.getenv("INSIGHTKIT_QWEN_MLX_COMPUTE_TYPE", "mlx").strip() or "mlx"
+        return {
+            "device": "mlx",
+            "compute_type": compute,
+            "configured_device": "mlx",
+            "configured_compute_type": compute,
+            "resolved": "",
+            "supported_compute_types": ["mlx", "float16", "bfloat16", "float32"],
+        }
     if engine == "funasr":
         return {
             "device": "auto",
@@ -76,9 +142,11 @@ def _backend_status(engine: str) -> dict[str, Any]:
 
 def _normalize_engine(engine: str | None) -> str:
     raw = (engine or DEFAULT_ENGINE).strip().lower()
-    if raw not in {"whisper", "funasr"}:
-        return "whisper"
-    return raw
+    if raw in {QWEN_MLX_ENGINE, "qwenmlx", "qwen_mlx", "qwen"}:
+        return QWEN_MLX_ENGINE
+    if raw == "funasr":
+        return "funasr"
+    return "whisper"
 
 
 def _module_installed(module_name: str) -> bool:
@@ -89,6 +157,13 @@ def _module_installed(module_name: str) -> bool:
 
 
 def _required_modules(engine: str) -> dict[str, str]:
+    if engine == QWEN_MLX_ENGINE:
+        return {
+            "mlx_qwen3_asr": "mlx-qwen3-asr",
+            "mlx": "mlx",
+            "huggingface_hub": "huggingface-hub",
+            "silero_vad": "silero-vad",
+        }
     if engine == "funasr":
         return {
             "funasr": "funasr",
@@ -106,16 +181,15 @@ def _optional_modules() -> dict[str, str]:
     return {
         "huggingface_hub": "huggingface-hub",
         "pyannote.audio": "pyannote-audio",
+        "torch": "torch",
+        "torchcodec": "torchcodec",
         "openai": "openai",
         "google.generativeai": "google-generativeai",
     }
 
 
 def _repo_for_whisper(model_name: str) -> str:
-    normalized = model_name.strip()
-    if normalized.startswith("Systran/"):
-        return normalized
-    return f"Systran/faster-whisper-{normalized}"
+    return whisper_repo_for_model(model_name)
 
 
 def _target_whisper_path(model_name: str) -> Path:
@@ -131,6 +205,44 @@ def _target_funasr_paths() -> dict[str, Path]:
     }
 
 
+def _target_qwen_path(model_name: str) -> Path:
+    path = Path(model_name).expanduser()
+    if path.is_absolute():
+        return path
+    return QWEN_MLX_ROOT / model_name.strip().split("/")[-1]
+
+
+def _target_qwen_forced_aligner_path() -> Path:
+    return _target_qwen_path(DEFAULT_QWEN_FORCED_ALIGNER_MODEL)
+
+
+def _qwen_snapshot_ready(path: Path) -> bool:
+    return path.exists() and (path / "config.json").exists() and any(path.glob("*.safetensors"))
+
+
+def _funasr_model_kwargs(model_name: str, model_source: Path | str) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "trust_remote_code": True,
+        "disable_update": True,
+    }
+    source_path = Path(str(model_source)).expanduser()
+    if is_funasr_nano_model(model_name):
+        # FunASR 1.3.x includes the Nano model implementation, but it uses
+        # package-local bare imports and must be imported before AutoModel
+        # looks up the registered model class.
+        import funasr.models.fun_asr_nano as nano_pkg
+
+        nano_dir = str(Path(nano_pkg.__file__).resolve().parent)
+        if nano_dir not in sys.path:
+            sys.path.insert(0, nano_dir)
+        import funasr.models.fun_asr_nano.model  # noqa: F401
+
+        model_py = source_path / "model.py"
+        if model_py.exists():
+            kwargs["remote_code"] = str(model_py)
+    return kwargs
+
+
 def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[str, Any]:
     required = {
         pip_name: _module_installed(module_name)
@@ -141,11 +253,44 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
         for module_name, pip_name in _optional_modules().items()
     }
 
-    hf_token = (
-        os.getenv("HF_TOKEN", "").strip()
-        or os.getenv("HUGGINGFACE_TOKEN", "").strip()
-        or os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip()
-    )
+    hf_token = _hf_auth_token()
+
+    if engine == QWEN_MLX_ENGINE:
+        model_path = _target_qwen_path(DEFAULT_QWEN_MLX_MODEL)
+        aligner_path = _target_qwen_forced_aligner_path()
+        diar_ready = optional.get("pyannote-audio", False) and optional.get("torch", False) and bool(hf_token)
+        model_exists = _qwen_snapshot_ready(model_path)
+        aligner_exists = _qwen_snapshot_ready(aligner_path)
+        ready = all(required.values()) and model_exists
+        return {
+            "required": required,
+            "optional": optional,
+            "model": {
+                "name": DEFAULT_QWEN_MLX_MODEL,
+                "path": str(model_path),
+                "exists": model_exists,
+            },
+            "vad": {
+                "engine": "silero-vad",
+                "enabled": True,
+                "ready": required.get("silero-vad", False),
+            },
+            "timestamps": {
+                "engine": "qwen-forced-aligner",
+                "enabled": True,
+                "ready": aligner_exists,
+                "model": DEFAULT_QWEN_FORCED_ALIGNER_MODEL,
+                "path": str(aligner_path),
+            },
+            "speaker_diarization": {
+                "engine": "pyannote-community-1",
+                "enabled": True,
+                "ready": diar_ready,
+                "degraded": not diar_ready,
+                "reason": "" if diar_ready else "missing pyannote diarize extra or HF/PYANNOTE token",
+            },
+            "ready": ready,
+        }
 
     if engine == "funasr":
         paths = _target_funasr_paths()
@@ -207,7 +352,13 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
     normalized_engine = _normalize_engine(engine)
     whisper_status = _engine_status("whisper", DEFAULT_WHISPER_MODEL, DEFAULT_FUNASR_MODEL)
     funasr_status = _engine_status("funasr", DEFAULT_WHISPER_MODEL, DEFAULT_FUNASR_MODEL)
-    active = whisper_status if normalized_engine == "whisper" else funasr_status
+    qwen_status = _engine_status(QWEN_MLX_ENGINE, DEFAULT_WHISPER_MODEL, DEFAULT_FUNASR_MODEL)
+    if normalized_engine == QWEN_MLX_ENGINE:
+        active = qwen_status
+    elif normalized_engine == "funasr":
+        active = funasr_status
+    else:
+        active = whisper_status
 
     return {
         "python": {
@@ -215,10 +366,11 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
             "version": sys.version.split()[0],
         },
         "engine": normalized_engine,
-        "engine_options": ["whisper", "funasr"],
+        "engine_options": ["whisper", "funasr", QWEN_MLX_ENGINE],
         "active_profile": active["model"]["name"],
         "model": active["model"],
         "vad": active["vad"],
+        "timestamps": active.get("timestamps", {}),
         "speaker_diarization": active["speaker_diarization"],
         "dependencies": {
             "required": active["required"],
@@ -227,6 +379,7 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
         "ready_by_engine": {
             "whisper": bool(whisper_status["ready"]),
             "funasr": bool(funasr_status["ready"]),
+            QWEN_MLX_ENGINE: bool(qwen_status["ready"]),
         },
         "backend": _backend_status(normalized_engine),
         "warm": {
@@ -274,7 +427,7 @@ def _bootstrap_whisper(model_name: str) -> dict[str, Any]:
         "wheel",
         "faster-whisper",
         "silero-vad",
-        "huggingface-hub",
+        "huggingface-hub>=0.34,<1.0",
         "openai",
         "google-generativeai",
     ]
@@ -301,8 +454,8 @@ def _bootstrap_whisper(model_name: str) -> dict[str, Any]:
             sys.executable,
             "-c",
             (
-                "from huggingface_hub import snapshot_download;"
-                f"snapshot_download(repo_id='{repo}', local_dir=r'{target}', local_dir_use_symlinks=False)"
+                "from faster_whisper.utils import download_model;"
+                f"download_model({json.dumps(model_name)}, output_dir={json.dumps(str(target))})"
             ),
         ]
         ok, output = _run(download_cmd, timeout=5400)
@@ -337,10 +490,6 @@ def _bootstrap_funasr(model_name: str) -> dict[str, Any]:
         "-m",
         "pip",
         "install",
-        "--upgrade",
-        "pip",
-        "setuptools",
-        "wheel",
         "funasr",
         "modelscope",
         "torch",
@@ -385,12 +534,32 @@ def _bootstrap_funasr(model_name: str) -> dict[str, Any]:
         if not ok:
             return {"ok": False, "steps": steps, "status": runtime_status(engine="funasr")}
 
+    is_nano = is_funasr_nano_model(model_name)
+    validate_kwargs = {
+        "model": str(paths["asr"]),
+        "vad_model": None if is_nano else str(paths["vad"]),
+        "punc_model": None if is_nano else str(paths["punc"]),
+        "spk_model": None if is_nano else str(paths["spk"]),
+        **_funasr_model_kwargs(model_name, paths["asr"]),
+    }
+    nano_import = ""
+    if is_nano:
+        nano_import = (
+            "import sys;"
+            "import funasr.models.fun_asr_nano as nano_pkg;"
+            "from pathlib import Path;"
+            "nano_dir=str(Path(nano_pkg.__file__).resolve().parent);"
+            "sys.path.insert(0,nano_dir) if nano_dir not in sys.path else None;"
+            "import funasr.models.fun_asr_nano.model;"
+        )
     validate_cmd = [
         sys.executable,
         "-c",
         (
+            "import json;"
+            + nano_import +
             "from funasr import AutoModel;"
-            f"AutoModel(model=r'{paths['asr']}', vad_model=r'{paths['vad']}', punc_model=r'{paths['punc']}', spk_model=r'{paths['spk']}');"
+            f"AutoModel(**json.loads({json.dumps(json.dumps(validate_kwargs))}));"
             "print('ok')"
         ),
     ]
@@ -400,8 +569,100 @@ def _bootstrap_funasr(model_name: str) -> dict[str, Any]:
     return {"ok": ok and status.get("ready", False), "steps": steps, "status": status}
 
 
+def _download_hf_snapshot(repo_id: str, target: Path) -> tuple[bool, str]:
+    target.mkdir(parents=True, exist_ok=True)
+    download_cmd = [
+        sys.executable,
+        "-c",
+        (
+            "from huggingface_hub import snapshot_download;"
+            f"snapshot_download(repo_id={json.dumps(repo_id)}, local_dir={json.dumps(str(target))}, "
+            "local_dir_use_symlinks=False)"
+        ),
+    ]
+    env = os.environ.copy()
+    env.setdefault("HF_HUB_DISABLE_XET", "1")
+    try:
+        proc = subprocess.run(
+            download_cmd,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=7200,
+            check=False,
+            env=env,
+        )
+    except Exception as exc:
+        return False, str(exc)
+    if proc.returncode == 0:
+        return True, (proc.stdout or "").strip()[-4000:]
+    tail = f"{(proc.stdout or '').strip()}\n{(proc.stderr or '').strip()}".strip()
+    return False, tail[-4000:]
+
+
+def _bootstrap_qwen_mlx(model_name: str) -> dict[str, Any]:
+    steps: list[dict[str, Any]] = []
+    QWEN_MLX_ROOT.mkdir(parents=True, exist_ok=True)
+
+    install_required_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "mlx-qwen3-asr[diarize]>=0.3.5",
+        "silero-vad",
+        "huggingface-hub>=0.34,<1.0",
+        "openai",
+        "google-generativeai",
+    ]
+    ok, output = _run(install_required_cmd, timeout=7200)
+    steps.append({"name": "install_qwen_mlx_dependencies", "ok": ok, "detail": output})
+    if not ok:
+        return {"ok": False, "steps": steps, "status": runtime_status(engine=QWEN_MLX_ENGINE)}
+
+    for label, requested_model in {
+        "asr": model_name,
+        "forced_aligner": DEFAULT_QWEN_FORCED_ALIGNER_MODEL,
+    }.items():
+        target = _target_qwen_path(requested_model)
+        if _qwen_snapshot_ready(target):
+            steps.append({"name": f"download_{label}_model", "ok": True, "detail": "model already exists", "path": str(target)})
+            continue
+        repo = qwen_mlx_repo_for_model(requested_model)
+        ok, output = _download_hf_snapshot(repo, target)
+        steps.append(
+            {
+                "name": f"download_{label}_model",
+                "ok": ok,
+                "detail": output,
+                "repo": repo,
+                "path": str(target),
+            }
+        )
+        if not ok:
+            return {"ok": False, "steps": steps, "status": runtime_status(engine=QWEN_MLX_ENGINE)}
+
+    target = _target_qwen_path(model_name)
+    validate_cmd = [
+        sys.executable,
+        "-c",
+        (
+            "from mlx_qwen3_asr import Session;"
+            f"Session(model=r'{target}');"
+            "print('ok')"
+        ),
+    ]
+    ok, output = _run(validate_cmd, timeout=900)
+    steps.append({"name": "validate_model_load", "ok": ok, "detail": output})
+    status = runtime_status(engine=QWEN_MLX_ENGINE)
+    return {"ok": ok and status.get("ready", False), "steps": steps, "status": status}
+
+
 def bootstrap_runtime(model_name: str | None = None, engine: str | None = None) -> dict[str, Any]:
     normalized_engine = _normalize_engine(engine)
+    if normalized_engine == QWEN_MLX_ENGINE:
+        model = (model_name or DEFAULT_QWEN_MLX_MODEL).strip() or DEFAULT_QWEN_MLX_MODEL
+        return _bootstrap_qwen_mlx(model_name=model)
     if normalized_engine == "funasr":
         model = (model_name or DEFAULT_FUNASR_MODEL).strip() or DEFAULT_FUNASR_MODEL
         return _bootstrap_funasr(model_name=model)
@@ -413,7 +674,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Probe or bootstrap InsightKit ASR runtime")
     parser.add_argument("action", choices=["status", "bootstrap"], help="operation")
     parser.add_argument("--model", default="", help="ASR model name")
-    parser.add_argument("--engine", default=DEFAULT_ENGINE, choices=["whisper", "funasr"], help="ASR engine")
+    parser.add_argument("--engine", default=DEFAULT_ENGINE, choices=["whisper", "funasr", QWEN_MLX_ENGINE], help="ASR engine")
     args = parser.parse_args()
 
     if args.action == "status":

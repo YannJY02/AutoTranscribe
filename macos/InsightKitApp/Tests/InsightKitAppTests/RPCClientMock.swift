@@ -3,14 +3,30 @@ import Foundation
 
 final class RPCClientMock: InsightRPCClientProtocol {
     var cancelCalls: [(jobID: String, reason: String)] = []
+    var documentExportCalls: [(meetingID: String, format: String, outputDir: String)] = []
     var watchStartCalls: [[String]] = []
     var watchStopCalls = 0
     var importCalls: [(path: String, title: String)] = []
+    var recordsSaveCalls: [(
+        meetingID: String,
+        title: String,
+        sourcePath: String,
+        insightPackage: [String: Any]?,
+        mediaType: String,
+        recordSource: String,
+        durationSec: Double,
+        analysisMeta: [String: Any]?,
+        notesMD: String
+    )] = []
     var transcriptionStatusCalls = 0
     var transcriptionStatusDelaySec: TimeInterval = 0
     var transcriptionStatusError: Error?
+    var transcriptionCancelError: Error?
     var providersStatusError: Error?
     var providerProbeError: Error?
+    var transcriptListStub: [TranscriptSegment] = []
+    var buildFinalDelaySec: TimeInterval = 0
+    var buildFinalCalls = 0
     var asrPrewarmError: Error?
     var asrPrewarmCalls: [(model: String, engine: LocalASREngine?, timeoutSec: Int)] = []
     var asrRuntimeStatusQueue: [ASRRuntimeStatus] = []
@@ -59,11 +75,20 @@ final class RPCClientMock: InsightRPCClientProtocol {
     func sessionStart(meetingID: String, title: String, source: String) throws {}
     func sessionStop(meetingID: String) throws {}
     func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int { 0 }
-    func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment] { [] }
+    func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment] {
+        Array(transcriptListStub.prefix(limit))
+    }
     func refreshLive(meetingID: String, windowSec: Int) throws -> InsightRefreshResult { fakeInsightResult() }
-    func buildFinal(meetingID: String) throws -> InsightRefreshResult { fakeInsightResult() }
+    func buildFinal(meetingID: String) throws -> InsightRefreshResult {
+        buildFinalCalls += 1
+        if buildFinalDelaySec > 0 {
+            Thread.sleep(forTimeInterval: buildFinalDelaySec)
+        }
+        return fakeInsightResult()
+    }
     func documentExport(meetingID: String, format: String, outputDir: String) throws -> DocumentExportResult {
-        DocumentExportResult(path: "/tmp/mock.md", format: format)
+        documentExportCalls.append((meetingID: meetingID, format: format, outputDir: outputDir))
+        return DocumentExportResult(path: "/tmp/mock.md", format: format)
     }
 
     func transcriptionImport(filePath: String, title: String) throws -> TranscriptionImportResult {
@@ -94,6 +119,9 @@ final class RPCClientMock: InsightRPCClientProtocol {
     }
 
     func transcriptionCancel(jobID: String, reason: String) throws -> TranscriptionCancelResult {
+        if let transcriptionCancelError {
+            throw transcriptionCancelError
+        }
         cancelCalls.append((jobID, reason))
         return TranscriptionCancelResult(jobID: jobID, state: reason == "preempted_by_live" ? .pausedByLive : .cancelled)
     }
@@ -123,7 +151,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
             pythonExecutable: "/usr/bin/python3",
             pythonVersion: "3.11.0",
             engine: "faster-whisper",
-            engineOptions: ["whisper", "funasr"],
+            engineOptions: ["whisper", "funasr", "qwen-mlx"],
             activeProfile: "large-v3",
             modelName: "large-v3",
             modelPath: "/tmp/model",
@@ -132,7 +160,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
             diarizationReady: false,
             diarizationDegraded: true,
             diarizationReason: "missing hf token",
-            readyByEngine: ["whisper": true, "funasr": false],
+            readyByEngine: ["whisper": true, "funasr": false, "qwen-mlx": true],
             backend: ASRBackendStatus(
                 configuredDevice: "auto",
                 configuredComputeType: "int8",
@@ -242,9 +270,21 @@ final class RPCClientMock: InsightRPCClientProtocol {
         mediaType: String,
         recordSource: String,
         durationSec: Double,
+        analysisMeta: [String: Any]?,
         notesMD: String
     ) throws -> String {
-        "/tmp/mock-records/\(meetingID)"
+        recordsSaveCalls.append((
+            meetingID: meetingID,
+            title: title,
+            sourcePath: sourcePath,
+            insightPackage: insightPackage,
+            mediaType: mediaType,
+            recordSource: recordSource,
+            durationSec: durationSec,
+            analysisMeta: analysisMeta,
+            notesMD: notesMD
+        ))
+        return "/tmp/mock-records/\(meetingID)"
     }
 
     private func fakeInsightResult() -> InsightRefreshResult {

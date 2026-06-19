@@ -7,23 +7,42 @@ import time
 import unittest
 from pathlib import Path
 
+from insightkit.data.store import InsightStore
 from insightkit.ipc.server import InsightRPCServer
 
 
 class TestPersistentConnection(unittest.TestCase):
     def setUp(self):
-        self.sock_path = Path(tempfile.mktemp(suffix=".sock"))
-        self.server = InsightRPCServer(socket_path=self.sock_path)
+        self.tmp = tempfile.TemporaryDirectory(dir="/private/tmp")
+        tmp_path = Path(self.tmp.name)
+        self.sock_path = tmp_path / "insightkit.sock"
+        self.server = InsightRPCServer(
+            socket_path=self.sock_path,
+            store=InsightStore(tmp_path / "insightkit.db"),
+        )
         self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.server_thread.start()
+        self._wait_until_ready()
+
+    def _wait_until_ready(self) -> None:
+        last_error: Exception | None = None
         for _ in range(50):
-            if self.sock_path.exists():
-                break
+            conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            conn.settimeout(0.2)
+            try:
+                conn.connect(str(self.sock_path))
+                conn.close()
+                return
+            except (FileNotFoundError, ConnectionRefusedError, OSError) as exc:
+                last_error = exc
+                conn.close()
             time.sleep(0.05)
+        self.fail(f"server did not become ready at {self.sock_path}: {last_error}")
 
     def tearDown(self):
         self.server.shutdown()
         self.server_thread.join(timeout=2)
+        self.tmp.cleanup()
 
     def _connect(self) -> socket.socket:
         conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

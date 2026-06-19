@@ -1,14 +1,21 @@
 import AppKit
 import AVFoundation
+import Darwin
 import Foundation
 
 /// Service for indexing, searching, and managing transcription records.
 /// Records are stored as folders under rootDirectory, each containing:
 /// metadata.json, recording.mp4/m4a, transcript.json, notes.md, minutes.json
 final class RecordsIndexService: ObservableObject {
+    static let rootDirectoryDefaultsKey = "RecordsRootDirectory"
+    private static let datalessFileFlag: UInt32 = 0x40000000
+
     @Published var records: [RecordMetadata] = []
 
-    private let fileManager = FileManager.default
+    private let fileManager: FileManager
+    private let defaults: UserDefaults
+    private let environment: [String: String]
+    private let bookmarkStore: SecurityScopedBookmarkStore
     private let jsonDecoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
@@ -20,16 +27,60 @@ final class RecordsIndexService: ObservableObject {
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
         return e
     }()
+    private var contentSearchIndex: [String: String] = [:]
+
+    init(
+        fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bookmarkStore: SecurityScopedBookmarkStore? = nil
+    ) {
+        self.fileManager = fileManager
+        self.defaults = defaults
+        self.environment = environment
+        self.bookmarkStore = bookmarkStore ?? SecurityScopedBookmarkStore(defaults: defaults, environment: environment)
+    }
+
+    static func defaultRootDirectory(
+        fileManager: FileManager = .default,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if SecurityScopedBookmarkStore.isAppSandboxed(environment: environment) {
+            return fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("InsightKit/Records", isDirectory: true)
+        }
+        return fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/InsightKit/Records", isDirectory: true)
+    }
+
+    static func currentRootDirectory(
+        fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        let bookmarkStore = SecurityScopedBookmarkStore(defaults: defaults, environment: environment)
+        if let url = bookmarkStore.resolveBookmark() {
+            return url
+        }
+        if let path = defaults.string(forKey: rootDirectoryDefaultsKey), !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return defaultRootDirectory(fileManager: fileManager, environment: environment)
+    }
 
     var rootDirectory: URL {
         get {
-            let path = UserDefaults.standard.string(forKey: "RecordsRootDirectory")
-                ?? fileManager.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Documents/InsightKit/Records").path
-            return URL(fileURLWithPath: path)
+            if let url = bookmarkStore.resolveBookmark() {
+                return url
+            }
+            if let path = defaults.string(forKey: Self.rootDirectoryDefaultsKey), !path.isEmpty {
+                return URL(fileURLWithPath: path, isDirectory: true)
+            }
+            return Self.defaultRootDirectory(fileManager: fileManager, environment: environment)
         }
         set {
-            UserDefaults.standard.set(newValue.path, forKey: "RecordsRootDirectory")
+            defaults.set(newValue.path, forKey: Self.rootDirectoryDefaultsKey)
+            bookmarkStore.saveBookmark(for: newValue)
         }
     }
 
@@ -37,26 +88,26 @@ final class RecordsIndexService: ObservableObject {
 
     func refreshIndex() {
         let root = rootDirectory
-        ensureDirectoryExists(root)
+        let accessToken = bookmarkStore.accessToken(for: root)
+        defer { accessToken?.stop() }
+        let snapshot = Self.loadIndex(root: root, fileManager: fileManager)
+        records = snapshot.records
+        contentSearchIndex = snapshot.contentSearchIndex
+    }
 
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
-        ) else {
-            records = []
-            return
+    func refreshIndexAsync() {
+        let root = rootDirectory
+        let fileManager = self.fileManager
+        let bookmarkStore = self.bookmarkStore
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let accessToken = bookmarkStore.accessToken(for: root)
+            defer { accessToken?.stop() }
+            let snapshot = Self.loadIndex(root: root, fileManager: fileManager)
+            DispatchQueue.main.async {
+                self?.records = snapshot.records
+                self?.contentSearchIndex = snapshot.contentSearchIndex
+            }
         }
-
-        var loaded: [RecordMetadata] = []
-        for folder in contents {
-            var isDir: ObjCBool = false
-            guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else { continue }
-            let metaURL = folder.appendingPathComponent("metadata.json")
-            guard let data = try? Data(contentsOf: metaURL),
-                  let meta = try? jsonDecoder.decode(RecordMetadata.self, from: data) else { continue }
-            loaded.append(meta)
-        }
-
-        records = loaded.sorted { $0.createdAt > $1.createdAt }
     }
 
     func recentRecords(limit: Int) -> [RecordMetadata] {
@@ -67,6 +118,8 @@ final class RecordsIndexService: ObservableObject {
     // MARK: - CRUD
 
     func saveRecord(_ metadata: RecordMetadata, at path: URL) {
+        let accessToken = bookmarkStore.accessToken(for: rootDirectory)
+        defer { accessToken?.stop() }
         ensureDirectoryExists(path)
         let metaURL = path.appendingPathComponent("metadata.json")
         if let data = try? jsonEncoder.encode(metadata) {
@@ -77,6 +130,8 @@ final class RecordsIndexService: ObservableObject {
     }
 
     func deleteRecord(id: String) {
+        let accessToken = bookmarkStore.accessToken(for: rootDirectory)
+        defer { accessToken?.stop() }
         guard let record = records.first(where: { $0.id == id }) else { return }
         let folder = rootDirectory.appendingPathComponent(record.id)
         try? fileManager.removeItem(at: folder)
@@ -93,14 +148,17 @@ final class RecordsIndexService: ObservableObject {
                 || (record.summaryPreview ?? "").lowercased().contains(lower)
                 || record.userTags.contains(where: { $0.lowercased().contains(lower) })
                 || record.autoTags.contains(where: { $0.lowercased().contains(lower) })
+                || recordContentMatches(record, lowercasedQuery: lower)
         }
     }
 
     func filterRecords(tags: [String], type: MediaType?) -> [RecordMetadata] {
+        filterRecords(criteria: RecordFilterCriteria(tags: Set(tags), type: type))
+    }
+
+    func filterRecords(criteria: RecordFilterCriteria) -> [RecordMetadata] {
         records.filter { record in
-            let matchesTags = tags.isEmpty || !Set(tags).isDisjoint(with: Set(record.userTags + record.autoTags))
-            let matchesType = type == nil || record.mediaType == type
-            return matchesTags && matchesType
+            recordMatches(record, criteria: criteria)
         }
     }
 
@@ -165,6 +223,8 @@ final class RecordsIndexService: ObservableObject {
     // MARK: - Storage Stats
 
     var storageUsedBytes: Int64 {
+        let accessToken = bookmarkStore.accessToken(for: rootDirectory)
+        defer { accessToken?.stop() }
         guard let enumerator = fileManager.enumerator(
             at: rootDirectory,
             includingPropertiesForKeys: [.fileSizeKey],
@@ -194,11 +254,91 @@ final class RecordsIndexService: ObservableObject {
         }
     }
 
+    private static func loadIndex(
+        root: URL,
+        fileManager: FileManager
+    ) -> (records: [RecordMetadata], contentSearchIndex: [String: String]) {
+        if !fileManager.fileExists(atPath: root.path) {
+            try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        }
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return ([], [:])
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var loaded: [RecordMetadata] = []
+        var loadedSearchIndex: [String: String] = [:]
+        for folder in contents {
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            let metaURL = folder.appendingPathComponent("metadata.json")
+            guard isLocallyReadableRegularFile(metaURL),
+                  let data = try? Data(contentsOf: metaURL),
+                  let meta = try? decoder.decode(RecordMetadata.self, from: data) else { continue }
+            loaded.append(meta)
+            loadedSearchIndex[meta.id] = buildContentSearchText(for: folder)
+        }
+
+        return (loaded.sorted { $0.createdAt > $1.createdAt }, loadedSearchIndex)
+    }
+
     private func persistMetadata(_ metadata: RecordMetadata) {
+        let accessToken = bookmarkStore.accessToken(for: rootDirectory)
+        defer { accessToken?.stop() }
         let folder = rootDirectory.appendingPathComponent(metadata.id)
         let metaURL = folder.appendingPathComponent("metadata.json")
         if let data = try? jsonEncoder.encode(metadata) {
             try? data.write(to: metaURL)
         }
+    }
+
+    private func recordContentMatches(_ record: RecordMetadata, lowercasedQuery: String) -> Bool {
+        contentSearchIndex[record.id]?.contains(lowercasedQuery) == true
+    }
+
+    private static func buildContentSearchText(for folder: URL) -> String {
+        let filenames = ["transcript.json", "minutes.json", "notes.md"]
+        var parts: [String] = []
+        for name in filenames {
+            let url = folder.appendingPathComponent(name)
+            guard isLocallyReadableRegularFile(url) else { continue }
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            parts.append(text)
+        }
+        return parts.joined(separator: "\n").lowercased()
+    }
+
+    private static func isLocallyReadableRegularFile(_ url: URL) -> Bool {
+        guard
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
+            values.isRegularFile == true
+        else {
+            return false
+        }
+        return !isDatalessFile(url)
+    }
+
+    private static func isDatalessFile(_ url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return false }
+        return (UInt32(info.st_flags) & datalessFileFlag) != 0
+    }
+
+    private func recordMatches(_ record: RecordMetadata, criteria: RecordFilterCriteria) -> Bool {
+        let matchesTags = criteria.tags.isEmpty
+            || !criteria.tags.isDisjoint(with: Set(record.userTags + record.autoTags))
+        let matchesType = criteria.type == nil || record.mediaType == criteria.type
+        let matchesTime = criteria.timeFilter?.contains(
+            record.createdAt,
+            now: criteria.now,
+            calendar: criteria.calendar
+        ) ?? true
+        return matchesTags && matchesType && matchesTime
     }
 }

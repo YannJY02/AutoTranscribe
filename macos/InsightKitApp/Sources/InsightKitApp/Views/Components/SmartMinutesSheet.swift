@@ -10,10 +10,12 @@ struct SmartMinutesSheet: View {
             Text("录制已完成 (\(formattedDuration))")
                 .font(InsightTypography.title)
                 .foregroundStyle(InsightTheme.textPrimary)
+                .accessibilityIdentifier("live_smart_minutes_title")
 
             Text("是否生成智能纪要？")
                 .font(InsightTypography.heading)
                 .foregroundStyle(InsightTheme.textPrimary)
+                .accessibilityIdentifier("live_smart_minutes_prompt")
 
             VStack(alignment: .leading, spacing: InsightSpacing.sm) {
                 Text("智能纪要将包含：")
@@ -33,11 +35,17 @@ struct SmartMinutesSheet: View {
             .padding(.horizontal, InsightSpacing.xl)
 
             HStack(spacing: InsightSpacing.lg) {
-                Button("跳过") { onSkip() }
+                Button(action: onSkip) {
+                    Text("跳过")
+                }
                     .buttonStyle(.bordered)
-                Button("生成纪要") { onGenerate() }
+                    .accessibilityIdentifier("live_skip_minutes_button")
+                Button(action: onGenerate) {
+                    Text("生成纪要")
+                }
                     .buttonStyle(.borderedProminent)
                     .tint(InsightTheme.accent)
+                    .accessibilityIdentifier("live_generate_minutes_button")
             }
         }
         .padding(InsightSpacing.xxl)

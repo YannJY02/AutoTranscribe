@@ -23,6 +23,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 RUN_ALL=0
 RUN_COV=0
+PYTEST_ARGS=(tests/)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,22 +41,24 @@ if ! command -v pytest &>/dev/null; then
 fi
 
 if [[ "$RUN_ALL" -eq 1 ]]; then
-  MARKER_FILTER=""
   info "Running ALL tests (including integration)..."
 else
-  MARKER_FILTER="-m not integration and not requires_model and not slow"
+  PYTEST_ARGS+=(-m "not integration and not requires_model and not slow")
   info "Running unit tests only (use --all for integration tests)..."
 fi
 
-COV_FLAGS=""
 if [[ "$RUN_COV" -eq 1 ]]; then
-  COV_FLAGS="--cov=insightkit --cov-report=term-missing --cov-report=html:htmlcov"
+  PYTEST_ARGS+=(--cov=insightkit --cov-report=term-missing --cov-report=html:htmlcov)
   info "Coverage report will be generated in htmlcov/"
 fi
 
-pytest tests/ $MARKER_FILTER $COV_FLAGS -v 2>&1 | tee /tmp/insightkit_pytest.log
+PYTEST_ARGS+=(-v)
+set +e
+pytest "${PYTEST_ARGS[@]}" 2>&1 | tee /tmp/insightkit_pytest.log
+pytest_status=${PIPESTATUS[0]}
+set -e
 
-if grep -q "passed" /tmp/insightkit_pytest.log && ! grep -q "error" /tmp/insightkit_pytest.log; then
+if [[ "$pytest_status" -eq 0 ]]; then
   info "Python tests passed!"
   exit 0
 else

@@ -3,6 +3,23 @@
 import os
 from pathlib import Path
 
+try:
+    from .asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_LID_MODEL,
+        FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL,
+    )
+except ImportError:
+    from asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_LID_MODEL,
+        FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL,
+    )
+
 # ── 基础路径 ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 VIDEO_DIR = BASE_DIR / "video"
@@ -35,11 +52,11 @@ MIN_SPEAKERS = 2
 MAX_SPEAKERS = 4
 
 # ── 模型名称（FunASR） ────────────────────────────────────
-LID_MODEL = "iic/SenseVoiceSmall"          # 语言识别 + 轻量 ASR
-ASR_MODEL_ZH = "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
-VAD_MODEL = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-PUNC_MODEL = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
-SPK_MODEL = "iic/speech_campplus_sv_zh-cn_16k-common"
+LID_MODEL = FUNASR_LID_MODEL          # 语言识别 + 轻量 ASR
+ASR_MODEL_ZH = FUNASR_DEFAULT_ASR_MODEL
+VAD_MODEL = FUNASR_VAD_MODEL
+PUNC_MODEL = FUNASR_PUNC_MODEL
+SPK_MODEL = FUNASR_SPK_MODEL
 
 # ── 资源管理 ──────────────────────────────────────────────
 FILE_STABLE_CHECK_INTERVAL = 2  # 秒，检查文件写入完成的间隔

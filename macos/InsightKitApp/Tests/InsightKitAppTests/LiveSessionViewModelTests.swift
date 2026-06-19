@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import InsightKitApp
 
@@ -125,5 +126,244 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: false, hasTranscript: false), .warmingModel)
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: true, hasTranscript: false), .capturing)
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: true, hasTranscript: true), .transcribing)
+    }
+
+    func testLiveExportPrefersPersistedNativePDFOverRPC() throws {
+        let root = RecordExportTestFixture.makeRoot(prefix: "InsightKitLiveExport")
+        let recordID = "live-native-export"
+        try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .live)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = root
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.recordsService = recordsService
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = recordID
+        }
+        XCTAssertTrue(viewModel.hasPersistedRecordForExport)
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "native live export")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+        viewModel.exportDocument(format: "pdf")
+
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertTrue(rpcClient.documentExportCalls.isEmpty)
+        XCTAssertEqual(URL(fileURLWithPath: viewModel.lastExportPath).pathExtension, "pdf")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: viewModel.lastExportPath))
+        let data = try Data(contentsOf: URL(fileURLWithPath: viewModel.lastExportPath))
+        XCTAssertEqual(String(data: data.prefix(5), encoding: .utf8), "%PDF-")
+    }
+
+    func testPrepareTemporaryRecordingCombinesLiveChunksForPlaybackAndSave() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: tmp)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 40_000))
+        _ = try assembler.flush(minDurationSec: 0.1)
+
+        let recordingURL = try XCTUnwrap(viewModel.prepareTemporaryRecordingForSave(meetingID: "live-recording-test"))
+
+        XCTAssertEqual(recordingURL.lastPathComponent, "recording.wav")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recordingURL.path))
+        XCTAssertEqual(viewModel.temporaryRecordingURL, recordingURL)
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        let data = try Data(contentsOf: recordingURL)
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "RIFF")
+        XCTAssertEqual(String(data: data.subdata(in: 8..<12), encoding: .ascii), "WAVE")
+    }
+
+    func testPrepareTemporaryRecordingFlushesShortPendingAudioForPlaybackAndSave() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitShortLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: tmp)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let chunks = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        XCTAssertTrue(chunks.isEmpty)
+
+        let recordingURL = try XCTUnwrap(viewModel.prepareTemporaryRecordingForSave(meetingID: "short-live-recording-test"))
+
+        XCTAssertEqual(viewModel.temporaryRecordingURL, recordingURL)
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        let data = try Data(contentsOf: recordingURL)
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "RIFF")
+        XCTAssertEqual(String(data: data.subdata(in: 8..<12), encoding: .ascii), "WAVE")
+        XCTAssertEqual(data.count, 44 + (8_000 * 2))
+    }
+
+    func testPrepareTemporaryRecordingShowsVisibleStatusWhenNoAudioCaptured() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitEmptyLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: tmp)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        XCTAssertNil(viewModel.prepareTemporaryRecordingForSave(meetingID: "empty-live-recording-test"))
+
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+        XCTAssertNil(viewModel.mediaURL)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("录音太短") == true)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("未捕获到可保存音频") == true)
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        let recordingURL = try XCTUnwrap(viewModel.prepareTemporaryRecordingForSave(meetingID: "empty-live-recording-test"))
+
+        XCTAssertEqual(viewModel.temporaryRecordingURL, recordingURL)
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        XCTAssertNil(viewModel.recordingStatusMessage)
+    }
+
+    func testSaveToRecordsUsesPreparedLiveRecordingAsMediaSource() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSave_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 12.5
+        viewModel.notes = [TimestampedNote(text: "live note", timestamp: 3)]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-test")
+
+        wait(for: [exp], timeout: 5.0)
+        let call = try XCTUnwrap(rpcClient.recordsSaveCalls.first)
+        XCTAssertEqual(call.meetingID, "live-save-test")
+        XCTAssertEqual(call.sourcePath, recordingURL.path)
+        XCTAssertEqual(call.mediaType, "audio")
+        XCTAssertEqual(call.recordSource, "live")
+        XCTAssertEqual(call.durationSec, 12.5)
+        XCTAssertTrue(call.notesMD.contains("00:03 live note"))
+    }
+
+    func testSaveToRecordsPersistsGeneratedLiveInsightPackageForRecovery() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveFinalSave_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 90
+        viewModel.notes = [TimestampedNote(text: "note survives final minutes", timestamp: 86)]
+        viewModel.metrics.provider = "deepseek:deepseek-v4-flash"
+        let package = InsightPackageV1(
+            sessionOverview: .init(title: "直播洞察", overview: "未提供会议转写数据", topics: ["实时录制", "本地降级"]),
+            highlightInsights: [],
+            speakerPerspectives: [],
+            decisionLedger: [],
+            actionTracks: [],
+            timelineBeats: [],
+            provenanceLinks: []
+        )
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live final records.save")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-final-save-test", insightPackageOverride: package)
+
+        wait(for: [exp], timeout: 5.0)
+        let call = try XCTUnwrap(rpcClient.recordsSaveCalls.first)
+        let insightPackage = try XCTUnwrap(call.insightPackage)
+        let overview = try XCTUnwrap(insightPackage["session_overview"] as? [String: Any])
+        XCTAssertEqual(overview["overview"] as? String, "未提供会议转写数据")
+        XCTAssertEqual(overview["topics"] as? [String], ["实时录制", "本地降级"])
+        XCTAssertEqual(call.sourcePath, recordingURL.path)
+        XCTAssertEqual(call.durationSec, 90)
+        XCTAssertEqual(call.analysisMeta?["provider"] as? String, "deepseek")
+        XCTAssertEqual(call.analysisMeta?["model"] as? String, "deepseek-v4-flash")
+        XCTAssertEqual(call.analysisMeta?["analysis_state"] as? String, AnalysisRuntimeState.ready.rawValue)
+        XCTAssertTrue(call.notesMD.contains("01:26 note survives final minutes"))
     }
 }

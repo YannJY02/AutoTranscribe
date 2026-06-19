@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +32,9 @@ SAMPLE_INSIGHT = {
     "action_tracks": [
         {"task": "task1", "owner": "A", "due_at": "", "priority": "medium", "status": "open", "needs_review": False, "evidence_span": {"start_ms": 0, "end_ms": 0}},
     ],
-    "timeline_beats": [],
+    "timeline_beats": [
+        {"timestamp": "00:00", "title": "Opening", "summary": "Hello world."},
+    ],
     "provenance_links": [],
     "speaker_perspectives": [],
 }
@@ -109,6 +112,37 @@ class TestRecordWriter:
         assert "A test session overview." in metadata["summaryPreview"]
         assert metadata["duration"] == 6.0
 
+    def test_metadata_includes_analysis_source_without_secrets(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="test-meeting-analysis-meta",
+            title="Test",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="imported",
+            duration_sec=6.0,
+            analysis_meta={
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "source": "final",
+                "strict_mode": True,
+                "api_key": "must-not-be-written",
+            },
+        )
+
+        metadata = json.loads((record_path / "metadata.json").read_text())
+
+        assert metadata["analysis"] == {
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "source": "final",
+            "strictMode": True,
+        }
+        assert "must-not-be-written" not in json.dumps(metadata)
+
     def test_transcript_json_format(self, tmp_root, sample_audio):
         writer = RecordWriter()
         record_path = writer.write_record(
@@ -148,6 +182,23 @@ class TestRecordWriter:
         assert "Hello world." in minutes["highlights"]
         assert "d1" in minutes["key_decisions"]
         assert "task1" in minutes["action_items"]
+        assert minutes["timeline_beats"][0]["title"] == "Opening"
+
+    def test_full_insight_package_json_written(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="test-meeting-005b",
+            title="Test",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="imported",
+            duration_sec=6.0,
+        )
+        package = json.loads((record_path / "insight_package.json").read_text())
+        assert package["session_overview"]["title"] == "Test Session"
 
     def test_insight_package_none_writes_empty_minutes(self, tmp_root, sample_audio):
         writer = RecordWriter()
@@ -182,6 +233,45 @@ class TestRecordWriter:
             duration_sec=6.0,
         )
         assert (record_path / "recording.m4a").exists()
+
+    def test_repeated_write_skips_already_hardlinked_media(self, tmp_root, tmp_path):
+        source_audio = tmp_path / "live" / "recording.wav"
+        source_audio.parent.mkdir()
+        source_audio.write_bytes(b"fake live wav data")
+
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="test-meeting-live",
+            title="Live",
+            source_path=str(source_audio),
+            segments=[],
+            insight_package=None,
+            media_type="audio",
+            record_source="live",
+            duration_sec=12.0,
+            notes_md="00:05 First note",
+        )
+        persisted_audio = record_path / "recording.wav"
+        assert os.path.samefile(source_audio, persisted_audio)
+
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="test-meeting-live",
+            title="Live",
+            source_path=str(source_audio),
+            segments=[],
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="live",
+            duration_sec=12.0,
+            notes_md="00:05 First note\n00:08 Follow-up",
+        )
+
+        assert os.path.samefile(source_audio, record_path / "recording.wav")
+        assert "Follow-up" in (record_path / "notes.md").read_text(encoding="utf-8")
+        minutes = json.loads((record_path / "minutes.json").read_text(encoding="utf-8"))
+        assert minutes["structured_summary"] == "A test session overview."
 
     def test_hardlink_fallback_to_copy(self, tmp_root, sample_audio):
         writer = RecordWriter()

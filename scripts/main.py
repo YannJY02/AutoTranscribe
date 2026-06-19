@@ -7,6 +7,7 @@
 
 import logging
 import json
+import os
 import queue
 import signal
 import sys
@@ -22,10 +23,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import LOG_FILE, LOG_DIR, TXT_DIR
 from watcher import start_watching
 from notifier import (
-    ask_confirm, notify_start, notify_stage,
+    ask_transcription_route, notify_start, notify_stage,
     show_result_dialog, notify_done, notify_fail,
 )
-from transcriber import transcribe, extract_audio, detect_language, _load_model, _get_audio_duration
+import transcriber as transcriber_runtime
+from transcriber import (
+    transcribe,
+    extract_audio,
+    detect_language,
+    _active_model_name,
+    _engine,
+    _load_model,
+    _get_audio_duration,
+)
 from file_manager import (
     generate_standard_name, move_video, save_transcript_md,
     mark_processed, is_processed,
@@ -108,10 +118,13 @@ def _run_transcribe_with_progress(
     return result_container[0]
 
 
-def process_video(video_path: Path) -> None:
+def process_video(video_path: Path, engine_name: str = "") -> None:
     """处理单个音视频文件的核心流程（由 worker 线程调用）。"""
     filename = video_path.name
     filesize_mb = video_path.stat().st_size / 1024 / 1024
+    selected_engine = engine_name.strip() or _engine()
+    transcriber_runtime.ASR_ENGINE = selected_engine
+    os.environ["INSIGHTKIT_ASR_ENGINE"] = selected_engine
 
     # 从等待队列中移除（开始处理）
     progress.remove_from_queue(filename)
@@ -154,7 +167,8 @@ def process_video(video_path: Path) -> None:
         # ── 阶段 3/4: ASR 转录 ──
         progress.update("transcribe", f"语言: {lang_label} | 时长: {duration_min}")
         notify_stage(filename, "3/4 转录中...", f"语言: {lang_label} | 时长: {duration_min}")
-        logger.info(f"开始转录 (引擎: Paraformer-zh)...")
+        engine_name = _engine()
+        logger.info(f"开始转录 (引擎: {engine_name} | 模型: {_active_model_name(engine_name)})...")
 
         asr_model = _load_model("asr")
         result = _run_transcribe_with_progress(asr_model, str(audio_path), duration)
@@ -190,7 +204,13 @@ def process_video(video_path: Path) -> None:
         standard_name = generate_standard_name(lang, date=creation_time)
 
         # 保存 Markdown
-        md_path = save_transcript_md(standard_name, lang, duration, segments)
+        md_path = save_transcript_md(
+            standard_name,
+            lang,
+            duration,
+            segments,
+            engine_label=f"{engine_name} / {_active_model_name(engine_name)}",
+        )
         logger.info(f"✅ Markdown: {md_path}")
 
         # 生成并保存 InsightKit 定稿洞察（JSON + Markdown）
@@ -312,7 +332,7 @@ class TaskQueue:
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
 
-    def add_task(self, video_path: Path):
+    def add_task(self, video_path: Path, engine_name: str):
         """添加任务到队列"""
         filename = video_path.name
         filesize_mb = video_path.stat().st_size / 1024 / 1024
@@ -320,17 +340,17 @@ class TaskQueue:
         # 记录到 progress 队列显示
         progress.add_to_queue(filename, filesize_mb)
         
-        self.q.put(video_path)
-        logger.info(f"加入队列: {filename}")
+        self.q.put((video_path, engine_name))
+        logger.info(f"加入队列: {filename} (engine={engine_name})")
 
     def _worker(self):
         """消费者循环"""
         logger.info("任务队列工作线程已启动")
         while True:
-            video_path = self.q.get()
+            video_path, engine_name = self.q.get()
             try:
-                logger.info(f"队列取出任务: {video_path.name}")
-                process_video(video_path)
+                logger.info(f"队列取出任务: {video_path.name} (engine={engine_name})")
+                process_video(video_path, engine_name=engine_name)
             except Exception as e:
                 logger.error(f"处理任务出错: {e}", exc_info=True)
             finally:
@@ -351,9 +371,10 @@ def on_new_video(video_path: Path) -> None:
 
     # 1. 弹窗确认 (在入队前进行，允许批量确认)
     logger.info(f"弹窗确认: {filename}")
-    if ask_confirm(filename, filesize_mb):
+    selected_engine = ask_transcription_route(filename, filesize_mb)
+    if selected_engine:
         # 加入队列
-        task_queue.add_task(video_path)
+        task_queue.add_task(video_path, selected_engine)
     else:
         # 用户拒绝，标记为已处理以免再次触发
         logger.info(f"用户取消: {filename}")

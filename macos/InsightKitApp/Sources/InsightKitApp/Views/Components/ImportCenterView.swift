@@ -31,6 +31,7 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
     private var selectingView: some View {
         VStack(spacing: InsightSpacing.xl) {
             Spacer()
+            importErrorStatus
             FileDropZoneView(
                 onFileSelected: { url in
                     onFilePicked?(url)
@@ -47,6 +48,12 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
 
     private var processingView: some View {
         VStack(spacing: InsightSpacing.panelGap) {
+            importErrorStatus
+                .padding(.top, InsightSpacing.panelPadding)
+
+            importAnalysisStatus
+                .padding(.horizontal, InsightSpacing.panelPadding)
+
             // Media player (can play while processing)
             if let url = dataSource.mediaURL {
                 MediaPlayerView(
@@ -70,6 +77,9 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
             )
             .padding(.horizontal, InsightSpacing.panelPadding)
 
+            importProcessingStatus
+                .padding(.horizontal, InsightSpacing.panelPadding)
+
             // Live transcript entries
             transcriptList
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,11 +90,16 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
 
     private var reviewingView: some View {
         VStack(spacing: InsightSpacing.panelGap) {
+            importAnalysisStatus
+                .padding(.horizontal, InsightSpacing.panelPadding)
+                .padding(.top, InsightSpacing.panelPadding)
+
             // Media player
             if let url = dataSource.mediaURL {
                 MediaPlayerView(
                     url: url,
                     isPlaying: true,
+                    seekRequest: importViewModel.mediaSeekRequest,
                     onSeek: { time in
                         dataSource.onSeek(to: time)
                     },
@@ -115,6 +130,13 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
                     importViewModel.exportDocument(format: "markdown")
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("import_export_markdown_button")
+
+                Button("导出 PDF") {
+                    importViewModel.exportDocument(format: "pdf")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("import_export_pdf_button")
 
                 Button("新建导入") {
                     importViewModel.resetToSelecting()
@@ -125,19 +147,109 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.vertical, InsightSpacing.md)
             .background(InsightTheme.surface)
+
+            if let message = importViewModel.exportStatusMessage {
+                Text(message)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, InsightSpacing.panelPadding)
+                    .accessibilityIdentifier("import_export_status")
+            }
         }
     }
 
     // MARK: - Shared Transcript List
 
+    @ViewBuilder
+    private var importErrorStatus: some View {
+        if let message = importViewModel.visibleErrorStatusMessage {
+            HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(InsightTheme.error)
+                Text(message)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(InsightSpacing.md)
+            .frame(maxWidth: 520, alignment: .leading)
+            .background(InsightTheme.errorSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                    .stroke(InsightTheme.errorBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier("import_error_status")
+        }
+    }
+
+    @ViewBuilder
+    private var importProcessingStatus: some View {
+        if let message = importViewModel.visibleImportStatusMessage {
+            HStack(alignment: .center, spacing: InsightSpacing.sm) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(InsightTheme.accent)
+                Text(message)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if importViewModel.canCancelImport {
+                    Button("取消导入") {
+                        importViewModel.cancelImport()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier("import_cancel_button")
+                }
+            }
+            .padding(InsightSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightTheme.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                    .stroke(InsightTheme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier("import_processing_status")
+        }
+    }
+
+    @ViewBuilder
+    private var importAnalysisStatus: some View {
+        if let message = importViewModel.visibleAnalysisStatusMessage {
+            HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                Image(systemName: "wand.and.stars.inverse")
+                    .foregroundStyle(InsightTheme.warning)
+                Text(message)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(InsightSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightTheme.warningSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                    .stroke(InsightTheme.warningBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier("import_analysis_status")
+        }
+    }
+
     private var transcriptList: some View {
         ScrollView {
             if dataSource.transcriptEntries.isEmpty {
-                Text("转写进行中…")
+                Text(dataSource.phase == .processing ? "转写进行中…" : "未加载到逐字稿，请在记录列表中打开该会议或检查本地记录文件。")
                     .font(InsightTypography.caption)
                     .foregroundStyle(InsightTheme.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(InsightSpacing.panelPadding)
+                    .accessibilityIdentifier(dataSource.phase == .processing ? "import_transcript_processing" : "import_transcript_empty")
             } else {
                 LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
                     ForEach(dataSource.transcriptEntries) { entry in

@@ -99,7 +99,7 @@ def main():
         result = rpc_call(\"document.export\", {
             \"meeting_id\": meeting_id,
             \"format\": ext_payload.get(\"format\", \"markdown\"),
-            \"output_dir\": ext_payload.get(\"output_dir\", \"txt\")
+            \"output_dir\": ext_payload.get(\"output_dir\", \"\")
         })
     elif action == \"transcription.import_file\":
         result = rpc_call(\"transcription.import_file\", {

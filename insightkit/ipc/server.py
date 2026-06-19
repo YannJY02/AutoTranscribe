@@ -379,6 +379,7 @@ class InsightRPCServer:
         source_path = str(params.get("source_path", "") or "")
         segments = params.get("segments") or []
         insight_package = params.get("insight_package") or None
+        analysis_meta = params.get("analysis_meta") or None
         media_type = str(params.get("media_type", "") or "") or detect_media_type(source_path)
         record_source = str(params.get("record_source", "") or "live")
         duration_sec = float(params.get("duration_sec") or detect_duration(segs=segments))
@@ -396,6 +397,7 @@ class InsightRPCServer:
             media_type=media_type,
             record_source=record_source,
             duration_sec=duration_sec,
+            analysis_meta=analysis_meta if isinstance(analysis_meta, dict) else None,
             notes_md=notes_md,
         )
         return {"ok": True, "record_path": str(record_path)}
@@ -442,7 +444,7 @@ class InsightRPCServer:
             return self._document_export({
                 "meeting_id": meeting_id,
                 "format": payload.get("format", "markdown"),
-                "output_dir": payload.get("output_dir", "txt"),
+                "output_dir": payload.get("output_dir", ""),
             })
         if action == "sidecar.status":
             return self._sidecar_status({})

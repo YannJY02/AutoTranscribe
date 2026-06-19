@@ -25,12 +25,6 @@ extension LiveSessionViewModel {
     func enqueueChunkForProcessing(_ chunk: AudioChunk, meetingID: String) {
         if shouldHoldChunksForWarmup {
             let update = warmupBacklogPolicy.enqueue(chunk, into: queuedChunks)
-            for dropped in update.droppedExisting {
-                try? FileManager.default.removeItem(at: dropped.url)
-            }
-            if update.droppedIncoming {
-                try? FileManager.default.removeItem(at: chunk.url)
-            }
             queuedChunks = update.queue
             let droppedCount = update.droppedExisting.count + (update.droppedIncoming ? 1 : 0)
             updateMain {
@@ -46,21 +40,18 @@ extension LiveSessionViewModel {
 
         if queuedChunks.count >= maxQueuedChunks {
             if let idx = queuedChunks.firstIndex(where: { $0.isLikelySilent }) {
-                let dropped = queuedChunks.remove(at: idx)
-                try? FileManager.default.removeItem(at: dropped.url)
+                queuedChunks.remove(at: idx)
                 updateMain {
                     self.metrics.droppedChunks += 1
                 }
             } else if chunk.isLikelySilent {
-                try? FileManager.default.removeItem(at: chunk.url)
                 updateMain {
                     self.metrics.droppedChunks += 1
                     self.metrics.queueDepth = self.queuedChunks.count
                 }
                 return
-            } else if let dropped = queuedChunks.first {
+            } else if !queuedChunks.isEmpty {
                 queuedChunks.removeFirst()
-                try? FileManager.default.removeItem(at: dropped.url)
                 updateMain {
                     self.metrics.droppedChunks += 1
                 }

@@ -13,12 +13,41 @@ import logging
 import math
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import wave
+import importlib.util
 from pathlib import Path
 from typing import Any
+
+try:
+    from .asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_PUNC_MODEL as DEFAULT_FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL as DEFAULT_FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL as DEFAULT_FUNASR_VAD_MODEL,
+        QWEN_MLX_DEFAULT_MODEL,
+        QWEN_MLX_ENGINE,
+        QWEN_MLX_FORCED_ALIGNER_MODEL,
+        WHISPER_DEFAULT_MODEL,
+        is_funasr_nano_model,
+        qwen_mlx_repo_for_model,
+    )
+except ImportError:
+    from asr_model_catalog import (
+        FUNASR_DEFAULT_ASR_MODEL,
+        FUNASR_PUNC_MODEL as DEFAULT_FUNASR_PUNC_MODEL,
+        FUNASR_SPK_MODEL as DEFAULT_FUNASR_SPK_MODEL,
+        FUNASR_VAD_MODEL as DEFAULT_FUNASR_VAD_MODEL,
+        QWEN_MLX_DEFAULT_MODEL,
+        QWEN_MLX_ENGINE,
+        QWEN_MLX_FORCED_ALIGNER_MODEL,
+        WHISPER_DEFAULT_MODEL,
+        is_funasr_nano_model,
+        qwen_mlx_repo_for_model,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +55,16 @@ LID_SAMPLE_SECONDS = 45
 
 # 运行时配置（可由环境变量覆盖）
 ASR_ENGINE = os.getenv("INSIGHTKIT_ASR_ENGINE", "whisper").strip().lower() or "whisper"
-DEFAULT_MODEL_NAME = os.getenv("INSIGHTKIT_ASR_MODEL", "large-v3").strip() or "large-v3"
+DEFAULT_MODEL_NAME = os.getenv("INSIGHTKIT_ASR_MODEL", WHISPER_DEFAULT_MODEL).strip() or WHISPER_DEFAULT_MODEL
+QWEN_MLX_MODEL = (
+    os.getenv("INSIGHTKIT_QWEN_MLX_MODEL", "").strip()
+    or os.getenv("INSIGHTKIT_QWEN_ASR_MODEL", "").strip()
+    or QWEN_MLX_DEFAULT_MODEL
+)
+QWEN_MLX_FORCED_ALIGNER = (
+    os.getenv("INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL", "").strip()
+    or QWEN_MLX_FORCED_ALIGNER_MODEL
+)
 MODEL_DIR = Path(
     os.getenv(
         "INSIGHTKIT_MODEL_DIR",
@@ -35,23 +73,43 @@ MODEL_DIR = Path(
 ).expanduser()
 WHISPER_MODEL_DIR = MODEL_DIR / "faster-whisper" / DEFAULT_MODEL_NAME
 FUNASR_MODEL_DIR = MODEL_DIR / "funasr"
+QWEN_MLX_MODEL_ROOT = MODEL_DIR / "qwen3-asr"
 STRICT_LOCAL_ONLY = os.getenv("INSIGHTKIT_ASR_STRICT_LOCAL_ONLY", "1").strip() != "0"
 VAD_ENABLED = os.getenv("INSIGHTKIT_VAD_ENABLED", "1").strip() != "0"
 DIARIZATION_ENABLED = os.getenv("INSIGHTKIT_DIARIZATION_ENABLED", "1").strip() != "0"
 HF_TOKEN = (
-    os.getenv("HF_TOKEN", "").strip()
+    os.getenv("PYANNOTE_AUTH_TOKEN", "").strip()
+    or os.getenv("HF_TOKEN", "").strip()
     or os.getenv("HUGGINGFACE_TOKEN", "").strip()
     or os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip()
 )
 ASR_DEVICE = os.getenv("INSIGHTKIT_ASR_DEVICE", "auto").strip() or "auto"
 ASR_COMPUTE_TYPE = os.getenv("INSIGHTKIT_ASR_COMPUTE_TYPE", "int8").strip() or "int8"
+QWEN_MLX_COMPUTE_TYPE = os.getenv("INSIGHTKIT_QWEN_MLX_COMPUTE_TYPE", "mlx").strip() or "mlx"
+QWEN_MLX_RETURN_TIMESTAMPS = os.getenv("INSIGHTKIT_QWEN_RETURN_TIMESTAMPS", "1").strip() != "0"
+QWEN_MLX_LANGUAGE = os.getenv("INSIGHTKIT_QWEN_LANGUAGE", "").strip() or None
+PYANNOTE_MODEL_ID = (
+    os.getenv("PYANNOTE_MODEL_ID", "").strip()
+    or "pyannote/speaker-diarization-community-1"
+)
 FUNASR_ASR_MODEL = (
     os.getenv("INSIGHTKIT_FUNASR_ASR_MODEL", "").strip()
-    or "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
+    or FUNASR_DEFAULT_ASR_MODEL
 )
-FUNASR_VAD_MODEL = os.getenv("INSIGHTKIT_FUNASR_VAD_MODEL", "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch").strip()
-FUNASR_PUNC_MODEL = os.getenv("INSIGHTKIT_FUNASR_PUNC_MODEL", "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch").strip()
-FUNASR_SPK_MODEL = os.getenv("INSIGHTKIT_FUNASR_SPK_MODEL", "iic/speech_campplus_sv_zh-cn_16k-common").strip()
+FUNASR_VAD_MODEL = os.getenv("INSIGHTKIT_FUNASR_VAD_MODEL", DEFAULT_FUNASR_VAD_MODEL).strip()
+FUNASR_PUNC_MODEL = os.getenv("INSIGHTKIT_FUNASR_PUNC_MODEL", DEFAULT_FUNASR_PUNC_MODEL).strip()
+FUNASR_SPK_MODEL = os.getenv("INSIGHTKIT_FUNASR_SPK_MODEL", DEFAULT_FUNASR_SPK_MODEL).strip()
+
+
+def _hf_auth_token() -> str:
+    if HF_TOKEN:
+        return HF_TOKEN
+    try:
+        from huggingface_hub import get_token
+
+        return (get_token() or "").strip()
+    except Exception:
+        return ""
 
 _models: dict[str, Any] = {}
 _model_registry_lock = threading.Lock()
@@ -80,7 +138,16 @@ def _supported_compute_types(device: str) -> list[str]:
 
 
 def _configured_backend_status(engine_name: str | None = None) -> dict[str, Any]:
-    selected_engine = "funasr" if (engine_name or _engine()) == "funasr" else "whisper"
+    selected_engine = _normalize_engine_name(engine_name or _engine())
+    if selected_engine == QWEN_MLX_ENGINE:
+        return {
+            "device": "mlx",
+            "compute_type": QWEN_MLX_COMPUTE_TYPE,
+            "configured_device": "mlx",
+            "configured_compute_type": QWEN_MLX_COMPUTE_TYPE,
+            "resolved": "",
+            "supported_compute_types": ["mlx", "float16", "bfloat16", "float32"],
+        }
     if selected_engine == "funasr":
         return {
             "device": "auto",
@@ -117,8 +184,13 @@ def _resolved_funasr_device() -> str:
 
 def _resolved_backend_status(engine_name: str | None = None) -> dict[str, Any]:
     backend = _configured_backend_status(engine_name)
-    selected_engine = "funasr" if (engine_name or _engine()) == "funasr" else "whisper"
-    backend["resolved"] = _resolved_funasr_device() if selected_engine == "funasr" else ("cpu" if ASR_DEVICE == "auto" else ASR_DEVICE)
+    selected_engine = _normalize_engine_name(engine_name or _engine())
+    if selected_engine == QWEN_MLX_ENGINE:
+        backend["resolved"] = "mlx"
+    elif selected_engine == "funasr":
+        backend["resolved"] = _resolved_funasr_device()
+    else:
+        backend["resolved"] = "cpu" if ASR_DEVICE == "auto" else ASR_DEVICE
     return backend
 
 
@@ -236,7 +308,7 @@ def _finalize_warm_failure(generation: int, error: str) -> None:
 
 
 def _discard_engine_cache(engine_name: str) -> None:
-    key = "funasr" if engine_name == "funasr" else "whisper"
+    key = _normalize_engine_name(engine_name)
     with _model_registry_lock:
         _models.pop(key, None)
 
@@ -301,12 +373,56 @@ def _write_silence_wav(duration_sec: float = 0.25, sample_rate: int = 16_000) ->
     return path
 
 
+def _load_wav_mono_float32(audio_path: Path) -> Any:
+    """Load 16kHz PCM WAV as float32 samples for faster-whisper.
+
+    Passing an ndarray to faster-whisper avoids importing PyAV in the sidecar
+    process. PyAV and pyannote can otherwise load different FFmpeg builds in
+    the same macOS process and emit Objective-C duplicate-class warnings.
+    """
+    try:
+        import numpy as np
+    except Exception as exc:
+        raise RuntimeError("numpy is required for stable local WAV decoding") from exc
+
+    with wave.open(str(audio_path), "rb") as wf:
+        channels = wf.getnchannels()
+        sample_width = wf.getsampwidth()
+        sample_rate = wf.getframerate()
+        frame_count = wf.getnframes()
+        raw = wf.readframes(frame_count)
+
+    if sample_rate != 16_000:
+        raise RuntimeError(f"expected 16kHz WAV after extraction, got {sample_rate}Hz: {audio_path}")
+    if sample_width != 2:
+        raise RuntimeError(f"expected 16-bit PCM WAV after extraction, got sample width {sample_width}: {audio_path}")
+    if channels < 1:
+        raise RuntimeError(f"invalid WAV channel count {channels}: {audio_path}")
+
+    samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1).astype(np.float32)
+    return samples
+
+
+def _normalize_engine_name(engine_name: str | None) -> str:
+    raw = (engine_name or "whisper").strip().lower()
+    if raw in {QWEN_MLX_ENGINE, "qwenmlx", "qwen_mlx", "qwen"}:
+        return QWEN_MLX_ENGINE
+    if raw == "funasr":
+        return "funasr"
+    return "whisper"
+
+
 def _engine() -> str:
-    return "funasr" if ASR_ENGINE == "funasr" else "whisper"
+    return _normalize_engine_name(ASR_ENGINE)
 
 
 def _active_model_name(engine_name: str) -> str:
-    if engine_name == "funasr":
+    normalized = _normalize_engine_name(engine_name)
+    if normalized == QWEN_MLX_ENGINE:
+        return QWEN_MLX_MODEL
+    if normalized == "funasr":
         return FUNASR_ASR_MODEL
     return DEFAULT_MODEL_NAME
 
@@ -485,15 +601,41 @@ def _load_funasr_model():
     except Exception as exc:
         raise RuntimeError("未安装 FunASR。请先执行 asr.runtime.bootstrap。") from exc
 
+    if is_funasr_nano_model(FUNASR_ASR_MODEL):
+        # FunASR 1.3.x ships Nano with package-local bare imports such as
+        # `from ctc import CTC`; keep that package dir importable before
+        # loading the module so the model class registers with AutoModel.
+        import funasr.models.fun_asr_nano as nano_pkg
+
+        nano_dir = str(Path(nano_pkg.__file__).resolve().parent)
+        if nano_dir not in sys.path:
+            sys.path.insert(0, nano_dir)
+        import funasr.models.fun_asr_nano.model  # noqa: F401
+
     paths = _local_funasr_paths()
-    model = AutoModel(
-        model=_resolve_funasr_source(paths["asr"], FUNASR_ASR_MODEL),
-        vad_model=_resolve_funasr_source(paths["vad"], FUNASR_VAD_MODEL) if VAD_ENABLED else None,
-        punc_model=_resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
-        spk_model=_resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None,
-        disable_update=True,
-        trust_remote_code=True,
-    )
+    model_source = _resolve_funasr_source(paths["asr"], FUNASR_ASR_MODEL)
+    is_nano = is_funasr_nano_model(FUNASR_ASR_MODEL)
+    model_kwargs: dict[str, Any] = {
+        "model": model_source,
+        "vad_model": (
+            None
+            if is_nano
+            else _resolve_funasr_source(paths["vad"], FUNASR_VAD_MODEL) if VAD_ENABLED else None
+        ),
+        "punc_model": None if is_nano else _resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
+        "spk_model": (
+            None
+            if is_nano
+            else _resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None
+        ),
+        "disable_update": True,
+        "trust_remote_code": True,
+    }
+    if is_nano:
+        model_py = Path(model_source).expanduser() / "model.py"
+        if model_py.exists():
+            model_kwargs["remote_code"] = str(model_py)
+    model = AutoModel(**model_kwargs)
     _set_backend_status(_resolved_backend_status("funasr"))
 
     with _model_registry_lock:
@@ -501,6 +643,86 @@ def _load_funasr_model():
         if cached is None:
             _models["funasr"] = model
             return model
+        return cached
+
+
+def _module_available(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+def _qwen_local_path(model_name: str) -> Path:
+    path = Path(model_name).expanduser()
+    if path.is_absolute() or str(path).startswith("~"):
+        return path
+    return QWEN_MLX_MODEL_ROOT / model_name.strip().split("/")[-1]
+
+
+def _qwen_snapshot_ready(path: Path) -> bool:
+    return path.exists() and (path / "config.json").exists() and any(path.glob("*.safetensors"))
+
+
+def _resolve_qwen_mlx_source() -> str:
+    explicit_path = os.getenv("INSIGHTKIT_QWEN_MLX_MODEL_PATH", "").strip()
+    if explicit_path:
+        path = Path(explicit_path).expanduser()
+        if path.exists():
+            return str(path)
+        raise RuntimeError(f"指定的 Qwen ASR 模型路径不存在: {path}")
+
+    local_path = _qwen_local_path(QWEN_MLX_MODEL)
+    if _qwen_snapshot_ready(local_path):
+        return str(local_path)
+
+    if STRICT_LOCAL_ONLY:
+        raise RuntimeError(
+            "本地 Qwen3-ASR MLX 模型未就绪。请先执行 asr.runtime.bootstrap（期望目录: "
+            f"{local_path}）。"
+        )
+    return qwen_mlx_repo_for_model(QWEN_MLX_MODEL)
+
+
+def _resolve_qwen_forced_aligner_source() -> str | None:
+    explicit_path = os.getenv("INSIGHTKIT_QWEN_FORCED_ALIGNER_PATH", "").strip()
+    if explicit_path:
+        path = Path(explicit_path).expanduser()
+        if path.exists():
+            return str(path)
+        raise RuntimeError(f"指定的 Qwen forced aligner 路径不存在: {path}")
+
+    local_path = _qwen_local_path(QWEN_MLX_FORCED_ALIGNER)
+    if _qwen_snapshot_ready(local_path):
+        return str(local_path)
+
+    if STRICT_LOCAL_ONLY:
+        logger.warning("Qwen forced aligner 未就绪，Qwen 时间戳将降级: %s", local_path)
+        return None
+    return qwen_mlx_repo_for_model(QWEN_MLX_FORCED_ALIGNER)
+
+
+def _load_qwen_mlx_session():
+    with _model_registry_lock:
+        cached = _models.get(QWEN_MLX_ENGINE)
+    if cached is not None:
+        return cached
+
+    try:
+        from mlx_qwen3_asr import Session
+    except Exception as exc:
+        raise RuntimeError("未安装 mlx-qwen3-asr。请先执行 asr.runtime.bootstrap。") from exc
+
+    model_source = _resolve_qwen_mlx_source()
+    logger.info("加载 Qwen3-ASR MLX 模型: source=%s", model_source)
+    session = Session(model=model_source)
+    _set_backend_status(_resolved_backend_status(QWEN_MLX_ENGINE))
+
+    with _model_registry_lock:
+        cached = _models.get(QWEN_MLX_ENGINE)
+        if cached is None:
+            _models[QWEN_MLX_ENGINE] = session
+            return session
         return cached
 
 
@@ -556,11 +778,13 @@ def _extract_audio_clip(audio_path: Path, max_seconds: int = LID_SAMPLE_SECONDS)
 def _load_diarization_pipeline():
     if not DIARIZATION_ENABLED:
         return None
-    if not HF_TOKEN:
+    token = _hf_auth_token()
+    if not token:
         return None
 
+    cache_key = f"pyannote_pipeline:{PYANNOTE_MODEL_ID}"
     with _model_registry_lock:
-        cached = _models.get("pyannote_pipeline")
+        cached = _models.get(cache_key)
     if cached is not None:
         return cached
 
@@ -570,19 +794,29 @@ def _load_diarization_pipeline():
         return None
 
     try:
-        pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=HF_TOKEN,
-        )
+        os.environ.setdefault("PYANNOTE_AUTH_TOKEN", token)
+        try:
+            pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL_ID, token=token)
+        except TypeError:
+            pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL_ID, use_auth_token=token)
         with _model_registry_lock:
-            cached = _models.get("pyannote_pipeline")
+            cached = _models.get(cache_key)
             if cached is None:
-                _models["pyannote_pipeline"] = pipeline
+                _models[cache_key] = pipeline
                 return pipeline
             return cached
     except Exception as exc:
         logger.warning("pyannote 初始化失败，将禁用分离: %s", exc)
         return None
+
+
+def _speaker_annotation_from_pyannote(output: Any) -> Any:
+    """Return a pyannote Annotation from legacy or community pipeline outputs."""
+    for attr in ("exclusive_speaker_diarization", "speaker_diarization"):
+        annotation = getattr(output, attr, None)
+        if annotation is not None and hasattr(annotation, "itertracks"):
+            return annotation
+    return output
 
 
 def _diarize(audio_path: Path) -> list[tuple[int, int, str]]:
@@ -596,8 +830,13 @@ def _diarize(audio_path: Path) -> list[tuple[int, int, str]]:
         logger.warning("pyannote 说话人分离失败，继续无 speaker 转写: %s", exc)
         return []
 
+    annotation = _speaker_annotation_from_pyannote(diarization)
+    if not hasattr(annotation, "itertracks"):
+        logger.warning("pyannote 返回了不支持的分离结果类型: %s", type(diarization).__name__)
+        return []
+
     spans: list[tuple[int, int, str]] = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
+    for turn, _, speaker in annotation.itertracks(yield_label=True):
         start_ms = max(0, int(round(float(turn.start) * 1000)))
         end_ms = max(start_ms + 1, int(round(float(turn.end) * 1000)))
         spans.append((start_ms, end_ms, str(speaker)))
@@ -630,8 +869,9 @@ def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
         return "unknown", []
 
     model = _load_whisper_model()
+    audio_samples = _load_wav_mono_float32(audio_path)
     segments_iter, info = model.transcribe(
-        str(audio_path),
+        audio_samples,
         language=None,
         vad_filter=False,
         beam_size=1,
@@ -673,8 +913,22 @@ def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
 
 def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     model = _load_funasr_model()
-    result = model.generate(input=str(audio_path))
+    is_nano = is_funasr_nano_model(FUNASR_ASR_MODEL)
+    if is_nano:
+        result = model.generate(
+            input=[str(audio_path)],
+            cache={},
+            batch_size=1,
+            language=os.getenv("INSIGHTKIT_FUNASR_LANGUAGE", "中文").strip() or "中文",
+            itn=os.getenv("INSIGHTKIT_FUNASR_ITN", "1").strip() != "0",
+        )
+    else:
+        result = model.generate(input=str(audio_path))
     parsed = _parse_funasr_result(result)
+    speaker_spans = _diarize(audio_path) if is_nano and DIARIZATION_ENABLED else []
+    duration_ms = 0
+    if is_nano:
+        duration_ms = max(1200, int(round(_get_audio_duration(str(audio_path)) * 1000)))
     segments: list[dict[str, Any]] = []
     for seg in parsed:
         text = str(seg.get("text", "") or "").strip()
@@ -682,9 +936,13 @@ def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
             continue
         start_ms = int(seg.get("start", 0) or 0)
         end_ms = int(seg.get("end", 0) or 0)
+        if is_nano and end_ms <= start_ms:
+            end_ms = duration_ms
         if end_ms <= start_ms:
             end_ms = start_ms + 1200
         speaker = str(seg.get("speaker", "") or "")
+        if is_nano and not speaker:
+            speaker = _pick_speaker(start_ms, end_ms, speaker_spans)
         segments.append(
             {
                 "start": start_ms,
@@ -698,8 +956,209 @@ def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     return "zh", segments
 
 
+def _qwen_diarization_ready() -> bool:
+    if not DIARIZATION_ENABLED:
+        return False
+    if not _module_available("pyannote.audio") or not _module_available("torch"):
+        return False
+    model_path = Path(PYANNOTE_MODEL_ID).expanduser()
+    return bool(_hf_auth_token()) or model_path.exists()
+
+
+def _qwen_lang(language: Any) -> str:
+    value = str(language or "").strip().lower()
+    if value.startswith("zh") or "chinese" in value or value in {"mandarin", "cmn"}:
+        return "zh"
+    if value.startswith("en") or "english" in value:
+        return "en"
+    return value or "unknown"
+
+
+def _ms_from_seconds(value: Any, fallback_ms: int = 0) -> int:
+    try:
+        seconds = float(value)
+        if math.isfinite(seconds):
+            return max(0, int(round(seconds * 1000)))
+    except Exception:
+        pass
+    return max(0, int(fallback_ms))
+
+
+def _is_cjk(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
+
+
+def _normalize_cjk_spacing(text: str) -> str:
+    if not any(_is_cjk(char) for char in text):
+        return " ".join(text.split())
+
+    chars: list[str] = []
+    source = " ".join(text.split())
+    for index, char in enumerate(source):
+        if char != " ":
+            chars.append(char)
+            continue
+        prev_char = source[index - 1] if index > 0 else ""
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if _is_cjk(prev_char) and _is_cjk(next_char):
+            continue
+        chars.append(char)
+    return "".join(chars).strip()
+
+
+def _qwen_text_join(parts: list[str]) -> str:
+    clean = [part.strip() for part in parts if part and part.strip()]
+    if not clean:
+        return ""
+    # Qwen word timestamps for Chinese often arrive as character-like tokens.
+    return _normalize_cjk_spacing(" ".join(clean))
+
+
+def _segment_from_qwen_item(item: dict[str, Any], default_speaker: str = "") -> dict[str, Any] | None:
+    text = _normalize_cjk_spacing(str(item.get("text", "") or item.get("word", "") or ""))
+    if not text:
+        return None
+    start_ms = _ms_from_seconds(item.get("start", 0.0))
+    end_ms = _ms_from_seconds(item.get("end", 0.0), fallback_ms=start_ms + 1200)
+    if end_ms <= start_ms:
+        end_ms = start_ms + 1200
+    speaker = str(item.get("speaker", "") or item.get("label", "") or default_speaker)
+    confidence = float(item.get("confidence", 0.0) or item.get("score", 0.0) or 0.0)
+    return {
+        "start": start_ms,
+        "end": end_ms,
+        "text": text,
+        "speaker": speaker,
+        "confidence": max(0.0, min(1.0, confidence)),
+    }
+
+
+def _group_qwen_word_segments(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: list[dict[str, Any]] = []
+    current_words: list[str] = []
+    current_start = 0
+    current_end = 0
+    current_speaker = ""
+
+    def flush() -> None:
+        nonlocal current_words, current_start, current_end, current_speaker
+        text = _qwen_text_join(current_words)
+        if text:
+            grouped.append(
+                {
+                    "start": current_start,
+                    "end": max(current_end, current_start + 200),
+                    "text": text,
+                    "speaker": current_speaker,
+                    "confidence": 0.0,
+                }
+            )
+        current_words = []
+        current_start = 0
+        current_end = 0
+        current_speaker = ""
+
+    for raw in words:
+        seg = _segment_from_qwen_item(raw)
+        if seg is None:
+            continue
+        text = str(seg["text"]).strip()
+        start = int(seg["start"])
+        end = int(seg["end"])
+        speaker = str(seg.get("speaker", "") or "")
+        gap_ms = start - current_end if current_words else 0
+        duration_ms = end - current_start if current_words else 0
+        speaker_changed = bool(current_speaker and speaker and speaker != current_speaker)
+        if current_words and (gap_ms > 800 or duration_ms >= 8000 or speaker_changed):
+            flush()
+        if not current_words:
+            current_start = start
+            current_speaker = speaker
+        current_words.append(text)
+        current_end = max(current_end, end)
+        if text.endswith((".", "?", "!", "。", "？", "！", "；", ";")):
+            flush()
+
+    if current_words:
+        flush()
+    return grouped
+
+
+def _qwen_segments_from_result(result: Any) -> list[dict[str, Any]]:
+    speaker_segments = list(getattr(result, "speaker_segments", None) or [])
+    if speaker_segments:
+        converted = [
+            seg
+            for item in speaker_segments
+            if isinstance(item, dict)
+            for seg in [_segment_from_qwen_item(item)]
+            if seg is not None
+        ]
+        if converted:
+            return converted
+
+    words = [item for item in list(getattr(result, "segments", None) or []) if isinstance(item, dict)]
+    grouped = _group_qwen_word_segments(words)
+    if grouped:
+        return grouped
+
+    chunks = list(getattr(result, "chunks", None) or [])
+    if chunks:
+        converted = [
+            seg
+            for item in chunks
+            if isinstance(item, dict)
+            for seg in [_segment_from_qwen_item(item)]
+            if seg is not None
+        ]
+        if converted:
+            return converted
+
+    text = str(getattr(result, "text", "") or "").strip()
+    if not text:
+        return []
+    return [{"start": 0, "end": 1200, "text": text, "speaker": "", "confidence": 0.0}]
+
+
+def _transcribe_qwen_mlx(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    if not _speech_exists(audio_path):
+        return "unknown", []
+
+    session = _load_qwen_mlx_session()
+    diarize = _qwen_diarization_ready()
+    if diarize and not os.environ.get("PYANNOTE_AUTH_TOKEN"):
+        token = _hf_auth_token()
+        if token:
+            os.environ["PYANNOTE_AUTH_TOKEN"] = token
+    if DIARIZATION_ENABLED and not diarize:
+        logger.warning("Qwen 说话人分离未就绪，将继续无 speaker 转写。")
+
+    return_timestamps = QWEN_MLX_RETURN_TIMESTAMPS or diarize
+    forced_aligner = _resolve_qwen_forced_aligner_source() if return_timestamps else None
+    kwargs: dict[str, Any] = {
+        "audio": str(audio_path),
+        "language": QWEN_MLX_LANGUAGE,
+        "return_timestamps": return_timestamps,
+        "diarize": diarize,
+        "return_chunks": True,
+    }
+    if forced_aligner:
+        kwargs["forced_aligner"] = forced_aligner
+    max_new_tokens = os.getenv("INSIGHTKIT_QWEN_MAX_NEW_TOKENS", "").strip()
+    if max_new_tokens:
+        kwargs["max_new_tokens"] = int(max_new_tokens)
+
+    result = session.transcribe(**kwargs)
+    segments = _qwen_segments_from_result(result)
+    _mark_warm_ready()
+    return _qwen_lang(getattr(result, "language", "")), segments
+
+
 def _transcribe_active(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
-    if _engine() == "funasr":
+    engine = _engine()
+    if engine == QWEN_MLX_ENGINE:
+        return _transcribe_qwen_mlx(audio_path)
+    if engine == "funasr":
         return _transcribe_funasr(audio_path)
     return _transcribe_whisper(audio_path)
 
@@ -707,14 +1166,18 @@ def _transcribe_active(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
 def _warmup_once(engine_name: str) -> None:
     wav_path: Path | None = None
     try:
+        if engine_name == QWEN_MLX_ENGINE:
+            _load_qwen_mlx_session()
+            return
         wav_path = _write_silence_wav()
         if engine_name == "funasr":
             model = _load_funasr_model()
             _ = model.generate(input=str(wav_path))
         else:
             model = _load_whisper_model()
+            audio_samples = _load_wav_mono_float32(wav_path)
             segments_iter, _ = model.transcribe(
-                str(wav_path),
+                audio_samples,
                 language="en",
                 vad_filter=False,
                 beam_size=1,
@@ -738,7 +1201,9 @@ def _warm_worker(engine_name: str, model_name: str, generation: int) -> None:
     try:
         logger.info("asr prewarm start: engine=%s model=%s generation=%s", engine_name, model_name, generation)
         _set_warm_state(state="loading")
-        if engine_name == "funasr":
+        if engine_name == QWEN_MLX_ENGINE:
+            _load_qwen_mlx_session()
+        elif engine_name == "funasr":
             _load_funasr_model()
         else:
             _load_whisper_model()
@@ -771,7 +1236,7 @@ def prewarm_asr(
     model: str | None = None,
     timeout_sec: int = 20,
 ) -> dict[str, Any]:
-    selected_engine = "funasr" if (engine or _engine()) == "funasr" else "whisper"
+    selected_engine = _normalize_engine_name(engine or _engine())
     selected_model = (model or _active_model_name(selected_engine)).strip() or _active_model_name(selected_engine)
     watchdog_sec = max(3, int(timeout_sec or 20))
 

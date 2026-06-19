@@ -41,6 +41,9 @@ struct SourceToggleBar: View {
                     .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("live_source_toggle_\(source.wrappedValue.id)")
+            .accessibilityLabel("\(source.wrappedValue.label)开关")
+            .accessibilityValue(source.wrappedValue.isEnabled ? "on" : "off")
             .contextMenu {
                 Button("选择设备...") {
                     onDeviceSelect?(source.wrappedValue.id)
@@ -50,6 +53,8 @@ struct SourceToggleBar: View {
             Text(source.wrappedValue.isEnabled ? "on" : "off")
                 .font(InsightTypography.small)
                 .foregroundStyle(InsightTheme.textTertiary)
+                .accessibilityIdentifier("live_source_state_\(source.wrappedValue.id)")
+                .accessibilityLabel("\(source.wrappedValue.label)状态")
         }
     }
 }

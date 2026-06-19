@@ -41,6 +41,7 @@ class RecordWriter:
         media_type: str,
         record_source: str,
         duration_sec: float,
+        analysis_meta: dict[str, Any] | None = None,
         notes_md: str = "",
     ) -> Path:
         """Write record folder and return its Path."""
@@ -63,6 +64,9 @@ class RecordWriter:
             "autoTags": topics,
             "summaryPreview": overview[:200] if overview else "",
         }
+        analysis = self._analysis_metadata(analysis_meta)
+        if analysis:
+            metadata["analysis"] = analysis
         self._write_json(record_dir / "metadata.json", metadata)
 
         # ── transcript.json ───────────────────────────────────────────────
@@ -96,13 +100,26 @@ class RecordWriter:
                 for a in (insight_package.get("action_tracks") or [])
                 if a.get("task")
             ]
+            timeline = [
+                {
+                    "timestamp": str(t.get("timestamp", "")),
+                    "title": str(t.get("title", "")),
+                    "summary": str(t.get("summary", "")),
+                }
+                for t in (insight_package.get("timeline_beats") or [])
+                if t.get("title") or t.get("summary")
+            ]
             minutes = {
                 "structured_summary": overview,
                 "highlights": highlights,
                 "key_decisions": decisions,
                 "action_items": actions,
+                "timeline_beats": timeline,
             }
         self._write_json(record_dir / "minutes.json", minutes)
+
+        if insight_package is not None:
+            self._write_json(record_dir / "insight_package.json", insight_package)
 
         # ── notes.md ──────────────────────────────────────────────────────
         (record_dir / "notes.md").write_text(notes_md, encoding="utf-8")
@@ -125,9 +142,13 @@ class RecordWriter:
     @staticmethod
     def _copy_or_hardlink(src: Path, dest: Path) -> None:
         """Prefer hard link (instant, no disk copy); fall back to shutil.copy2."""
+        if dest.exists() and os.path.samefile(src, dest):
+            return
         try:
             os.link(src, dest)
         except OSError:
+            if dest.exists() and os.path.samefile(src, dest):
+                return
             shutil.copy2(src, dest)
 
     @staticmethod
@@ -153,3 +174,32 @@ class RecordWriter:
         if not isinstance(node, list):
             return []
         return [str(x) for x in node if x]
+
+    @staticmethod
+    def _analysis_metadata(meta: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(meta, dict):
+            return {}
+
+        def clean(key: str) -> str:
+            return str(meta.get(key, "") or "").strip()
+
+        provider = clean("provider") or clean("provider_vendor") or clean("vendor")
+        model = clean("model") or clean("provider_model")
+        source = clean("source") or clean("mode")
+        analysis_state = clean("analysis_state") or clean("analysisState")
+        generated_at = clean("generated_at") or clean("updated_at")
+        strict_raw = meta.get("strict_mode")
+        payload: dict[str, Any] = {}
+        if provider:
+            payload["provider"] = provider
+        if model:
+            payload["model"] = model
+        if source:
+            payload["source"] = source
+        if analysis_state:
+            payload["analysisState"] = analysis_state
+        if isinstance(strict_raw, bool):
+            payload["strictMode"] = strict_raw
+        if generated_at:
+            payload["generatedAt"] = generated_at
+        return payload

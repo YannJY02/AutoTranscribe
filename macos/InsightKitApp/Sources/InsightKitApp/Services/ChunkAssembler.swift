@@ -44,7 +44,7 @@ final class ChunkAssembler {
         firstChunkDurationSec: Double = 2,
         sampleRate: Int = 16_000,
         chunkDir: URL? = nil,
-        maxRetainedChunkFiles: Int = 200
+        maxRetainedChunkFiles: Int = 1_800
     ) {
         self.chunkDurationSec = chunkDurationSec
         self.sampleRate = sampleRate
@@ -90,6 +90,42 @@ final class ChunkAssembler {
         let chunkData = pending
         pending.removeAll(keepingCapacity: true)
         return [try emitChunk(samples: chunkData)]
+    }
+
+    func writeCombinedWAV(to outputURL: URL) -> URL? {
+        let wavFiles = createdChunkURLs.filter {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+        guard !wavFiles.isEmpty else { return nil }
+        guard let firstData = try? Data(contentsOf: wavFiles[0]), firstData.count > 44 else {
+            return nil
+        }
+
+        var pcm = Data()
+        for file in wavFiles {
+            guard let data = try? Data(contentsOf: file), data.count > 44 else { continue }
+            pcm.append(data.subdata(in: 44..<data.count))
+        }
+        guard !pcm.isEmpty else { return nil }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            var header = firstData.subdata(in: 0..<44)
+            let fileSize = UInt32(44 + pcm.count - 8)
+            let dataSize = UInt32(pcm.count)
+            header.replaceSubrange(4..<8, with: withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
+            header.replaceSubrange(40..<44, with: withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
+
+            var result = header
+            result.append(pcm)
+            try result.write(to: outputURL, options: .atomic)
+            return outputURL
+        } catch {
+            return nil
+        }
     }
 
     private func ensureChunkDir() throws {

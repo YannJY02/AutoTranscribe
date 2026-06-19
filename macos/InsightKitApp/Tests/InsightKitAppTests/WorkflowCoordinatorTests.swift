@@ -45,4 +45,37 @@ final class WorkflowCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.route, .home)
         XCTAssertEqual(coordinator.appState.activeRoute, .home)
     }
+
+    func testNativePersistedRecordEnablesExportWithoutDocumentExportCapability() throws {
+        let root = RecordExportTestFixture.makeRoot(prefix: "InsightKitCoordinatorExport")
+        let liveID = "live-coordinator-export"
+        let txID = "file-coordinator-export"
+        try RecordExportTestFixture.seedRecord(root: root, recordID: liveID, source: .live)
+        try RecordExportTestFixture.seedRecord(root: root, recordID: txID, source: .imported)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = root
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            recordsService: recordsService,
+            capabilityClient: RPCClientMock()
+        )
+
+        live.stateQueue.sync {
+            live._sessionState.lastMeetingID = liveID
+        }
+        tx.currentMeetingID = txID
+
+        XCTAssertTrue(coordinator.canExportLive)
+        XCTAssertTrue(coordinator.canExportTranscription)
+    }
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -196,6 +197,30 @@ class InsightStore:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    def upsert_insight_package(self, meeting_id: str, payload: dict[str, Any], updated_at: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO insight_packages(meeting_id, payload_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(meeting_id) DO UPDATE SET
+                payload_json=excluded.payload_json,
+                updated_at=excluded.updated_at
+            """,
+            (meeting_id, json.dumps(payload, ensure_ascii=False), updated_at),
+        )
+        self.conn.commit()
+
+    def get_insight_package(self, meeting_id: str) -> dict[str, Any] | None:
+        cur = self.conn.execute(
+            "SELECT payload_json, updated_at FROM insight_packages WHERE meeting_id=?",
+            (meeting_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        payload = json.loads(str(row["payload_json"]))
+        return {"payload": payload, "updated_at": row["updated_at"]}
+
     def upsert_transcription_job(
         self,
         *,
@@ -259,6 +284,30 @@ class InsightStore:
             WHERE id=?
             """,
             (job_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_latest_transcription_job_for_meeting(self, meeting_id: str) -> dict[str, Any] | None:
+        cur = self.conn.execute(
+            """
+            SELECT
+                id,
+                meeting_id,
+                source_path,
+                state,
+                progress,
+                stage,
+                error,
+                reason,
+                started_at,
+                ended_at
+            FROM transcription_jobs
+            WHERE meeting_id=?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (meeting_id,),
         )
         row = cur.fetchone()
         return dict(row) if row else None

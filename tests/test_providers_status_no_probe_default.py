@@ -19,8 +19,8 @@ class TestProvidersStatusNoProbeDefault(unittest.TestCase):
                 "vendors": {
                     "deepseek": {
                         "vendor": "deepseek",
-                        "base_url": "https://api.deepseek.com/v1",
-                        "model_id": "deepseek-chat",
+                        "base_url": "https://api.deepseek.com",
+                        "model_id": "deepseek-v4-flash",
                         "configured": True,
                         "has_api_key": True,
                         "model_ready": True,

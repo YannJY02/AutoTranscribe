@@ -6,16 +6,17 @@ extension LiveSessionViewModel {
 
     /// Called after stopLiveSession completes. Serializes transcript + insight
     /// and calls the records.save RPC to persist the record folder via Python RecordWriter.
-    func saveToRecords(meetingID: String) {
+    func saveToRecords(meetingID: String, insightPackageOverride: InsightPackageV1? = nil) {
         // Capture @Published state on the calling thread to avoid data races.
         // These properties are mutated on main; reading them here (pipelineQueue)
         // is safe because stopLiveSession already stopped all producers and
         // updated UI state before invoking this method.
         let capturedSegments = self.transcriptSegments
-        let capturedPackage = self.lastInsightPackage
+        let capturedPackage = insightPackageOverride ?? self.lastInsightPackage
         let capturedRecordingURL = self.temporaryRecordingURL
         let capturedDuration = self.recordingDuration
         let capturedNotes = self.notes
+        let capturedAnalysisMeta = Self.analysisMetadata(provider: self.metrics.provider, state: self.analysisRuntimeState)
 
         rpcQueue.async { [weak self] in
             guard let self else { return }
@@ -58,6 +59,7 @@ extension LiveSessionViewModel {
                     mediaType: mediaType,
                     recordSource: "live",
                     durationSec: durationSec,
+                    analysisMeta: capturedAnalysisMeta,
                     notesMD: notesMD
                 )
 
@@ -74,59 +76,46 @@ extension LiveSessionViewModel {
         }
     }
 
+    private static func analysisMetadata(provider: String, state: AnalysisRuntimeState) -> [String: Any]? {
+        var meta: [String: Any] = [
+            "source": "final",
+            "analysis_state": state.rawValue,
+        ]
+        let trimmed = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            let parts = trimmed.split(separator: ":", maxSplits: 1).map(String.init)
+            meta["provider"] = parts.first ?? trimmed
+            if parts.count > 1 {
+                meta["model"] = parts[1]
+            }
+        }
+        return meta
+    }
+
     // MARK: - WAV chunk concatenation (audio-only fallback)
 
-    /// Concatenate all WAV chunk files produced by ChunkAssembler into a single file.
-    /// Returns the URL of the concatenated file, or nil if no chunks exist.
     func concatenateWAVChunks(meetingID: String) -> URL? {
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
         let outputURL = tmpDir.appendingPathComponent("recording.wav")
+        return chunkAssembler.writeCombinedWAV(to: outputURL)
+    }
 
-        // Collect all WAV files in the tmp dir sorted by name (chunk index order)
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: tmpDir, includingPropertiesForKeys: nil
-        ) else { return nil }
-
-        let wavFiles = files
-            .filter { $0.pathExtension.lowercased() == "wav" && $0.lastPathComponent != "recording.wav" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-
-        guard !wavFiles.isEmpty else { return nil }
-
-        // If only one file, just rename it
-        if wavFiles.count == 1 {
-            try? FileManager.default.moveItem(at: wavFiles[0], to: outputURL)
-            return outputURL
-        }
-
-        // Read first file to get format header (44 bytes for standard WAV)
-        guard let firstData = try? Data(contentsOf: wavFiles[0]), firstData.count > 44 else {
+    @discardableResult
+    func prepareTemporaryRecordingForSave(meetingID: String) -> URL? {
+        _ = try? chunkAssembler.flush(minDurationSec: 0.1)
+        guard let recordingURL = concatenateWAVChunks(meetingID: meetingID) else {
+            updateMain {
+                self.recordingStatusMessage = "录音太短或未捕获到可保存音频，已保留转写与笔记；请检查输入源后重新录制。"
+            }
             return nil
         }
-
-        var combined = Data()
-        var totalPCMBytes: Int = 0
-
-        for file in wavFiles {
-            guard let data = try? Data(contentsOf: file), data.count > 44 else { continue }
-            combined.append(data.subdata(in: 44..<data.count))
-            totalPCMBytes += data.count - 44
+        temporaryRecordingURL = recordingURL
+        updateMain {
+            self.recordingStatusMessage = nil
+            self.mediaURL = recordingURL
         }
-
-        // Rebuild WAV header with correct total size
-        var header = firstData.subdata(in: 0..<44)
-        let fileSize = UInt32(44 + totalPCMBytes - 8)
-        let dataSize = UInt32(totalPCMBytes)
-        header.replaceSubrange(4..<8, with: withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
-        header.replaceSubrange(40..<44, with: withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
-
-        var result = header
-        result.append(combined)
-
-        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        try? result.write(to: outputURL)
-        return outputURL
+        return recordingURL
     }
 }

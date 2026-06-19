@@ -10,6 +10,7 @@ struct ChapterSidebarView<DataSource: ChapterSidebarDataSource>: View {
                 .foregroundStyle(InsightTheme.textPrimary)
                 .padding(.horizontal, InsightSpacing.lg)
                 .padding(.top, InsightSpacing.lg)
+                .accessibilityIdentifier("live_chapters_title")
 
             if dataSource.chapters.isEmpty {
                 Spacer()
@@ -17,12 +18,13 @@ struct ChapterSidebarView<DataSource: ChapterSidebarDataSource>: View {
                     .font(InsightTypography.caption)
                     .foregroundStyle(InsightTheme.textTertiary)
                     .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("live_chapters_empty_state")
                 Spacer()
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
-                        ForEach(dataSource.chapters) { chapter in
-                            chapterRow(chapter)
+                        ForEach(Array(dataSource.chapters.enumerated()), id: \.element.id) { index, chapter in
+                            chapterRow(chapter, index: index)
                         }
                     }
                     .padding(.horizontal, InsightSpacing.lg)
@@ -36,27 +38,32 @@ struct ChapterSidebarView<DataSource: ChapterSidebarDataSource>: View {
                     .font(InsightTypography.heading)
                     .foregroundStyle(InsightTheme.textPrimary)
                     .padding(.horizontal, InsightSpacing.lg)
+                    .accessibilityIdentifier("live_smart_minutes_summary_title")
                 ScrollView {
                     Text(minutes.structuredSummary)
                         .font(InsightTypography.body)
                         .foregroundStyle(InsightTheme.textSecondary)
                         .padding(.horizontal, InsightSpacing.lg)
+                        .accessibilityIdentifier("live_smart_minutes_summary_body")
                 }
             } else if dataSource.canGenerateMinutes {
                 Spacer()
-                Button("生成智能纪要") {
+                Button {
                     dataSource.onGenerateMinutes()
+                } label: {
+                    Text("生成智能纪要")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(InsightTheme.accent)
                 .padding(.horizontal, InsightSpacing.lg)
                 .padding(.bottom, InsightSpacing.lg)
+                .accessibilityIdentifier("live_generate_minutes_sidebar_button")
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func chapterRow(_ chapter: ChapterSummary) -> some View {
+    private func chapterRow(_ chapter: ChapterSummary, index: Int) -> some View {
         Button {
             dataSource.onChapterTapped(chapter)
         } label: {
@@ -80,6 +87,9 @@ struct ChapterSidebarView<DataSource: ChapterSidebarDataSource>: View {
             .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("live_chapter_row_\(index)")
+        .accessibilityLabel(chapter.title)
+        .accessibilityValue(formatTimestamp(chapter.timestamp))
     }
 
     private func formatTimestamp(_ seconds: TimeInterval) -> String {

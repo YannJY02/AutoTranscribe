@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,13 +16,32 @@ class ProviderError(RuntimeError):
     """Provider request failed."""
 
 
+DEFAULT_VENDOR = "deepseek"
+DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash"
+
+
+def _redact_secret(value: str) -> str:
+    redacted = re.sub(r"(Authorization:\s*Bearer\s+)[^\s,\"]+", r"\1[REDACTED]", value, flags=re.IGNORECASE)
+    redacted = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"((?:OPENAI|DEEPSEEK|GEMINI|QWEN|DOUBAO|API)_?KEY\s*[=:]\s*)[^\s,\"]+", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", redacted)
+    redacted = re.sub(r"\bhf_[A-Za-z0-9_-]{8,}\b", "[REDACTED]", redacted)
+    redacted = re.sub(
+        r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+        "[REDACTED]",
+        redacted,
+    )
+    return redacted
+
+
 class ProviderAdapter(Protocol):
     def complete(self, system_prompt: str, user_prompt: str, model: str) -> str:
         raise NotImplementedError
 
 
 def describe_provider_error(message: str, vendor: str | None = None) -> dict[str, str]:
-    raw = (message or "").strip()
+    raw = _redact_secret((message or "").strip())
     lower = raw.lower()
     vendor_label = (vendor or "").strip().lower()
 
@@ -122,7 +142,7 @@ class OpenAICompatibleProvider:
         try:
             return content["choices"][0]["message"]["content"]
         except Exception as exc:
-            raise ProviderError(f"bad provider response: {content}") from exc
+            raise ProviderError(f"bad provider response: {_redact_secret(repr(content))}") from exc
 
     def _request(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
         req = urllib.request.Request(
@@ -151,12 +171,12 @@ class OpenAICompatibleProvider:
                         return json.loads(resp.read().decode("utf-8"))
                 except urllib.error.HTTPError as retry_exc:
                     retry_raw = retry_exc.read().decode("utf-8", errors="ignore")
-                    raise ProviderError(f"http {retry_exc.code}: {retry_raw}") from retry_exc
+                    raise ProviderError(f"http {retry_exc.code}: {_redact_secret(retry_raw)}") from retry_exc
                 except Exception as retry_exc:
-                    raise ProviderError(str(retry_exc)) from retry_exc
-            raise ProviderError(f"http {exc.code}: {raw}") from exc
+                    raise ProviderError(_redact_secret(str(retry_exc))) from retry_exc
+            raise ProviderError(f"http {exc.code}: {_redact_secret(raw)}") from exc
         except Exception as exc:
-            raise ProviderError(str(exc)) from exc
+            raise ProviderError(_redact_secret(str(exc))) from exc
 
 
 @dataclass
@@ -170,7 +190,7 @@ class GeminiProvider:
         model_name = urllib.parse.quote(model, safe="")
         url = (
             self.base_url.rstrip("/")
-            + f"/v1beta/models/{model_name}:generateContent?key={urllib.parse.quote(self.api_key, safe='')}"
+            + f"/v1beta/models/{model_name}:generateContent"
         )
         body = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
@@ -184,16 +204,16 @@ class GeminiProvider:
             url,
             data=json.dumps(body).encode("utf-8"),
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
         )
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 content = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             msg = exc.read().decode("utf-8", errors="ignore")
-            raise ProviderError(f"http {exc.code}: {msg}") from exc
+            raise ProviderError(f"http {exc.code}: {_redact_secret(msg)}") from exc
         except Exception as exc:
-            raise ProviderError(str(exc)) from exc
+            raise ProviderError(_redact_secret(str(exc))) from exc
 
         try:
             return content["candidates"][0]["content"]["parts"][0]["text"]
@@ -217,8 +237,8 @@ def _default_profiles() -> dict[str, ProviderProfile]:
         ),
         "deepseek": ProviderProfile(
             vendor="deepseek",
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip(),
-            model_id=os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip() or "deepseek-chat",
+            base_url=os.getenv("DEEPSEEK_BASE_URL", DEEPSEEK_DEFAULT_BASE_URL).strip(),
+            model_id=os.getenv("DEEPSEEK_MODEL", DEEPSEEK_DEFAULT_MODEL).strip() or DEEPSEEK_DEFAULT_MODEL,
             api_key_env="DEEPSEEK_API_KEY",
         ),
         "qwen": ProviderProfile(
@@ -245,7 +265,7 @@ def resolve_profile(
     model_override: str | None = None,
     base_url_override: str | None = None,
 ) -> ProviderProfile:
-    vendor_key = (vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "openai")).strip().lower()
+    vendor_key = (vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", DEFAULT_VENDOR)).strip().lower()
     profiles = _default_profiles()
     if vendor_key not in profiles:
         raise ProviderError(f"unsupported vendor: {vendor_key}")
@@ -303,15 +323,15 @@ def probe_provider(
             "输出 {\"ok\":true}。",
             profile.model_id,
         )
-        ok = bool(str(probe_text).strip())
+        ok = _probe_response_ok(str(probe_text))
         return {
             "ok": ok,
             "vendor": profile.vendor,
             "model": profile.model_id,
             "base_url": profile.base_url,
-            "code": "ok" if ok else "empty_response",
-            "message": "连接成功。" if ok else "服务已响应但返回为空。",
-            "hint": "" if ok else "请检查模型名称与服务地址。",
+            "code": "ok" if ok else "unknown",
+            "message": "连接成功。" if ok else "服务已响应但探测 JSON 不符合预期。",
+            "hint": "" if ok else "请检查模型名称、服务地址与 JSON 输出能力。",
         }
     except Exception as exc:
         fallback_vendor = profile.vendor if profile is not None else (vendor or "")
@@ -330,7 +350,7 @@ def probe_provider(
 
 
 def providers_status(probe_active: bool = False) -> dict[str, Any]:
-    selected_vendor = os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "openai").strip().lower() or "openai"
+    selected_vendor = os.getenv("INSIGHTKIT_PROVIDER_VENDOR", DEFAULT_VENDOR).strip().lower() or DEFAULT_VENDOR
     profiles = _default_profiles()
 
     vendors: dict[str, Any] = {}
@@ -370,3 +390,20 @@ def providers_status(probe_active: bool = False) -> dict[str, Any]:
             payload["active_probe_error_code"] = "missing_configuration"
             payload["active_probe_message"] = "当前服务缺少 API Key 或模型名称。"
     return payload
+
+
+def _probe_response_ok(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+            if stripped.lower().startswith("json\n"):
+                stripped = stripped[5:].strip()
+    try:
+        payload = json.loads(stripped)
+    except Exception:
+        return False
+    return isinstance(payload, dict) and payload.get("ok") is True

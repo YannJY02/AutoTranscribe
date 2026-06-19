@@ -18,7 +18,10 @@ protocol CenterStageDataSource: ObservableObject {
     var capturePreview: (any CapturePreviewProvider)? { get }
     var transcriptEntries: [TranscriptEntry] { get }
     var recordingDuration: TimeInterval { get }
+    var recordingStatusMessage: String? { get }
     var mediaURL: URL? { get }
+    var currentPlaybackTime: TimeInterval? { get }
+    var mediaSeekRequest: MediaSeekRequest? { get }
     func onStartRecording()
     func onStopRecording()
     func onPauseRecording()
@@ -26,6 +29,11 @@ protocol CenterStageDataSource: ObservableObject {
     func onSeek(to time: TimeInterval)
     func onGenerateMinutes()
     func onSkipMinutes()
+}
+
+extension CenterStageDataSource {
+    var mediaSeekRequest: MediaSeekRequest? { nil }
+    var recordingStatusMessage: String? { nil }
 }
 
 // MARK: - Notes Editor

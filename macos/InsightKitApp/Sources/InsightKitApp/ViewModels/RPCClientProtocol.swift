@@ -35,6 +35,7 @@ protocol InsightRPCClientProtocol {
         mediaType: String,
         recordSource: String,
         durationSec: Double,
+        analysisMeta: [String: Any]?,
         notesMD: String
     ) throws -> String  // returns record_path
 }

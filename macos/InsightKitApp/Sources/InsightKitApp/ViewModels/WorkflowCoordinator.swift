@@ -16,6 +16,7 @@ final class WorkflowCoordinator: ObservableObject {
     private let capabilityClient: InsightRPCClientProtocol
     private var capabilities: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
+    private var didShutdown = false
     /// Dedicated GCD queue for blocking RPC I/O.
     private let rpcQueue = DispatchQueue(label: "InsightKit.WorkflowCoordinator.RPC", qos: .userInitiated)
 
@@ -33,10 +34,12 @@ final class WorkflowCoordinator: ObservableObject {
         self.capabilityClient = capabilityClient
         // Phase 5: inject recordsService into child ViewModels
         liveViewModel.recordsService = recordsService
+        transcriptionViewModel.recordsService = recordsService
         importViewModel.recordsService = recordsService
         bridgeChildObjectChanges()
         bindStates()
         refreshSidecarCapabilities()
+        applyUITestRouteIfNeeded()
     }
 
     var canStartLive: Bool {
@@ -56,11 +59,11 @@ final class WorkflowCoordinator: ObservableObject {
     }
 
     var canExportLive: Bool {
-        liveViewModel.canExportDocument && supports("document.export")
+        liveViewModel.canExportDocument && (liveViewModel.hasPersistedRecordForExport || supports("document.export"))
     }
 
     var canExportTranscription: Bool {
-        transcriptionViewModel.canExportDocument && supports("document.export")
+        transcriptionViewModel.canExportDocument && (transcriptionViewModel.hasPersistedRecordForExport || supports("document.export"))
     }
 
     var supportsSystemAudioPicker: Bool {
@@ -219,6 +222,40 @@ final class WorkflowCoordinator: ObservableObject {
         }
     }
 
+    func handleIncomingURL(_ url: URL) {
+        guard let action = AppURLHandler.action(from: url) else {
+            publishCapabilityBanner(
+                title: "无法处理 InsightKit 链接",
+                message: "请确认链接格式为 insightkit://import?path=<本地音视频文件路径>。",
+                actionTitle: "刷新能力",
+                actionRoute: "refresh_capabilities"
+            )
+            return
+        }
+
+        switch action {
+        case .importFile(let url):
+            importFileFromExternalURL(url)
+        }
+    }
+
+    private func importFileFromExternalURL(_ fileURL: URL) {
+        switch SupportedMediaTypes.validateLocalMediaFileURL(from: fileURL.path) {
+        case .success(let url):
+            openImport()
+            importViewModel.importFile(url: url)
+            clearBanner()
+        case .failure(let error):
+            openImport()
+            publishCapabilityBanner(
+                title: "无法导入链接文件",
+                message: error.userMessage,
+                actionTitle: "刷新能力",
+                actionRoute: "refresh_capabilities"
+            )
+        }
+    }
+
     func startLiveSession() {
         refreshSidecarCapabilities()
         guard supportsLiveActions else {
@@ -254,7 +291,20 @@ final class WorkflowCoordinator: ObservableObject {
         appState.preemptionState = .idle
     }
 
+    func shutdown() {
+        guard !didShutdown else { return }
+        didShutdown = true
+        liveViewModel.shutdown()
+        transcriptionViewModel.shutdown()
+        importViewModel.shutdown()
+    }
+
     func refreshSidecarCapabilities() {
+        if UITestLaunchOptions.isEnabled {
+            capabilities = Self.uiTestCapabilities
+            return
+        }
+
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -329,6 +379,12 @@ final class WorkflowCoordinator: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        recordsService.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     private var supportsLiveActions: Bool {
@@ -341,6 +397,17 @@ final class WorkflowCoordinator: ObservableObject {
     private func supports(_ method: String) -> Bool {
         capabilities.isEmpty || capabilities.contains(method)
     }
+
+    private static let uiTestCapabilities: Set<String> = [
+        "session.start",
+        "session.stop",
+        "asr.transcribe_chunk",
+        "insight.refresh_live",
+        "insight.build_final",
+        "document.export",
+        "transcription.status",
+        "transcription.import_file",
+    ]
 
     private func publishCapabilityBanner(title: String, message: String, actionTitle: String, actionRoute: String) {
         bannerMessage = BannerMessage(
@@ -368,6 +435,26 @@ final class WorkflowCoordinator: ObservableObject {
             return "已取消"
         case .none:
             return "待机"
+        }
+    }
+
+    private func applyUITestRouteIfNeeded() {
+        switch UITestLaunchOptions.routeOverride {
+        case "live":
+            liveViewModel.prepareForLiveEntry()
+            route = .live
+            appState.activeRoute = .live
+        case "transcription":
+            route = .transcription
+            appState.activeRoute = .transcription
+        case "import":
+            route = .importMedia
+            appState.activeRoute = .importMedia
+        case "records":
+            route = .records
+            appState.activeRoute = .records
+        default:
+            break
         }
     }
 }

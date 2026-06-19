@@ -6,6 +6,7 @@ struct WorkflowHomeView: View {
     let onOpenImport: () -> Void
     let onOpenRecords: () -> Void
     let statusSummary: String
+    let recentRecords: [RecordMetadata]
 
     var body: some View {
         ZStack {
@@ -51,11 +52,51 @@ struct WorkflowHomeView: View {
                     Text("最近记录")
                         .font(InsightTypography.heading)
                         .foregroundStyle(InsightTheme.textPrimary)
-                    // Placeholder — Step 7 will populate with RecordsIndexService.recentRecords()
-                    Text("暂无记录")
-                        .font(InsightTypography.caption)
-                        .foregroundStyle(InsightTheme.textTertiary)
-                        .padding(.vertical, InsightSpacing.lg)
+                        .accessibilityIdentifier("home_recent_title")
+                    if recentRecords.isEmpty {
+                        Text("暂无记录")
+                            .font(InsightTypography.caption)
+                            .foregroundStyle(InsightTheme.textTertiary)
+                            .padding(.vertical, InsightSpacing.lg)
+                            .accessibilityIdentifier("home_recent_empty")
+                    } else {
+                        VStack(spacing: InsightSpacing.sm) {
+                            ForEach(recentRecords) { record in
+                                Button(action: onOpenRecords) {
+                                    HStack(spacing: InsightSpacing.md) {
+                                        Image(systemName: record.mediaType == .video ? "video" : "waveform")
+                                            .font(.system(size: 18, weight: .medium))
+                                            .foregroundStyle(InsightTheme.accent)
+                                            .frame(width: 28)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(record.summaryPreview?.isEmpty == false ? record.summaryPreview! : record.id)
+                                                .font(InsightTypography.bodyMedium)
+                                                .foregroundStyle(InsightTheme.textPrimary)
+                                                .lineLimit(1)
+                                            Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                                .font(InsightTypography.small)
+                                                .foregroundStyle(InsightTheme.textSecondary)
+                                        }
+                                        Spacer()
+                                        Text(record.source == .live ? "实时" : "导入")
+                                            .font(InsightTypography.small)
+                                            .foregroundStyle(InsightTheme.textSecondary)
+                                    }
+                                    .padding(InsightSpacing.sm)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(InsightTheme.surface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                                            .stroke(InsightTheme.border.opacity(0.65), lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("home_recent_record_\(record.id)")
+                            }
+                        }
+                        .accessibilityIdentifier("home_recent_records")
+                    }
                 }
 
                 if !statusSummary.isEmpty {

@@ -35,42 +35,51 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             Spacer()
 
             // Video preview area
-            if let service = dataSource.capturePreview as? VideoCaptureService {
-                VideoPreviewView(captureService: service)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 360)
-                    .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
-                    .padding(.horizontal, InsightSpacing.panelPadding)
-            } else {
-                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
-                    .fill(InsightTheme.canvas)
-                    .frame(height: 360)
-                    .overlay(
-                        VStack(spacing: InsightSpacing.md) {
-                            Image(systemName: "video.slash")
-                                .font(.system(size: 40))
-                                .foregroundStyle(InsightTheme.textTertiary)
-                            Text("开启摄像头或屏幕捕获以预览")
-                                .font(InsightTypography.caption)
-                                .foregroundStyle(InsightTheme.textTertiary)
-                        }
-                    )
-                    .padding(.horizontal, InsightSpacing.panelPadding)
+            Group {
+                if let service = dataSource.capturePreview as? VideoCaptureService {
+                    VideoPreviewView(captureService: service)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 360)
+                        .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                        .padding(.horizontal, InsightSpacing.panelPadding)
+                } else {
+                    RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                        .fill(InsightTheme.canvas)
+                        .frame(height: 360)
+                        .overlay(
+                            VStack(spacing: InsightSpacing.md) {
+                                Image(systemName: "video.slash")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(InsightTheme.textTertiary)
+                                Text("开启摄像头或屏幕捕获以预览")
+                                    .font(InsightTypography.caption)
+                                    .foregroundStyle(InsightTheme.textTertiary)
+                            }
+                        )
+                        .padding(.horizontal, InsightSpacing.panelPadding)
+                }
             }
+            .accessibilityIdentifier("live_preparing_preview")
 
             // Source toggle bar
             SourceToggleBar(sources: $sources, onDeviceSelect: onDeviceSelect)
                 .padding(.horizontal, InsightSpacing.panelPadding)
 
             // Start button
-            Button("开始录制") {
+            Button {
                 dataSource.onStartRecording()
+            } label: {
+                Text("开始录制")
             }
             .buttonStyle(.borderedProminent)
             .tint(InsightTheme.accent)
             .controlSize(.large)
+            .accessibilityIdentifier("live_start_recording_button")
 
             Spacer()
+        }
+        .overlay(alignment: .topLeading) {
+            phaseMarker("准备态", identifier: "live_phase_preparing")
         }
     }
 
@@ -105,20 +114,32 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
 
                 Spacer()
 
-                Button("暂停") {
+                Button {
                     dataSource.onPauseRecording()
+                } label: {
+                    Text("暂停")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
+                .accessibilityIdentifier("live_pause_recording_button")
 
-                Button("停止录制") {
+                Button {
                     dataSource.onStopRecording()
+                } label: {
+                    Text("停止录制")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(InsightTheme.recording)
+                .controlSize(.large)
+                .keyboardShortcut(".", modifiers: [.command])
+                .accessibilityIdentifier("live_stop_recording_button")
             }
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.vertical, InsightSpacing.md)
             .background(InsightTheme.surface)
+        }
+        .overlay(alignment: .topLeading) {
+            phaseMarker("录制中", identifier: "live_phase_running")
         }
     }
 
@@ -127,6 +148,9 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     private var postSessionView: some View {
         VStack {
             Spacer()
+            recordingStatusBanner
+                .padding(.horizontal, InsightSpacing.panelPadding)
+                .padding(.bottom, InsightSpacing.md)
             SmartMinutesSheet(
                 duration: dataSource.recordingDuration,
                 onGenerate: {
@@ -138,6 +162,9 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             )
             Spacer()
         }
+        .overlay(alignment: .topLeading) {
+            phaseMarker("会后选择", identifier: "live_phase_post_session")
+        }
     }
 
     // MARK: - Reviewing Phase
@@ -148,6 +175,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             MediaPlayerView(
                 url: dataSource.mediaURL,
                 isPlaying: true,
+                seekRequest: dataSource.mediaSeekRequest,
                 onSeek: { time in
                     dataSource.onSeek(to: time)
                 },
@@ -158,9 +186,21 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.top, InsightSpacing.panelPadding)
 
+            recordingStatusBanner
+                .padding(.horizontal, InsightSpacing.panelPadding)
+
             // Full transcript (scrollable, clickable)
             transcriptList
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 0) {
+                phaseMarker("回看态", identifier: "live_phase_reviewing")
+                Text(formatTimestamp(dataSource.currentPlaybackTime ?? 0))
+                    .font(.caption2)
+                    .foregroundStyle(.clear)
+                    .accessibilityIdentifier("live_current_playback_label")
+            }
         }
     }
 
@@ -174,10 +214,11 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                     .foregroundStyle(InsightTheme.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(InsightSpacing.panelPadding)
+                    .accessibilityIdentifier("live_transcript_empty_state")
             } else {
                 LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
-                    ForEach(dataSource.transcriptEntries) { entry in
-                        transcriptEntryRow(entry)
+                    ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
+                        transcriptEntryRow(entry, index: index)
                     }
                 }
                 .padding(.horizontal, InsightSpacing.panelPadding)
@@ -186,7 +227,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         }
     }
 
-    private func transcriptEntryRow(_ entry: TranscriptEntry) -> some View {
+    private func transcriptEntryRow(_ entry: TranscriptEntry, index: Int) -> some View {
         Button {
             dataSource.onTranscriptEntryTapped(entry)
         } label: {
@@ -212,6 +253,33 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("live_transcript_entry_\(index)")
+        .accessibilityLabel(entry.text)
+        .accessibilityValue(formatTimestamp(entry.timestamp))
+    }
+
+    @ViewBuilder
+    private var recordingStatusBanner: some View {
+        if let raw = dataSource.recordingStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            HStack(spacing: InsightSpacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(InsightTheme.warning)
+                Text(raw)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, InsightSpacing.md)
+            .padding(.vertical, InsightSpacing.sm)
+            .background(InsightTheme.warningSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                    .stroke(InsightTheme.warningBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier("live_recording_status")
+        }
     }
 
     // MARK: - Helpers
@@ -226,5 +294,13 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%02d:%02d", mins, secs)
+    }
+
+    @ViewBuilder
+    private func phaseMarker(_ label: String, identifier: String) -> some View {
+        Text(label)
+            .font(.caption2)
+            .foregroundStyle(.clear)
+            .accessibilityIdentifier(identifier)
     }
 }

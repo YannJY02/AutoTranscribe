@@ -8,9 +8,14 @@ final class RecordReviewDataSource: ObservableObject {
     @Published var smartMinutesData: SmartMinutes?
     @Published var notes: [TimestampedNote] = []
     @Published var currentPlaybackTime: TimeInterval?
+    @Published var mediaSeekRequest: MediaSeekRequest?
     @Published var transcriptEntries: [TranscriptEntry] = []
     @Published var recordingDuration: TimeInterval = 0
     @Published var mediaURL: URL?
+    @Published var mediaStatusMessage: String?
+    @Published var seekStatusMessage: String?
+    @Published var exportStatusMessage: String?
+    @Published var lastExportURL: URL?
 
     let metadata: RecordMetadata
     let recordPath: URL
@@ -38,9 +43,12 @@ final class RecordReviewDataSource: ObservableObject {
             let candidate = recordPath.appendingPathComponent("recording.\(ext)")
             if FileManager.default.fileExists(atPath: candidate.path) {
                 mediaURL = candidate
+                mediaStatusMessage = nil
                 return
             }
         }
+        mediaURL = nil
+        mediaStatusMessage = "媒体文件缺失：无法回放原始记录。请在 Finder 检查 \(recordPath.lastPathComponent) 中的 recording.* 文件。"
     }
 
     private func loadNotes() {
@@ -73,13 +81,27 @@ final class RecordReviewDataSource: ObservableObject {
         let highlights = (dict["highlights"] as? [String]) ?? []
         let keyDecisions = (dict["key_decisions"] as? [String]) ?? []
         let actionItems = (dict["action_items"] as? [String]) ?? []
+        let timeline = (dict["timeline_beats"] as? [[String: Any]]) ?? []
 
         if !summary.isEmpty {
+            let loadedChapters = timeline.compactMap { item -> ChapterSummary? in
+                let title = (item["title"] as? String) ?? ""
+                let body = (item["summary"] as? String) ?? ""
+                if title.isEmpty && body.isEmpty { return nil }
+                return ChapterSummary(
+                    timestamp: TimestampNormalizer.normalize((item["timestamp"] as? String) ?? "", duration: metadata.duration),
+                    title: title.isEmpty ? body : title,
+                    summary: body
+                )
+            }
+            chapters = loadedChapters
             smartMinutesData = SmartMinutes(
                 structuredSummary: summary,
                 highlights: highlights,
+                speakerSummaries: Self.speakerSummaries(from: transcriptEntries),
                 keyDecisions: keyDecisions,
-                actionItems: actionItems
+                actionItems: actionItems,
+                chapters: loadedChapters
             )
         }
     }
@@ -93,6 +115,51 @@ final class RecordReviewDataSource: ObservableObject {
     func revealInFinder() {
         NSWorkspace.shared.selectFile(recordPath.path, inFileViewerRootedAtPath: recordPath.deletingLastPathComponent().path)
     }
+
+    func exportRecord(format: String) {
+        do {
+            let url = try RecordDocumentExporter.export(format: format, metadata: metadata, recordPath: recordPath)
+            lastExportURL = url
+            exportStatusMessage = "已导出 \(url.lastPathComponent)"
+        } catch {
+            exportStatusMessage = "导出失败：\(error.localizedDescription)"
+        }
+    }
+
+    func updatePlaybackTime(_ time: TimeInterval) {
+        guard time.isFinite else { return }
+        let normalized = max(0, time)
+        if let currentPlaybackTime, abs(currentPlaybackTime - normalized) < 0.25 {
+            return
+        }
+        currentPlaybackTime = normalized
+    }
+
+    private static func speakerSummaries(from entries: [TranscriptEntry]) -> [SpeakerMinutesSummary] {
+        let grouped = Dictionary(grouping: entries) { entry in
+            let speaker = entry.speaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return speaker.isEmpty ? "未标注" : speaker
+        }
+        return grouped.keys.sorted().map { speaker in
+            let speakerEntries = grouped[speaker] ?? []
+            let latest = speakerEntries.map(\.timestamp).max() ?? 0
+            return SpeakerMinutesSummary(
+                speakerName: speaker,
+                summary: "\(speakerEntries.count) 条发言，最晚发言时间 \(formatTimestamp(latest))。"
+            )
+        }
+    }
+
+    private static func formatTimestamp(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%02d:%02d", minutes, secs)
+    }
 }
 
 // MARK: - ChapterSidebarDataSource
@@ -105,7 +172,7 @@ extension RecordReviewDataSource: ChapterSidebarDataSource {
     }
 
     func onChapterTapped(_ chapter: ChapterSummary) {
-        currentPlaybackTime = chapter.timestamp
+        requestMediaSeek(to: chapter.timestamp, source: "章节", detail: chapter.title)
     }
 
     func onGenerateMinutes() {
@@ -134,6 +201,12 @@ extension RecordReviewDataSource: ChapterSidebarDataSource {
             let smartMinutes = SmartMinutes(
                 structuredSummary: pkg.sessionOverview.overview,
                 highlights: highlights,
+                speakerSummaries: pkg.speakerPerspectives.map {
+                    SpeakerMinutesSummary(
+                        speakerName: $0.speaker,
+                        summary: $0.viewpoints.joined(separator: "；")
+                    )
+                },
                 keyDecisions: keyDecisions,
                 actionItems: actionItems,
                 chapters: chapters
@@ -157,11 +230,12 @@ extension RecordReviewDataSource: CenterStageDataSource {
     func onPauseRecording() {}
 
     func onTranscriptEntryTapped(_ entry: TranscriptEntry) {
-        currentPlaybackTime = entry.timestamp
+        let speaker = entry.speaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        requestMediaSeek(to: entry.timestamp, source: "逐字稿", detail: speaker.isEmpty ? entry.text : speaker)
     }
 
     func onSeek(to time: TimeInterval) {
-        currentPlaybackTime = time
+        requestMediaSeek(to: time, source: "播放器", detail: "")
     }
 
     func onSkipMinutes() {}
@@ -172,7 +246,7 @@ extension RecordReviewDataSource: CenterStageDataSource {
 extension RecordReviewDataSource: NotesEditorDataSource {
     var isEditable: Bool { true }
 
-    var recordingTime: TimeInterval { 0 }
+    var recordingTime: TimeInterval { currentPlaybackTime ?? 0 }
 
     func onNoteCreated(_ text: String, at time: TimeInterval) {
         let note = TimestampedNote(text: text, timestamp: time)
@@ -187,6 +261,21 @@ extension RecordReviewDataSource: NotesEditorDataSource {
     }
 
     func onNoteTapped(_ note: TimestampedNote) {
-        currentPlaybackTime = note.timestamp
+        requestMediaSeek(to: note.timestamp, source: "笔记", detail: note.text)
+    }
+
+    private func requestMediaSeek(to time: TimeInterval, source: String, detail: String) {
+        let normalized = max(0, time)
+        let needsPlayerSeek = currentPlaybackTime.map { abs($0 - normalized) >= 0.25 } ?? true
+        updatePlaybackTime(normalized)
+        if needsPlayerSeek {
+            mediaSeekRequest = MediaSeekRequest(time: normalized)
+        }
+        let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedDetail.isEmpty {
+            seekStatusMessage = "已跳转到 \(Self.formatTimestamp(normalized)) · \(source)"
+        } else {
+            seekStatusMessage = "已跳转到 \(Self.formatTimestamp(normalized)) · \(source)：\(trimmedDetail)"
+        }
     }
 }

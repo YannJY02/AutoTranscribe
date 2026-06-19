@@ -1,17 +1,53 @@
 import Foundation
 
 final class AppConfigStore: ObservableObject {
-    static let shared = AppConfigStore()
+    static let shared = AppConfigStore.makeSharedStore()
 
     @Published private(set) var config: RuntimeConfigV2
     @Published private(set) var configRevision: Int = 0
 
     private let defaultsKey = "insightkit.runtime.config.v1"
     private let defaultsKeyV2 = "insightkit.runtime.config.v2"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let configSnapshotURL: URL
     private let keychain = KeychainService()
 
-    private init() {
+    private static func makeSharedStore() -> AppConfigStore {
+        guard isRunningTests else {
+            return AppConfigStore()
+        }
+
+        let suiteName = "InsightKitAppTests-\(ProcessInfo.processInfo.processIdentifier)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        let snapshotURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(suiteName)
+            .appendingPathComponent("runtime_config_v1.json")
+        return AppConfigStore(defaults: defaults, configSnapshotURL: snapshotURL)
+    }
+
+    private static var isRunningTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        if environment.keys.contains(where: { $0.localizedCaseInsensitiveContains("xctest") }) {
+            return true
+        }
+
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") || processName.contains("packagetests") {
+            return true
+        }
+
+        return Bundle.allBundles.contains { bundle in
+            let path = bundle.bundlePath.lowercased()
+            return path.hasSuffix(".xctest") || path.contains(".xctest/")
+        }
+    }
+
+    init(
+        defaults: UserDefaults = .standard,
+        configSnapshotURL: URL = AppConfigStore.configSnapshotPath()
+    ) {
+        self.defaults = defaults
+        self.configSnapshotURL = configSnapshotURL
         if
             let raw = defaults.data(forKey: defaultsKeyV2),
             let decoded = try? JSONDecoder().decode(RuntimeConfigV2.self, from: raw)
@@ -83,6 +119,11 @@ final class AppConfigStore: ObservableObject {
                 return
             }
             config.asr.funasrProfile.model = trimmed
+        case .qwenmlx:
+            if config.asr.qwenProfile.model == trimmed {
+                return
+            }
+            config.asr.qwenProfile.model = trimmed
         }
         syncActiveASRModel()
         persist()
@@ -184,34 +225,59 @@ final class AppConfigStore: ObservableObject {
         env["INSIGHTKIT_ASR_STRICT_LOCAL_ONLY"] = "1"
         env["INSIGHTKIT_FUNASR_ASR_MODEL"] = config.asr.funasrProfile.model
         env["INSIGHTKIT_WHISPER_MODEL"] = config.asr.whisperProfile.model
+        env["INSIGHTKIT_QWEN_MLX_MODEL"] = config.asr.qwenProfile.model
+        env["INSIGHTKIT_QWEN_ASR_MODEL"] = config.asr.qwenProfile.model
+        env["INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL"] = "Qwen3-ForcedAligner-0.6B"
+        env["INSIGHTKIT_QWEN_RETURN_TIMESTAMPS"] = "1"
+
+        func providerAPIKey(_ vendor: ProviderVendor, envName: String) -> String {
+            let stored = apiKeyLookup(vendor, false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stored.isEmpty {
+                return stored
+            }
+            return processEnvironment[envName]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
 
         for profile in config.analysis.providers {
             switch profile.vendor {
             case .openai:
                 env["OPENAI_BASE_URL"] = profile.baseURL
                 env["OPENAI_MODEL"] = profile.modelID
-                env["OPENAI_API_KEY"] = apiKeyLookup(.openai, false)
+                if activeVendor == .openai {
+                    env["OPENAI_API_KEY"] = providerAPIKey(.openai, envName: "OPENAI_API_KEY")
+                }
             case .gemini:
                 env["GEMINI_BASE_URL"] = profile.baseURL
                 env["GEMINI_MODEL"] = profile.modelID
-                env["GEMINI_API_KEY"] = apiKeyLookup(.gemini, false)
+                if activeVendor == .gemini {
+                    env["GEMINI_API_KEY"] = providerAPIKey(.gemini, envName: "GEMINI_API_KEY")
+                }
             case .deepseek:
                 env["DEEPSEEK_BASE_URL"] = profile.baseURL
                 env["DEEPSEEK_MODEL"] = profile.modelID
-                env["DEEPSEEK_API_KEY"] = apiKeyLookup(.deepseek, false)
+                if activeVendor == .deepseek {
+                    env["DEEPSEEK_API_KEY"] = providerAPIKey(.deepseek, envName: "DEEPSEEK_API_KEY")
+                }
             case .qwen:
                 env["QWEN_BASE_URL"] = profile.baseURL
                 env["QWEN_MODEL"] = profile.modelID
-                env["QWEN_API_KEY"] = apiKeyLookup(.qwen, false)
+                if activeVendor == .qwen {
+                    env["QWEN_API_KEY"] = providerAPIKey(.qwen, envName: "QWEN_API_KEY")
+                }
             case .doubao:
                 env["DOUBAO_BASE_URL"] = profile.baseURL
                 env["DOUBAO_MODEL"] = profile.modelID
-                env["DOUBAO_API_KEY"] = apiKeyLookup(.doubao, false)
+                if activeVendor == .doubao {
+                    env["DOUBAO_API_KEY"] = providerAPIKey(.doubao, envName: "DOUBAO_API_KEY")
+                }
             }
         }
 
         if let token = processEnvironment["HF_TOKEN"], !token.isEmpty {
             env["HF_TOKEN"] = token
+        }
+        if let token = processEnvironment["PYANNOTE_AUTH_TOKEN"], !token.isEmpty {
+            env["PYANNOTE_AUTH_TOKEN"] = token
         }
         return env
     }
@@ -236,6 +302,8 @@ final class AppConfigStore: ObservableObject {
             return config.asr.whisperProfile.model
         case .funasr:
             return config.asr.funasrProfile.model
+        case .qwenmlx:
+            return config.asr.qwenProfile.model
         }
     }
 
@@ -254,10 +322,23 @@ final class AppConfigStore: ObservableObject {
 
     static let funasrPresets: [String] = [
         "iic/SenseVoiceSmall",
+        "FunAudioLLM/Fun-ASR-Nano-2512",
         "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
         "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
         "iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404",
     ]
+
+    static let qwenPresets: [String] = [
+        "Qwen3-ASR-1.7B-MLX-4bit",
+        "Qwen3-ASR-1.7B",
+        "Qwen/Qwen3-ASR-1.7B",
+        "aufklarer/Qwen3-ASR-1.7B-MLX-4bit",
+    ]
+
+    private static let deepSeekDefaultBaseURL = "https://api.deepseek.com"
+    private static let deepSeekLegacyBaseURL = "https://api.deepseek.com/v1"
+    private static let deepSeekDefaultModel = "deepseek-v4-flash"
+    private static let deepSeekLegacyModels: Set<String> = ["deepseek-chat", "deepseek-reasoner"]
 
     func defaultModelName(for engine: LocalASREngine) -> String {
         switch engine {
@@ -267,6 +348,10 @@ final class AppConfigStore: ObservableObject {
             return config.asr.funasrProfile.model.isEmpty
                 ? "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
                 : config.asr.funasrProfile.model
+        case .qwenmlx:
+            return config.asr.qwenProfile.model.isEmpty
+                ? "Qwen3-ASR-1.7B-MLX-4bit"
+                : config.asr.qwenProfile.model
         }
     }
 
@@ -301,7 +386,12 @@ final class AppConfigStore: ObservableObject {
             "gemini-2.5-flash-lite-preview-09-2025",
             "gemini-flash-latest",
         ],
-        .deepseek: ["deepseek-chat", "deepseek-reasoner"],
+        .deepseek: [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ],
         .qwen: [
             "qwen-max-latest",
             "qwen-max",
@@ -332,7 +422,7 @@ final class AppConfigStore: ObservableObject {
     static let vendorDefaultBaseURL: [ProviderVendor: String] = [
         .openai: "https://api.openai.com/v1",
         .gemini: "https://generativelanguage.googleapis.com",
-        .deepseek: "https://api.deepseek.com/v1",
+        .deepseek: deepSeekDefaultBaseURL,
         .qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         .doubao: "https://ark.cn-beijing.volces.com/api/v3",
     ]
@@ -364,11 +454,10 @@ final class AppConfigStore: ObservableObject {
     }
 
     private func writeConfigSnapshot() {
-        let path = Self.configSnapshotPath()
         do {
-            try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: configSnapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(config)
-            try data.write(to: path)
+            try data.write(to: configSnapshotURL)
         } catch {
             // 配置快照写入失败不阻断主流程。
         }
@@ -384,24 +473,101 @@ final class AppConfigStore: ObservableObject {
     }
 
     private func normalizeCorruptedAnalysisProfilesIfNeeded() -> Bool {
-        let activeVendor = config.analysis.selectedVendor
-        guard let activeProfile = config.analysis.providers.first(where: { $0.vendor == activeVendor }) else {
-            return false
-        }
+        let repaired = Self.repairCorruptedAnalysisProfiles(in: config)
+        config = repaired.config
+        return repaired.changed
+    }
 
-        let nonActive = config.analysis.providers.filter { $0.vendor != activeVendor }
-        let sameAsActive = nonActive.filter {
-            $0.baseURL == activeProfile.baseURL && $0.modelID == activeProfile.modelID
-        }
-        // Heuristic: if 2+ non-active vendors are overwritten with exactly the active vendor endpoint/model,
-        // this is highly likely a cross-write bug side effect.
+    static func repairCorruptedAnalysisProfiles(in input: RuntimeConfigV2) -> (config: RuntimeConfigV2, changed: Bool) {
+        var config = input
         let defaultsByVendor = Dictionary(uniqueKeysWithValues: Self.defaultConfig().analysis.providers.map { ($0.vendor, $0) })
         var changed = false
 
+        let originalProviders = config.analysis.providers
+        let originalVendors = config.analysis.providers.map(\.vendor)
+        let duplicateVendors = Set(
+            originalVendors.filter { vendor in
+                originalVendors.filter { $0 == vendor }.count > 1
+            }
+        )
+        if !duplicateVendors.isEmpty {
+            changed = true
+        }
+
+        var providers: [ProviderProfile] = []
+        for vendor in ProviderVendor.allCases {
+            guard let defaults = defaultsByVendor[vendor] else { continue }
+            var profile = config.analysis.providers.first(where: { $0.vendor == vendor }) ?? defaults
+            if config.analysis.providers.first(where: { $0.vendor == vendor }) == nil {
+                changed = true
+            }
+
+            if profile.apiKeyRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                profile.apiKeyRef = defaults.apiKeyRef
+                changed = true
+            }
+
+            let baseURL = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelID = profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if baseURL.isEmpty {
+                profile.baseURL = defaults.baseURL
+                changed = true
+            }
+            if modelID.isEmpty {
+                profile.modelID = defaults.modelID
+                changed = true
+            }
+
+            let normalizedBaseURL = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedModelID = profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            for (defaultVendor, defaultProfile) in defaultsByVendor where defaultVendor != vendor {
+                if normalizedBaseURL == defaultProfile.baseURL,
+                   normalizedModelID == defaultProfile.modelID
+                {
+                    profile.baseURL = defaults.baseURL
+                    profile.modelID = defaults.modelID
+                    changed = true
+                    break
+                }
+            }
+
+            if vendor == .deepseek {
+                let deepSeekBaseURL = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                let deepSeekModelID = profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+                if deepSeekBaseURL == Self.deepSeekLegacyBaseURL {
+                    profile.baseURL = Self.deepSeekDefaultBaseURL
+                    changed = true
+                }
+                if Self.deepSeekLegacyModels.contains(deepSeekModelID) {
+                    profile.modelID = Self.deepSeekDefaultModel
+                    changed = true
+                }
+            }
+
+            providers.append(profile)
+        }
+
+        if providers != originalProviders {
+            changed = true
+        }
+        config.analysis.providers = providers
+
+        guard let activeProfile = config.analysis.providers.first(where: { $0.vendor == config.analysis.selectedVendor }) else {
+            return (config, changed)
+        }
+
+        let sameAsActive = config.analysis.providers.filter {
+            $0.vendor != config.analysis.selectedVendor
+                && $0.baseURL == activeProfile.baseURL
+                && $0.modelID == activeProfile.modelID
+        }
+        // Heuristic: if 2+ non-active vendors are overwritten with exactly the active vendor endpoint/model,
+        // this is highly likely a cross-write bug side effect.
         if sameAsActive.count >= 2 {
             for idx in config.analysis.providers.indices {
                 let vendor = config.analysis.providers[idx].vendor
-                if vendor == activeVendor { continue }
+                if vendor == config.analysis.selectedVendor { continue }
                 guard let defaultProfile = defaultsByVendor[vendor] else { continue }
                 let profile = config.analysis.providers[idx]
                 if profile.baseURL == activeProfile.baseURL && profile.modelID == activeProfile.modelID {
@@ -412,21 +578,7 @@ final class AppConfigStore: ObservableObject {
             }
         }
 
-        // Repair empty endpoint/model fields that make provider probe always fail.
-        for idx in config.analysis.providers.indices {
-            let vendor = config.analysis.providers[idx].vendor
-            guard let defaults = defaultsByVendor[vendor] else { continue }
-
-            if config.analysis.providers[idx].baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                config.analysis.providers[idx].baseURL = defaults.baseURL
-                changed = true
-            }
-            if config.analysis.providers[idx].modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                config.analysis.providers[idx].modelID = defaults.modelID
-                changed = true
-            }
-        }
-        return changed
+        return (config, changed)
     }
 
     private static func defaultConfig() -> RuntimeConfigV2 {
@@ -451,8 +603,8 @@ final class AppConfigStore: ObservableObject {
             ),
             ProviderProfile(
                 vendor: .deepseek,
-                baseURL: "https://api.deepseek.com/v1",
-                modelID: "deepseek-chat",
+                baseURL: deepSeekDefaultBaseURL,
+                modelID: deepSeekDefaultModel,
                 apiKeyRef: "vendor.deepseek.api_key",
                 extraHeaders: [:]
             ),
@@ -480,7 +632,8 @@ final class AppConfigStore: ObservableObject {
                 vadEnabled: true,
                 diarizationEnabled: true,
                 whisperProfile: .init(model: "large-v3"),
-                funasrProfile: .init(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
+                funasrProfile: .init(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"),
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
             ),
             analysis: RuntimeConfigV2.Analysis(
                 selectedVendor: .deepseek,

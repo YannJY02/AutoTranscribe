@@ -13,6 +13,7 @@ struct RecordSearchBar: View {
                 .textFieldStyle(.plain)
                 .font(InsightTypography.body)
                 .onSubmit { onSubmit?() }
+                .accessibilityIdentifier("records_search_field")
         }
         .padding(.horizontal, InsightSpacing.md)
         .padding(.vertical, InsightSpacing.sm)

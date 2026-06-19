@@ -2,6 +2,58 @@ import XCTest
 @testable import InsightKitApp
 
 final class AppConfigStoreTests: XCTestCase {
+    func testRepairRestoresSingleProviderCopiedFromAnotherVendorDefault() {
+        let config = makeRuntimeConfig(
+            selectedVendor: .openai,
+            providers: [
+                .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+                .init(vendor: .doubao, baseURL: "https://ark.cn-beijing.volces.com/api/v3", modelID: "doubao-seed-1-8-251228", apiKeyRef: "vendor.doubao.api_key", extraHeaders: [:]),
+                .init(vendor: .openai, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.openai.api_key", extraHeaders: [:]),
+                .init(vendor: .gemini, baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", modelID: "gemini-2.5-flash", apiKeyRef: "vendor.gemini.api_key", extraHeaders: [:]),
+            ]
+        )
+
+        let repaired = AppConfigStore.repairCorruptedAnalysisProfiles(in: config)
+
+        XCTAssertTrue(repaired.changed)
+        XCTAssertEqual(repaired.config.analysis.selectedVendor, .openai)
+        XCTAssertEqual(repaired.config.analysis.providers.map(\.vendor), ProviderVendor.allCases)
+
+        let openAI = profile(.openai, in: repaired.config)
+        XCTAssertEqual(openAI.baseURL, "https://api.openai.com/v1")
+        XCTAssertEqual(openAI.modelID, "gpt-4.1-mini")
+
+        let deepSeek = profile(.deepseek, in: repaired.config)
+        XCTAssertEqual(deepSeek.baseURL, "https://api.deepseek.com")
+        XCTAssertEqual(deepSeek.modelID, "deepseek-v4-flash")
+
+        let qwen = profile(.qwen, in: repaired.config)
+        XCTAssertEqual(qwen.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        XCTAssertEqual(qwen.modelID, "qwen-plus-latest")
+    }
+
+    func testRepairPreservesCustomCompatibleEndpointWhenItDoesNotMatchAnotherVendorDefault() {
+        let config = makeRuntimeConfig(
+            selectedVendor: .gemini,
+            providers: [
+                .init(vendor: .openai, baseURL: "https://api.openai.com/v1", modelID: "gpt-4.1-mini", apiKeyRef: "vendor.openai.api_key", extraHeaders: [:]),
+                .init(vendor: .gemini, baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", modelID: "gemini-2.5-flash", apiKeyRef: "vendor.gemini.api_key", extraHeaders: [:]),
+                .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+                .init(vendor: .qwen, baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelID: "qwen-plus-latest", apiKeyRef: "vendor.qwen.api_key", extraHeaders: [:]),
+                .init(vendor: .doubao, baseURL: "https://ark.cn-beijing.volces.com/api/v3", modelID: "doubao-seed-1-8-251228", apiKeyRef: "vendor.doubao.api_key", extraHeaders: [:]),
+            ]
+        )
+
+        let repaired = AppConfigStore.repairCorruptedAnalysisProfiles(in: config)
+
+        XCTAssertFalse(repaired.changed)
+        let gemini = profile(.gemini, in: repaired.config)
+        XCTAssertEqual(gemini.baseURL, "https://generativelanguage.googleapis.com/v1beta/openai")
+        XCTAssertEqual(gemini.modelID, "gemini-2.5-flash")
+        let doubao = profile(.doubao, in: repaired.config)
+        XCTAssertEqual(doubao.modelID, "doubao-seed-1-8-251228")
+    }
+
     func testSidecarEnvironmentUsesSilentKeychainReadsForProviderSecrets() {
         let config = RuntimeConfigV2(
             asr: RuntimeConfigV2.ASR(
@@ -11,14 +63,15 @@ final class AppConfigStoreTests: XCTestCase {
                 vadEnabled: true,
                 diarizationEnabled: false,
                 whisperProfile: .init(model: "large-v3"),
-                funasrProfile: .init(model: "iic/SenseVoiceSmall")
+                funasrProfile: .init(model: "iic/SenseVoiceSmall"),
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
             ),
             analysis: RuntimeConfigV2.Analysis(
                 selectedVendor: .deepseek,
                 providers: [
                     .init(vendor: .openai, baseURL: "https://api.openai.com/v1", modelID: "gpt-4.1-mini", apiKeyRef: "vendor.openai.api_key", extraHeaders: [:]),
                     .init(vendor: .gemini, baseURL: "https://generativelanguage.googleapis.com", modelID: "gemini-2.5-flash", apiKeyRef: "vendor.gemini.api_key", extraHeaders: [:]),
-                    .init(vendor: .deepseek, baseURL: "https://api.deepseek.com/v1", modelID: "deepseek-chat", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+                    .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
                     .init(vendor: .qwen, baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelID: "qwen-plus-latest", apiKeyRef: "vendor.qwen.api_key", extraHeaders: [:]),
                     .init(vendor: .doubao, baseURL: "https://ark.cn-beijing.volces.com/api/v3", modelID: "doubao-seed-1-6-250615", apiKeyRef: "vendor.doubao.api_key", extraHeaders: [:]),
                 ]
@@ -36,14 +89,72 @@ final class AppConfigStoreTests: XCTestCase {
             return "secret-\(vendor.rawValue)"
         }
 
-        XCTAssertEqual(interactionFlags[.openai], false)
-        XCTAssertEqual(interactionFlags[.gemini], false)
+        XCTAssertNil(interactionFlags[.openai])
+        XCTAssertNil(interactionFlags[.gemini])
         XCTAssertEqual(interactionFlags[.deepseek], false)
-        XCTAssertEqual(interactionFlags[.qwen], false)
-        XCTAssertEqual(interactionFlags[.doubao], false)
+        XCTAssertNil(interactionFlags[.qwen])
+        XCTAssertNil(interactionFlags[.doubao])
         XCTAssertEqual(env["INSIGHTKIT_PROVIDER_VENDOR"], ProviderVendor.deepseek.rawValue)
         XCTAssertEqual(env["DEEPSEEK_API_KEY"], "secret-deepseek")
-        XCTAssertEqual(env["OPENAI_API_KEY"], "secret-openai")
+        XCTAssertNil(env["OPENAI_API_KEY"])
+        XCTAssertNil(env["GEMINI_API_KEY"])
+        XCTAssertNil(env["QWEN_API_KEY"])
+        XCTAssertNil(env["DOUBAO_API_KEY"])
         XCTAssertEqual(env["HF_TOKEN"], "hf-token")
+        XCTAssertEqual(env["INSIGHTKIT_QWEN_MLX_MODEL"], "Qwen3-ASR-1.7B-MLX-4bit")
+    }
+
+    func testSidecarEnvironmentFallsBackToProcessEnvForActiveProviderKey() {
+        let config = RuntimeConfigV2(
+            asr: RuntimeConfigV2.ASR(
+                engine: .whisper,
+                model: "large-v3",
+                modelDir: "/tmp/models",
+                vadEnabled: true,
+                diarizationEnabled: false,
+                whisperProfile: .init(model: "large-v3"),
+                funasrProfile: .init(model: "iic/SenseVoiceSmall"),
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
+            ),
+            analysis: RuntimeConfigV2.Analysis(
+                selectedVendor: .deepseek,
+                providers: [
+                    .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+                ]
+            ),
+            strict: RuntimeConfigV2.Strict(strictMode: true),
+            download: RuntimeConfigV2.Download(autoBootstrapEnabled: true)
+        )
+
+        let env = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: ["DEEPSEEK_API_KEY": "env-deepseek"]
+        ) { _, _ in
+            ""
+        }
+
+        XCTAssertEqual(env["DEEPSEEK_API_KEY"], "env-deepseek")
+    }
+
+    private func makeRuntimeConfig(selectedVendor: ProviderVendor, providers: [ProviderProfile]) -> RuntimeConfigV2 {
+        RuntimeConfigV2(
+            asr: RuntimeConfigV2.ASR(
+                engine: .funasr,
+                model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+                modelDir: "/tmp/models",
+                vadEnabled: true,
+                diarizationEnabled: true,
+                whisperProfile: .init(model: "large-v3"),
+                funasrProfile: .init(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"),
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
+            ),
+            analysis: RuntimeConfigV2.Analysis(selectedVendor: selectedVendor, providers: providers),
+            strict: RuntimeConfigV2.Strict(strictMode: true),
+            download: RuntimeConfigV2.Download(autoBootstrapEnabled: true)
+        )
+    }
+
+    private func profile(_ vendor: ProviderVendor, in config: RuntimeConfigV2) -> ProviderProfile {
+        config.analysis.providers.first(where: { $0.vendor == vendor })!
     }
 }

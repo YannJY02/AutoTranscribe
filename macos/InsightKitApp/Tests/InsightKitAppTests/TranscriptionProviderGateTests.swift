@@ -2,7 +2,7 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionProviderGateTests: XCTestCase {
-    func testImportIsBlockedWhenProviderConfigMissing() {
+    func testImportContinuesWhenProviderConfigMissing() {
         let rpc = RPCClientMock()
         rpc.providersStatusStub = AnalysisProvidersStatus(
             selectedVendor: .deepseek,
@@ -13,8 +13,8 @@ final class TranscriptionProviderGateTests: XCTestCase {
             vendors: [
                 .init(
                     vendor: .deepseek,
-                    baseURL: "https://api.deepseek.com/v1",
-                    modelID: "deepseek-chat",
+                    baseURL: "https://api.deepseek.com",
+                    modelID: "deepseek-v4-flash",
                     configured: false,
                     hasAPIKey: false,
                     modelReady: true
@@ -31,14 +31,14 @@ final class TranscriptionProviderGateTests: XCTestCase {
 
         vm.importFile(path: "/tmp/example.wav", title: "example")
 
-        let exp = expectation(description: "import blocked by missing provider config")
+        let exp = expectation(description: "import can start without provider config")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             exp.fulfill()
         }
         wait(for: [exp], timeout: 1.0)
 
-        XCTAssertTrue(rpc.importCalls.isEmpty)
-        XCTAssertNotNil(vm.inlineError)
-        XCTAssertTrue(vm.inlineError?.message.contains("未配置完成") == true)
+        XCTAssertEqual(rpc.importCalls.count, 1)
+        XCTAssertEqual(vm.analysisRuntimeState, .missingConfig)
+        XCTAssertTrue(vm.inlineError?.message.contains("本地提取草稿") == true)
     }
 }

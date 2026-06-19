@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # ── InsightKit UI Tests Runner ──────────────────────────────────────
-# Generates xcodeproj via XcodeGen (if needed) and runs XCUITests.
-# Usage: ./scripts/run_uitests.sh [--regenerate]
+# Generates xcodeproj via XcodeGen and runs XCUITests.
+# Usage: ./scripts/run_uitests.sh [--no-regenerate]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/../macos/InsightKitApp"
@@ -35,29 +35,65 @@ fi
 # ── Generate / Regenerate xcodeproj ─────────────────────────────────
 cd "$PROJECT_DIR"
 
-if [[ ! -d "$XCODEPROJ" ]] || [[ "${1:-}" == "--regenerate" ]]; then
+if [[ "${1:-}" == "--no-regenerate" ]] && [[ -d "$XCODEPROJ" ]]; then
+    info "Using existing xcodeproj at $XCODEPROJ"
+else
     info "Generating xcodeproj with XcodeGen..."
     xcodegen generate
     info "xcodeproj generated at $XCODEPROJ"
-else
-    info "Using existing xcodeproj at $XCODEPROJ"
 fi
 
 # ── Run UI Tests ────────────────────────────────────────────────────
 info "Running XCUITests..."
 
+UITEST_TIMEOUT_SEC="${INSIGHTKIT_UITEST_TIMEOUT_SEC:-90}"
+LOG_PATH="${INSIGHTKIT_UITEST_LOG_PATH:-/tmp/insightkit_uitest.log}"
+RESULT_BUNDLE="${INSIGHTKIT_UITEST_RESULT_BUNDLE:-/tmp/insightkit_uitest_$(date +%Y%m%d%H%M%S).xcresult}"
+
+if [[ -e "$RESULT_BUNDLE" ]]; then
+    error "Result bundle already exists: $RESULT_BUNDLE"
+    exit 1
+fi
+
+set +e
 xcodebuild test \
     -project InsightKitUITestHost.xcodeproj \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
+    -resultBundlePath "$RESULT_BUNDLE" \
     -only-testing:InsightKitUITests \
-    2>&1 | tee /tmp/insightkit_uitest.log
+    > "$LOG_PATH" 2>&1 &
+XCODEBUILD_PID=$!
+
+deadline=$((SECONDS + UITEST_TIMEOUT_SEC))
+while kill -0 "$XCODEBUILD_PID" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+        warn "XCUITests exceeded ${UITEST_TIMEOUT_SEC}s; terminating xcodebuild pid ${XCODEBUILD_PID}."
+        kill -INT "$XCODEBUILD_PID" 2>/dev/null
+        sleep 5
+        kill -TERM "$XCODEBUILD_PID" 2>/dev/null
+        sleep 2
+        kill -KILL "$XCODEBUILD_PID" 2>/dev/null
+        wait "$XCODEBUILD_PID" 2>/dev/null
+        error "XCUITests timed out. Log: $LOG_PATH Result bundle: $RESULT_BUNDLE"
+        tail -n 120 "$LOG_PATH" || true
+        exit 124
+    fi
+    sleep 2
+done
+
+wait "$XCODEBUILD_PID"
+TEST_STATUS=$?
+set -e
 
 # ── Results ─────────────────────────────────────────────────────────
-if grep -q "passed" /tmp/insightkit_uitest.log && ! grep -q "TEST FAILED" /tmp/insightkit_uitest.log; then
+if [[ "$TEST_STATUS" -eq 0 ]] && grep -q "passed" "$LOG_PATH" && ! grep -q "TEST FAILED" "$LOG_PATH"; then
     info "All UI tests passed!"
+    info "Log: $LOG_PATH"
+    info "Result bundle: $RESULT_BUNDLE"
     exit 0
 else
-    error "Some UI tests failed. Check /tmp/insightkit_uitest.log for details."
+    error "Some UI tests failed. Log: $LOG_PATH Result bundle: $RESULT_BUNDLE"
+    tail -n 120 "$LOG_PATH" || true
     exit 1
 fi

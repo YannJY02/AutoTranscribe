@@ -113,6 +113,7 @@ def save_transcript_md(
     lang: str,
     duration_sec: float,
     segments: list[dict],
+    engine_label: str = "",
 ) -> Path:
     """
     将转录结果保存为 Markdown 文件。
@@ -146,7 +147,7 @@ def save_transcript_md(
         "| 项目 | 值 |",
         "|------|-----|",
         f"| 语言 | {lang_label} |",
-        "| 引擎 | FunASR Paraformer |",
+        f"| 引擎 | {engine_label or 'Local ASR'} |",
         f"| 时长 | {duration_str} |",
         f"| 说话人 | {num_speakers} |",
         "",

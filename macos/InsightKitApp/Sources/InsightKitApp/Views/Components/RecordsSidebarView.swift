@@ -4,6 +4,7 @@ struct RecordsSidebarView: View {
     @Binding var searchQuery: String
     @Binding var selectedTags: Set<String>
     @Binding var selectedType: MediaType?
+    @Binding var selectedTimeFilter: RecordTimeFilter?
     let allTags: [String]
     let recordCount: Int
     var onAddTag: (() -> Void)?
@@ -31,9 +32,9 @@ struct RecordsSidebarView: View {
                     .padding(.horizontal, InsightSpacing.lg)
 
                 HStack(spacing: InsightSpacing.sm) {
-                    typeFilterButton("全部", type: nil)
-                    typeFilterButton("音频", type: .audio)
-                    typeFilterButton("视频", type: .video)
+                    typeFilterButton("全部", type: nil, identifier: "records_type_filter_all")
+                    typeFilterButton("音频", type: .audio, identifier: "records_type_filter_audio")
+                    typeFilterButton("视频", type: .video, identifier: "records_type_filter_video")
                 }
                 .padding(.horizontal, InsightSpacing.lg)
             }
@@ -74,13 +75,9 @@ struct RecordsSidebarView: View {
                 Text("时间")
                     .font(InsightTypography.caption)
                     .foregroundStyle(InsightTheme.textTertiary)
-                    .padding(.horizontal, InsightSpacing.lg)
-                ForEach(["本周", "本月", "更早"], id: \.self) { label in
-                    Text(label)
-                        .font(InsightTypography.body)
-                        .foregroundStyle(InsightTheme.textSecondary)
-                        .padding(.horizontal, InsightSpacing.lg)
-                        .padding(.vertical, InsightSpacing.xs)
+                .padding(.horizontal, InsightSpacing.lg)
+                ForEach(RecordTimeFilter.allCases) { filter in
+                    timeFilterButton(filter)
                 }
             }
             .padding(.bottom, InsightSpacing.lg)
@@ -88,7 +85,7 @@ struct RecordsSidebarView: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func typeFilterButton(_ label: String, type: MediaType?) -> some View {
+    private func typeFilterButton(_ label: String, type: MediaType?, identifier: String) -> some View {
         Button(label) {
             selectedType = type
         }
@@ -99,6 +96,7 @@ struct RecordsSidebarView: View {
         .background(selectedType == type ? InsightTheme.accentLight : InsightTheme.surfaceAlt)
         .foregroundStyle(selectedType == type ? InsightTheme.accent : InsightTheme.textSecondary)
         .clipShape(Capsule())
+        .accessibilityIdentifier(identifier)
     }
 
     private func tagPill(_ tag: String) -> some View {
@@ -119,6 +117,22 @@ struct RecordsSidebarView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("records_tag_filter_\(tag)")
+    }
+
+    private func timeFilterButton(_ filter: RecordTimeFilter) -> some View {
+        let isSelected = selectedTimeFilter == filter
+        return Button(filter.label) {
+            selectedTimeFilter = isSelected ? nil : filter
+        }
+        .buttonStyle(.plain)
+        .font(InsightTypography.body)
+        .padding(.horizontal, InsightSpacing.lg)
+        .padding(.vertical, InsightSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? InsightTheme.accentLight : Color.clear)
+        .foregroundStyle(isSelected ? InsightTheme.accent : InsightTheme.textSecondary)
+        .accessibilityIdentifier(filter.accessibilityIdentifier)
     }
 }
 

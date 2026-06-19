@@ -19,7 +19,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Transcribe a live WAV chunk")
     parser.add_argument("--wav", required=True, help="path to chunk wav")
     parser.add_argument("--offset-ms", type=int, default=0, help="chunk start offset in meeting")
-    parser.add_argument("--engine", default="", choices=["", "whisper", "funasr"], help="override local ASR engine")
+    parser.add_argument(
+        "--engine",
+        default="",
+        choices=["", "whisper", "funasr", "qwen-mlx"],
+        help="override local ASR engine",
+    )
     args = parser.parse_args()
 
     if args.engine:

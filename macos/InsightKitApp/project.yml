@@ -11,6 +11,7 @@ targets:
     platform: macOS
     sources:
       - Sources/InsightKitApp
+      - Resources
     entitlements:
       path: InsightKitApp.entitlements
       properties:
@@ -25,6 +26,11 @@ targets:
         NSCameraUsageDescription: "InsightKit 需要摄像头权限用于视频捕获。"
         CFBundleName: InsightKit
         CFBundleDisplayName: InsightKit
+        CFBundleIconFile: InsightKit.icns
+        CFBundleURLTypes:
+          - CFBundleURLName: com.yannjy.insightkit.import
+            CFBundleURLSchemes:
+              - insightkit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit

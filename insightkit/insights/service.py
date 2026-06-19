@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,14 +30,14 @@ class InsightService:
     def __init__(
         self,
         provider: ProviderAdapter | None = None,
-        model: str = "gpt-4.1",
+        model: str | None = None,
         default_vendor: str | None = None,
         strict_mode: bool | None = None,
     ):
         # provider 参数仅用于测试/兼容场景。生产默认走 resolve_provider。
         self.provider = provider
-        self.model = model
-        self.default_vendor = (default_vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "openai")).strip().lower()
+        self.model = (model or "").strip()
+        self.default_vendor = (default_vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "deepseek")).strip().lower()
         if strict_mode is None:
             if provider is not None:
                 strict_mode = False
@@ -56,7 +57,7 @@ class InsightService:
         base_url: str | None = None,
     ) -> dict[str, Any]:
         effective_vendor = (provider_vendor or self.default_vendor).strip().lower()
-        effective_model = (provider_model or self.model).strip() or self.model
+        effective_model = (provider_model or self.model).strip() or None
         return provider_probe(
             vendor=effective_vendor,
             model_override=effective_model,
@@ -79,6 +80,7 @@ class InsightService:
             provider_vendor=provider_vendor,
             provider_model=provider_model,
             strict_mode=strict_mode,
+            transcript_context=transcript_window,
         )
 
     def build_final(
@@ -97,7 +99,20 @@ class InsightService:
             provider_vendor=provider_vendor,
             provider_model=provider_model,
             strict_mode=strict_mode,
+            transcript_context=full_transcript,
         )
+
+    def build_local_extractive(self, full_transcript: list[dict[str, Any]]) -> dict[str, Any]:
+        """Build a privacy-preserving local draft when no analysis provider is configured."""
+        payload = self._extractive_payload(full_transcript)
+        payload = postprocess_insight_package(payload, full_transcript=full_transcript)
+        validate_insight_package(payload)
+        self.last_call_meta = {
+            "vendor": "local-extractive",
+            "model": "heuristic-v1",
+            "strict_mode": False,
+        }
+        return payload
 
     def _complete(
         self,
@@ -106,16 +121,17 @@ class InsightService:
         provider_vendor: str | None,
         provider_model: str | None,
         strict_mode: bool | None,
+        transcript_context: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         effective_strict = self.strict_mode if strict_mode is None else bool(strict_mode)
         effective_vendor = (provider_vendor or self.default_vendor).strip().lower()
-        effective_model = (provider_model or self.model).strip() or self.model
+        effective_model = (provider_model or self.model).strip()
 
         provider = self.provider
         resolved_model = effective_model
         resolved_vendor = effective_vendor
         if provider is None:
-            provider, profile = resolve_provider(vendor=effective_vendor, model_override=effective_model)
+            provider, profile = resolve_provider(vendor=effective_vendor, model_override=effective_model or None)
             resolved_model = profile.model_id
             resolved_vendor = profile.vendor
 
@@ -136,7 +152,7 @@ class InsightService:
             raise ProviderError(message) from exc
 
         payload = self._parse_or_fallback(raw, live_mode=live_mode, strict_mode=effective_strict)
-        payload = postprocess_insight_package(payload)
+        payload = postprocess_insight_package(payload, full_transcript=transcript_context)
         validate_insight_package(payload)
         return payload
 
@@ -203,3 +219,141 @@ class InsightService:
             ],
             "provenance_links": [],
         }
+
+    @staticmethod
+    def _extractive_payload(full_transcript: list[dict[str, Any]]) -> dict[str, Any]:
+        rows = [row for row in full_transcript if str(row.get("text", "") or "").strip()]
+        if not rows:
+            return InsightService._fallback_payload(live_mode=False)
+
+        def text(row: dict[str, Any]) -> str:
+            return str(row.get("text", "") or "").strip()
+
+        def speaker(row: dict[str, Any]) -> str:
+            value = str(row.get("speaker", "") or "").strip()
+            return value or "未知发言人"
+
+        def span(row: dict[str, Any]) -> dict[str, int]:
+            start = int(row.get("start_ms", 0) or 0)
+            end = int(row.get("end_ms", start) or start)
+            return {"start_ms": max(0, start), "end_ms": max(0, max(end, start))}
+
+        def timestamp(row: dict[str, Any]) -> str:
+            total = int(row.get("start_ms", 0) or 0) // 1000
+            return f"{total // 60:02d}:{total % 60:02d}"
+
+        def short_title(value: str) -> str:
+            cleaned = re.sub(r"\s+", " ", value).strip()
+            return cleaned[:28] or "片段"
+
+        joined = " ".join(text(row) for row in rows)
+        keywords = InsightService._topic_terms(joined)
+        highlights = sorted(rows, key=lambda row: len(text(row)), reverse=True)[:3]
+
+        decision_markers = [
+            "decision", "decide", "decided", "confirm", "confirmed", "决定", "确认", "敲定", "同意",
+        ]
+        action_markers = [
+            "owner", "owns", "负责", "跟进", "完成", "by ", "due", "deadline", "截止", "周", "today", "tomorrow", "friday",
+        ]
+        decision_rows = [
+            row for row in rows if any(marker in text(row).lower() for marker in decision_markers)
+        ][:3]
+        action_rows = [
+            row for row in rows if any(marker in text(row).lower() for marker in action_markers)
+        ][:4]
+
+        speaker_groups: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            speaker_groups.setdefault(speaker(row), []).append(row)
+
+        first_text = text(rows[0])
+        overview = (
+            f"本地提取式纪要：共 {len(rows)} 段带时间信息的转写，"
+            f"覆盖 {len(speaker_groups)} 位发言人。开场内容：{first_text}"
+        )
+
+        return {
+            "session_overview": {
+                "title": "本地转写会话",
+                "overview": overview,
+                "topics": keywords or ["本地转写", "会议纪要"],
+            },
+            "highlight_insights": [
+                {
+                    "quote": text(row),
+                    "reason": "本地提取：该片段信息量较高，适合作为复核入口。",
+                    "speaker": speaker(row),
+                    "evidence_span": span(row),
+                }
+                for row in highlights
+            ],
+            "speaker_perspectives": [
+                {
+                    "speaker": name,
+                    "viewpoints": [text(row) for row in group[:3]],
+                    "evidence_spans": [span(row) for row in group[:3]],
+                }
+                for name, group in list(speaker_groups.items())[:6]
+            ],
+            "decision_ledger": [
+                {
+                    "problem": "会议决策复核",
+                    "options": [],
+                    "decision": text(row),
+                    "rationale": "本地规则检测到决策或确认类表达，需人工复核。",
+                    "owner": speaker(row),
+                    "needs_review": True,
+                    "evidence_span": span(row),
+                }
+                for row in (decision_rows or rows[:1])
+            ],
+            "action_tracks": [
+                {
+                    "task": text(row),
+                    "owner": speaker(row),
+                    "due_at": InsightService._extract_due_hint(text(row)),
+                    "priority": "medium",
+                    "status": "open",
+                    "needs_review": True,
+                    "evidence_span": span(row),
+                }
+                for row in (action_rows or rows[-1:])
+            ],
+            "timeline_beats": [
+                {
+                    "timestamp": timestamp(row),
+                    "title": short_title(text(row)),
+                    "summary": text(row),
+                }
+                for row in rows[:8]
+            ],
+            "provenance_links": [],
+        }
+
+    @staticmethod
+    def _topic_terms(text: str) -> list[str]:
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}|[\u4e00-\u9fff]{2,}", text.lower())
+        stop = {
+            "this", "that", "with", "from", "have", "will", "first", "today", "meeting",
+            "我们", "这个", "一个", "可以", "需要", "本次", "会议",
+        }
+        seen: set[str] = set()
+        topics: list[str] = []
+        for token in tokens:
+            if token in stop or token in seen:
+                continue
+            seen.add(token)
+            topics.append(token)
+            if len(topics) >= 6:
+                break
+        return topics
+
+    @staticmethod
+    def _extract_due_hint(text: str) -> str:
+        lower = text.lower()
+        for marker in ["today", "tomorrow", "friday", "monday", "tuesday", "wednesday", "thursday"]:
+            if marker in lower:
+                return marker
+        match = re.search(r"(今天|明天|周[一二三四五六日天]|星期[一二三四五六日天]|本周|下周|截止[^，。,. ]*)", text)
+        return match.group(1) if match else ""

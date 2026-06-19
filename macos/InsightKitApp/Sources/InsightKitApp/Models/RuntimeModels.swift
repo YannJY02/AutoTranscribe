@@ -3,6 +3,7 @@ import Foundation
 enum LocalASREngine: String, Codable, CaseIterable, Identifiable {
     case whisper
     case funasr
+    case qwenmlx = "qwen-mlx"
 
     var id: String { rawValue }
 
@@ -12,6 +13,8 @@ enum LocalASREngine: String, Codable, CaseIterable, Identifiable {
             return "Whisper"
         case .funasr:
             return "FunASR"
+        case .qwenmlx:
+            return "Qwen3-ASR MLX"
         }
     }
 
@@ -21,6 +24,8 @@ enum LocalASREngine: String, Codable, CaseIterable, Identifiable {
             return "Whisper（通用）"
         case .funasr:
             return "FunASR（中文优先）"
+        case .qwenmlx:
+            return "Qwen3-ASR MLX（能力上限）"
         }
     }
 }
@@ -39,6 +44,7 @@ struct RuntimeConfigV2: Codable, Equatable {
             case diarizationEnabled
             case whisperProfile
             case funasrProfile
+            case qwenProfile
         }
 
         var engine: LocalASREngine
@@ -48,6 +54,7 @@ struct RuntimeConfigV2: Codable, Equatable {
         var diarizationEnabled: Bool
         var whisperProfile: ASRProfile
         var funasrProfile: ASRProfile
+        var qwenProfile: ASRProfile
 
         init(
             engine: LocalASREngine,
@@ -56,7 +63,8 @@ struct RuntimeConfigV2: Codable, Equatable {
             vadEnabled: Bool,
             diarizationEnabled: Bool,
             whisperProfile: ASRProfile,
-            funasrProfile: ASRProfile
+            funasrProfile: ASRProfile,
+            qwenProfile: ASRProfile
         ) {
             self.engine = engine
             self.model = model
@@ -65,6 +73,7 @@ struct RuntimeConfigV2: Codable, Equatable {
             self.diarizationEnabled = diarizationEnabled
             self.whisperProfile = whisperProfile
             self.funasrProfile = funasrProfile
+            self.qwenProfile = qwenProfile
         }
 
         init(from decoder: Decoder) throws {
@@ -78,6 +87,8 @@ struct RuntimeConfigV2: Codable, Equatable {
                 ?? ASRProfile(model: model)
             funasrProfile = try container.decodeIfPresent(ASRProfile.self, forKey: .funasrProfile)
                 ?? ASRProfile(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
+            qwenProfile = try container.decodeIfPresent(ASRProfile.self, forKey: .qwenProfile)
+                ?? ASRProfile(model: "Qwen3-ASR-1.7B-MLX-4bit")
         }
     }
 
@@ -179,6 +190,33 @@ struct ASRRuntimeStatus: Equatable {
     let readyByEngine: [String: Bool]
     let backend: ASRBackendStatus
     let warm: ASRWarmStatus
+}
+
+extension ASRRuntimeStatus {
+    var userVisibleReadinessMessage: String? {
+        if ready {
+            return nil
+        }
+
+        let model = modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? activeProfile : modelName
+        if !modelExists {
+            let path = modelPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let location = path.isEmpty ? "" : " 当前查找路径：\(path)。"
+            return "ASR 模型文件缺失：\(model)。请在设置中点击“一键修复语音识别”下载或修复模型。\(location)"
+        }
+
+        let warmError = warm.lastError.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !warmError.isEmpty {
+            return "ASR 模型未就绪：\(warmError)。请在设置中点击“一键修复语音识别”后重试。"
+        }
+
+        return "ASR 模型未就绪：\(engine) / \(model)。请在设置中点击“一键修复语音识别”后重试。"
+    }
+
+    var userVisibleReadinessAccessibilityIdentifier: String? {
+        guard !ready else { return nil }
+        return modelExists ? "settings_asr_runtime_warning_status" : "settings_asr_model_missing_status"
+    }
 }
 
 struct ASRBootstrapResult: Equatable {

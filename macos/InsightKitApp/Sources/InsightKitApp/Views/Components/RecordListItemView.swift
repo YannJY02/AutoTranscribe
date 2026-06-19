@@ -59,6 +59,7 @@ struct RecordListItemView: View {
             .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("record_list_item_\(record.id)")
         .contextMenu {
             Button("打开") { onSelect?() }
             Button("在访达中显示") { onRevealInFinder?() }

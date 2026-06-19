@@ -32,6 +32,10 @@ enum NotesFileIO {
 
     static func write(_ notes: [TimestampedNote], to url: URL) {
         let content = serialize(notes)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 

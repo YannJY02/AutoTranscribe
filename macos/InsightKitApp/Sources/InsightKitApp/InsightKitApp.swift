@@ -2,172 +2,150 @@ import AppKit
 import SwiftUI
 
 @main
-struct InsightKitApp: App {
-    @StateObject private var coordinator = WorkflowCoordinator()
+final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
+    private let coordinator = WorkflowCoordinator()
+    private var mainWindow: NSWindow?
+    private var settingsWindow: NSWindow?
 
-    var body: some Scene {
-        WindowGroup("InsightKit") {
-            ContentView(coordinator: coordinator)
-                .font(.system(size: 16, weight: .regular, design: .default))
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppLifecycleDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        withExtendedLifetime(delegate) {
+            app.run()
         }
-        .defaultSize(width: 1360, height: 860)
-        .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("新建会话") {
-                    coordinator.resetLiveSession()
-                    coordinator.openHome()
-                }
-                .keyboardShortcut("n", modifiers: [.command])
-            }
+    }
 
-            CommandGroup(after: .newItem) {
-                Button("打开实时语音总结") {
-                    coordinator.openLive()
-                }
-                .keyboardShortcut("1", modifiers: [.command, .shift])
-                .disabled(coordinator.route == .live)
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        showMainWindow()
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
-                Button("打开转写总结") {
-                    coordinator.openTranscription()
-                }
-                .keyboardShortcut("2", modifiers: [.command, .shift])
-                .disabled(coordinator.route == .transcription)
-            }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        sender.activate(ignoringOtherApps: true)
+        return true
+    }
 
-            CommandGroup(after: .sidebar) {
-                Button(coordinator.route == .home ? "返回首页" : "显示首页") {
-                    coordinator.openHome()
-                }
-                .keyboardShortcut("h", modifiers: [.command, .option])
+    func application(_ application: NSApplication, open urls: [URL]) {
+        showMainWindow()
+        for url in urls {
+            coordinator.handleIncomingURL(url)
+        }
+    }
 
-                Button("显示/隐藏边栏") {
-                    NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
-                }
-                .keyboardShortcut("s", modifiers: [.command, .control])
+    func applicationWillTerminate(_ notification: Notification) {
+        coordinator.shutdown()
+        SettingsView.shutdownSharedSidecar()
+        SidecarManager.bestEffortShutdownSocketOwner(timeoutSec: 1)
+    }
 
-                Divider()
-
-                Button(coordinator.liveViewModel.readingMode ? "关闭阅读模式" : "开启阅读模式") {
-                    switch coordinator.route {
-                    case .live:
-                        coordinator.liveViewModel.readingMode.toggle()
-                    case .transcription:
-                        coordinator.transcriptionViewModel.readingMode.toggle()
-                    case .home, .importMedia, .records:
-                        break
-                    }
-                }
-                .keyboardShortcut("1", modifiers: [.command, .option])
-                .disabled(coordinator.route == .home)
-
-                Button(coordinator.liveViewModel.focusMode ? "关闭聚焦模式" : "开启聚焦模式") {
-                    switch coordinator.route {
-                    case .live:
-                        coordinator.liveViewModel.focusMode.toggle()
-                    case .transcription:
-                        coordinator.transcriptionViewModel.focusMode.toggle()
-                    case .home, .importMedia, .records:
-                        break
-                    }
-                }
-                .keyboardShortcut("2", modifiers: [.command, .option])
-                .disabled(coordinator.route == .home)
-
-                Button("显示/隐藏执行面板") {
-                    switch coordinator.route {
-                    case .live:
-                        coordinator.liveViewModel.isExecutionPanelVisible.toggle()
-                    case .transcription:
-                        coordinator.transcriptionViewModel.isExecutionPanelVisible.toggle()
-                    case .home, .importMedia, .records:
-                        break
-                    }
-                }
-                .keyboardShortcut("3", modifiers: [.command, .option])
-                .disabled(coordinator.route == .home)
-            }
-
-            CommandMenu("会话") {
-                Button("开始直播洞察") {
-                    coordinator.startLiveSession()
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(!coordinator.canStartLive)
-
-                Button("停止直播") {
-                    coordinator.stopLiveSession()
-                }
-                .keyboardShortcut(".", modifiers: [.command])
-                .disabled(!coordinator.canStopLive)
-
-                Divider()
-
-                Button("刷新 Sidecar 状态") {
-                    coordinator.liveViewModel.refreshSidecarStatus()
-                    coordinator.transcriptionViewModel.refreshStatus()
-                }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-            }
-
-            CommandMenu("洞察") {
-                Button("生成实时流定稿") {
-                    coordinator.liveViewModel.buildFinalInsight()
-                }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
-                .disabled(!coordinator.canBuildLiveFinal)
-
-                Button("生成转写流定稿") {
-                    coordinator.transcriptionViewModel.buildFinalInsight()
-                }
-                .keyboardShortcut("b", modifiers: [.command, .option])
-                .disabled(!coordinator.canBuildTranscriptionFinal)
-
-                Divider()
-
-                Button("导出实时流 Markdown") {
-                    coordinator.liveViewModel.exportDocument(format: "markdown")
-                }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(!coordinator.canExportLive)
-
-                Button("导出转写流 Markdown") {
-                    coordinator.transcriptionViewModel.exportDocument(format: "markdown")
-                }
-                .keyboardShortcut("e", modifiers: [.command, .option])
-                .disabled(!coordinator.canExportTranscription)
-            }
-
-            CommandMenu("转写") {
-                Button("导入音视频文件") {
-                    coordinator.openTranscription()
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-
-                Button(coordinator.transcriptionViewModel.watcherState.isRunning ? "停止目录监听" : "启动目录监听") {
-                    if coordinator.transcriptionViewModel.watcherState.isRunning {
-                        coordinator.transcriptionViewModel.stopWatcher()
-                    } else {
-                        coordinator.transcriptionViewModel.startWatcher(dirs: [
-                            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path,
-                            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path,
-                        ])
-                    }
-                }
-                .keyboardShortcut("w", modifiers: [.command, .shift])
-            }
-
-            CommandGroup(after: .help) {
-                Button("打开麦克风设置") {
-                    coordinator.liveViewModel.openMicrophonePrivacySettings()
-                }
-                Button("打开屏幕录制设置") {
-                    coordinator.liveViewModel.openScreenRecordingSettings()
-                }
-            }
+    private func showMainWindow() {
+        if let mainWindow {
+            mainWindow.makeKeyAndOrderFront(nil)
+            return
         }
 
-        Settings {
-            SettingsView()
+        installMainMenu()
+
+        let rootView = ContentView(coordinator: coordinator)
+            .font(.system(size: 16, weight: .regular, design: .default))
+        let hostingView = NSHostingView(rootView: rootView)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "InsightKit"
+        window.contentView = hostingView
+        window.setFrameAutosaveName("InsightKitMainWindow")
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        mainWindow = window
+    }
+
+    private func installMainMenu() {
+        guard NSApp.mainMenu == nil else { return }
+
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "InsightKit")
+        appMenu.addItem(
+            withTitle: "关于 InsightKit",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(
+            withTitle: "设置...",
+            action: #selector(showSettingsWindow(_:)),
+            keyEquivalent: ","
+        ).target = self
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(
+            withTitle: "退出 InsightKit",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "文件")
+        fileMenu.addItem(withTitle: "新建会话", action: #selector(newSession(_:)), keyEquivalent: "n").target = self
+        fileMenu.addItem(withTitle: "打开实时语音总结", action: #selector(openLive(_:)), keyEquivalent: "1").target = self
+        fileMenu.addItem(withTitle: "打开转写总结", action: #selector(openTranscription(_:)), keyEquivalent: "2").target = self
+        fileMenu.addItem(withTitle: "打开记录", action: #selector(openRecords(_:)), keyEquivalent: "3").target = self
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func showSettingsWindow(_ sender: Any?) {
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "InsightKit 设置"
+        window.contentView = NSHostingView(rootView: SettingsView())
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        settingsWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func newSession(_ sender: Any?) {
+        coordinator.resetLiveSession()
+        coordinator.openHome()
+        showMainWindow()
+    }
+
+    @objc private func openLive(_ sender: Any?) {
+        coordinator.openLive()
+        showMainWindow()
+    }
+
+    @objc private func openTranscription(_ sender: Any?) {
+        coordinator.openTranscription()
+        showMainWindow()
+    }
+
+    @objc private func openRecords(_ sender: Any?) {
+        coordinator.openRecords()
+        showMainWindow()
     }
 }

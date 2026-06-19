@@ -17,6 +17,7 @@ from pathlib import Path
 # 将 scripts/ 目录加入 Python 路径
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from asr_model_catalog import FUNASR_UPDATE_MODELS
 from config import LOG_DIR, BASE_DIR
 
 # ── 日志 ──────────────────────────────────────────────────
@@ -37,13 +38,7 @@ logger = logging.getLogger(__name__)
 
 # ── 需要更新的模型（与 config.py 保持一致）──────────────
 
-MODELS = [
-    "iic/SenseVoiceSmall",
-    "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
-    "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
-    "iic/speech_campplus_sv_zh-cn_16k-common",
-]
+MODELS = FUNASR_UPDATE_MODELS
 
 # ── 需要更新的 pip 包 ────────────────────────────────────
 

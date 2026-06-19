@@ -18,6 +18,12 @@ struct LiveWorkspaceView: View {
             right: rightPanel
         )
         .background(viewModel.readingMode ? InsightTheme.canvas : InsightTheme.surface)
+        .overlay(alignment: .topLeading) {
+            Text("实时转写工作区")
+                .font(.caption2)
+                .foregroundStyle(.clear)
+                .accessibilityIdentifier("live_workspace")
+        }
         .onChange(of: cameraToggleEnabled) { _, isEnabled in
             if isEnabled {
                 viewModel.startCameraPreview()

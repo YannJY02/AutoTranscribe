@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -90,7 +91,16 @@ def run_transcription_job(
 
     check_cancel()
     progress(82, "building_final")
-    package = insight_service.build_final(transcript_rows)
+    try:
+        package = insight_service.build_final(transcript_rows)
+    except Exception:
+        package = insight_service.build_local_extractive(transcript_rows)
+    call_meta = insight_service.last_call_meta
+    store.upsert_insight_package(
+        meeting_id,
+        package,
+        datetime.now(timezone.utc).isoformat(),
+    )
 
     # ── Write record folder ───────────────────────────────────────────────
     records_root = os.getenv("INSIGHTKIT_RECORDS_ROOT", _DEFAULT_RECORDS_ROOT)
@@ -106,6 +116,12 @@ def run_transcription_job(
         media_type=media_type,
         record_source="imported",
         duration_sec=duration_sec,
+        analysis_meta={
+            "provider": str(call_meta.get("vendor", "")),
+            "model": str(call_meta.get("model", "")),
+            "strict_mode": bool(call_meta.get("strict_mode", False)),
+            "source": "final",
+        },
     )
 
     progress(100, "completed")

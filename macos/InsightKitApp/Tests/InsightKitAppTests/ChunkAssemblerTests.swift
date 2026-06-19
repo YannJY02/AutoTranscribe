@@ -29,5 +29,13 @@ final class ChunkAssemblerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: chunksA[0].url.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: chunksB[0].url.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: tail[0].url.path))
+
+        let combinedURL = tmp.appendingPathComponent("recording.wav")
+        let resultURL = try XCTUnwrap(assembler.writeCombinedWAV(to: combinedURL))
+        XCTAssertEqual(resultURL, combinedURL)
+        let data = try Data(contentsOf: combinedURL)
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "RIFF")
+        XCTAssertEqual(String(data: data.subdata(in: 8..<12), encoding: .ascii), "WAVE")
+        XCTAssertEqual(data.count, 44 + (140_000 * 2))
     }
 }

@@ -193,7 +193,7 @@ final class InsightRPCClient {
         return try decodePackageResult(result)
     }
 
-    func documentExport(meetingID: String, format: String = "markdown", outputDir: String = "txt") throws -> DocumentExportResult {
+    func documentExport(meetingID: String, format: String = "markdown", outputDir: String = "") throws -> DocumentExportResult {
         let result = try callWithRetry(method: "document.export", params: [
             "meeting_id": meetingID,
             "format": format,
@@ -486,6 +486,7 @@ final class InsightRPCClient {
         mediaType: String,
         recordSource: String,
         durationSec: Double,
+        analysisMeta: [String: Any]? = nil,
         notesMD: String
     ) throws -> String {
         var params: [String: Any] = [
@@ -500,6 +501,9 @@ final class InsightRPCClient {
         ]
         if let pkg = insightPackage {
             params["insight_package"] = pkg
+        }
+        if let analysisMeta {
+            params["analysis_meta"] = analysisMeta
         }
         let result = try callWithRetry(method: "records.save", params: params)
         return (result["record_path"] as? String) ?? ""
