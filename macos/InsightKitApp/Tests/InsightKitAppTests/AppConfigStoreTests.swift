@@ -102,6 +102,29 @@ final class AppConfigStoreTests: XCTestCase {
         XCTAssertNil(env["DOUBAO_API_KEY"])
         XCTAssertEqual(env["HF_TOKEN"], "hf-token")
         XCTAssertEqual(env["INSIGHTKIT_QWEN_MLX_MODEL"], "Qwen3-ASR-1.7B-MLX-4bit")
+        XCTAssertEqual(env["INSIGHTKIT_DIARIZATION_ENGINE"], "fluid-lseend")
+    }
+
+    func testSidecarEnvironmentPassesFluidAudioOverrides() {
+        let config = makeRuntimeConfig(
+            selectedVendor: .deepseek,
+            providers: [
+                .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+            ]
+        )
+
+        let env = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: [
+                "INSIGHTKIT_DIARIZATION_ENGINE": "pyannote",
+                "INSIGHTKIT_FLUIDAUDIO_CLI": "/opt/fluidaudiocli",
+            ]
+        ) { _, _ in
+            ""
+        }
+
+        XCTAssertEqual(env["INSIGHTKIT_DIARIZATION_ENGINE"], "pyannote")
+        XCTAssertEqual(env["INSIGHTKIT_FLUIDAUDIO_CLI"], "/opt/fluidaudiocli")
     }
 
     func testSidecarEnvironmentFallsBackToProcessEnvForActiveProviderKey() {

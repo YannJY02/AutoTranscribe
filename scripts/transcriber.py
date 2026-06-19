@@ -10,8 +10,11 @@ InsightKit 本地转写引擎（faster-whisper + silero-vad + pyannote）。
 from __future__ import annotations
 
 import logging
+import json
 import math
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -77,6 +80,11 @@ QWEN_MLX_MODEL_ROOT = MODEL_DIR / "qwen3-asr"
 STRICT_LOCAL_ONLY = os.getenv("INSIGHTKIT_ASR_STRICT_LOCAL_ONLY", "1").strip() != "0"
 VAD_ENABLED = os.getenv("INSIGHTKIT_VAD_ENABLED", "1").strip() != "0"
 DIARIZATION_ENABLED = os.getenv("INSIGHTKIT_DIARIZATION_ENABLED", "1").strip() != "0"
+DIARIZATION_ENGINE = os.getenv("INSIGHTKIT_DIARIZATION_ENGINE", "fluid-lseend").strip()
+FLUIDAUDIO_CLI = os.getenv("INSIGHTKIT_FLUIDAUDIO_CLI", "").strip()
+FLUIDAUDIO_LSEEND_VARIANT = os.getenv("INSIGHTKIT_FLUIDAUDIO_LSEEND_VARIANT", "dihard3").strip() or "dihard3"
+FLUIDAUDIO_LSEEND_STEP_SIZE = os.getenv("INSIGHTKIT_FLUIDAUDIO_LSEEND_STEP_SIZE", "500ms").strip() or "500ms"
+FLUIDAUDIO_TIMEOUT_SEC = int(os.getenv("INSIGHTKIT_FLUIDAUDIO_TIMEOUT_SEC", "120").strip() or "120")
 HF_TOKEN = (
     os.getenv("PYANNOTE_AUTH_TOKEN", "").strip()
     or os.getenv("HF_TOKEN", "").strip()
@@ -110,6 +118,22 @@ def _hf_auth_token() -> str:
         return (get_token() or "").strip()
     except Exception:
         return ""
+
+
+def _diarization_engine() -> str:
+    raw = (DIARIZATION_ENGINE or "fluid-lseend").strip().lower().replace("_", "-")
+    if raw in {"fluid", "fluid-lseend", "fluid-audio", "fluidaudio", "ls-eend", "lseend"}:
+        return "fluid-lseend"
+    if raw in {"pyannote", "pyannote-community-1", "qwen-pyannote"}:
+        return "pyannote"
+    if raw in {"funasr", "campplus"}:
+        return "funasr"
+    if raw in {"auto", "best"}:
+        return "auto"
+    if raw in {"0", "off", "none", "disabled"}:
+        return "none"
+    return "fluid-lseend"
+
 
 _models: dict[str, Any] = {}
 _model_registry_lock = threading.Lock()
@@ -625,7 +649,7 @@ def _load_funasr_model():
         "punc_model": None if is_nano else _resolve_funasr_source(paths["punc"], FUNASR_PUNC_MODEL),
         "spk_model": (
             None
-            if is_nano
+            if is_nano or _diarization_engine() != "funasr"
             else _resolve_funasr_source(paths["spk"], FUNASR_SPK_MODEL) if DIARIZATION_ENABLED else None
         ),
         "disable_update": True,
@@ -810,6 +834,133 @@ def _load_diarization_pipeline():
         return None
 
 
+def _resolve_fluid_audio_cli() -> Path | None:
+    candidates: list[Path] = []
+    if FLUIDAUDIO_CLI:
+        candidates.append(Path(FLUIDAUDIO_CLI).expanduser())
+
+    found = shutil.which("fluidaudiocli")
+    if found:
+        candidates.append(Path(found))
+
+    app_support = Path.home() / "Library" / "Application Support"
+    candidates.extend(
+        [
+            MODEL_DIR.parent / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            app_support / "InsightKit" / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            app_support / "FluidAudio" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            Path("/tmp/FluidAudio/.build/release/fluidaudiocli"),
+        ]
+    )
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _fluid_speaker_label(item: dict[str, Any]) -> str:
+    index = item.get("speakerIndex", None)
+    if isinstance(index, int):
+        return f"SPEAKER_{index:02d}"
+    if isinstance(index, float) and index.is_integer():
+        return f"SPEAKER_{int(index):02d}"
+
+    raw = str(item.get("speaker", "") or item.get("speakerId", "") or "").strip()
+    if not raw:
+        return ""
+    match = re.search(r"(\d+)\s*$", raw)
+    if match:
+        return f"SPEAKER_{int(match.group(1)):02d}"
+    return raw
+
+
+def _parse_fluid_lseend_spans(payload: dict[str, Any]) -> list[tuple[int, int, str]]:
+    spans: list[tuple[int, int, str]] = []
+    raw_segments = payload.get("segments", [])
+    if not isinstance(raw_segments, list):
+        return spans
+
+    for item in raw_segments:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start = float(item.get("startTimeSeconds", item.get("start", 0.0)) or 0.0)
+            end = float(item.get("endTimeSeconds", item.get("end", 0.0)) or 0.0)
+        except Exception:
+            continue
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        speaker = _fluid_speaker_label(item)
+        if not speaker:
+            continue
+        start_ms = max(0, int(round(start * 1000)))
+        end_ms = max(start_ms + 1, int(round(end * 1000)))
+        spans.append((start_ms, end_ms, speaker))
+
+    spans.sort(key=lambda span: (span[0], span[1], span[2]))
+    return spans
+
+
+def _diarize_fluid_lseend(audio_path: Path) -> list[tuple[int, int, str]]:
+    cli = _resolve_fluid_audio_cli()
+    if cli is None:
+        logger.warning("FluidAudio LS-EEND CLI 未找到，跳过实时说话人分离。")
+        return []
+
+    output_path = Path(tempfile.mktemp(suffix="_fluid_lseend.json"))
+    cmd = [
+        str(cli),
+        "lseend",
+        str(audio_path),
+        "--variant",
+        FLUIDAUDIO_LSEEND_VARIANT,
+        "--step-size",
+        FLUIDAUDIO_LSEEND_STEP_SIZE,
+        "--output",
+        str(output_path),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=max(5, FLUIDAUDIO_TIMEOUT_SEC),
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = f"{(proc.stdout or '').strip()}\n{(proc.stderr or '').strip()}".strip()
+            logger.warning("FluidAudio LS-EEND 失败，跳过说话人分离: %s", detail[-800:])
+            return []
+        if not output_path.exists():
+            logger.warning("FluidAudio LS-EEND 未生成输出 JSON: %s", output_path)
+            return []
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        spans = _parse_fluid_lseend_spans(payload if isinstance(payload, dict) else {})
+        logger.info(
+            "FluidAudio LS-EEND 说话人分离完成: spans=%s processing=%.3fs rtfx=%.1f",
+            len(spans),
+            float(payload.get("processingTimeSeconds", 0.0) or 0.0) if isinstance(payload, dict) else 0.0,
+            float(payload.get("rtfx", 0.0) or 0.0) if isinstance(payload, dict) else 0.0,
+        )
+        return spans
+    except Exception as exc:
+        logger.warning("FluidAudio LS-EEND 运行异常，跳过说话人分离: %s", exc)
+        return []
+    finally:
+        try:
+            output_path.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.debug("无法删除 FluidAudio 临时输出: %s", output_path, exc_info=True)
+
+
 def _speaker_annotation_from_pyannote(output: Any) -> Any:
     """Return a pyannote Annotation from legacy or community pipeline outputs."""
     for attr in ("exclusive_speaker_diarization", "speaker_diarization"):
@@ -820,6 +971,18 @@ def _speaker_annotation_from_pyannote(output: Any) -> Any:
 
 
 def _diarize(audio_path: Path) -> list[tuple[int, int, str]]:
+    engine = _diarization_engine()
+    if not DIARIZATION_ENABLED or engine == "none":
+        return []
+
+    if engine in {"fluid-lseend", "auto"}:
+        spans = _diarize_fluid_lseend(audio_path)
+        if spans or engine == "fluid-lseend":
+            return spans
+
+    if engine == "funasr":
+        return []
+
     pipeline = _load_diarization_pipeline()
     if pipeline is None:
         return []
@@ -854,6 +1017,43 @@ def _pick_speaker(start_ms: int, end_ms: int, spans: list[tuple[int, int, str]])
     return best_speaker
 
 
+def _segments_have_speaker_labels(segments: list[dict[str, Any]]) -> bool:
+    return any(str(seg.get("speaker", "") or "").strip() for seg in segments)
+
+
+def _apply_speaker_spans(
+    segments: list[dict[str, Any]],
+    spans: list[tuple[int, int, str]],
+    *,
+    overwrite: bool = False,
+) -> list[dict[str, Any]]:
+    if not spans:
+        return segments
+    updated: list[dict[str, Any]] = []
+    for seg in segments:
+        next_seg = dict(seg)
+        current_speaker = str(next_seg.get("speaker", "") or "").strip()
+        if overwrite or not current_speaker:
+            start_ms = int(next_seg.get("start", 0) or 0)
+            end_ms = int(next_seg.get("end", 0) or 0)
+            if end_ms <= start_ms:
+                end_ms = start_ms + 1200
+            picked = _pick_speaker(start_ms, end_ms, spans)
+            if picked:
+                next_seg["speaker"] = picked
+        updated.append(next_seg)
+    return updated
+
+
+def _attach_diarization_labels(audio_path: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not DIARIZATION_ENABLED or not segments or _segments_have_speaker_labels(segments):
+        return segments
+    spans = _diarize(audio_path)
+    if not spans:
+        return segments
+    return _apply_speaker_spans(segments, spans)
+
+
 def _confidence_from_logprob(avg_logprob: float | None) -> float:
     if avg_logprob is None:
         return 0.0
@@ -864,7 +1064,7 @@ def _confidence_from_logprob(avg_logprob: float | None) -> float:
         return 0.0
 
 
-def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_whisper(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
     if not _speech_exists(audio_path):
         return "unknown", []
 
@@ -880,7 +1080,7 @@ def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
         word_timestamps=False,
     )
 
-    speaker_spans = _diarize(audio_path)
+    speaker_spans = _diarize(audio_path) if attach_diarization else []
     segments: list[dict[str, Any]] = []
 
     for seg in segments_iter:
@@ -911,7 +1111,7 @@ def _transcribe_whisper(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     return language, segments
 
 
-def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_funasr(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
     model = _load_funasr_model()
     is_nano = is_funasr_nano_model(FUNASR_ASR_MODEL)
     if is_nano:
@@ -925,7 +1125,7 @@ def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     else:
         result = model.generate(input=str(audio_path))
     parsed = _parse_funasr_result(result)
-    speaker_spans = _diarize(audio_path) if is_nano and DIARIZATION_ENABLED else []
+    speaker_spans = _diarize(audio_path) if is_nano and attach_diarization and DIARIZATION_ENABLED else []
     duration_ms = 0
     if is_nano:
         duration_ms = max(1200, int(round(_get_audio_duration(str(audio_path)) * 1000)))
@@ -952,12 +1152,18 @@ def _transcribe_funasr(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
                 "confidence": float(seg.get("confidence", 0.0) or 0.0),
             }
         )
+    if attach_diarization:
+        segments = _attach_diarization_labels(audio_path, segments)
     _mark_warm_ready()
     return "zh", segments
 
 
+def _qwen_builtin_diarization_requested() -> bool:
+    return _diarization_engine() == "pyannote"
+
+
 def _qwen_diarization_ready() -> bool:
-    if not DIARIZATION_ENABLED:
+    if not DIARIZATION_ENABLED or not _qwen_builtin_diarization_requested():
         return False
     if not _module_available("pyannote.audio") or not _module_available("torch"):
         return False
@@ -1120,20 +1326,20 @@ def _qwen_segments_from_result(result: Any) -> list[dict[str, Any]]:
     return [{"start": 0, "end": 1200, "text": text, "speaker": "", "confidence": 0.0}]
 
 
-def _transcribe_qwen_mlx(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
     if not _speech_exists(audio_path):
         return "unknown", []
 
     session = _load_qwen_mlx_session()
-    diarize = _qwen_diarization_ready()
+    diarize = attach_diarization and _qwen_diarization_ready()
     if diarize and not os.environ.get("PYANNOTE_AUTH_TOKEN"):
         token = _hf_auth_token()
         if token:
             os.environ["PYANNOTE_AUTH_TOKEN"] = token
-    if DIARIZATION_ENABLED and not diarize:
+    if attach_diarization and DIARIZATION_ENABLED and _qwen_builtin_diarization_requested() and not diarize:
         logger.warning("Qwen 说话人分离未就绪，将继续无 speaker 转写。")
 
-    return_timestamps = QWEN_MLX_RETURN_TIMESTAMPS or diarize
+    return_timestamps = QWEN_MLX_RETURN_TIMESTAMPS or diarize or (attach_diarization and DIARIZATION_ENABLED)
     forced_aligner = _resolve_qwen_forced_aligner_source() if return_timestamps else None
     kwargs: dict[str, Any] = {
         "audio": str(audio_path),
@@ -1150,17 +1356,19 @@ def _transcribe_qwen_mlx(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
 
     result = session.transcribe(**kwargs)
     segments = _qwen_segments_from_result(result)
+    if attach_diarization:
+        segments = _attach_diarization_labels(audio_path, segments)
     _mark_warm_ready()
     return _qwen_lang(getattr(result, "language", "")), segments
 
 
-def _transcribe_active(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_active(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
     engine = _engine()
     if engine == QWEN_MLX_ENGINE:
-        return _transcribe_qwen_mlx(audio_path)
+        return _transcribe_qwen_mlx(audio_path, attach_diarization=attach_diarization)
     if engine == "funasr":
-        return _transcribe_funasr(audio_path)
-    return _transcribe_whisper(audio_path)
+        return _transcribe_funasr(audio_path, attach_diarization=attach_diarization)
+    return _transcribe_whisper(audio_path, attach_diarization=attach_diarization)
 
 
 def _warmup_once(engine_name: str) -> None:
@@ -1333,7 +1541,7 @@ def detect_language(audio_path: Path) -> str:
     clip_path = None
     try:
         clip_path = _extract_audio_clip(audio_path)
-        lang, _ = _transcribe_active(clip_path)
+        lang, _ = _transcribe_active(clip_path, attach_diarization=False)
         return lang
     except Exception as exc:
         logger.warning("语言检测失败，默认 unknown: %s", exc)

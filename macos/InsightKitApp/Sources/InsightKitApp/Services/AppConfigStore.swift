@@ -222,6 +222,7 @@ final class AppConfigStore: ObservableObject {
         env["INSIGHTKIT_MODEL_DIR"] = config.asr.modelDir
         env["INSIGHTKIT_VAD_ENABLED"] = config.asr.vadEnabled ? "1" : "0"
         env["INSIGHTKIT_DIARIZATION_ENABLED"] = config.asr.diarizationEnabled ? "1" : "0"
+        env["INSIGHTKIT_DIARIZATION_ENGINE"] = processEnvironment["INSIGHTKIT_DIARIZATION_ENGINE"] ?? "fluid-lseend"
         env["INSIGHTKIT_ASR_STRICT_LOCAL_ONLY"] = "1"
         env["INSIGHTKIT_FUNASR_ASR_MODEL"] = config.asr.funasrProfile.model
         env["INSIGHTKIT_WHISPER_MODEL"] = config.asr.whisperProfile.model
@@ -229,6 +230,9 @@ final class AppConfigStore: ObservableObject {
         env["INSIGHTKIT_QWEN_ASR_MODEL"] = config.asr.qwenProfile.model
         env["INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL"] = "Qwen3-ForcedAligner-0.6B"
         env["INSIGHTKIT_QWEN_RETURN_TIMESTAMPS"] = "1"
+        if let cli = processEnvironment["INSIGHTKIT_FLUIDAUDIO_CLI"], !cli.isEmpty {
+            env["INSIGHTKIT_FLUIDAUDIO_CLI"] = cli
+        }
 
         func providerAPIKey(_ vendor: ProviderVendor, envName: String) -> String {
             let stored = apiKeyLookup(vendor, false).trimmingCharacters(in: .whitespacesAndNewlines)

@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +70,8 @@ MODEL_DIR = Path(
 WHISPER_ROOT = MODEL_DIR / "faster-whisper"
 FUNASR_ROOT = MODEL_DIR / "funasr"
 QWEN_MLX_ROOT = MODEL_DIR / "qwen3-asr"
+DIARIZATION_ENGINE = os.getenv("INSIGHTKIT_DIARIZATION_ENGINE", "fluid-lseend").strip()
+FLUIDAUDIO_CLI = os.getenv("INSIGHTKIT_FLUIDAUDIO_CLI", "").strip()
 
 FUNASR_DEFAULTS = {
     "asr": DEFAULT_FUNASR_MODEL,
@@ -93,6 +96,91 @@ def _hf_auth_token() -> str:
         return (get_token() or "").strip()
     except Exception:
         return ""
+
+
+def _diarization_engine() -> str:
+    raw = (DIARIZATION_ENGINE or "fluid-lseend").strip().lower().replace("_", "-")
+    if raw in {"fluid", "fluid-lseend", "fluid-audio", "fluidaudio", "ls-eend", "lseend"}:
+        return "fluid-lseend"
+    if raw in {"pyannote", "pyannote-community-1", "qwen-pyannote"}:
+        return "pyannote"
+    if raw in {"funasr", "campplus"}:
+        return "funasr"
+    if raw in {"auto", "best"}:
+        return "auto"
+    if raw in {"0", "off", "none", "disabled"}:
+        return "none"
+    return "fluid-lseend"
+
+
+def _resolve_fluid_audio_cli() -> Path | None:
+    candidates: list[Path] = []
+    if FLUIDAUDIO_CLI:
+        candidates.append(Path(FLUIDAUDIO_CLI).expanduser())
+    found = shutil.which("fluidaudiocli")
+    if found:
+        candidates.append(Path(found))
+
+    app_support = Path.home() / "Library" / "Application Support"
+    candidates.extend(
+        [
+            MODEL_DIR.parent / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            app_support / "InsightKit" / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            app_support / "FluidAudio" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
+            Path("/tmp/FluidAudio/.build/release/fluidaudiocli"),
+        ]
+    )
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _speaker_diarization_status(optional: dict[str, bool], *, funasr_spk_ready: bool = False) -> dict[str, Any]:
+    engine = _diarization_engine()
+    if engine in {"fluid-lseend", "auto"}:
+        cli = _resolve_fluid_audio_cli()
+        ready = cli is not None
+        return {
+            "engine": "fluid-lseend",
+            "enabled": True,
+            "ready": ready,
+            "degraded": not ready,
+            "path": str(cli) if cli else "",
+            "reason": "" if ready else "missing FluidAudio fluidaudiocli executable",
+        }
+    if engine == "funasr":
+        return {
+            "engine": "campplus",
+            "enabled": True,
+            "ready": funasr_spk_ready,
+            "degraded": not funasr_spk_ready,
+            "reason": "" if funasr_spk_ready else "missing local speaker model",
+        }
+    if engine == "none":
+        return {
+            "engine": "none",
+            "enabled": False,
+            "ready": False,
+            "degraded": True,
+            "reason": "diarization disabled",
+        }
+
+    hf_token = _hf_auth_token()
+    ready = optional.get("pyannote-audio", False) and optional.get("torch", False) and bool(hf_token)
+    return {
+        "engine": "pyannote-community-1",
+        "enabled": True,
+        "ready": ready,
+        "degraded": not ready,
+        "reason": "" if ready else "missing pyannote diarize extra or HF/PYANNOTE token",
+    }
 
 
 def _backend_status(engine: str) -> dict[str, Any]:
@@ -253,12 +341,9 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
         for module_name, pip_name in _optional_modules().items()
     }
 
-    hf_token = _hf_auth_token()
-
     if engine == QWEN_MLX_ENGINE:
         model_path = _target_qwen_path(DEFAULT_QWEN_MLX_MODEL)
         aligner_path = _target_qwen_forced_aligner_path()
-        diar_ready = optional.get("pyannote-audio", False) and optional.get("torch", False) and bool(hf_token)
         model_exists = _qwen_snapshot_ready(model_path)
         aligner_exists = _qwen_snapshot_ready(aligner_path)
         ready = all(required.values()) and model_exists
@@ -282,13 +367,7 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
                 "model": DEFAULT_QWEN_FORCED_ALIGNER_MODEL,
                 "path": str(aligner_path),
             },
-            "speaker_diarization": {
-                "engine": "pyannote-community-1",
-                "enabled": True,
-                "ready": diar_ready,
-                "degraded": not diar_ready,
-                "reason": "" if diar_ready else "missing pyannote diarize extra or HF/PYANNOTE token",
-            },
+            "speaker_diarization": _speaker_diarization_status(optional),
             "ready": ready,
         }
 
@@ -311,19 +390,12 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
                 "enabled": True,
                 "ready": vad_ready,
             },
-            "speaker_diarization": {
-                "engine": "campplus",
-                "enabled": True,
-                "ready": diar_ready,
-                "degraded": not diar_ready,
-                "reason": "" if diar_ready else "missing local speaker model",
-            },
+            "speaker_diarization": _speaker_diarization_status(optional, funasr_spk_ready=diar_ready),
             "ready": ready,
         }
 
     model_path = _target_whisper_path(whisper_model)
     asr_ready = all(required.values()) and model_path.exists()
-    diarization_enabled = optional.get("pyannote-audio", False) and bool(hf_token)
     return {
         "required": required,
         "optional": optional,
@@ -337,13 +409,7 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
             "enabled": True,
             "ready": required.get("silero-vad", False),
         },
-        "speaker_diarization": {
-            "engine": "pyannote",
-            "enabled": True,
-            "ready": diarization_enabled,
-            "degraded": not diarization_enabled,
-            "reason": "" if diarization_enabled else "missing pyannote package or HF token",
-        },
+        "speaker_diarization": _speaker_diarization_status(optional),
         "ready": asr_ready,
     }
 
