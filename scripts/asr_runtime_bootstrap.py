@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +26,17 @@ try:
         qwen_mlx_repo_for_model,
         whisper_repo_for_model,
     )
+    from .asr_runtime_profile import (
+        ASR_ENGINE_OPTIONS,
+        configured_backend_status,
+        engine_status_snapshot,
+        engine_options,
+        hf_auth_token,
+        normalize_diarization_engine,
+        normalize_engine_name,
+        resolve_fluid_audio_cli,
+        speaker_diarization_status,
+    )
 except ImportError:
     from asr_model_catalog import (
         FUNASR_DEFAULT_ASR_MODEL,
@@ -40,6 +50,17 @@ except ImportError:
         is_funasr_nano_model,
         qwen_mlx_repo_for_model,
         whisper_repo_for_model,
+    )
+    from asr_runtime_profile import (
+        ASR_ENGINE_OPTIONS,
+        configured_backend_status,
+        engine_status_snapshot,
+        engine_options,
+        hf_auth_token,
+        normalize_diarization_engine,
+        normalize_engine_name,
+        resolve_fluid_audio_cli,
+        speaker_diarization_status,
     )
 
 DEFAULT_ENGINE = os.getenv("INSIGHTKIT_ASR_ENGINE", "whisper").strip().lower() or "whisper"
@@ -82,159 +103,34 @@ FUNASR_DEFAULTS = {
 
 
 def _hf_auth_token() -> str:
-    token = (
-        os.getenv("PYANNOTE_AUTH_TOKEN", "").strip()
-        or os.getenv("HF_TOKEN", "").strip()
-        or os.getenv("HUGGINGFACE_TOKEN", "").strip()
-        or os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip()
-    )
-    if token:
-        return token
-    try:
-        from huggingface_hub import get_token
-
-        return (get_token() or "").strip()
-    except Exception:
-        return ""
+    return hf_auth_token()
 
 
 def _diarization_engine() -> str:
-    raw = (DIARIZATION_ENGINE or "fluid-lseend").strip().lower().replace("_", "-")
-    if raw in {"fluid", "fluid-lseend", "fluid-audio", "fluidaudio", "ls-eend", "lseend"}:
-        return "fluid-lseend"
-    if raw in {"pyannote", "pyannote-community-1", "qwen-pyannote"}:
-        return "pyannote"
-    if raw in {"funasr", "campplus"}:
-        return "funasr"
-    if raw in {"auto", "best"}:
-        return "auto"
-    if raw in {"0", "off", "none", "disabled"}:
-        return "none"
-    return "fluid-lseend"
+    return normalize_diarization_engine(DIARIZATION_ENGINE)
 
 
 def _resolve_fluid_audio_cli() -> Path | None:
-    candidates: list[Path] = []
-    if FLUIDAUDIO_CLI:
-        candidates.append(Path(FLUIDAUDIO_CLI).expanduser())
-    found = shutil.which("fluidaudiocli")
-    if found:
-        candidates.append(Path(found))
-
-    app_support = Path.home() / "Library" / "Application Support"
-    candidates.extend(
-        [
-            MODEL_DIR.parent / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            app_support / "InsightKit" / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            app_support / "FluidAudio" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            Path("/tmp/FluidAudio/.build/release/fluidaudiocli"),
-        ]
-    )
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        if candidate.exists() and os.access(candidate, os.X_OK):
-            return candidate
-    return None
+    return resolve_fluid_audio_cli(model_dir=MODEL_DIR, configured_cli=FLUIDAUDIO_CLI)
 
 
 def _speaker_diarization_status(optional: dict[str, bool], *, funasr_spk_ready: bool = False) -> dict[str, Any]:
-    engine = _diarization_engine()
-    if engine in {"fluid-lseend", "auto"}:
-        cli = _resolve_fluid_audio_cli()
-        ready = cli is not None
-        return {
-            "engine": "fluid-lseend",
-            "enabled": True,
-            "ready": ready,
-            "degraded": not ready,
-            "path": str(cli) if cli else "",
-            "reason": "" if ready else "missing FluidAudio fluidaudiocli executable",
-        }
-    if engine == "funasr":
-        return {
-            "engine": "campplus",
-            "enabled": True,
-            "ready": funasr_spk_ready,
-            "degraded": not funasr_spk_ready,
-            "reason": "" if funasr_spk_ready else "missing local speaker model",
-        }
-    if engine == "none":
-        return {
-            "engine": "none",
-            "enabled": False,
-            "ready": False,
-            "degraded": True,
-            "reason": "diarization disabled",
-        }
-
-    hf_token = _hf_auth_token()
-    ready = optional.get("pyannote-audio", False) and optional.get("torch", False) and bool(hf_token)
-    return {
-        "engine": "pyannote-community-1",
-        "enabled": True,
-        "ready": ready,
-        "degraded": not ready,
-        "reason": "" if ready else "missing pyannote diarize extra or HF/PYANNOTE token",
-    }
+    return speaker_diarization_status(
+        optional,
+        diarization_engine=_diarization_engine(),
+        funasr_spk_ready=funasr_spk_ready,
+        model_dir=MODEL_DIR,
+        configured_cli=FLUIDAUDIO_CLI,
+        hf_token_value=_hf_auth_token(),
+    )
 
 
 def _backend_status(engine: str) -> dict[str, Any]:
-    if engine == QWEN_MLX_ENGINE:
-        compute = os.getenv("INSIGHTKIT_QWEN_MLX_COMPUTE_TYPE", "mlx").strip() or "mlx"
-        return {
-            "device": "mlx",
-            "compute_type": compute,
-            "configured_device": "mlx",
-            "configured_compute_type": compute,
-            "resolved": "",
-            "supported_compute_types": ["mlx", "float16", "bfloat16", "float32"],
-        }
-    if engine == "funasr":
-        return {
-            "device": "auto",
-            "compute_type": "float32",
-            "configured_device": "auto",
-            "configured_compute_type": "float32",
-            "resolved": "",
-            "supported_compute_types": ["float16", "float32"],
-        }
-
-    requested_device = os.getenv("INSIGHTKIT_ASR_DEVICE", "auto").strip() or "auto"
-    requested_compute = os.getenv("INSIGHTKIT_ASR_COMPUTE_TYPE", "int8").strip() or "int8"
-    supported: list[str] = []
-    try:
-        import ctranslate2
-
-        raw_supported = ctranslate2.get_supported_compute_types(requested_device)
-        if isinstance(raw_supported, (set, list, tuple)):
-            supported = sorted(str(x) for x in raw_supported)
-        elif raw_supported:
-            supported = [str(raw_supported)]
-    except Exception:
-        supported = []
-
-    return {
-        "device": requested_device,
-        "compute_type": requested_compute,
-        "configured_device": requested_device,
-        "configured_compute_type": requested_compute,
-        "resolved": "",
-        "supported_compute_types": supported,
-    }
+    return configured_backend_status(engine)
 
 
 def _normalize_engine(engine: str | None) -> str:
-    raw = (engine or DEFAULT_ENGINE).strip().lower()
-    if raw in {QWEN_MLX_ENGINE, "qwenmlx", "qwen_mlx", "qwen"}:
-        return QWEN_MLX_ENGINE
-    if raw == "funasr":
-        return "funasr"
-    return "whisper"
+    return normalize_engine_name(engine, default_engine=DEFAULT_ENGINE)
 
 
 def _module_installed(module_name: str) -> bool:
@@ -346,72 +242,58 @@ def _engine_status(engine: str, whisper_model: str, funasr_model: str) -> dict[s
         aligner_path = _target_qwen_forced_aligner_path()
         model_exists = _qwen_snapshot_ready(model_path)
         aligner_exists = _qwen_snapshot_ready(aligner_path)
-        ready = all(required.values()) and model_exists
-        return {
-            "required": required,
-            "optional": optional,
-            "model": {
-                "name": DEFAULT_QWEN_MLX_MODEL,
-                "path": str(model_path),
-                "exists": model_exists,
-            },
-            "vad": {
-                "engine": "silero-vad",
-                "enabled": True,
-                "ready": required.get("silero-vad", False),
-            },
-            "timestamps": {
+        return engine_status_snapshot(
+            required=required,
+            optional=optional,
+            model_name=DEFAULT_QWEN_MLX_MODEL,
+            model_path=model_path,
+            model_exists=model_exists,
+            vad_engine="silero-vad",
+            vad_ready=required.get("silero-vad", False),
+            timestamps={
                 "engine": "qwen-forced-aligner",
                 "enabled": True,
                 "ready": aligner_exists,
                 "model": DEFAULT_QWEN_FORCED_ALIGNER_MODEL,
                 "path": str(aligner_path),
             },
-            "speaker_diarization": _speaker_diarization_status(optional),
-            "ready": ready,
-        }
+            diarization_engine=_diarization_engine(),
+            model_dir=MODEL_DIR,
+            configured_cli=FLUIDAUDIO_CLI,
+        )
 
     if engine == "funasr":
         paths = _target_funasr_paths()
         model_exists = paths["asr"].exists()
         vad_ready = required.get("funasr", False) and paths["vad"].exists()
         diar_ready = paths["spk"].exists()
-        ready = all(required.values()) and model_exists
-        return {
-            "required": required,
-            "optional": optional,
-            "model": {
-                "name": funasr_model,
-                "path": str(paths["asr"]),
-                "exists": model_exists,
-            },
-            "vad": {
-                "engine": "funasr-vad",
-                "enabled": True,
-                "ready": vad_ready,
-            },
-            "speaker_diarization": _speaker_diarization_status(optional, funasr_spk_ready=diar_ready),
-            "ready": ready,
-        }
+        return engine_status_snapshot(
+            required=required,
+            optional=optional,
+            model_name=funasr_model,
+            model_path=paths["asr"],
+            model_exists=model_exists,
+            vad_engine="funasr-vad",
+            vad_ready=vad_ready,
+            diarization_engine=_diarization_engine(),
+            funasr_spk_ready=diar_ready,
+            model_dir=MODEL_DIR,
+            configured_cli=FLUIDAUDIO_CLI,
+        )
 
     model_path = _target_whisper_path(whisper_model)
-    asr_ready = all(required.values()) and model_path.exists()
-    return {
-        "required": required,
-        "optional": optional,
-        "model": {
-            "name": whisper_model,
-            "path": str(model_path),
-            "exists": model_path.exists(),
-        },
-        "vad": {
-            "engine": "silero-vad",
-            "enabled": True,
-            "ready": required.get("silero-vad", False),
-        },
-        "speaker_diarization": _speaker_diarization_status(optional),
-        "ready": asr_ready,
-    }
+    return engine_status_snapshot(
+        required=required,
+        optional=optional,
+        model_name=whisper_model,
+        model_path=model_path,
+        model_exists=model_path.exists(),
+        vad_engine="silero-vad",
+        vad_ready=required.get("silero-vad", False),
+        diarization_engine=_diarization_engine(),
+        model_dir=MODEL_DIR,
+        configured_cli=FLUIDAUDIO_CLI,
+    )
 
 
 def runtime_status(engine: str | None = None) -> dict[str, Any]:
@@ -432,7 +314,7 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
             "version": sys.version.split()[0],
         },
         "engine": normalized_engine,
-        "engine_options": ["whisper", "funasr", QWEN_MLX_ENGINE],
+        "engine_options": engine_options(),
         "active_profile": active["model"]["name"],
         "model": active["model"],
         "vad": active["vad"],
@@ -740,7 +622,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Probe or bootstrap InsightKit ASR runtime")
     parser.add_argument("action", choices=["status", "bootstrap"], help="operation")
     parser.add_argument("--model", default="", help="ASR model name")
-    parser.add_argument("--engine", default=DEFAULT_ENGINE, choices=["whisper", "funasr", QWEN_MLX_ENGINE], help="ASR engine")
+    parser.add_argument("--engine", default=DEFAULT_ENGINE, choices=list(ASR_ENGINE_OPTIONS), help="ASR engine")
     args = parser.parse_args()
 
     if args.action == "status":

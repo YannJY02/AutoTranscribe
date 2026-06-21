@@ -14,7 +14,6 @@ import json
 import math
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +37,14 @@ try:
         is_funasr_nano_model,
         qwen_mlx_repo_for_model,
     )
+    from .asr_runtime_profile import (
+        configured_backend_status,
+        hf_auth_token,
+        normalize_diarization_engine,
+        normalize_engine_name,
+        resolve_fluid_audio_cli,
+        supported_compute_types,
+    )
 except ImportError:
     from asr_model_catalog import (
         FUNASR_DEFAULT_ASR_MODEL,
@@ -50,6 +57,14 @@ except ImportError:
         WHISPER_DEFAULT_MODEL,
         is_funasr_nano_model,
         qwen_mlx_repo_for_model,
+    )
+    from asr_runtime_profile import (
+        configured_backend_status,
+        hf_auth_token,
+        normalize_diarization_engine,
+        normalize_engine_name,
+        resolve_fluid_audio_cli,
+        supported_compute_types,
     )
 
 logger = logging.getLogger(__name__)
@@ -112,27 +127,11 @@ FUNASR_SPK_MODEL = os.getenv("INSIGHTKIT_FUNASR_SPK_MODEL", DEFAULT_FUNASR_SPK_M
 def _hf_auth_token() -> str:
     if HF_TOKEN:
         return HF_TOKEN
-    try:
-        from huggingface_hub import get_token
-
-        return (get_token() or "").strip()
-    except Exception:
-        return ""
+    return hf_auth_token()
 
 
 def _diarization_engine() -> str:
-    raw = (DIARIZATION_ENGINE or "fluid-lseend").strip().lower().replace("_", "-")
-    if raw in {"fluid", "fluid-lseend", "fluid-audio", "fluidaudio", "ls-eend", "lseend"}:
-        return "fluid-lseend"
-    if raw in {"pyannote", "pyannote-community-1", "qwen-pyannote"}:
-        return "pyannote"
-    if raw in {"funasr", "campplus"}:
-        return "funasr"
-    if raw in {"auto", "best"}:
-        return "auto"
-    if raw in {"0", "off", "none", "disabled"}:
-        return "none"
-    return "fluid-lseend"
+    return normalize_diarization_engine(DIARIZATION_ENGINE)
 
 
 _models: dict[str, Any] = {}
@@ -148,48 +147,17 @@ _prewarm_key: tuple[str, str] | None = None
 
 
 def _supported_compute_types(device: str) -> list[str]:
-    try:
-        import ctranslate2
-
-        supported = ctranslate2.get_supported_compute_types(device)
-        if isinstance(supported, (set, list, tuple)):
-            return sorted(str(x) for x in supported)
-        if supported:
-            return [str(supported)]
-    except Exception:
-        pass
-    return []
+    return supported_compute_types(device)
 
 
 def _configured_backend_status(engine_name: str | None = None) -> dict[str, Any]:
     selected_engine = _normalize_engine_name(engine_name or _engine())
-    if selected_engine == QWEN_MLX_ENGINE:
-        return {
-            "device": "mlx",
-            "compute_type": QWEN_MLX_COMPUTE_TYPE,
-            "configured_device": "mlx",
-            "configured_compute_type": QWEN_MLX_COMPUTE_TYPE,
-            "resolved": "",
-            "supported_compute_types": ["mlx", "float16", "bfloat16", "float32"],
-        }
-    if selected_engine == "funasr":
-        return {
-            "device": "auto",
-            "compute_type": "float32",
-            "configured_device": "auto",
-            "configured_compute_type": "float32",
-            "resolved": "",
-            "supported_compute_types": ["float16", "float32"],
-        }
-
-    return {
-        "device": ASR_DEVICE,
-        "compute_type": ASR_COMPUTE_TYPE,
-        "configured_device": ASR_DEVICE,
-        "configured_compute_type": ASR_COMPUTE_TYPE,
-        "resolved": "",
-        "supported_compute_types": _supported_compute_types(ASR_DEVICE),
-    }
+    return configured_backend_status(
+        selected_engine,
+        asr_device=ASR_DEVICE,
+        asr_compute_type=ASR_COMPUTE_TYPE,
+        qwen_mlx_compute_type=QWEN_MLX_COMPUTE_TYPE,
+    )
 
 
 def _resolved_funasr_device() -> str:
@@ -430,12 +398,7 @@ def _load_wav_mono_float32(audio_path: Path) -> Any:
 
 
 def _normalize_engine_name(engine_name: str | None) -> str:
-    raw = (engine_name or "whisper").strip().lower()
-    if raw in {QWEN_MLX_ENGINE, "qwenmlx", "qwen_mlx", "qwen"}:
-        return QWEN_MLX_ENGINE
-    if raw == "funasr":
-        return "funasr"
-    return "whisper"
+    return normalize_engine_name(engine_name)
 
 
 def _engine() -> str:
@@ -835,33 +798,7 @@ def _load_diarization_pipeline():
 
 
 def _resolve_fluid_audio_cli() -> Path | None:
-    candidates: list[Path] = []
-    if FLUIDAUDIO_CLI:
-        candidates.append(Path(FLUIDAUDIO_CLI).expanduser())
-
-    found = shutil.which("fluidaudiocli")
-    if found:
-        candidates.append(Path(found))
-
-    app_support = Path.home() / "Library" / "Application Support"
-    candidates.extend(
-        [
-            MODEL_DIR.parent / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            app_support / "InsightKit" / "tools" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            app_support / "FluidAudio" / "FluidAudio" / ".build" / "release" / "fluidaudiocli",
-            Path("/tmp/FluidAudio/.build/release/fluidaudiocli"),
-        ]
-    )
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        if candidate.exists() and os.access(candidate, os.X_OK):
-            return candidate
-    return None
+    return resolve_fluid_audio_cli(model_dir=MODEL_DIR, configured_cli=FLUIDAUDIO_CLI)
 
 
 def _fluid_speaker_label(item: dict[str, Any]) -> str:
