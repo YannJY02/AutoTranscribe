@@ -113,153 +113,64 @@ extension LiveSessionViewModel {
             self.captureHealth.lastChunkAt = Date()
         }
 
-        let t0 = Date()
-        let source = rpcSource(for: activeMode)
-        var segments = try rpcClient.asrTranscribeChunk(
-            wavPath: chunk.url.path,
-            offsetMs: chunk.startMs,
-            source: source
+        let context = LiveTranscriptPipelineContext(
+            meetingID: meetingID,
+            source: rpcSource(for: activeMode),
+            sessionStartedAt: captureHealth.sessionStartedAt,
+            warmReady: asrWarmStatus.ready,
+            hasTranscript: metrics.firstSegmentMs > 0 || !transcriptSegments.isEmpty,
+            isInsightRefreshSuspended: stateQueue.sync { insightRefreshSuspended }
         )
-        segments = deduplicateSegments(segments)
 
-        guard !segments.isEmpty else {
-            updateMain {
-                self.captureState = self.activeCaptureState
-                self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunk.index + 1)
+        let outcome = try transcriptPipeline.process(chunk: chunk, context: context)
+        applyTranscriptPipelineOutcome(outcome)
+    }
+
+    func applyTranscriptPipelineOutcome(_ outcome: LiveTranscriptPipelineOutcome) {
+        switch outcome.refresh {
+        case .none:
+            break
+        case .success:
+            stateQueue.sync {
+                insightRefreshSuspended = false
             }
-            return
-        }
-
-        let ingested = try rpcClient.transcriptDelta(meetingID: meetingID, segments: segments)
-        let now = Date()
-
-        let newSegments = segments.map {
-            TranscriptSegment(
-                startMs: $0.startMs,
-                endMs: $0.endMs,
-                speaker: $0.speaker.isEmpty ? "未标注" : $0.speaker,
-                source: $0.source,
-                text: $0.text
-            )
-        }
-        let latencyMs = Int(now.timeIntervalSince(t0) * 1000)
-        let chunkIdx = chunk.index + 1
-
-        var shouldRefresh = false
-        stateQueue.sync {
-            shouldRefresh = liveCoordinator.registerIngested(ingested, now: now)
-        }
-
-        if shouldRefresh {
-            let refreshSuspended = stateQueue.sync { insightRefreshSuspended }
-            if refreshSuspended {
-                updateMain {
-                    self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
-                    self.metrics.latencyMs = latencyMs
-                    self.metrics.segmentsIngested += ingested
-                    if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
-                        self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
-                    }
-                    self.transcriptSegments.append(contentsOf: newSegments)
-                    self.transcriptSegments.sort { $0.startMs < $1.startMs }
-                    self.captureHealth.lastTranscriptAt = now
-                    self.captureState = self.activeCaptureState
-                    self.metrics.provider = "analysis-paused"
-                }
-                return
+        case .paused:
+            stateQueue.sync {
+                insightRefreshSuspended = true
             }
-            updateMain {
-                self.captureState = .refreshing
-            }
-            do {
-                let result = try rpcClient.refreshLive(meetingID: meetingID, windowSec: 120)
-                stateQueue.sync {
-                    liveCoordinator.markRefreshed(at: now)
-                    insightRefreshSuspended = false
-                }
-                updateMain {
-                    self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
-                    self.metrics.latencyMs = latencyMs
-                    self.metrics.segmentsIngested += ingested
-                    if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
-                        self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
-                    }
-                    self.transcriptSegments.append(contentsOf: newSegments)
-                    self.transcriptSegments.sort { $0.startMs < $1.startMs }
-                    self.captureHealth.lastTranscriptAt = now
-                    self.analysisRuntimeState = .ready
-                    self.captureState = self.activeCaptureState
-                }
-                updateWorkbench(result)
-            } catch {
-                if isProviderAuthFailure(error) || isProviderProbeTimeout(error) {
-                    stateQueue.sync {
-                        liveCoordinator.markRefreshed(at: now)
-                        insightRefreshSuspended = true
-                    }
-                    updateMain {
-                        self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
-                        self.metrics.latencyMs = latencyMs
-                        self.metrics.segmentsIngested += ingested
-                        if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
-                            self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
-                        }
-                        self.transcriptSegments.append(contentsOf: newSegments)
-                        self.transcriptSegments.sort { $0.startMs < $1.startMs }
-                        self.captureHealth.lastTranscriptAt = now
-                        self.captureState = self.activeCaptureState
-                        self.metrics.provider = "analysis-paused"
-                        if self.isProviderProbeTimeout(error) {
-                            self.analysisRuntimeState = .pausedTimeout
-                            self.errorMessage = "智能分析探测超时，转写继续、洞察已暂停。请稍后重试或检查网络。"
-                        } else {
-                            self.analysisRuntimeState = .pausedAuthFailed
-                            self.errorMessage = "智能分析服务鉴权失败，转写继续、洞察已暂停。请打开设置修复 API 配置后重新开始直播洞察。"
-                        }
-                    }
-                } else {
-                    throw error
-                }
-            }
-            return
         }
 
         updateMain {
-            self.metrics.chunkIndex = max(self.metrics.chunkIndex, chunkIdx)
-            self.metrics.latencyMs = latencyMs
-            self.metrics.segmentsIngested += ingested
-            if self.metrics.firstSegmentMs == 0, let startedAt = self.captureHealth.sessionStartedAt {
-                self.metrics.firstSegmentMs = max(1, Int(now.timeIntervalSince(startedAt) * 1000))
+            self.metrics.chunkIndex = max(self.metrics.chunkIndex, outcome.chunkIndex)
+            self.metrics.latencyMs = outcome.latencyMs
+            self.metrics.segmentsIngested += outcome.ingestedCount
+            if self.metrics.firstSegmentMs == 0, let firstSegmentMs = outcome.firstSegmentMs {
+                self.metrics.firstSegmentMs = firstSegmentMs
             }
-            self.transcriptSegments.append(contentsOf: newSegments)
-            self.transcriptSegments.sort { $0.startMs < $1.startMs }
-            self.captureHealth.lastTranscriptAt = now
-            self.captureState = self.activeCaptureState
-        }
-    }
-
-    func deduplicateSegments(_ segments: [RPCSegmentDelta]) -> [RPCSegmentDelta] {
-        var result: [RPCSegmentDelta] = []
-
-        for seg in segments {
-            let normalizedText = seg.text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            if normalizedText.isEmpty {
-                continue
+            if !outcome.transcriptSegments.isEmpty {
+                self.transcriptSegments.append(contentsOf: outcome.transcriptSegments)
+                self.transcriptSegments.sort { $0.startMs < $1.startMs }
             }
-            let key = "\(seg.startMs / 500)-\(normalizedText)"
-            if recentFingerprints.contains(key) {
-                continue
+            if let lastTranscriptAt = outcome.lastTranscriptAt {
+                self.captureHealth.lastTranscriptAt = lastTranscriptAt
             }
-            recentFingerprints.append(key)
-            if recentFingerprints.count > 40 {
-                recentFingerprints.removeFirst(recentFingerprints.count - 40)
+            if let providerMetric = outcome.providerMetric {
+                self.metrics.provider = providerMetric
             }
-            result.append(seg)
+            if let analysisRuntimeState = outcome.analysisRuntimeState {
+                self.analysisRuntimeState = analysisRuntimeState
+            } else if case .success = outcome.refresh {
+                self.analysisRuntimeState = .ready
+            }
+            if let errorMessage = outcome.errorMessage {
+                self.errorMessage = errorMessage
+            }
+            self.captureState = outcome.captureState
         }
 
-        return result
+        if case .success(let result) = outcome.refresh {
+            updateWorkbench(result)
+        }
     }
 
     func recordInputLevel(buffer: AVAudioPCMBuffer, source: AudioMixBus.Source) {

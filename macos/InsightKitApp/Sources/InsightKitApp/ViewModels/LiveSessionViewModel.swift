@@ -48,6 +48,7 @@ final class LiveSessionViewModel: ObservableObject {
     let mixBus: AudioMixBus
     let chunkAssembler: ChunkAssembler
     let asrService: LiveASRServiceProtocol
+    let transcriptPipeline: LiveTranscriptProcessing
 
     // Queues — internal so extensions can access them
     let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
@@ -57,9 +58,7 @@ final class LiveSessionViewModel: ObservableObject {
     let rpcQueue = DispatchQueue(label: "InsightKit.LiveSession.RPC", qos: .userInitiated)
 
     // Session state — internal so extensions can access them
-    var liveCoordinator = LiveInsightCoordinator()
     var activeMode: AudioInputMode = .microphone
-    var recentFingerprints: [String] = []
     var insightRefreshSuspended = false
     var captureMonitorTask: Task<Void, Never>?
     var lastCaptureHintAt: Date?
@@ -114,7 +113,8 @@ final class LiveSessionViewModel: ObservableObject {
         systemAudioCapture: SystemAudioCaptureService = SystemAudioCaptureService(),
         mixBus: AudioMixBus = AudioMixBus(),
         chunkAssembler: ChunkAssembler = ChunkAssembler(),
-        asrService: LiveASRServiceProtocol = LiveASRService()
+        asrService: LiveASRServiceProtocol = LiveASRService(),
+        transcriptPipeline: LiveTranscriptProcessing? = nil
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
@@ -123,6 +123,9 @@ final class LiveSessionViewModel: ObservableObject {
         self.mixBus = mixBus
         self.chunkAssembler = chunkAssembler
         self.asrService = asrService
+        self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
+            runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
+        )
 
         self.micCapture.onBuffer = { [weak self] buffer in
             self?.recordInputLevel(buffer: buffer, source: .microphone)
@@ -274,9 +277,8 @@ final class LiveSessionViewModel: ObservableObject {
             _sessionState.lastMeetingID = nil
             activeMode = selectedMode
             insightRefreshSuspended = false
-            liveCoordinator.reset()
-            recentFingerprints.removeAll(keepingCapacity: true)
         }
+        transcriptPipeline.reset()
 
         updateMain {
             self.sessionHandle = SessionHandle(activeMeetingID: meetingID, lastMeetingID: nil)
@@ -412,10 +414,10 @@ final class LiveSessionViewModel: ObservableObject {
 
             self.chunkAssembler.reset()
             self.stateQueue.sync {
-                self.liveCoordinator.reset()
                 self._sessionState.lastMeetingID = activeMeetingID ?? self._sessionState.lastMeetingID
                 self._sessionState.activeMeetingID = nil
             }
+            self.transcriptPipeline.reset()
             self.syncSessionHandleFromState()
             self.updateMain {
                 self.metrics.queueDepth = 0

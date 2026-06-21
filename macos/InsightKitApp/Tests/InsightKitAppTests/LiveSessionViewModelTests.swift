@@ -261,6 +261,222 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
+    func testProcessChunkAppliesSuccessfulPipelineOutcomeToTranscriptAndMetrics() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 2,
+            latencyMs: 42,
+            ingestedCount: 2,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 3_000, endMs: 4_000, speaker: "B", source: "mic", text: "second"),
+                TranscriptSegment(startMs: 2_000, endMs: 3_000, speaker: "A", source: "mic", text: "first"),
+            ],
+            captureState: .transcribing,
+            firstSegmentMs: nil,
+            lastTranscriptAt: Date(timeIntervalSince1970: 1_002),
+            refresh: .none,
+            providerMetric: nil,
+            analysisRuntimeState: nil,
+            errorMessage: nil
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+        viewModel.asrWarmStatus = ASRWarmStatus(ready: true, state: .ready, inProgress: false, attempt: 1, lastWarmMs: 1200, lastError: "")
+        viewModel.captureHealth = CaptureHealthSnapshot(
+            sessionStartedAt: Date(timeIntervalSince1970: 1_000),
+            lastChunkAt: nil,
+            lastTranscriptAt: nil,
+            inputLevelMic: 0,
+            inputLevelSystem: 0
+        )
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 1_000, endMs: 2_000, speaker: "host", source: "mic", text: "existing")
+        ]
+        viewModel.metrics.firstSegmentMs = 1_000
+        viewModel.metrics.segmentsIngested = 5
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 1), meetingID: "meeting-live")
+        drainMainQueue()
+
+        XCTAssertEqual(pipeline.processCalls.map(\.context.meetingID), ["meeting-live"])
+        XCTAssertEqual(pipeline.processCalls.map(\.context.source), ["mic"])
+        XCTAssertEqual(pipeline.processCalls.first?.context.warmReady, true)
+        XCTAssertEqual(pipeline.processCalls.first?.context.hasTranscript, true)
+        XCTAssertEqual(viewModel.transcriptSegments.map { $0.text }, ["existing", "first", "second"])
+        XCTAssertEqual(viewModel.metrics.chunkIndex, 2)
+        XCTAssertEqual(viewModel.metrics.latencyMs, 42)
+        XCTAssertEqual(viewModel.metrics.segmentsIngested, 7)
+        XCTAssertEqual(viewModel.metrics.firstSegmentMs, 1_000)
+        XCTAssertEqual(viewModel.captureHealth.lastTranscriptAt, Date(timeIntervalSince1970: 1_002))
+        XCTAssertEqual(viewModel.captureState, CaptureState.transcribing)
+    }
+
+    func testProcessChunkAppliesEmptyPipelineOutcomeWithoutAddingTranscriptSegments() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 4,
+            latencyMs: 0,
+            ingestedCount: 0,
+            transcriptSegments: [],
+            captureState: .capturing,
+            firstSegmentMs: nil,
+            lastTranscriptAt: nil,
+            refresh: .none,
+            providerMetric: nil,
+            analysisRuntimeState: nil,
+            errorMessage: nil
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+        viewModel.asrWarmStatus = ASRWarmStatus(ready: true, state: .ready, inProgress: false, attempt: 1, lastWarmMs: 1200, lastError: "")
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 3), meetingID: "meeting-empty")
+        drainMainQueue()
+
+        XCTAssertEqual(pipeline.processCalls.map(\.context.meetingID), ["meeting-empty"])
+        XCTAssertTrue(viewModel.transcriptSegments.isEmpty)
+        XCTAssertEqual(viewModel.metrics.chunkIndex, 4)
+        XCTAssertEqual(viewModel.metrics.segmentsIngested, 0)
+        XCTAssertNil(viewModel.captureHealth.lastTranscriptAt)
+        XCTAssertEqual(viewModel.captureState, CaptureState.capturing)
+    }
+
+    func testProcessChunkAppliesRefreshSuccessPipelineOutcomeToWorkbench() throws {
+        let refreshedAt = Date(timeIntervalSince1970: 1_010)
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 5,
+            latencyMs: 64,
+            ingestedCount: 1,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 4_000, endMs: 5_000, speaker: "A", source: "mic", text: "refresh insight")
+            ],
+            captureState: .transcribing,
+            firstSegmentMs: 4_000,
+            lastTranscriptAt: refreshedAt,
+            refresh: .success(makeLiveSessionTestRefreshResult(updatedAt: refreshedAt, provider: "openai:gpt-4o-mini")),
+            providerMetric: nil,
+            analysisRuntimeState: nil,
+            errorMessage: nil
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+        viewModel.analysisRuntimeState = .pausedTimeout
+        viewModel.stateQueue.sync {
+            viewModel.insightRefreshSuspended = true
+        }
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 4), meetingID: "meeting-refresh")
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.transcriptSegments.map { $0.text }, ["refresh insight"])
+        XCTAssertEqual(viewModel.workbench.sessionOverview, "Live refresh overview.")
+        XCTAssertEqual(viewModel.metrics.provider, "openai:gpt-4o-mini")
+        XCTAssertEqual(viewModel.metrics.lastRefreshAt, refreshedAt)
+        XCTAssertEqual(viewModel.analysisRuntimeState, AnalysisRuntimeState.ready)
+        XCTAssertFalse(viewModel.stateQueue.sync { viewModel.insightRefreshSuspended })
+    }
+
+    func testProcessChunkAppliesAuthFailurePipelinePauseWhileKeepingTranscript() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 6,
+            latencyMs: 55,
+            ingestedCount: 1,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 5_000, endMs: 6_000, speaker: "A", source: "mic", text: "auth failure transcript")
+            ],
+            captureState: .transcribing,
+            firstSegmentMs: 5_000,
+            lastTranscriptAt: Date(timeIntervalSince1970: 1_011),
+            refresh: .paused(.authFailed),
+            providerMetric: "analysis-paused",
+            analysisRuntimeState: .pausedAuthFailed,
+            errorMessage: "智能分析服务鉴权失败，转写继续、洞察已暂停。请打开设置修复 API 配置后重新开始直播洞察。"
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 5), meetingID: "meeting-auth")
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.transcriptSegments.map { $0.text }, ["auth failure transcript"])
+        XCTAssertEqual(viewModel.metrics.provider, "analysis-paused")
+        XCTAssertEqual(viewModel.analysisRuntimeState, AnalysisRuntimeState.pausedAuthFailed)
+        XCTAssertTrue(viewModel.errorMessage?.contains("鉴权失败") == true)
+        XCTAssertTrue(viewModel.stateQueue.sync { viewModel.insightRefreshSuspended })
+    }
+
+    func testProcessChunkAppliesProviderTimeoutPipelinePauseWhileKeepingTranscript() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 7,
+            latencyMs: 58,
+            ingestedCount: 1,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 6_000, endMs: 7_000, speaker: "A", source: "mic", text: "timeout transcript")
+            ],
+            captureState: .transcribing,
+            firstSegmentMs: 6_000,
+            lastTranscriptAt: Date(timeIntervalSince1970: 1_012),
+            refresh: .paused(.timeout),
+            providerMetric: "analysis-paused",
+            analysisRuntimeState: .pausedTimeout,
+            errorMessage: "智能分析探测超时，转写继续、洞察已暂停。请稍后重试或检查网络。"
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 6), meetingID: "meeting-timeout")
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.transcriptSegments.map { $0.text }, ["timeout transcript"])
+        XCTAssertEqual(viewModel.metrics.provider, "analysis-paused")
+        XCTAssertEqual(viewModel.analysisRuntimeState, AnalysisRuntimeState.pausedTimeout)
+        XCTAssertTrue(viewModel.errorMessage?.contains("探测超时") == true)
+        XCTAssertTrue(viewModel.stateQueue.sync { viewModel.insightRefreshSuspended })
+    }
+
     func testSaveToRecordsUsesPreparedLiveRecordingAsMediaSource() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveSave_\(UUID().uuidString)", isDirectory: true)
@@ -366,4 +582,72 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(call.analysisMeta?["analysis_state"] as? String, AnalysisRuntimeState.ready.rawValue)
         XCTAssertTrue(call.notesMD.contains("01:26 note survives final minutes"))
     }
+}
+
+private final class LiveTranscriptProcessingMock: LiveTranscriptProcessing {
+    var outcome = LiveTranscriptPipelineOutcome(
+        chunkIndex: 1,
+        latencyMs: 0,
+        ingestedCount: 0,
+        transcriptSegments: [],
+        captureState: .capturing,
+        firstSegmentMs: nil,
+        lastTranscriptAt: nil,
+        refresh: .none,
+        providerMetric: nil,
+        analysisRuntimeState: nil,
+        errorMessage: nil
+    )
+    private(set) var resetCalls = 0
+    private(set) var processCalls: [(chunk: AudioChunk, context: LiveTranscriptPipelineContext)] = []
+
+    func reset() {
+        resetCalls += 1
+    }
+
+    func process(chunk: AudioChunk, context: LiveTranscriptPipelineContext) throws -> LiveTranscriptPipelineOutcome {
+        processCalls.append((chunk: chunk, context: context))
+        return outcome
+    }
+}
+
+private func makeLiveSessionTestChunk(index: Int) -> AudioChunk {
+    AudioChunk(
+        index: index,
+        url: URL(fileURLWithPath: "/tmp/live-session-\(index).wav"),
+        startMs: index * 1_000,
+        endMs: (index + 1) * 1_000,
+        rms: 0.2
+    )
+}
+
+private func makeLiveSessionTestRefreshResult(
+    updatedAt: Date,
+    provider: String
+) -> InsightRefreshResult {
+    InsightRefreshResult(
+        package: InsightPackageV1(
+            sessionOverview: .init(title: "Live", overview: "Live refresh overview.", topics: ["Live"]),
+            highlightInsights: [],
+            speakerPerspectives: [],
+            decisionLedger: [],
+            actionTracks: [],
+            timelineBeats: [],
+            provenanceLinks: []
+        ),
+        updatedAt: updatedAt,
+        provider: provider,
+        needsReviewCount: 0
+    )
+}
+
+private func drainMainQueue(
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    let expectation = XCTestExpectation(description: "main queue drained")
+    DispatchQueue.main.async {
+        expectation.fulfill()
+    }
+    XCTWaiter().wait(for: [expectation], timeout: 1.0)
 }
