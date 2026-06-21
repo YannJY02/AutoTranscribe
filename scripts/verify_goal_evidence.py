@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate InsightKit goal evidence against docs/Legacy/overview.md.
+"""Aggregate InsightKit goal evidence against the Legacy product rationale.
 
 This verifier reads the latest real runtime, visual GUI, and release-readiness
 proofs. It does not launch the app, run GUI automation, or delete artifacts.
@@ -30,10 +30,11 @@ from verify_release_readiness import (  # noqa: E402
 )
 
 ROOT_DIR = SCRIPT_DIR.parent
-OVERVIEW_DOC = ROOT_DIR / "docs" / "Legacy" / "overview.md"
-GOAL_EVIDENCE_DOC = ROOT_DIR / "docs" / "plans" / "2026-05-23-insightkit-goal-evidence.md"
-RELEASE_READINESS_DOC = ROOT_DIR / "docs" / "plans" / "2026-05-26-insightkit-release-readiness-status.md"
-RELEASE_VERIFICATION_DOC = ROOT_DIR / "docs" / "plans" / "2026-05-24-insightkit-release-verification.md"
+LEGACY_LIBRARY_DIR = ROOT_DIR / "docs" / "Legacy" / "matt-workflow-library"
+OVERVIEW_DOC = LEGACY_LIBRARY_DIR / "original-assets" / "docs" / "Legacy" / "overview.md"
+GOAL_EVIDENCE_DOC = LEGACY_LIBRARY_DIR / "original-assets" / "docs" / "plans" / "2026-05-23-insightkit-goal-evidence.md"
+RELEASE_READINESS_DOC = LEGACY_LIBRARY_DIR / "original-assets" / "docs" / "plans" / "2026-05-26-insightkit-release-readiness-status.md"
+RELEASE_VERIFICATION_DOC = LEGACY_LIBRARY_DIR / "original-assets" / "docs" / "plans" / "2026-05-24-insightkit-release-verification.md"
 LIVE_RECORDING_PROOF = ROOT_DIR / "logs" / "diagnostics" / "2026-05-24" / "live-recording-media-proof.json"
 LIVE_MINUTES_PROOF = ROOT_DIR / "logs" / "diagnostics" / "2026-05-25" / "live-final-minutes-persistence-proof.json"
 

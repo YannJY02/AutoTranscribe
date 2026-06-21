@@ -2,9 +2,9 @@
 
 This is the current evidence ledger for the goal of making InsightKit a personal-user Feishu/Lark Minutes alternative. It separates product readiness from Apple/account-owned distribution gates so the project can keep moving without repeatedly conflating local development with notarized or App Store release.
 
-Repeatable proof command for this status snapshot: `python3 scripts/verify_release_readiness.py`.
+Closure Gate command for this status snapshot: `python3 scripts/verify_release_readiness.py`.
 
-Latest machine-readable proof: `logs/diagnostics/2026-05-26/release-readiness-status-20260526-120328/proof.json`.
+Latest Proof JSON: `logs/diagnostics/2026-05-26/release-readiness-status-20260526-120328/proof.json`.
 
 ## Status Vocabulary
 
@@ -60,8 +60,8 @@ Checked on 2026-05-26:
 | --- | --- | --- |
 | Swift tests | `swift test --package-path macos/InsightKitApp`: `115 tests, 0 failures` | `implemented/verified` |
 | Python tests | `./scripts/run_python_tests.sh`: `172 passed, 1 warning` | `implemented/verified` |
-| Installed-app real import smoke | `python3 scripts/run_packaged_app_url_import_smoke.py`: passed on build `20260526113744` | `implemented/verified` |
-| Visual GUI proof | Computer Use proof and PNG screenshot saved for build `20260526113744` | `implemented/verified` |
+| Packaged-App Smoke | `python3 scripts/run_packaged_app_url_import_smoke.py`: passed on build `20260526113744` | `implemented/verified` |
+| Visual GUI Proof | Computer Use proof and PNG screenshot saved for build `20260526113744` | `implemented/verified` |
 | SQLite/FTS | URL smoke validates app DB FTS query `left` with result count `1` | `implemented/verified` |
 | Insight schema | URL smoke validates `insight_schema_ok=true` | `implemented/verified` |
 | Markdown/PDF export | URL smoke validates required Markdown sections and `%PDF-` PDF header | `implemented/verified` |
@@ -69,7 +69,7 @@ Checked on 2026-05-26:
 | Local release preflight | `scripts/release_preflight.sh /Users/yann.jy/Applications/InsightKit.app`: exits `0` | `local-release-ready` |
 | Developer ID preflight | `scripts/release_preflight.sh --developer-id /Users/yann.jy/Applications/InsightKit.app`: exits `1` for missing Developer ID identity/signature, hardened runtime, and clean Gatekeeper proof | `externally-blocked` |
 | App Store preflight | `scripts/release_preflight.sh --app-store /Users/yann.jy/Applications/InsightKit.app`: exits `1` for distribution identity, embedded sandbox entitlements, and privacy policy URL | `externally-blocked` / `needs-channel-decision` |
-| Release readiness verifier | `python3 scripts/verify_release_readiness.py`: exits `0`, writes `status=passed_with_external_blockers` | `local-release-ready` with external blockers |
+| Release readiness Closure Gate | `python3 scripts/verify_release_readiness.py`: exits `0`, writes `status=passed_with_external_blockers` | `local-release-ready` with external blockers |
 | Secret hygiene verifier | `python3 scripts/verify_secret_hygiene.py`: exits `0`, scans `267` files and writes `0` findings | `implemented/verified` |
 | UI hygiene verifier | `python3 scripts/verify_ui_hygiene.py`: exits `0`, scans `75` Swift source files and writes `0` findings | `implemented/verified` |
 | Goal evidence verifier | `python3 scripts/verify_goal_evidence.py`: exits `0`, writes `status=local_personal_loop_verified_with_external_distribution_blockers` with `25` verified requirements | `implemented/verified` with external blockers |

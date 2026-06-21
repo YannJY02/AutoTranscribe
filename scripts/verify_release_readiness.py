@@ -22,7 +22,16 @@ DEFAULT_APP = Path.home() / "Applications" / "InsightKit.app"
 DEFAULT_DIAGNOSTICS_ROOT = ROOT_DIR / "logs" / "diagnostics"
 LOCAL_ENTITLEMENTS = ROOT_DIR / "macos" / "InsightKitApp" / "InsightKitApp.entitlements"
 APP_STORE_ENTITLEMENTS = ROOT_DIR / "macos" / "InsightKitApp" / "InsightKitApp.AppStore.entitlements"
-RELEASE_READINESS_DOC = ROOT_DIR / "docs" / "plans" / "2026-05-26-insightkit-release-readiness-status.md"
+RELEASE_READINESS_DOC = (
+    ROOT_DIR
+    / "docs"
+    / "Legacy"
+    / "matt-workflow-library"
+    / "original-assets"
+    / "docs"
+    / "plans"
+    / "2026-05-26-insightkit-release-readiness-status.md"
+)
 APPLE_REFERENCE_URLS = [
     "https://developer.apple.com/developer-id/",
     "https://developer.apple.com/support/developer-id/",

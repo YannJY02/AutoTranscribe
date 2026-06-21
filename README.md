@@ -1,4 +1,4 @@
-# 🎙 AutoTranscribe
+# InsightKit
 
 <p align="center">
   <strong>
@@ -16,11 +16,24 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
 </p>
 
-**AutoTranscribe** is a fully automated, offline audio/video transcription system for macOS. It monitors your Desktop and Downloads for new media files, prompts for confirmation, then automatically transcribes audio with speaker diarization — all running locally with zero cloud costs.
+**InsightKit** is the current local-first macOS meeting assistant in this repo. It combines a native SwiftUI app, a Python sidecar, local ASR, record review, Smart Minutes, Markdown/PDF export, and release-verification tooling for a personal meeting-asset workflow.
+
+**AutoTranscribe** is the legacy local transcription lineage in this repository. Its watcher-style Desktop/Downloads transcription flow remains documented below for historical and compatibility context, but current meeting-assistant product work should use InsightKit vocabulary.
 
 ---
 
-## ✨ Features
+## Current InsightKit Surface
+
+| Area | Current surface |
+| --- | --- |
+| Native app | `macos/InsightKitApp` SwiftUI shell |
+| Runtime | Python sidecar over local Unix socket JSON-RPC |
+| Speech | Local ASR runtime with Whisper, FunASR, and Qwen MLX paths |
+| Records | `~/Documents/InsightKit/Records` meeting asset folders |
+| Intelligence | Smart Minutes, highlights, decisions, actions, chapters, and exports |
+| Verification | Local release closure, secret hygiene, UI hygiene, and project-normalization verifiers |
+
+## Legacy AutoTranscribe Features
 
 | Feature                     | Description                                                               |
 | --------------------------- | ------------------------------------------------------------------------- |
@@ -34,7 +47,7 @@
 | 🚀 **Boot on Startup**      | LaunchAgent ensures the service runs automatically                        |
 | 🔒 **100% Offline**         | All processing happens locally — no data leaves your machine              |
 
-## 🚀 Quick Start
+## Legacy AutoTranscribe Quick Start
 
 ### Prerequisites
 
@@ -83,7 +96,7 @@ bash stop.sh      # Stop the service
 bash start.sh     # Start the service
 ```
 
-## 🏗️ Architecture
+## Legacy AutoTranscribe Architecture
 
 ```
 AutoTranscribe/
@@ -120,9 +133,9 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🧠 InsightKit (Mac Personal Meeting Assistant) — Preview
+## InsightKit Workflow Commands
 
-This repository now includes an **InsightKit** foundation for a native macOS meeting assistant with differentiated naming and architecture:
+Use these commands for the current **InsightKit** macOS meeting assistant:
 
 - **UI modules**: 会话总览 / 高光洞察 / 观点图谱 / 决策账本 / 执行清单 / 时间脉络
 - **Runtime**: SwiftUI shell + Python JSON-RPC sidecar
@@ -189,14 +202,16 @@ python3 scripts/export_attention_module.py --output dist/attentionos-insightkit-
 
 See integration guide:
 
-- `docs/insightkit-architecture.md`
+- `docs/Legacy/matt-workflow-library/converted-assets/architecture/architecture-decision-map.md`
 - `docs/attentionos-integration.md`
 
-# 🎙 AutoTranscribe — 中文说明
+# InsightKit — 中文说明
 
-**AutoTranscribe** 是一个全自动的本地音视频转录系统，专为 macOS 设计。它监控桌面和下载文件夹中的新音视频文件，弹窗确认后自动完成语音转文字和说话人分离，全程本地运行，零云端费用。
+**InsightKit** 是这个仓库当前的本地优先 macOS 会议助手产品。它包含原生 SwiftUI app、Python sidecar、本地 ASR、记录回看、Smart Minutes、Markdown/PDF 导出和本地 release verification 工具。
 
-## ✨ 功能特点
+**AutoTranscribe** 是这个仓库的 legacy 本地转写谱系。下面保留其桌面/下载目录 watcher 式转写流程，作为历史和兼容性说明；当前会议助手产品工作应使用 InsightKit 词汇。
+
+## Legacy AutoTranscribe 功能特点
 
 - 🎯 **自动检测** — 通过 macOS FSEvents 监控桌面和下载目录，待机 CPU 占用近零
 - 🌐 **语言识别** — 自动检测中文、英文或中英混合内容
@@ -208,7 +223,7 @@ See integration guide:
 - 🚀 **开机自启** — LaunchAgent 保证服务随系统自动启动
 - 🔒 **本地优先** — 本地转写/记录管理默认在本机完成；InsightKit 的 BYOK 云端分析仅在用户主动配置 provider/API key 后使用，启用时相关会议文本会发送到所选服务
 
-## 🚀 快速开始
+## Legacy AutoTranscribe 快速开始
 
 ### 前置条件
 
