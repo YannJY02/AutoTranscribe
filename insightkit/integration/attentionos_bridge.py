@@ -22,7 +22,7 @@ MANIFEST = {
         "summary": "string",
         "result": "object"
     },
-    "description": "Bridge module forwarding AttentionOS tasks to local InsightKit RPC sidecar."
+    "description": "AttentionOS Module forwarding Host Calls to the local InsightKit Sidecar."
 }
 
 ENTRY_SCRIPT = """#!/usr/bin/env python3
@@ -136,9 +136,13 @@ if __name__ == \"__main__\":
 
 README = """# InsightKit Meeting Module
 
-This module is loadable by AttentionOS ModuleKit and forwards actions to the local InsightKit JSON-RPC sidecar.
+This AttentionOS Module is loadable by a Host App and forwards Host Calls to the local InsightKit Sidecar.
 
-## Supported actions
+## External Host Contract
+
+A Host Call selects one Bridge Action and passes a Bridge Payload. The returned result uses InsightKit meeting-asset vocabulary; host-specific labels should stay outside the product model.
+
+## Stable Bridge Actions
 - `session.start`
 - `session.stop`
 - `live.session.start`
@@ -158,7 +162,7 @@ This module is loadable by AttentionOS ModuleKit and forwards actions to the loc
 - `transcription.status`
 - `transcription.cancel_job`
 
-## Input shape
+## Host Call Shape
 ```json
 {
   "action": "insight.build_final",
@@ -166,6 +170,14 @@ This module is loadable by AttentionOS ModuleKit and forwards actions to the loc
   "payload": {}
 }
 ```
+
+## Bridge Payload
+
+`payload` carries Bridge Action-specific fields such as title, source, output format, ASR engine, model name, import path, watch directories, or cancellation reason.
+
+## Module State
+
+`state.txt` stores Module State. The current generator writes `enabled`.
 """
 
 

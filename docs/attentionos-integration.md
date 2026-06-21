@@ -1,26 +1,30 @@
-# AttentionOS Integration (Unloadable Module)
+# AttentionOS Integration (AttentionOS Module)
 
-This repo now ships a generator that produces an AttentionOS-compatible module bundle.
+This repo ships an AttentionOS Module generator for InsightKit. The generated Module Bundle is the current External Host Contract between a Host App and InsightKit's local Sidecar.
 
-## Generate module
+## Generate Module Bundle
 ```bash
 python3 scripts/export_attention_module.py --output dist/attentionos-insightkit-module
 ```
 
-Generated files:
+Module Bundle files:
 - `manifest.json`
 - `index.py`
 - `README.md`
 - `state.txt` (`enabled`)
 
-## Install into AttentionOS modules folder
+## Install Into Host App Modules Folder
 ```bash
 MODULE_ROOT="$HOME/Library/Application Support/AttentionOS/modules/insightkit-meeting-module"
 mkdir -p "$MODULE_ROOT"
 cp -R dist/attentionos-insightkit-module/* "$MODULE_ROOT"/
 ```
 
-## Host call input contract
+## External Host Contract
+
+A Host App sends a Host Call to the AttentionOS Module. The Host Call selects one Bridge Action and passes a Bridge Payload.
+
+### Host Call Shape
 ```json
 {
   "action": "insight.build_final",
@@ -29,14 +33,38 @@ cp -R dist/attentionos-insightkit-module/* "$MODULE_ROOT"/
 }
 ```
 
-Supported actions:
+### Stable Bridge Actions
 - `session.start`
+- `session.stop`
+- `live.session.start`
+- `live.session.stop`
+- `live.session.status`
+- `sidecar.ensure_ready`
+- `sidecar.version`
+- `diagnostics.quick_check`
+- `asr.runtime.status`
+- `asr.runtime.bootstrap`
 - `insight.refresh_live`
 - `insight.build_final`
 - `document.export`
+- `transcription.import_file`
+- `transcription.watch.start`
+- `transcription.watch.stop`
+- `transcription.status`
+- `transcription.cancel_job`
+
+### Bridge Payload Rules
+
+- `meeting_id` identifies the InsightKit meeting asset or active session.
+- `payload` carries Bridge Action-specific fields such as title, source, output format, ASR engine, model name, import path, watch directories, or cancellation reason.
+- The returned `result` is InsightKit meeting-asset data from the local Sidecar. Host-specific labels should stay outside the product model.
+
+## Module State
+
+The generated `state.txt` stores Module State. The current generator writes `enabled`, meaning a Host App may load the Module Bundle.
 
 ## Runtime requirement
-The sidecar must be running:
+The local InsightKit Sidecar must be running:
 ```bash
 python3 scripts/insight_sidecar.py
 ```
