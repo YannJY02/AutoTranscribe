@@ -27,6 +27,17 @@ class PushBroker:
         with self._lock:
             self._clients[conn.fileno()] = conn
 
+    def register_ready(self, conn: socket.socket, ready_payload: bytes) -> None:
+        """Register a client and send its ready response before queued pushes."""
+        with self._lock:
+            fd = conn.fileno()
+            self._clients[fd] = conn
+            try:
+                conn.sendall(ready_payload)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                self._clients.pop(fd, None)
+                raise
+
     def unregister(self, conn: socket.socket) -> None:
         with self._lock:
             self._clients.pop(conn.fileno(), None)

@@ -24,6 +24,38 @@ class TestPushBroker(unittest.TestCase):
             server_sock.close()
             client_sock.close()
 
+    def test_register_ready_sends_ready_before_later_events(self):
+        """register_ready marks the client subscribed before later emits."""
+        broker = PushBroker()
+        server_sock, client_sock = socket.socketpair()
+        try:
+            broker.register_ready(server_sock, b'{"insightkit":"1.0","push":true}\n')
+            broker.emit("test.event", {"key": "value"})
+
+            reader = client_sock.makefile("rb")
+            ready = json.loads(reader.readline().decode("utf-8"))
+            event = json.loads(reader.readline().decode("utf-8"))
+
+            self.assertEqual(ready["insightkit"], "1.0")
+            self.assertTrue(ready["push"])
+            self.assertEqual(event["event"], "test.event")
+        finally:
+            broker.unregister(server_sock)
+            server_sock.close()
+            client_sock.close()
+
+    def test_register_ready_broken_client_auto_removes(self):
+        """If ready send fails, the client is not retained."""
+        broker = PushBroker()
+        server_sock, client_sock = socket.socketpair()
+        client_sock.close()
+        try:
+            with self.assertRaises(OSError):
+                broker.register_ready(server_sock, b'{"insightkit":"1.0","push":true}\n')
+            self.assertEqual(broker.client_count, 0)
+        finally:
+            server_sock.close()
+
     def test_unregister_removes_client(self):
         """After unregister, emit does not send to that client."""
         broker = PushBroker()

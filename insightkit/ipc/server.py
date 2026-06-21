@@ -122,9 +122,7 @@ class InsightRPCServer:
             {"insightkit": handshake.get("insightkit", "1.0"), "push": True},
             ensure_ascii=False, separators=(",", ":"),
         ) + "\n"
-        conn.sendall(ack.encode("utf-8"))
-
-        self._push_broker.register(conn)
+        self._push_broker.register_ready(conn, ack.encode("utf-8"))
         try:
             while self._active:
                 line = reader.readline()
