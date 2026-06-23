@@ -14,12 +14,12 @@ User stories covered: 2, 10, 11, 12, 13, 20, 22.
 
 ## Acceptance criteria
 
-- [ ] A single command can verify the project-normalization asset structure.
-- [ ] The verifier fails when the Context Map points to a missing context glossary.
-- [ ] The verifier fails when a local issue is missing a `Status:` line.
-- [ ] The verifier fails when a project-normalization issue has a blocked-by reference that does not point to an existing local issue.
-- [ ] The verifier reports the checked asset counts and the output is readable by a future agent.
-- [ ] The verifier does not assert on exact prose except for required structural markers and status labels.
+- [x] A single command can verify the project-normalization asset structure.
+- [x] The verifier fails when the Context Map points to a missing context glossary.
+- [x] The verifier fails when a local issue is missing a `Status:` line.
+- [x] The verifier fails when a project-normalization issue has a blocked-by reference that does not point to an existing local issue.
+- [x] The verifier reports the checked asset counts and the output is readable by a future agent.
+- [x] The verifier does not assert on exact prose except for required structural markers and status labels.
 
 ## Blocked by
 

@@ -14,11 +14,11 @@ User stories covered: 1, 3, 9, 13, 21, 23.
 
 ## Acceptance criteria
 
-- [ ] Current-facing docs use InsightKit for the meeting-assistant product.
-- [ ] AutoTranscribe references are either clearly legacy, repository lineage, or older local transcription capability.
-- [ ] Historical reference material remains available and is not rewritten as if it were current product truth.
-- [ ] The source ledger records which naming-related docs are current versus historical.
-- [ ] The project-normalization verifier or a focused check can catch an obvious current-doc product-name drift.
+- [x] Current-facing docs use InsightKit for the meeting-assistant product.
+- [x] AutoTranscribe references are either clearly legacy, repository lineage, or older local transcription capability.
+- [x] Historical reference material remains available and is not rewritten as if it were current product truth.
+- [x] The source ledger records which naming-related docs are current versus historical.
+- [x] The project-normalization verifier or a focused check can catch an obvious current-doc product-name drift.
 
 ## Blocked by
 

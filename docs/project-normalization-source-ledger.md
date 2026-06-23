@@ -84,6 +84,7 @@ This ledger tells future agents which existing assets to trust for project-norma
 
 ### Future-Work Queue
 
+- `.scratch/README.md`: current index for local PRD/issue lanes and the status-reading rule for `ready-for-agent` versus `ready-for-human`.
 - `.scratch/project-normalization/PRD.md`: parent PRD for project-normalization work.
 - `.scratch/project-normalization/issues/`: local markdown issues; use `Status:` lines and `## Blocked by` references for triage.
 - `.scratch/live-workspace-session/PRD.md`: parent PRD for the first Live Workspace Session architecture-deepening pass.

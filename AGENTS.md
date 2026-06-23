@@ -6,6 +6,8 @@
 
 Issues and PRDs are tracked as local markdown files under `.scratch/`; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
+Start from `.scratch/README.md` before choosing a task. It separates completed lanes awaiting human review from owner-controlled public-distribution work.
+
 ### Triage labels
 
 The tracker uses the default five-role triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.

@@ -14,12 +14,12 @@ User stories covered: 6, 7, 11, 14, 22, 24.
 
 ## Acceptance criteria
 
-- [ ] Release-facing docs distinguish local/internal QA readiness from public distribution readiness.
-- [ ] Apple account, certificate, notarization, sandbox, App Store Connect, and privacy URL requirements are described as External Blockers or Owner-Controlled Inputs where appropriate.
-- [ ] Packaged-App Smoke and Visual GUI Proof are not collapsed into generic script success.
-- [ ] Existing release proof commands remain the source of release evidence.
-- [ ] Any new wording preserves the accepted ADR that local readiness and public distribution readiness are separate claims.
-- [ ] The project-normalization verifier or a focused check can confirm required release vocabulary surfaces still exist.
+- [x] Release-facing docs distinguish local/internal QA readiness from public distribution readiness.
+- [x] Apple account, certificate, notarization, sandbox, App Store Connect, and privacy URL requirements are described as External Blockers or Owner-Controlled Inputs where appropriate.
+- [x] Packaged-App Smoke and Visual GUI Proof are not collapsed into generic script success.
+- [x] Existing release proof commands remain the source of release evidence.
+- [x] Any new wording preserves the accepted ADR that local readiness and public distribution readiness are separate claims.
+- [x] The project-normalization verifier or a focused check can confirm required release vocabulary surfaces still exist.
 
 ## Blocked by
 

@@ -14,12 +14,12 @@ User stories covered: 1, 2, 9, 10, 13, 21, 23, 24.
 
 ## Acceptance criteria
 
-- [ ] A source ledger exists for the project-normalization work.
-- [ ] The ledger classifies high-signal assets by role: current domain language, historical reference, architecture decision, release evidence, integration contract, and future-work queue.
-- [ ] The ledger identifies the current product name and the legacy transcription lineage without treating them as interchangeable.
-- [ ] Each context in the Context Map has at least one source entry or an explicit note explaining why it does not.
-- [ ] Historical plans are marked as historical unless they are still an accepted decision or current evidence source.
-- [ ] The ledger is concise enough for an AFK agent to read before starting a task.
+- [x] A source ledger exists for the project-normalization work.
+- [x] The ledger classifies high-signal assets by role: current domain language, historical reference, architecture decision, release evidence, integration contract, and future-work queue.
+- [x] The ledger identifies the current product name and the legacy transcription lineage without treating them as interchangeable.
+- [x] Each context in the Context Map has at least one source entry or an explicit note explaining why it does not.
+- [x] Historical plans are marked as historical unless they are still an accepted decision or current evidence source.
+- [x] The ledger is concise enough for an AFK agent to read before starting a task.
 
 ## Blocked by
 

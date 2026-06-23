@@ -229,6 +229,16 @@ RELEASE_VOCAB_TERMS = (
     "Packaged-App Smoke",
     "Visual GUI Proof",
 )
+SCRATCH_INDEX_REQUIRED_TERMS = (
+    "Scratch Work Index",
+    "ready-for-agent",
+    "ready-for-human",
+    "owner-controlled",
+    "project-normalization/",
+    "legacy-matt-workflow-library/",
+    "live-workspace-session/",
+    "public-distribution-readiness/",
+)
 
 
 def iso_now() -> str:
@@ -458,6 +468,8 @@ def verify(root: Path) -> dict[str, Any]:
         "loop_engineering_docs": 0,
         "loop_engineering_terms": 0,
         "release_vocab_terms": 0,
+        "scratch_indexes": 0,
+        "scratch_index_terms": 0,
         "architecture_handoffs": 0,
         "legacy_library_manifests": 0,
         "legacy_original_assets": 0,
@@ -604,6 +616,18 @@ def verify(root: Path) -> dict[str, Any]:
                 findings.append(finding(relpath(root, handoff), "missing_handoff_marker", f"Missing handoff marker: {required}."))
 
     scratch_dir = root / ".scratch"
+    scratch_index = scratch_dir / "README.md"
+    if not scratch_index.exists():
+        findings.append(finding(relpath(root, scratch_index), "missing_scratch_index", "Local issue queue index is missing."))
+    else:
+        counts["scratch_indexes"] = 1
+        text = read_text(scratch_index)
+        for term in SCRATCH_INDEX_REQUIRED_TERMS:
+            if term in text:
+                counts["scratch_index_terms"] += 1
+            else:
+                findings.append(finding(relpath(root, scratch_index), "missing_scratch_index_term", f"Scratch index is missing required term: {term}."))
+
     prd_files = sorted(scratch_dir.glob("*/PRD.md")) if scratch_dir.exists() else []
     counts["local_prds"] = len(prd_files)
     project_normalization_prd = root / ".scratch" / "project-normalization" / "PRD.md"

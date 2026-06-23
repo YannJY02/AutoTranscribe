@@ -7,6 +7,7 @@ from scripts.verify_project_normalization import (
     LEGACY_STANDARD_SETUP_REQUIREMENTS,
     PUBLIC_DISTRIBUTION_READINESS_ASSETS,
     RELEASE_VOCAB_TERMS,
+    SCRATCH_INDEX_REQUIRED_TERMS,
     verify,
 )
 
@@ -146,6 +147,22 @@ InsightKit is current.
     )
     write(root / "docs/adr/0001-example.md", "# Example decision\n")
     write(
+        root / ".scratch/README.md",
+        """# Scratch Work Index
+
+Status: current
+
+Use ready-for-agent and ready-for-human status labels.
+
+owner-controlled work needs the owner.
+
+- project-normalization/
+- legacy-matt-workflow-library/
+- live-workspace-session/
+- public-distribution-readiness/
+""",
+    )
+    write(
         root / ".scratch/project-normalization/PRD.md",
         """# Project Normalization PRD
 
@@ -284,6 +301,7 @@ def test_verify_project_normalization_passes_minimal_repo(tmp_path):
     assert result["counts"]["context_docs"] == 1
     assert result["counts"]["issues"] == 2
     assert result["counts"]["blocked_by_refs"] == 1
+    assert result["counts"]["scratch_index_terms"] == len(SCRATCH_INDEX_REQUIRED_TERMS)
 
 
 def test_verify_project_normalization_fails_on_missing_context_doc(tmp_path):
@@ -368,6 +386,16 @@ def test_verify_project_normalization_fails_on_missing_loop_engineering_doc(tmp_
 
     assert result["status"] == "failed"
     assert any(item["check"] == "missing_loop_engineering_doc" for item in result["findings"])
+
+
+def test_verify_project_normalization_fails_on_missing_scratch_index(tmp_path):
+    write_minimal_normalized_repo(tmp_path)
+    (tmp_path / ".scratch/README.md").unlink()
+
+    result = verify(tmp_path)
+
+    assert result["status"] == "failed"
+    assert any(item["check"] == "missing_scratch_index" for item in result["findings"])
 
 
 def test_verify_project_normalization_fails_when_agents_does_not_link_loop_standard(tmp_path):

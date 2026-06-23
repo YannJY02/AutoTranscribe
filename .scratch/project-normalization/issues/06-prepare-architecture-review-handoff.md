@@ -14,13 +14,13 @@ User stories covered: 16, 17, 18, 19, 20, 25.
 
 ## Acceptance criteria
 
-- [ ] A concise architecture-review handoff exists for future architecture work.
-- [ ] The handoff names the relevant contexts and accepted ADRs to read first.
-- [ ] The handoff identifies likely friction areas using domain vocabulary rather than file-level implementation trivia.
-- [ ] The handoff explicitly preserves the accepted native macOS shell plus Python sidecar decision.
-- [ ] The handoff explicitly preserves the accepted persistent Unix socket RPC decision.
-- [ ] The handoff distinguishes architecture candidates from release-channel blockers.
-- [ ] The project-normalization verifier includes the handoff in its checked asset set or the handoff has its own focused structural check.
+- [x] A concise architecture-review handoff exists for future architecture work.
+- [x] The handoff names the relevant contexts and accepted ADRs to read first.
+- [x] The handoff identifies likely friction areas using domain vocabulary rather than file-level implementation trivia.
+- [x] The handoff explicitly preserves the accepted native macOS shell plus Python sidecar decision.
+- [x] The handoff explicitly preserves the accepted persistent Unix socket RPC decision.
+- [x] The handoff distinguishes architecture candidates from release-channel blockers.
+- [x] The project-normalization verifier includes the handoff in its checked asset set or the handoff has its own focused structural check.
 
 ## Blocked by
 

@@ -14,11 +14,11 @@ User stories covered: 8, 13, 15, 21, 22.
 
 ## Acceptance criteria
 
-- [ ] Current integration docs use Integration glossary terms consistently.
-- [ ] Generated module material uses InsightKit meeting-asset vocabulary for product concepts and host-specific vocabulary only for host boundaries.
-- [ ] Supported bridge actions are described as a stable External Host Contract.
-- [ ] The integration source ledger entries distinguish current integration contracts from historical or exploratory notes.
-- [ ] A focused test or verifier check confirms generated module material can still be produced and inspected for required contract markers.
+- [x] Current integration docs use Integration glossary terms consistently.
+- [x] Generated module material uses InsightKit meeting-asset vocabulary for product concepts and host-specific vocabulary only for host boundaries.
+- [x] Supported bridge actions are described as a stable External Host Contract.
+- [x] The integration source ledger entries distinguish current integration contracts from historical or exploratory notes.
+- [x] A focused test or verifier check confirms generated module material can still be produced and inspected for required contract markers.
 
 ## Blocked by
 
