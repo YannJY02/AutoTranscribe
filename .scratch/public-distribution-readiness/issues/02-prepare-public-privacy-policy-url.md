@@ -23,10 +23,17 @@ The historical draft is a review input. It is not legal advice and is not curren
 
 ## Blocked by
 
-- `.scratch/public-distribution-readiness/issues/01-confirm-release-channel-and-cloud-provider-boundary.md`
+Owner-approved privacy policy text and a public URL are required.
 
 ## Source inputs
 
 - `docs/Legacy/matt-workflow-library/original-assets/docs/release/release-privacy-policy-draft.md`
 - `docs/Legacy/matt-workflow-library/original-assets/docs/release/release-privacy-sandbox.md`
 
+## Comments
+
+### 2026-06-23 - Decision input
+
+Issue 01 is no longer blocking channel selection. The owner chose Developer ID direct distribution first and allowed optional BYOK cloud providers in the submitted public build.
+
+The privacy policy must not claim that InsightKit is fully offline while optional BYOK cloud providers are included. The policy should describe local storage and explain that cloud processing happens only when the user supplies and enables their own provider key.

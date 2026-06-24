@@ -14,7 +14,7 @@ Developer ID distribution means Apple signs the app for distribution outside the
 
 ## Acceptance criteria
 
-- [ ] Developer ID distribution remains in scope after issue 01.
+- [x] Developer ID distribution remains in scope after issue 01.
 - [ ] Developer ID signing identity is available on the build machine.
 - [ ] Hardened runtime is enabled for the distribution build.
 - [ ] App is signed with the Developer ID identity.
@@ -25,7 +25,7 @@ Developer ID distribution means Apple signs the app for distribution outside the
 
 ## Blocked by
 
-- `.scratch/public-distribution-readiness/issues/01-confirm-release-channel-and-cloud-provider-boundary.md`
+Developer ID signing identity, notarization credentials, and owner confirmation after Apple Developer account-permission clarification are required.
 
 ## Source inputs
 
@@ -33,3 +33,16 @@ Developer ID distribution means Apple signs the app for distribution outside the
 - `docs/contexts/release-workflow/CONTEXT.md`
 - `scripts/release_preflight.sh`
 
+## Comments
+
+### 2026-06-23 - Decision input
+
+The owner chose Developer ID direct distribution as the first public channel. This issue can proceed once the build machine has the required Developer ID signing identity and notarization credentials.
+
+The submitted public build may include optional BYOK cloud providers, so direct-distribution privacy and release notes must not claim the app is fully offline.
+
+### 2026-06-23 - Account permission pause
+
+The owner is waiting for Apple official clarification about account membership and permission boundaries before purchasing or using Developer ID distribution credentials.
+
+Do not start signing, notarization, or certificate-generation work until that clarification is available and the owner confirms the account/team identity to use.

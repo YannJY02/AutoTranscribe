@@ -31,3 +31,10 @@ App Store Connect is Apple's web system for app metadata, privacy disclosures, b
 - `docs/Legacy/matt-workflow-library/original-assets/docs/release/release-app-store-privacy-answers.md`
 - `docs/Legacy/matt-workflow-library/original-assets/docs/release/release-privacy-policy-draft.md`
 
+## Comments
+
+### 2026-06-23 - Channel status
+
+The owner chose Developer ID direct distribution as the first public channel. Do not start App Store Connect privacy-answer entry unless the owner later brings Mac App Store distribution back into scope.
+
+If Mac App Store distribution is pursued later, optional BYOK cloud providers must be disclosed accurately as optional third-party processing instead of describing the submitted build as local-only.

@@ -37,3 +37,10 @@ App Sandbox means macOS restricts what the app can access by default. The app mu
 - `macos/InsightKitApp/InsightKitApp.AppStore.entitlements`
 - `scripts/release_preflight.sh`
 
+## Comments
+
+### 2026-06-23 - Channel status
+
+The owner chose Developer ID direct distribution as the first public channel. Do not start App Store sandbox preflight unless the owner later brings Mac App Store distribution back into scope.
+
+If Mac App Store distribution is pursued later, optional BYOK cloud providers imply that sandbox and entitlement checks must include network-client behavior and accurate privacy disclosure.
