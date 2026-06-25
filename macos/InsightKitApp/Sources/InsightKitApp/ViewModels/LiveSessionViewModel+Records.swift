@@ -103,7 +103,15 @@ extension LiveSessionViewModel {
     }
 
     @discardableResult
-    func prepareTemporaryRecordingForSave(meetingID: String) -> URL? {
+    func prepareTemporaryRecordingForSave(meetingID: String, expectedVisualMedia: Bool = false) -> URL? {
+        if let videoURL = usableVideoRecordingURL(temporaryRecordingURL) {
+            updateMain {
+                self.recordingStatusMessage = nil
+                self.mediaURL = videoURL
+            }
+            return videoURL
+        }
+
         _ = try? chunkAssembler.flush(minDurationSec: 0.1)
         guard let recordingURL = concatenateWAVChunks(meetingID: meetingID) else {
             updateMain {
@@ -113,9 +121,24 @@ extension LiveSessionViewModel {
         }
         temporaryRecordingURL = recordingURL
         updateMain {
-            self.recordingStatusMessage = nil
+            if expectedVisualMedia {
+                self.recordingStatusMessage = "未保存到视频画面，回看将使用音频、转写与笔记。请检查摄像头或屏幕录制权限后重试。"
+            } else {
+                self.recordingStatusMessage = nil
+            }
             self.mediaURL = recordingURL
         }
         return recordingURL
+    }
+
+    private func usableVideoRecordingURL(_ url: URL?) -> URL? {
+        guard let url else { return nil }
+        let ext = url.pathExtension.lowercased()
+        guard ["mp4", "mov", "mkv"].contains(ext) else { return nil }
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              (values.fileSize ?? 0) > 0 else {
+            return nil
+        }
+        return url
     }
 }

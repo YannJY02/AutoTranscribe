@@ -387,7 +387,7 @@ struct ContentView: View {
             Spacer()
             if !banner.actionTitle.isEmpty {
                 Button(banner.actionTitle) {
-                    coordinator.performBannerAction()
+                    coordinator.performBannerAction(for: banner.actionRoute)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -424,6 +424,9 @@ struct ContentView: View {
 
     private func userFacingProviderMessage(_ raw: String) -> String {
         let lower = raw.lowercased()
+        if let sanitized = AnalysisProviderErrorPresentation.sanitizedMessage(for: raw) {
+            return sanitized
+        }
         if lower.contains("authentication fails") || lower.contains("governor") || lower.contains("http 401") {
             return "智能分析服务鉴权失败（401）。请在设置中检查 API Key、模型名称，并点击“检查可用性”。"
         }

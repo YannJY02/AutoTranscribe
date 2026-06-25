@@ -14,6 +14,7 @@ final class WorkflowCoordinator: ObservableObject {
     var recordsService: RecordsIndexService
 
     private let capabilityClient: InsightRPCClientProtocol
+    private let settingsOpener: () -> Void
     private var capabilities: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
     private var didShutdown = false
@@ -25,13 +26,17 @@ final class WorkflowCoordinator: ObservableObject {
         transcriptionViewModel: TranscriptionSessionViewModel = TranscriptionSessionViewModel(autoRefresh: false, autoPolling: false),
         importViewModel: ImportSessionViewModel = ImportSessionViewModel(),
         recordsService: RecordsIndexService = RecordsIndexService(),
-        capabilityClient: InsightRPCClientProtocol = InsightRPCClient()
+        capabilityClient: InsightRPCClientProtocol = InsightRPCClient(),
+        settingsOpener: @escaping () -> Void = {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
     ) {
         self.liveViewModel = liveViewModel
         self.transcriptionViewModel = transcriptionViewModel
         self.importViewModel = importViewModel
         self.recordsService = recordsService
         self.capabilityClient = capabilityClient
+        self.settingsOpener = settingsOpener
         // Phase 5: inject recordsService into child ViewModels
         liveViewModel.recordsService = recordsService
         transcriptionViewModel.recordsService = recordsService
@@ -79,7 +84,7 @@ final class WorkflowCoordinator: ObservableObject {
         if liveViewModel.isRunning {
             return .liveRunning
         }
-        if liveViewModel.sessionHandle.lastMeetingID != nil {
+        if liveViewModel.sessionHandle.activeMeetingID != nil || liveViewModel.sessionHandle.lastMeetingID != nil {
             return .livePostSession
         }
         return .livePreparing
@@ -323,11 +328,11 @@ final class WorkflowCoordinator: ObservableObject {
         }
     }
 
-    func performBannerAction() {
-        guard let bannerMessage else { return }
-        switch bannerMessage.actionRoute {
+    func performBannerAction(for actionRoute: String? = nil) {
+        let route = actionRoute ?? bannerMessage?.actionRoute ?? ""
+        switch route {
         case "open_settings":
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            settingsOpener()
         case "open_mic":
             liveViewModel.openMicrophonePrivacySettings()
         case "open_screen":

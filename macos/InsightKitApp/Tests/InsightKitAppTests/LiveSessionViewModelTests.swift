@@ -1,4 +1,6 @@
+import AVFoundation
 import Combine
+import AppKit
 import XCTest
 @testable import InsightKitApp
 
@@ -88,6 +90,31 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(CaptureState.capturing.label, "可转写")
     }
 
+    func testVisualPreviewPlanRoutesScreenOnlySelectionToScreenPreview() {
+        let plan = LiveVisualPreviewPlan.resolve(cameraEnabled: false, screenEnabled: true)
+
+        XCTAssertEqual(plan.source, .screen)
+        XCTAssertTrue(plan.statusMessage?.contains("屏幕") == true)
+    }
+
+    func testCameraPreviewLayerUsesAspectFitToAvoidCropping() {
+        let coordinator = VideoPreviewView.Coordinator()
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 540))
+        view.wantsLayer = true
+        let layer = AVCaptureVideoPreviewLayer(sessionWithNoConnection: AVCaptureSession())
+
+        coordinator.attachPreviewLayer(layer, to: view)
+
+        XCTAssertEqual(layer.videoGravity, .resizeAspect)
+    }
+
+    func testRunningPreviewLayoutPreservesStandardMediaAspectRatio() {
+        let size = LiveVisualPreviewLayout.previewSize(availableWidth: 1_000, maxHeight: 300)
+
+        XCTAssertEqual(size.width, 533.3, accuracy: 0.5)
+        XCTAssertEqual(size.height, 300, accuracy: 0.5)
+    }
+
     func testWarmupBacklogPrefersDroppingBufferedSilence() {
         let policy = WarmupBacklogPolicy(maxChunks: 2, maxBufferedAudioMs: 8_000)
         let speech = AudioChunk(index: 0, url: URL(fileURLWithPath: "/tmp/speech.wav"), startMs: 0, endMs: 2_000, rms: 0.2)
@@ -126,6 +153,140 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: false, hasTranscript: false), .warmingModel)
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: true, hasTranscript: false), .capturing)
         XCTAssertEqual(LiveCaptureStateMapper.captureState(warmReady: true, hasTranscript: true), .transcribing)
+    }
+
+    func testLiveWorkspaceProgressExplainsRuntimePreparation() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .running
+        viewModel.captureState = .preparingRuntime
+
+        let progress = viewModel.liveProgressPresentation
+
+        XCTAssertEqual(progress?.title, "正在准备本地语音运行时")
+        XCTAssertEqual(progress?.message, "首次启动或切换模型时可能需要等待，请不要关闭窗口。")
+    }
+
+    func testLiveWorkspaceProgressExplainsModelWarmup() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .running
+        viewModel.captureState = .warmingModel
+        viewModel.liveWarmup = LiveWarmupSnapshot(
+            state: .warming,
+            attempt: 2,
+            bufferedChunks: 2,
+            bufferedAudioMs: 4_000,
+            automaticRetryCount: 0,
+            isRetryScheduled: false,
+            lastError: ""
+        )
+
+        let progress = viewModel.liveProgressPresentation
+
+        XCTAssertEqual(progress?.title, "正在预热本地语音模型")
+        XCTAssertEqual(progress?.message, "已暂存 2 段音频，模型就绪后会继续转写。")
+    }
+
+    func testLiveWorkspaceProgressExplainsPostRecordingFinalization() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .running
+        viewModel.isFinalizingLiveSession = true
+
+        let progress = viewModel.liveProgressPresentation
+
+        XCTAssertEqual(progress?.title, "正在整理录制内容")
+        XCTAssertEqual(progress?.message, "正在保存回看资料、转写和笔记，完成后会进入智能纪要选择。")
+    }
+
+    func testLiveWorkspaceProgressExplainsSmartMinutesGeneration() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .postSession
+        viewModel.captureState = .refreshing
+
+        let progress = viewModel.liveProgressPresentation
+
+        XCTAssertEqual(progress?.title, "正在生成智能纪要")
+        XCTAssertEqual(progress?.message, "正在根据本次转写生成结构化总结，完成后会进入回看。")
+    }
+
+    func testCenterStageDataSourceExposesLiveProgressPresentation() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .postSession
+        viewModel.captureState = .refreshing
+        let dataSource: any CenterStageDataSource = viewModel
+
+        XCTAssertEqual(dataSource.liveProgressPresentation?.title, "正在生成智能纪要")
+    }
+
+    @MainActor
+    func testWaitingForFirstTranscriptUsesRecordingStatusInsteadOfErrorBanner() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        let startedAt = Date(timeIntervalSinceNow: -25)
+        let lastChunkAt = Date(timeIntervalSinceNow: -2)
+        viewModel._isRunningLock.lock()
+        viewModel._isRunning = true
+        viewModel._isRunningLock.unlock()
+        viewModel.captureState = .capturing
+        viewModel.captureHealth = CaptureHealthSnapshot(
+            sessionStartedAt: startedAt,
+            lastChunkAt: lastChunkAt,
+            lastTranscriptAt: nil,
+            inputLevelMic: 0.12,
+            inputLevelSystem: 0
+        )
+
+        viewModel.evaluateCaptureHealthHint()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("等待转写输入") == true)
+        XCTAssertEqual(viewModel.captureState, .capturing)
     }
 
     func testLiveExportPrefersPersistedNativePDFOverRPC() throws {
@@ -172,6 +333,58 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: viewModel.lastExportPath))
         let data = try Data(contentsOf: URL(fileURLWithPath: viewModel.lastExportPath))
         XCTAssertEqual(String(data: data.prefix(5), encoding: .utf8), "%PDF-")
+    }
+
+    func testCenterStageDataSourceExportsSmartMinutesReviewMarkdown() throws {
+        let root = RecordExportTestFixture.makeRoot(prefix: "InsightKitLiveSummaryReviewExport")
+        let recordID = "live-summary-review-export"
+        try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .live)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = root
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.recordsService = recordsService
+        viewModel.sessionPhase = .reviewing
+        viewModel.smartMinutesData = SmartMinutes(structuredSummary: "Export this Smart Minutes review.")
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = recordID
+        }
+
+        let dataSource: any CenterStageDataSource = viewModel
+        XCTAssertTrue(dataSource.canExportDocument)
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "summary review markdown export")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        dataSource.onExportDocument(format: "markdown")
+
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertTrue(rpcClient.documentExportCalls.isEmpty)
+        XCTAssertEqual(URL(fileURLWithPath: dataSource.lastExportPath).pathExtension, "md")
+        let markdown = try String(contentsOf: URL(fileURLWithPath: dataSource.lastExportPath), encoding: .utf8)
+        XCTAssertTrue(markdown.contains("## 长文版结构化总结"))
+        XCTAssertTrue(markdown.contains("本地导出不依赖 sidecar PDF runtime。"))
+        XCTAssertTrue(markdown.contains("export locally"))
     }
 
     func testPrepareTemporaryRecordingCombinesLiveChunksForPlaybackAndSave() throws {
@@ -261,6 +474,62 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
+    func testPrepareTemporaryRecordingPrefersExistingVideoRecordingForReview() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        viewModel.temporaryRecordingURL = videoURL
+
+        let recordingURL = try XCTUnwrap(viewModel.prepareTemporaryRecordingForSave(meetingID: "video-live-recording-test"))
+
+        XCTAssertEqual(recordingURL, videoURL)
+        XCTAssertEqual(viewModel.temporaryRecordingURL, videoURL)
+        XCTAssertEqual(viewModel.mediaURL, videoURL)
+        XCTAssertNil(viewModel.recordingStatusMessage)
+    }
+
+    func testPrepareTemporaryRecordingShowsAudioOnlyStatusWhenExpectedVideoIsMissing() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitMissingVideoLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: tmp)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+
+        let recordingURL = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: "missing-video-live-recording-test",
+                expectedVisualMedia: true
+            )
+        )
+
+        XCTAssertEqual(recordingURL.pathExtension, "wav")
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("未保存到视频画面") == true)
+    }
+
     func testProcessChunkAppliesSuccessfulPipelineOutcomeToTranscriptAndMetrics() throws {
         let pipeline = LiveTranscriptProcessingMock()
         pipeline.outcome = LiveTranscriptPipelineOutcome(
@@ -302,6 +571,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         ]
         viewModel.metrics.firstSegmentMs = 1_000
         viewModel.metrics.segmentsIngested = 5
+        viewModel.recordingStatusMessage = LiveCaptureHealthHint.waitingForTranscript
 
         try viewModel.processChunk(makeLiveSessionTestChunk(index: 1), meetingID: "meeting-live")
         drainMainQueue()
@@ -317,6 +587,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.metrics.firstSegmentMs, 1_000)
         XCTAssertEqual(viewModel.captureHealth.lastTranscriptAt, Date(timeIntervalSince1970: 1_002))
         XCTAssertEqual(viewModel.captureState, CaptureState.transcribing)
+        XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
     func testProcessChunkAppliesEmptyPipelineOutcomeWithoutAddingTranscriptSegments() throws {
@@ -477,6 +748,45 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.stateQueue.sync { viewModel.insightRefreshSuspended })
     }
 
+    func testProcessChunkTreatsLiveRefreshTimeoutAsRecoverableStatus() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 8,
+            latencyMs: 61,
+            ingestedCount: 1,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 7_000, endMs: 8_000, speaker: "A", source: "mic", text: "recoverable timeout transcript")
+            ],
+            captureState: .transcribing,
+            firstSegmentMs: 7_000,
+            lastTranscriptAt: Date(timeIntervalSince1970: 1_013),
+            refresh: .paused(.timeout),
+            providerMetric: "analysis-refresh-timeout",
+            analysisRuntimeState: .ready,
+            errorMessage: nil
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+
+        try viewModel.processChunk(makeLiveSessionTestChunk(index: 7), meetingID: "meeting-refresh-timeout")
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.transcriptSegments.map { $0.text }, ["recoverable timeout transcript"])
+        XCTAssertEqual(viewModel.metrics.provider, "analysis-refresh-timeout")
+        XCTAssertEqual(viewModel.analysisRuntimeState, AnalysisRuntimeState.ready)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("刷新超时") == true)
+        XCTAssertFalse(viewModel.stateQueue.sync { viewModel.insightRefreshSuspended })
+    }
+
     func testSaveToRecordsUsesPreparedLiveRecordingAsMediaSource() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveSave_\(UUID().uuidString)", isDirectory: true)
@@ -581,6 +891,32 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(call.analysisMeta?["model"] as? String, "deepseek-v4-flash")
         XCTAssertEqual(call.analysisMeta?["analysis_state"] as? String, AnalysisRuntimeState.ready.rawValue)
         XCTAssertTrue(call.notesMD.contains("01:26 note survives final minutes"))
+    }
+
+    func testPublishErrorSanitizesProviderNonJSONPayloadError() throws {
+        let providerError = NSError(
+            domain: "InsightKitTests",
+            code: -10,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Insight 侧车错误: provider returned non-JSON payload: Expecting ',' delimiter: line 42 column 32 (char 1169)"
+            ]
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+
+        viewModel.publishError(providerError)
+        drainMainQueue()
+
+        XCTAssertTrue(viewModel.errorMessage?.contains("分析服务返回格式异常") == true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("line 42") == true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("char 1169") == true)
     }
 }
 

@@ -24,17 +24,27 @@ struct LiveWorkspaceView: View {
                 .foregroundStyle(.clear)
                 .accessibilityIdentifier("live_workspace")
         }
-        .onChange(of: cameraToggleEnabled) { _, isEnabled in
-            if isEnabled {
-                viewModel.startCameraPreview()
-            } else {
-                viewModel.stopCameraPreview()
-            }
+        .onChange(of: cameraToggleEnabled) { _, _ in
+            syncVisualPreviewSelection()
+        }
+        .onChange(of: screenToggleEnabled) { _, _ in
+            syncVisualPreviewSelection()
         }
     }
 
     private var cameraToggleEnabled: Bool {
         sourceToggles.first(where: { $0.id == "camera" })?.isEnabled ?? false
+    }
+
+    private var screenToggleEnabled: Bool {
+        sourceToggles.first(where: { $0.id == "screen" })?.isEnabled ?? false
+    }
+
+    private func syncVisualPreviewSelection() {
+        viewModel.applyVisualPreviewSelection(
+            cameraEnabled: cameraToggleEnabled,
+            screenEnabled: screenToggleEnabled
+        )
     }
 
     // MARK: - Left Panel

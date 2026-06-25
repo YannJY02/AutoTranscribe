@@ -15,10 +15,15 @@ protocol ChapterSidebarDataSource: ObservableObject {
 
 protocol CenterStageDataSource: ObservableObject {
     var phase: SessionPhase { get }
+    var smartMinutes: SmartMinutes? { get }
     var capturePreview: (any CapturePreviewProvider)? { get }
+    var capturePreviewStatusMessage: String? { get }
     var transcriptEntries: [TranscriptEntry] { get }
     var recordingDuration: TimeInterval { get }
     var recordingStatusMessage: String? { get }
+    var liveProgressPresentation: LiveProgressPresentation? { get }
+    var canExportDocument: Bool { get }
+    var lastExportPath: String { get }
     var mediaURL: URL? { get }
     var currentPlaybackTime: TimeInterval? { get }
     var mediaSeekRequest: MediaSeekRequest? { get }
@@ -29,11 +34,17 @@ protocol CenterStageDataSource: ObservableObject {
     func onSeek(to time: TimeInterval)
     func onGenerateMinutes()
     func onSkipMinutes()
+    func onExportDocument(format: String)
 }
 
 extension CenterStageDataSource {
     var mediaSeekRequest: MediaSeekRequest? { nil }
     var recordingStatusMessage: String? { nil }
+    var liveProgressPresentation: LiveProgressPresentation? { nil }
+    var capturePreviewStatusMessage: String? { nil }
+    var canExportDocument: Bool { false }
+    var lastExportPath: String { "" }
+    func onExportDocument(format: String) {}
 }
 
 // MARK: - Notes Editor

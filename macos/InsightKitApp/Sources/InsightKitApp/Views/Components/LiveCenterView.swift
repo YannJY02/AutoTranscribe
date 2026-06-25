@@ -26,6 +26,11 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(InsightTheme.surfaceAlt)
+        .overlay(alignment: .top) {
+            liveProgressBanner
+                .padding(.top, InsightSpacing.md)
+                .padding(.horizontal, InsightSpacing.panelPadding)
+        }
     }
 
     // MARK: - Preparing Phase
@@ -37,26 +42,27 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             // Video preview area
             Group {
                 if let service = dataSource.capturePreview as? VideoCaptureService {
-                    VideoPreviewView(captureService: service)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 360)
-                        .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
-                        .padding(.horizontal, InsightSpacing.panelPadding)
-                } else {
-                    RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
-                        .fill(InsightTheme.canvas)
-                        .frame(height: 360)
-                        .overlay(
-                            VStack(spacing: InsightSpacing.md) {
-                                Image(systemName: "video.slash")
-                                    .font(.system(size: 40))
-                                    .foregroundStyle(InsightTheme.textTertiary)
-                                Text("开启摄像头或屏幕捕获以预览")
-                                    .font(InsightTypography.caption)
-                                    .foregroundStyle(InsightTheme.textTertiary)
-                            }
+                    capturePreviewFrame(maxHeight: 360) {
+                        VideoPreviewView(
+                            captureService: service,
+                            statusMessage: dataSource.capturePreviewStatusMessage
                         )
-                        .padding(.horizontal, InsightSpacing.panelPadding)
+                    }
+                } else {
+                    capturePreviewFrame(maxHeight: 360) {
+                        RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                            .fill(InsightTheme.canvas)
+                            .overlay(
+                                VStack(spacing: InsightSpacing.md) {
+                                    Image(systemName: "video.slash")
+                                        .font(.system(size: 40))
+                                        .foregroundStyle(InsightTheme.textTertiary)
+                                    Text("开启摄像头或屏幕捕获以预览")
+                                        .font(InsightTypography.caption)
+                                        .foregroundStyle(InsightTheme.textTertiary)
+                                }
+                            )
+                    }
                 }
             }
             .accessibilityIdentifier("live_preparing_preview")
@@ -89,15 +95,14 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         VStack(spacing: InsightSpacing.panelGap) {
             // Video preview with REC indicator
             if let service = dataSource.capturePreview as? VideoCaptureService {
-                VideoPreviewView(
-                    captureService: service,
-                    isRecording: true,
-                    recordingDuration: dataSource.recordingDuration
-                )
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 200, maxHeight: 300)
-                .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
-                .padding(.horizontal, InsightSpacing.panelPadding)
+                capturePreviewFrame(maxHeight: 300) {
+                    VideoPreviewView(
+                        captureService: service,
+                        statusMessage: dataSource.capturePreviewStatusMessage,
+                        isRecording: true,
+                        recordingDuration: dataSource.recordingDuration
+                    )
+                }
                 .padding(.top, InsightSpacing.panelPadding)
             }
 
@@ -170,6 +175,80 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     // MARK: - Reviewing Phase
 
     private var reviewingView: some View {
+        let plan = LiveReviewPresentationPlan.resolve(
+            phase: dataSource.phase,
+            smartMinutes: dataSource.smartMinutes,
+            canExportDocument: dataSource.canExportDocument
+        )
+
+        return Group {
+            switch plan.mode {
+            case .summaryFirst:
+                if let minutes = dataSource.smartMinutes {
+                    summaryFirstReviewingView(minutes: minutes, plan: plan)
+                } else {
+                    transcriptFirstReviewingView
+                }
+            case .transcriptFirst:
+                transcriptFirstReviewingView
+            }
+        }
+    }
+
+    private func summaryFirstReviewingView(minutes: SmartMinutes, plan: LiveReviewPresentationPlan) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: InsightSpacing.md) {
+                summaryReadyHeader(exportActions: plan.exportActions)
+
+                summaryTextSection(
+                    title: "总结",
+                    text: minutes.structuredSummary,
+                    fallback: "当前记录尚未生成结构化总结。",
+                    accessibilityID: "live_summary_review_overview"
+                )
+
+                summaryListSection(
+                    title: "会议金句",
+                    items: minutes.highlights,
+                    fallback: "当前纪要未包含会议金句。",
+                    accessibilityID: "live_summary_review_highlights"
+                )
+
+                summarySpeakerSection(minutes.speakerSummaries)
+
+                summaryListSection(
+                    title: "关键决策",
+                    items: minutes.keyDecisions,
+                    fallback: "当前纪要未包含明确关键决策。",
+                    accessibilityID: "live_summary_review_decisions"
+                )
+
+                summaryListSection(
+                    title: "待办事项",
+                    items: minutes.actionItems,
+                    fallback: "当前纪要未包含待办事项。",
+                    accessibilityID: "live_summary_review_actions"
+                )
+
+                summaryChapterSection(minutes.chapters)
+
+                reviewSourceSection
+            }
+            .padding(InsightSpacing.panelPadding)
+        }
+        .accessibilityIdentifier("live_summary_review")
+        .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 0) {
+                phaseMarker("回看态", identifier: "live_phase_reviewing")
+                Text(formatTimestamp(dataSource.currentPlaybackTime ?? 0))
+                    .font(.caption2)
+                    .foregroundStyle(.clear)
+                    .accessibilityIdentifier("live_current_playback_label")
+            }
+        }
+    }
+
+    private var transcriptFirstReviewingView: some View {
         VStack(spacing: InsightSpacing.panelGap) {
             // Media player
             MediaPlayerView(
@@ -204,7 +283,219 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         }
     }
 
+    private func summaryReadyHeader(exportActions: [LiveReviewExportAction]) -> some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+            HStack(spacing: InsightSpacing.sm) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(InsightTheme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("智能纪要")
+                        .font(InsightTypography.heading)
+                        .foregroundStyle(InsightTheme.textPrimary)
+                    Text("已生成")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !exportActions.isEmpty {
+                HStack(spacing: InsightSpacing.sm) {
+                    ForEach(exportActions) { action in
+                        Button {
+                            dataSource.onExportDocument(format: action.format)
+                        } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier(action.accessibilityIdentifier)
+                    }
+                }
+            }
+
+            if let exportFileName {
+                Text("已导出 \(exportFileName)")
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .accessibilityIdentifier("live_summary_export_status")
+            }
+        }
+        .padding(InsightSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(InsightTheme.elevated)
+        .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+        .accessibilityIdentifier("live_summary_review_header")
+    }
+
+    private var exportFileName: String? {
+        let path = dataSource.lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    private func summaryTextSection(
+        title: String,
+        text: String,
+        fallback: String,
+        accessibilityID: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+            sectionTitle(title)
+            Text(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : text)
+                .font(InsightTypography.body)
+                .foregroundStyle(InsightTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .summarySectionStyle(accessibilityID: accessibilityID)
+    }
+
+    private func summaryListSection(
+        title: String,
+        items: [String],
+        fallback: String,
+        accessibilityID: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+            sectionTitle(title)
+            if items.isEmpty {
+                Text(fallback)
+                    .font(InsightTypography.body)
+                    .foregroundStyle(InsightTheme.textSecondary)
+            } else {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                        Circle()
+                            .fill(InsightTheme.accent.opacity(0.65))
+                            .frame(width: 5, height: 5)
+                            .padding(.top, 7)
+                        Text(item)
+                            .font(InsightTypography.body)
+                            .foregroundStyle(InsightTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .summarySectionStyle(accessibilityID: accessibilityID)
+    }
+
+    private func summarySpeakerSection(_ speakers: [SpeakerMinutesSummary]) -> some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+            sectionTitle("发言人总结")
+            if speakers.isEmpty {
+                Text("当前纪要未包含独立发言人总结。")
+                    .font(InsightTypography.body)
+                    .foregroundStyle(InsightTheme.textSecondary)
+            } else {
+                ForEach(speakers) { speaker in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(speaker.speakerName)
+                            .font(InsightTypography.caption)
+                            .foregroundStyle(InsightTheme.accent)
+                        Text(speaker.summary)
+                            .font(InsightTypography.body)
+                            .foregroundStyle(InsightTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .summarySectionStyle(accessibilityID: "live_summary_review_speakers")
+    }
+
+    private func summaryChapterSection(_ chapters: [ChapterSummary]) -> some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+            sectionTitle("智能章节")
+            if chapters.isEmpty {
+                Text("当前纪要未包含智能章节。")
+                    .font(InsightTypography.body)
+                    .foregroundStyle(InsightTheme.textSecondary)
+            } else {
+                ForEach(chapters) { chapter in
+                    Button {
+                        dataSource.onSeek(to: chapter.timestamp)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(formatTimestamp(chapter.timestamp))  \(chapter.title)")
+                                .font(InsightTypography.caption)
+                                .foregroundStyle(InsightTheme.accent)
+                            Text(chapter.summary)
+                                .font(InsightTypography.body)
+                                .foregroundStyle(InsightTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .summarySectionStyle(accessibilityID: "live_summary_review_chapters")
+    }
+
+    private var reviewSourceSection: some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+            sectionTitle("回看资料")
+
+            if dataSource.mediaURL != nil {
+                MediaPlayerView(
+                    url: dataSource.mediaURL,
+                    isPlaying: false,
+                    seekRequest: dataSource.mediaSeekRequest,
+                    onSeek: { time in
+                        dataSource.onSeek(to: time)
+                    },
+                    onTimeUpdate: { _ in }
+                )
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 160, maxHeight: 220)
+            }
+
+            if dataSource.transcriptEntries.isEmpty {
+                Text("等待转写输入…")
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("live_summary_review_transcript_empty")
+            } else {
+                VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+                    ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
+                        transcriptEntryRow(entry, index: index)
+                    }
+                }
+                .accessibilityIdentifier("live_summary_review_transcript")
+            }
+        }
+        .summarySectionStyle(accessibilityID: "live_summary_review_sources")
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(InsightTypography.bodyMedium)
+            .foregroundStyle(InsightTheme.textPrimary)
+    }
+
     // MARK: - Shared Transcript List
+
+    private func capturePreviewFrame<Content: View>(
+        maxHeight: CGFloat,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        GeometryReader { proxy in
+            let size = LiveVisualPreviewLayout.previewSize(
+                availableWidth: proxy.size.width,
+                maxHeight: maxHeight
+            )
+
+            content()
+                .frame(width: size.width, height: size.height)
+                .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .frame(height: maxHeight)
+        .padding(.horizontal, InsightSpacing.panelPadding)
+    }
 
     private var transcriptList: some View {
         ScrollView {
@@ -282,6 +573,38 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         }
     }
 
+    @ViewBuilder
+    private var liveProgressBanner: some View {
+        if let progress = dataSource.liveProgressPresentation {
+            HStack(alignment: .center, spacing: InsightSpacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(progress.title)
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textPrimary)
+                        .accessibilityIdentifier("live_progress_title")
+                    Text(progress.message)
+                        .font(.caption2)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("live_progress_message")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, InsightSpacing.md)
+            .padding(.vertical, InsightSpacing.sm)
+            .background(InsightTheme.elevated)
+            .overlay(
+                RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                    .stroke(InsightTheme.border.opacity(0.7), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .shadow(color: Color.black.opacity(0.06), radius: 10, y: 3)
+            .accessibilityIdentifier("live_progress_status")
+        }
+    }
+
     // MARK: - Helpers
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -302,5 +625,16 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             .font(.caption2)
             .foregroundStyle(.clear)
             .accessibilityIdentifier(identifier)
+    }
+}
+
+private extension View {
+    func summarySectionStyle(accessibilityID: String) -> some View {
+        self
+            .padding(InsightSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier(accessibilityID)
     }
 }

@@ -1,6 +1,9 @@
 import AVFoundation
+import CoreGraphics
+import CoreImage
 import CoreMedia
 import Foundation
+import QuartzCore
 import ScreenCaptureKit
 
 // MARK: - Video Device Model
@@ -57,6 +60,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     @Published var screenPermission: PermissionState = .unknown
     @Published var availableCameras: [VideoDeviceItem] = []
     @Published var availableScreens: [VideoDeviceItem] = []
+    @Published var screenPreviewImage: CGImage?
 
     // MARK: - Private State
 
@@ -74,6 +78,8 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var scStreamOutput: SCVideoStreamOutput?
     private var scDisplays: [SCDisplay] = []
     private var scWindows: [SCWindow] = []
+    private let screenPreviewRenderContext = CIContext()
+    private var lastScreenPreviewImageAt: CFTimeInterval = 0
 
     // Recording
     private var assetWriter: AVAssetWriter?
@@ -212,13 +218,17 @@ final class VideoCaptureService: NSObject, ObservableObject {
         session.commitConfiguration()
 
         let layer = AVCaptureVideoPreviewLayer(session: session)
-        layer.videoGravity = .resizeAspectFill
+        layer.videoGravity = .resizeAspect
 
         captureSession = session
         cameraPreviewLayer = layer
         videoDataOutput = output
         videoOutputDelegate = delegate
         activeMode = .camera(deviceID: deviceID)
+
+        DispatchQueue.main.async {
+            self.screenPreviewImage = nil
+        }
 
         captureSessionQueue.async {
             session.startRunning()
@@ -252,6 +262,8 @@ final class VideoCaptureService: NSObject, ObservableObject {
         activeMode = .screen(displayID: displayID)
 
         DispatchQueue.main.async {
+            self.cameraPreviewLayer = nil
+            self.screenPreviewImage = nil
             self.isCapturing = true
         }
     }
@@ -280,6 +292,8 @@ final class VideoCaptureService: NSObject, ObservableObject {
         activeMode = .window(windowID: windowID)
 
         DispatchQueue.main.async {
+            self.cameraPreviewLayer = nil
+            self.screenPreviewImage = nil
             self.isCapturing = true
         }
     }
@@ -312,6 +326,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
             self.activeMode = nil
 
             DispatchQueue.main.async {
+                self.screenPreviewImage = nil
                 self.isCapturing = false
             }
         }
@@ -356,21 +371,84 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     func stopRecording() {
+        var writerToFinish: AVAssetWriter?
         writerQueue.sync {
-            guard isWriting else { return }
+            guard isWriting, let writer = assetWriter else { return }
             isWriting = false
             videoWriterInput?.markAsFinished()
-            assetWriter?.finishWriting { [weak self] in
-                self?.assetWriter = nil
-                self?.videoWriterInput = nil
-                self?.recordingStartTime = nil
+            writerToFinish = writer
+        }
+
+        guard let writerToFinish else { return }
+        writerToFinish.finishWriting { [weak self] in
+            self?.writerQueue.async {
+                self?.clearWriterState(matching: writerToFinish)
             }
         }
+    }
+
+    @discardableResult
+    func finishRecording(timeoutSec: TimeInterval = 5) -> URL? {
+        var writerToFinish: AVAssetWriter?
+        var outputURL: URL?
+        var hasVideoFrames = false
+
+        writerQueue.sync {
+            guard isWriting, let writer = assetWriter else { return }
+            hasVideoFrames = recordingStartTime != nil
+            isWriting = false
+            writerToFinish = writer
+            outputURL = writer.outputURL
+            if hasVideoFrames {
+                videoWriterInput?.markAsFinished()
+            }
+        }
+
+        guard let writerToFinish, let outputURL else {
+            return nil
+        }
+
+        guard hasVideoFrames else {
+            writerToFinish.cancelWriting()
+            writerQueue.async { [weak self] in
+                self?.clearWriterState(matching: writerToFinish)
+            }
+            return nil
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        writerToFinish.finishWriting { [weak self] in
+            self?.writerQueue.async {
+                self?.clearWriterState(matching: writerToFinish)
+            }
+            semaphore.signal()
+        }
+
+        guard semaphore.wait(timeout: .now() + timeoutSec) == .success else {
+            return nil
+        }
+        guard writerToFinish.status == .completed else {
+            return nil
+        }
+        guard let values = try? outputURL.resourceValues(forKeys: [.fileSizeKey]),
+              (values.fileSize ?? 0) > 0 else {
+            return nil
+        }
+        return outputURL
+    }
+
+    private func clearWriterState(matching writer: AVAssetWriter) {
+        guard assetWriter === writer else { return }
+        assetWriter = nil
+        videoWriterInput = nil
+        recordingStartTime = nil
     }
 
     // MARK: - Frame Handling
 
     fileprivate func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        publishScreenPreviewIfNeeded(sampleBuffer)
+
         guard isWriting else { return }
         writerQueue.async { [weak self] in
             guard let self, self.isWriting else { return }
@@ -382,6 +460,29 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 self.assetWriter?.startSession(atSourceTime: timestamp)
             }
             input.append(sampleBuffer)
+        }
+    }
+
+    private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer) {
+        switch activeMode {
+        case .screen, .window:
+            break
+        case .camera, .none:
+            return
+        }
+
+        let now = CACurrentMediaTime()
+        guard now - lastScreenPreviewImageAt >= 0.12 else { return }
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        guard let previewImage = screenPreviewRenderContext.createCGImage(ciImage, from: ciImage.extent) else {
+            return
+        }
+        lastScreenPreviewImageAt = now
+
+        DispatchQueue.main.async { [weak self] in
+            self?.screenPreviewImage = previewImage
         }
     }
 }

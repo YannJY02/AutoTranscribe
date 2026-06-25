@@ -65,6 +65,10 @@ extension LiveSessionViewModel: CenterStageDataSource {
     func onSkipMinutes() {
         sessionPhase = .reviewing
     }
+
+    func onExportDocument(format: String) {
+        exportDocument(format: format)
+    }
 }
 
 // MARK: - NotesEditorDataSource

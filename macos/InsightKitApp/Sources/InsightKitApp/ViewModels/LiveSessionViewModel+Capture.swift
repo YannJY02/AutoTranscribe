@@ -1,6 +1,29 @@
 import AVFoundation
 import Foundation
 
+enum LiveCaptureHealthHint {
+    static let noInput = "采集无输入：请检查音频源选择、麦克风/屏幕录制权限，或先切换到“仅麦克风”排查。"
+    static let waitingForTranscript = "等待转写输入：已收到音频，当前暂未产出文本；如果持续无文本，请检查音量、静音状态或环境噪声。"
+
+    static func isTransient(_ message: String?) -> Bool {
+        guard let message else { return false }
+        return message == noInput || message == waitingForTranscript
+    }
+}
+
+enum LiveAnalysisHealthHint {
+    static let refreshTimeout = "智能分析刷新超时，转写继续；系统会在后续转写更新后自动重试。"
+
+    static func isTransient(_ message: String?) -> Bool {
+        guard let message else { return false }
+        return message == refreshTimeout
+    }
+}
+
+private func isTransientLiveStatus(_ message: String?) -> Bool {
+    LiveCaptureHealthHint.isTransient(message) || LiveAnalysisHealthHint.isTransient(message)
+}
+
 extension LiveSessionViewModel {
     func handleMixedSamples(_ samples: [Float]) {
         if samples.isEmpty || !isRunning {
@@ -134,6 +157,10 @@ extension LiveSessionViewModel {
             stateQueue.sync {
                 insightRefreshSuspended = false
             }
+        case .paused(.timeout) where outcome.errorMessage == nil:
+            stateQueue.sync {
+                insightRefreshSuspended = false
+            }
         case .paused:
             stateQueue.sync {
                 insightRefreshSuspended = true
@@ -150,6 +177,9 @@ extension LiveSessionViewModel {
             if !outcome.transcriptSegments.isEmpty {
                 self.transcriptSegments.append(contentsOf: outcome.transcriptSegments)
                 self.transcriptSegments.sort { $0.startMs < $1.startMs }
+                if isTransientLiveStatus(self.recordingStatusMessage) {
+                    self.recordingStatusMessage = nil
+                }
             }
             if let lastTranscriptAt = outcome.lastTranscriptAt {
                 self.captureHealth.lastTranscriptAt = lastTranscriptAt
@@ -164,6 +194,11 @@ extension LiveSessionViewModel {
             }
             if let errorMessage = outcome.errorMessage {
                 self.errorMessage = errorMessage
+            }
+            if case .paused(.timeout) = outcome.refresh, outcome.errorMessage == nil {
+                self.recordingStatusMessage = LiveAnalysisHealthHint.refreshTimeout
+            } else if case .success = outcome.refresh, isTransientLiveStatus(self.recordingStatusMessage) {
+                self.recordingStatusMessage = nil
             }
             self.captureState = outcome.captureState
         }
@@ -251,13 +286,13 @@ extension LiveSessionViewModel {
         }
         guard let started = captureHealth.sessionStartedAt else { return }
         if captureHealth.lastChunkAt == nil, now.timeIntervalSince(started) >= 10 {
-            errorMessage = "采集无输入：请检查音频源选择、麦克风/屏幕录制权限，或先切换到“仅麦克风”排查。"
+            recordingStatusMessage = LiveCaptureHealthHint.noInput
             lastCaptureHintAt = now
             return
         }
 
         if captureHealth.lastTranscriptAt == nil, now.timeIntervalSince(started) >= 20 {
-            errorMessage = "识别中：当前暂未产出文本，可能是静音、环境噪声或音量过低。"
+            recordingStatusMessage = LiveCaptureHealthHint.waitingForTranscript
             lastCaptureHintAt = now
         }
     }

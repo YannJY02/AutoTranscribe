@@ -78,4 +78,67 @@ final class WorkflowCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.canExportLive)
         XCTAssertTrue(coordinator.canExportTranscription)
     }
+
+    func testComputedBannerActionCanOpenSettingsWithoutStoredBannerMessage() {
+        var openedSettingsCount = 0
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock(),
+            settingsOpener: {
+                openedSettingsCount += 1
+            }
+        )
+
+        XCTAssertNil(coordinator.bannerMessage)
+
+        coordinator.performBannerAction(for: "open_settings")
+
+        XCTAssertEqual(openedSettingsCount, 1)
+    }
+
+    func testActiveLiveMeetingStillBlocksNewLiveStartWhileStopIsFinalizing() {
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+        live.stateQueue.sync {
+            live._isRunningLock.lock()
+            live._isRunning = false
+            live._isRunningLock.unlock()
+            live._sessionState.activeMeetingID = "live-stopping"
+            live._sessionState.lastMeetingID = nil
+        }
+        live.syncSessionHandleFromState()
+        drainWorkflowCoordinatorTestMainQueue()
+
+        XCTAssertEqual(coordinator.livePhase, .livePostSession)
+        XCTAssertFalse(coordinator.canStartLive)
+    }
+}
+
+private func drainWorkflowCoordinatorTestMainQueue(
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    let expectation = XCTestExpectation(description: "workflow coordinator main queue drained")
+    DispatchQueue.main.async {
+        expectation.fulfill()
+    }
+    XCTWaiter().wait(for: [expectation], timeout: 1.0)
 }

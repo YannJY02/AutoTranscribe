@@ -34,7 +34,9 @@ final class LiveWorkspaceTests: InsightKitUITests {
 
         startRecording()
 
-        let noteInput = app.textFields["live_note_input"]
+        let noteInput = app.textViews["live_note_input"].exists
+            ? app.textViews["live_note_input"]
+            : app.textFields["live_note_input"]
         XCTAssertTrue(waitForElement(noteInput), "录制中应允许输入笔记")
         let submitButton = button("live_note_submit_button")
         enterText("note-123", into: noteInput)
@@ -43,7 +45,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(draftText), "应能读取笔记草稿标记")
         XCTAssertTrue(waitForStringValue("note-123", in: draftText, timeout: 3), "输入内容应同步到笔记草稿状态")
         XCTAssertTrue(waitForEnabled(submitButton, timeout: 3), "输入笔记后提交按钮应可用")
-        noteInput.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        submitButton.tap()
         let submitCount = element("live_note_submit_count")
         XCTAssertTrue(waitForElement(submitCount), "应能读取提交次数标记")
         XCTAssertTrue(waitForStringValue("1", in: submitCount, timeout: 3), "点击提交后应触发提交动作")

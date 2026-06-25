@@ -97,6 +97,9 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var mediaSeekRequest: MediaSeekRequest?
     @Published var recordingDuration: TimeInterval = 0
     @Published var recordingStatusMessage: String?
+    @Published var isFinalizingLiveSession = false
+    @Published var visualPreviewSource: LiveVisualPreviewSource = .none
+    @Published var capturePreviewStatusMessage: String?
     @Published var mediaURL: URL?
     let videoCaptureService = VideoCaptureService()
     var recordingDurationTimer: Timer?
@@ -162,7 +165,9 @@ final class LiveSessionViewModel: ObservableObject {
         return _isRunning
     }
 
-    var canStartSession: Bool { !isRunning }
+    var canStartSession: Bool {
+        !isRunning && currentActiveMeetingID() == nil
+    }
     var canStopSession: Bool { isRunning }
     var canBuildFinal: Bool { currentBuildTargetID() != nil }
     var canExportDocument: Bool { currentBuildTargetID() != nil }
@@ -178,6 +183,39 @@ final class LiveSessionViewModel: ObservableObject {
             warmReady: asrWarmStatus.ready,
             hasTranscript: metrics.firstSegmentMs > 0 || !transcriptSegments.isEmpty
         )
+    }
+
+    var liveProgressPresentation: LiveProgressPresentation? {
+        if isFinalizingLiveSession {
+            return LiveProgressPresentation(
+                title: "正在整理录制内容",
+                message: "正在保存回看资料、转写和笔记，完成后会进入智能纪要选择。"
+            )
+        }
+
+        switch captureState {
+        case .preparingRuntime:
+            return LiveProgressPresentation(
+                title: "正在准备本地语音运行时",
+                message: "首次启动或切换模型时可能需要等待，请不要关闭窗口。"
+            )
+        case .warmingModel:
+            let buffered = liveWarmup.bufferedChunks
+            let message = buffered > 0
+                ? "已暂存 \(buffered) 段音频，模型就绪后会继续转写。"
+                : "模型就绪后会自动开始转写，请继续等待。"
+            return LiveProgressPresentation(
+                title: "正在预热本地语音模型",
+                message: message
+            )
+        case .refreshing where sessionPhase == .postSession:
+            return LiveProgressPresentation(
+                title: "正在生成智能纪要",
+                message: "正在根据本次转写生成结构化总结，完成后会进入回看。"
+            )
+        default:
+            return nil
+        }
     }
 
     // MARK: - Session Lifecycle
@@ -250,7 +288,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func startLiveSession() {
-        if isRunning { return }
+        if !canStartSession { return }
 
         if startUITestSessionIfNeeded() {
             return
@@ -283,6 +321,7 @@ final class LiveSessionViewModel: ObservableObject {
         updateMain {
             self.sessionHandle = SessionHandle(activeMeetingID: meetingID, lastMeetingID: nil)
         }
+        startVisualRecordingIfNeeded(meetingID: meetingID)
 
         mixBus.setMode(selectedMode)
         captureState = .preparingRuntime
@@ -374,24 +413,28 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
 
-        stateQueue.sync {
+        let activeMeetingID = stateQueue.sync {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
+            return _sessionState.activeMeetingID
         }
         captureMonitorTask?.cancel()
         captureMonitorTask = nil
         cancelWarmupTasks()
         stopRecordingDurationTimer()
+        updateMain {
+            self.isFinalizingLiveSession = true
+        }
 
         micCapture.stop()
         Task {
             await systemAudioCapture.stop()
         }
+        let expectedVisualMedia = visualPreviewSource != .none
 
         pipelineQueue.async { [weak self] in
             guard let self else { return }
-            let activeMeetingID = self.currentActiveMeetingID()
             let shouldFlushTail = self.asrWarmStatus.ready
             do {
                 self.queuedChunks.removeAll(keepingCapacity: false)
@@ -406,7 +449,14 @@ final class LiveSessionViewModel: ObservableObject {
                 }
                 if let meetingID = activeMeetingID {
                     try? self.rpcClient.sessionStop(meetingID: meetingID)
-                    _ = self.prepareTemporaryRecordingForSave(meetingID: meetingID)
+                    if expectedVisualMedia, let videoURL = self.videoCaptureService.finishRecording() {
+                        self.temporaryRecordingURL = videoURL
+                    }
+                    self.videoCaptureService.stopCapture()
+                    _ = self.prepareTemporaryRecordingForSave(
+                        meetingID: meetingID,
+                        expectedVisualMedia: expectedVisualMedia
+                    )
                 }
             } catch {
                 self.publishError(error)
@@ -423,6 +473,7 @@ final class LiveSessionViewModel: ObservableObject {
                 self.metrics.queueDepth = 0
                 self.captureState = finalState
                 self.sessionPhase = .postSession
+                self.isFinalizingLiveSession = false
             }
             // Save record folder after session ends
             if let meetingID = activeMeetingID {
@@ -436,6 +487,14 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
 
+        guard let buildTargetID = currentBuildTargetID() else {
+            publishError(NSError(domain: "InsightKit", code: -2, userInfo: [NSLocalizedDescriptionKey: "当前无会话，无法生成定稿洞察"]))
+            return
+        }
+        updateMain {
+            self.captureState = .refreshing
+        }
+
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -445,21 +504,20 @@ final class LiveSessionViewModel: ObservableObject {
                 })
                 self.refreshSidecarStatus()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
-                guard let meetingID = self.currentBuildTargetID() else {
-                    throw NSError(domain: "InsightKit", code: -2, userInfo: [NSLocalizedDescriptionKey: "当前无会话，无法生成定稿洞察"])
-                }
-                self.updateMain {
-                    self.captureState = .refreshing
-                }
-                let result = try self.rpcClient.buildFinal(meetingID: meetingID)
+                let result = try self.rpcClient.buildFinal(meetingID: buildTargetID)
                 self.updateWorkbench(result)
                 self.updateMain {
                     self.lastInsightPackage = result.package
                     self.captureState = .idle
                     self.sessionPhase = .reviewing
                 }
-                self.saveToRecords(meetingID: meetingID, insightPackageOverride: result.package)
+                self.saveToRecords(meetingID: buildTargetID, insightPackageOverride: result.package)
             } catch {
+                self.updateMain {
+                    if self.captureState == .refreshing {
+                        self.captureState = .idle
+                    }
+                }
                 self.publishError(error)
             }
         }
@@ -544,14 +602,66 @@ final class LiveSessionViewModel: ObservableObject {
 
     // MARK: - Camera Preview
 
+    func startVisualRecordingIfNeeded(meetingID: String) {
+        guard visualPreviewSource != .none else { return }
+        let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+        let outputURL = tmpDir.appendingPathComponent("recording.mp4")
+
+        do {
+            try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            try videoCaptureService.startRecording(to: outputURL)
+            temporaryRecordingURL = outputURL
+        } catch {
+            temporaryRecordingURL = nil
+            capturePreviewStatusMessage = "视频回看录制未能启动；本次结束后将保留音频、转写与笔记。\(error.localizedDescription)"
+        }
+    }
+
+    func applyVisualPreviewSelection(cameraEnabled: Bool, screenEnabled: Bool) {
+        let plan = LiveVisualPreviewPlan.resolve(
+            cameraEnabled: cameraEnabled,
+            screenEnabled: screenEnabled
+        )
+        capturePreviewStatusMessage = plan.statusMessage
+
+        guard !isUITestingMode else {
+            visualPreviewSource = plan.source
+            return
+        }
+
+        if visualPreviewSource == plan.source {
+            return
+        }
+
+        if visualPreviewSource != .none {
+            videoCaptureService.stopCapture()
+        }
+
+        visualPreviewSource = plan.source
+
+        switch plan.source {
+        case .none:
+            videoCaptureService.stopCapture()
+            capturePreviewStatusMessage = nil
+        case .camera:
+            startCameraPreview()
+        case .screen:
+            startScreenPreview()
+        }
+    }
+
     func startCameraPreview() {
         if isUITestingMode {
             return
         }
+        capturePreviewStatusMessage = "正在准备摄像头预览..."
         videoCaptureService.checkCameraPermission()
         switch videoCaptureService.cameraPermission {
         case .denied:
             // Already denied — open settings instead of crashing
+            capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头。"
             videoCaptureService.openCameraSettings()
             return
         case .unknown:
@@ -560,6 +670,8 @@ final class LiveSessionViewModel: ObservableObject {
                 let granted = await videoCaptureService.requestCameraPermission()
                 if granted {
                     startCameraCapture()
+                } else {
+                    capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头。"
                 }
             }
         case .granted:
@@ -572,8 +684,59 @@ final class LiveSessionViewModel: ObservableObject {
         // enumerateCameras dispatches to main async; wait briefly for results
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard let firstCamera = self.videoCaptureService.availableCameras.first else { return }
-            try? self.videoCaptureService.startCamera(deviceID: firstCamera.id)
+            guard let firstCamera = self.videoCaptureService.availableCameras.first else {
+                self.capturePreviewStatusMessage = "没有找到可用摄像头。请检查设备连接后再试。"
+                return
+            }
+            do {
+                try self.videoCaptureService.startCamera(deviceID: firstCamera.id)
+                self.capturePreviewStatusMessage = nil
+            } catch {
+                self.capturePreviewStatusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func startScreenPreview() {
+        if isUITestingMode {
+            return
+        }
+        capturePreviewStatusMessage = "正在准备屏幕预览；若一直没有画面，请确认系统设置已允许 InsightKit 录制屏幕。"
+
+        Task { [weak self] in
+            guard let self else { return }
+            await self.videoCaptureService.enumerateScreens()
+            await MainActor.run {
+                self.startFirstAvailableScreenPreview()
+            }
+        }
+    }
+
+    @MainActor
+    private func startFirstAvailableScreenPreview() {
+        guard let firstScreen = videoCaptureService.availableScreens.first(where: { $0.kind == .screen }) else {
+            capturePreviewStatusMessage = "没有找到可预览的显示器。请检查屏幕录制权限或重新打开 Live Workspace。"
+            return
+        }
+
+        let rawID = firstScreen.id.hasPrefix("screen:")
+            ? String(firstScreen.id.dropFirst("screen:".count))
+            : firstScreen.id
+        guard let displayID = UInt32(rawID) else {
+            capturePreviewStatusMessage = "屏幕来源无效。请重新打开 Live Workspace 后再试。"
+            return
+        }
+
+        capturePreviewStatusMessage = "正在接收屏幕画面；若一直黑屏，请确认系统设置已允许 InsightKit 录制屏幕。"
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.videoCaptureService.startScreenCapture(displayID: displayID)
+            } catch {
+                await MainActor.run {
+                    self.capturePreviewStatusMessage = "\(error.localizedDescription) 请在系统设置中允许 InsightKit 录制屏幕。"
+                }
+            }
         }
     }
 
@@ -581,6 +744,8 @@ final class LiveSessionViewModel: ObservableObject {
         if isUITestingMode {
             return
         }
+        visualPreviewSource = .none
+        capturePreviewStatusMessage = nil
         videoCaptureService.stopCapture()
     }
 
@@ -601,8 +766,12 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         var message = raw
+        var analysisStateOverride: AnalysisRuntimeState?
         let lower = raw.lowercased()
-        if lower.contains("method not found")
+        if let sanitized = AnalysisProviderErrorPresentation.sanitizedMessage(for: raw) {
+            message = sanitized
+            analysisStateOverride = .pausedInvalidResponse
+        } else if lower.contains("method not found")
             || lower.contains("circuit-open")
             || lower.contains("sidecar.ensure_ready") {
             message = "本地服务版本或状态异常，请打开设置执行“一键测试服务”并重启应用。"
@@ -611,6 +780,9 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         updateMain {
+            if let analysisStateOverride {
+                self.analysisRuntimeState = analysisStateOverride
+            }
             self.captureState = .error(message)
             self.errorMessage = message
         }
@@ -653,7 +825,9 @@ final class LiveSessionViewModel: ObservableObject {
         mediaSeekRequest = nil
         recordingDuration = 0
         recordingStatusMessage = nil
+        isFinalizingLiveSession = false
         mediaURL = nil
+        temporaryRecordingURL = nil
         stopRecordingDurationTimer()
     }
 

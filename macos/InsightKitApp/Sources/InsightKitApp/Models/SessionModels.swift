@@ -109,3 +109,8 @@ struct LiveWarmupSnapshot: Equatable {
 
     static let empty = LiveWarmupSnapshot()
 }
+
+struct LiveProgressPresentation: Equatable {
+    let title: String
+    let message: String
+}
