@@ -1,6 +1,6 @@
 # Smart Minutes review source loses video after audio fix
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -38,3 +38,43 @@ This is a regression from the earlier media-chain fix where review video display
 ### 2026-06-25 - Manual QA
 
 The owner reported that the issue 20 fix introduced a new regression: `回看资料` no longer displays video.
+
+### 2026-06-25 - Code fix installed for owner retest
+
+Status changed to `ready-for-human`.
+
+Diagnosis:
+
+- The save path still preserved captured video as the main meeting media.
+- The Smart Minutes `回看资料` view incorrectly used the audio fallback URL as the only media player URL.
+- When issue 20 generated a WAV review-source audio file, that audio URL replaced the visible video in the review source area.
+
+Implementation summary:
+
+- Added a Smart Minutes review-source presentation decision that separates the primary visible media from supplemental audio.
+- When captured video exists, `回看资料` keeps the video as the primary player.
+- When a separate audible review source exists, the view shows it as an additional compact audio player instead of replacing the video.
+- Updated the audio fallback status message so it says video is preserved while audio playback is available.
+
+TDD proof:
+
+- RED: `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoRemainsPrimaryReviewSourceWhenSeparateAudioFallbackExists` failed because the presentation selected `recording.wav` as the primary review media and had no supplemental audio URL.
+- GREEN: the same test passed after separating primary video media from supplemental audio.
+- GREEN: `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests` passed, 1 test, 0 failures.
+- GREEN: `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingKeepsAudibleReviewSourceWhenVideoHasNoAudioTrack` passed, 1 test, 0 failures.
+- GREEN: `swift test --package-path macos/InsightKitApp` passed, 156 tests, 0 failures.
+
+Installed-app proof:
+
+- Installed build: `20260625203632`
+- Sync proof: `logs/workflow/latest_sync.json`
+- Command: `scripts/sync_insightkit_app.sh --debug --skip-tests`
+- Installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` with `--ui-test-mode --ui-test-route=live` and quit successfully.
+
+Owner retest:
+
+- Capture a Live Workspace session with camera or screen enabled and microphone or mixed audio enabled.
+- Stop the session and generate Smart Minutes.
+- In Smart Minutes `回看资料`, confirm the captured video is visible.
+- If separate audio playback is shown, confirm it is supplemental and does not replace the video.
+- Note: issue 22 still tracks click-to-seek-and-play behavior for Timeline Beats and Transcript Segments.

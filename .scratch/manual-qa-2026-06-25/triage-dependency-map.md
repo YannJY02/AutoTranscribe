@@ -329,7 +329,7 @@ Dependency:
 Suggested next loop:
 
 - Issues 14, 17, and 20 are no longer implementation candidates.
-- Issues 21 and 22 are follow-up regressions from the issue 20 retest and should be handled before returning to Records naming work.
+- Issue 21 is now `ready-for-human` after its installed video-display fix; issue 22 remains a follow-up regression from the issue 20 retest and should be handled before returning to Records naming work.
 - Handle issues 18 and 19 as a Record naming pair, but keep their issue records separate.
 - Keep issue 15 at `needs-info` until a concrete failing diarization sample is available.
 
@@ -342,7 +342,7 @@ Suggested next loop:
 5. Owner retest: issue 10 Provider response-format sanitizer.
 6. Optional owner retest: issue 12 completed-summary review presentation fix, now that issue 13 has passed owner retest.
 7. Owner retest still open: issue 20 Smart Minutes review-source audio playback.
-8. Ready implementation candidates: issues 21 and 22 for Smart Minutes review cleanup, plus issues 16, 18, and 19 for later product work.
+8. Ready implementation candidates: issue 22 for Smart Minutes review cleanup, plus issues 16, 18, and 19 for later product work.
 9. Issue 15 remains `needs-info` until a concrete failing diarization sample is available.
 
 ## Stop Rules
@@ -396,10 +396,10 @@ Triage outcome:
 - issue 18: `ready-for-agent`, readable default Record names.
 - issue 19: `ready-for-agent`, manual Record renaming.
 - issue 20: `ready-for-human`, installed Smart Minutes review source playback fix; owner retest found follow-up regressions filed as issues 21 and 22.
-- issue 21: `ready-for-agent`, restore captured video in Smart Minutes review source after the audio fix.
+- issue 21: `ready-for-human`, installed fix restores captured video in Smart Minutes review source after the audio fix.
 - issue 22: `ready-for-agent`, make Timeline Beat and Transcript Segment clicks seek and start playback.
 
-Recommended next implementation target: issue 21 or issue 22 to clean up the Smart Minutes review regression from the issue 20 pass. Issue 18/19 can follow when the Records naming lane resumes. Issue 16 is ready but larger because it changes speaker-label persistence.
+Recommended next implementation target: issue 22 to finish the Smart Minutes review regression cleanup. Issue 18/19 can follow when the Records naming lane resumes. Issue 16 is ready but larger because it changes speaker-label persistence.
 
 ### 2026-06-25 - Batch triage
 
@@ -584,7 +584,7 @@ Issue 12 now has a code fix and installed-app sync proof:
 - full Swift gate passed: `swift test --package-path macos/InsightKitApp`, 145 tests, 0 failures
 - standard sync gate passed Swift and Python tests; Python reported `Ran 136 tests ... OK`
 
-It remains in this dependency map as a retest item rather than an implementation candidate. The current manual-QA lane now has ready implementation candidates in issues 16, 18, 19, 21, and 22; issue 15 remains `needs-info`.
+It remains in this dependency map as a retest item rather than an implementation candidate. The current manual-QA lane now has ready implementation candidates in issues 16, 18, 19, and 22; issue 15 remains `needs-info`.
 
 ### 2026-06-25 - Issue 14 implemented
 
@@ -635,4 +635,19 @@ The owner reported two Smart Minutes review regressions after testing build `202
 - issue 21: `回看资料` no longer displays captured video after the audio fix.
 - issue 22: clicking Timeline Beats or Transcript Segments does not seek to the matching source position and start playback.
 
-Both are `ready-for-agent`. Prefer issue 21 or issue 22 next before returning to Records naming. The current manual-QA lane has ready implementation candidates in issues 16, 18, 19, 21, and 22; issue 15 remains `needs-info`.
+Issue 21 now has an installed code fix and is `ready-for-human`. Issue 22 remains `ready-for-agent` and should be handled before returning to Records naming. The current manual-QA lane has ready implementation candidates in issues 16, 18, 19, and 22; issue 15 remains `needs-info`.
+
+### 2026-06-25 - Issue 21 implemented
+
+Issue 21 now has a code fix and installed-app sync proof:
+
+- installed build: `20260625203632`
+- proof: `logs/workflow/latest_sync.json`
+- red/green regression test: `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoRemainsPrimaryReviewSourceWhenSeparateAudioFallbackExists`
+- related gates:
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests`, 1 test, 0 failures
+  - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingKeepsAudibleReviewSourceWhenVideoHasNoAudioTrack`, 1 test, 0 failures
+- broad Swift gate: `swift test --package-path macos/InsightKitApp`, 156 tests, 0 failures
+- installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
+
+Issue 21 is now a retest item, not an implementation candidate. Issue 22 remains the next Smart Minutes review cleanup candidate.

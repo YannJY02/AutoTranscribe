@@ -435,12 +435,18 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     }
 
     private var reviewSourceSection: some View {
-        VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+        let presentation = LiveReviewSourcePresentation.make(
+            mediaURL: dataSource.mediaURL,
+            reviewSourceMediaURL: dataSource.reviewSourceMediaURL,
+            statusMessage: dataSource.reviewSourceStatusMessage
+        )
+
+        return VStack(alignment: .leading, spacing: InsightSpacing.sm) {
             sectionTitle("回看资料")
 
-            if dataSource.reviewSourceMediaURL != nil {
+            if presentation.showsPrimaryMedia {
                 MediaPlayerView(
-                    url: dataSource.reviewSourceMediaURL,
+                    url: presentation.primaryMediaURL,
                     isPlaying: false,
                     seekRequest: dataSource.mediaSeekRequest,
                     onSeek: { time in
@@ -452,7 +458,27 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 .frame(minHeight: 160, maxHeight: 220)
             }
 
-            if let message = dataSource.reviewSourceStatusMessage {
+            if presentation.showsSupplementalAudio {
+                VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+                    Text("原始声音")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                    MediaPlayerView(
+                        url: presentation.supplementalAudioURL,
+                        isPlaying: false,
+                        seekRequest: dataSource.mediaSeekRequest,
+                        onSeek: { time in
+                            dataSource.onSeek(to: time)
+                        },
+                        onTimeUpdate: { _ in }
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 36, maxHeight: 44)
+                }
+                .accessibilityIdentifier("live_summary_review_source_audio")
+            }
+
+            if let message = presentation.statusMessage {
                 HStack(alignment: .top, spacing: InsightSpacing.sm) {
                     Image(systemName: "speaker.wave.2.fill")
                         .foregroundStyle(InsightTheme.accent)

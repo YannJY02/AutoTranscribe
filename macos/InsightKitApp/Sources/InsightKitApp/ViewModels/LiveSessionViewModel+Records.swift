@@ -111,7 +111,7 @@ extension LiveSessionViewModel {
                 self.mediaURL = videoURL
                 self.reviewSourceMediaURL = reviewAudioURL
                 if reviewAudioURL != nil {
-                    self.reviewSourceStatusMessage = "为保证声音可听，回看资料已切换为音频播放。"
+                    self.reviewSourceStatusMessage = "为保证声音可听，已保留视频回看，并提供音频播放。"
                 } else if expectedVisualMedia {
                     let message = "视频回看已保存，但本次没有可播放音频。请检查麦克风或系统音频输入。"
                     self.recordingStatusMessage = message
