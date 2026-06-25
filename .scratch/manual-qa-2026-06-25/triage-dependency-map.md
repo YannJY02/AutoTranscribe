@@ -304,17 +304,17 @@ Status:
 - Issue 17 is `ready-for-human`.
 - Issue 18 is `ready-for-agent`.
 - Issue 19 is `ready-for-agent`.
-- Issue 20 is `ready-for-agent`.
+- Issue 20 is `ready-for-human` after installed fix.
 
 Initial breakdown:
 
 - Issue 14 is a Capture State / Session Phase feedback problem. It is about making normal waiting visible, not about the runtime failing. It now has an installed fix and has passed owner retest.
 - Issue 15 is an automatic speaker diarization quality problem. It needs a concrete failing Record/audio/transcript sample before accuracy work can be verified. A separate status-presentation issue can be filed later if the desired first step is only diarization degraded-state messaging.
 - Issue 16 is a manual speaker-label correction feature gap. It is related to issue 15, but it should remain separate because users need correction even when automatic diarization improves.
-- Issue 17 is a Smart Minutes export discoverability or capability gap from the review flow. Record export already exists elsewhere, so the likely gap is surfacing/exporting from the Smart Minutes review context. It now has an installed fix and needs owner retest.
+- Issue 17 is a Smart Minutes export discoverability or capability gap from the review flow. Record export already exists elsewhere, so the likely gap is surfacing/exporting from the Smart Minutes review context. It now has an installed fix and has passed owner retest.
 - Issue 18 is a default Record naming quality problem. Current Record surfaces can show technical IDs even when metadata has summary/date/source fields.
 - Issue 19 is a manual Record rename feature gap. It is related to issue 18, but it should remain separate because better defaults do not replace user correction.
-- Issue 20 is an audible playback problem in the Smart Minutes review source area. It is separate from issue 08, which covered whether review media visually appears.
+- Issue 20 is an audible playback problem in the Smart Minutes review source area. It is separate from issue 08, which covered whether review media visually appears. It now has an installed fix and needs owner retest.
 
 Dependency:
 
@@ -326,8 +326,8 @@ Dependency:
 
 Suggested next loop:
 
-- Issues 14 and 17 are no longer implementation candidates; issue 17 should be retested in the installed app when the owner is ready.
-- Then prefer issue 20 if the owner wants to continue Smart Minutes review utility.
+- Issues 14, 17, and 20 are no longer implementation candidates; issue 20 should be retested in the installed app when the owner is ready.
+- Prefer issue 18/19 if the owner wants to improve Records naming next.
 - Handle issues 18 and 19 as a Record naming pair, but keep their issue records separate.
 - Keep issue 15 at `needs-info` until a concrete failing diarization sample is available.
 
@@ -339,8 +339,8 @@ Suggested next loop:
 4. Owner retest: issue 09 recoverable Live Insight Refresh timeout fix.
 5. Owner retest: issue 10 Provider response-format sanitizer.
 6. Optional owner retest: issue 12 completed-summary review presentation fix, now that issue 13 has passed owner retest.
-7. Owner retest: issue 17 Smart Minutes review export.
-8. Ready implementation candidates: issues 16, 18, 19, and 20.
+7. Owner retest: issue 20 Smart Minutes review-source audio playback.
+8. Ready implementation candidates: issues 16, 18, and 19.
 9. Issue 15 remains `needs-info` until a concrete failing diarization sample is available.
 
 ## Stop Rules
@@ -390,12 +390,12 @@ Triage outcome:
 - issue 14: owner retest passed after installed progress-feedback fix.
 - issue 15: `needs-info`, requires a concrete failing diarization sample and expected labels.
 - issue 16: `ready-for-agent`, manual speaker-label correction.
-- issue 17: `ready-for-human`, installed Smart Minutes export from review flow fix.
+- issue 17: owner retest passed after installed Smart Minutes export from review flow fix.
 - issue 18: `ready-for-agent`, readable default Record names.
 - issue 19: `ready-for-agent`, manual Record renaming.
-- issue 20: `ready-for-agent`, audible Smart Minutes review source playback.
+- issue 20: `ready-for-human`, installed Smart Minutes review source playback fix.
 
-Recommended next implementation target: issue 20 if the owner wants to continue Smart Minutes review utility, or issue 18/19 if the owner wants to improve Records naming next. Issue 16 is ready but larger because it changes speaker-label persistence.
+Recommended next implementation target: issue 18/19 if the owner wants to improve Records naming next. Issue 16 is ready but larger because it changes speaker-label persistence.
 
 ### 2026-06-25 - Batch triage
 
@@ -580,7 +580,7 @@ Issue 12 now has a code fix and installed-app sync proof:
 - full Swift gate passed: `swift test --package-path macos/InsightKitApp`, 145 tests, 0 failures
 - standard sync gate passed Swift and Python tests; Python reported `Ran 136 tests ... OK`
 
-It remains in this dependency map as a retest item rather than an implementation candidate. The current manual-QA lane now has ready implementation candidates in issues 16, 17, 18, 19, and 20; issue 15 remains `needs-info`.
+It remains in this dependency map as a retest item rather than an implementation candidate. The current manual-QA lane now has ready implementation candidates in issues 16, 18, and 19; issue 15 remains `needs-info`.
 
 ### 2026-06-25 - Issue 14 implemented
 
@@ -609,4 +609,17 @@ Issue 17 now has a code fix and installed-app sync proof:
 - broad Swift gate: `swift test --package-path macos/InsightKitApp`, 153 tests, 0 failures
 - installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
 
-Issue 17 is now a retest item, not an implementation candidate.
+Issue 17 later passed owner retest and is not an implementation candidate.
+
+### 2026-06-25 - Issue 20 implemented
+
+Issue 20 now has a code fix and installed-app sync proof:
+
+- installed build: `20260625192450`
+- proof: `logs/workflow/latest_sync.json`
+- TDD RED/GREEN tests added to `LiveSessionViewModelTests`
+- narrow gate: `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests`, 37 tests, 0 failures
+- broad Swift gate: `swift test --package-path macos/InsightKitApp`, 155 tests, 0 failures
+- installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
+
+Issue 20 is now a retest item, not an implementation candidate. The current manual-QA lane has ready implementation candidates in issues 16, 18, and 19; issue 15 remains `needs-info`.

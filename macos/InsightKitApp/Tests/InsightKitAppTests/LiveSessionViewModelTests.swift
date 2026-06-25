@@ -501,6 +501,86 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
+    func testPrepareTemporaryRecordingKeepsAudibleReviewSourceWhenVideoHasNoAudioTrack() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoAndAudioLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
+        let meetingID = "video-and-audio-live-recording-test-\(UUID().uuidString)"
+        let outputRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        defer { try? FileManager.default.removeItem(at: outputRoot) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        viewModel.temporaryRecordingURL = videoURL
+
+        let recordingURL = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: meetingID,
+                expectedVisualMedia: true
+            )
+        )
+
+        let reviewSourceURL = try XCTUnwrap(viewModel.reviewSourceMediaURL)
+        XCTAssertEqual(recordingURL, videoURL)
+        XCTAssertEqual(viewModel.temporaryRecordingURL, videoURL)
+        XCTAssertEqual(viewModel.mediaURL, videoURL)
+        XCTAssertEqual(reviewSourceURL.pathExtension, "wav")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: reviewSourceURL.path))
+        XCTAssertTrue(viewModel.reviewSourceStatusMessage?.contains("音频播放") == true)
+    }
+
+    func testPrepareTemporaryRecordingShowsAudioUnavailableStatusWhenVideoHasNoCapturedAudio() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoWithoutAudioLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let meetingID = "video-without-audio-live-recording-test-\(UUID().uuidString)"
+        let outputRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        defer { try? FileManager.default.removeItem(at: outputRoot) }
+
+        viewModel.temporaryRecordingURL = videoURL
+
+        let recordingURL = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: meetingID,
+                expectedVisualMedia: true
+            )
+        )
+
+        XCTAssertEqual(recordingURL, videoURL)
+        XCTAssertEqual(viewModel.mediaURL, videoURL)
+        XCTAssertNil(viewModel.reviewSourceMediaURL)
+        XCTAssertTrue(viewModel.reviewSourceStatusMessage?.contains("没有可播放音频") == true)
+    }
+
     func testPrepareTemporaryRecordingShowsAudioOnlyStatusWhenExpectedVideoIsMissing() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitMissingVideoLiveRecording_\(UUID().uuidString)", isDirectory: true)

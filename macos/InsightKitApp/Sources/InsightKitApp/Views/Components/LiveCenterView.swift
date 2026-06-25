@@ -438,9 +438,9 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         VStack(alignment: .leading, spacing: InsightSpacing.sm) {
             sectionTitle("回看资料")
 
-            if dataSource.mediaURL != nil {
+            if dataSource.reviewSourceMediaURL != nil {
                 MediaPlayerView(
-                    url: dataSource.mediaURL,
+                    url: dataSource.reviewSourceMediaURL,
                     isPlaying: false,
                     seekRequest: dataSource.mediaSeekRequest,
                     onSeek: { time in
@@ -450,6 +450,23 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 )
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 160, maxHeight: 220)
+            }
+
+            if let message = dataSource.reviewSourceStatusMessage {
+                HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(InsightTheme.accent)
+                    Text(message)
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(InsightSpacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(InsightTheme.elevated)
+                .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                .accessibilityIdentifier("live_summary_review_source_status")
             }
 
             if dataSource.transcriptEntries.isEmpty {

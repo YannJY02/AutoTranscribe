@@ -105,17 +105,29 @@ extension LiveSessionViewModel {
     @discardableResult
     func prepareTemporaryRecordingForSave(meetingID: String, expectedVisualMedia: Bool = false) -> URL? {
         if let videoURL = usableVideoRecordingURL(temporaryRecordingURL) {
+            let reviewAudioURL = prepareAudibleReviewSource(meetingID: meetingID)
             updateMain {
                 self.recordingStatusMessage = nil
                 self.mediaURL = videoURL
+                self.reviewSourceMediaURL = reviewAudioURL
+                if reviewAudioURL != nil {
+                    self.reviewSourceStatusMessage = "为保证声音可听，回看资料已切换为音频播放。"
+                } else if expectedVisualMedia {
+                    let message = "视频回看已保存，但本次没有可播放音频。请检查麦克风或系统音频输入。"
+                    self.recordingStatusMessage = message
+                    self.reviewSourceStatusMessage = message
+                } else {
+                    self.reviewSourceStatusMessage = nil
+                }
             }
             return videoURL
         }
 
-        _ = try? chunkAssembler.flush(minDurationSec: 0.1)
-        guard let recordingURL = concatenateWAVChunks(meetingID: meetingID) else {
+        guard let recordingURL = prepareAudibleReviewSource(meetingID: meetingID) else {
             updateMain {
                 self.recordingStatusMessage = "录音太短或未捕获到可保存音频，已保留转写与笔记；请检查输入源后重新录制。"
+                self.reviewSourceMediaURL = nil
+                self.reviewSourceStatusMessage = "本次没有可播放音频。请检查麦克风或系统音频输入。"
             }
             return nil
         }
@@ -127,8 +139,15 @@ extension LiveSessionViewModel {
                 self.recordingStatusMessage = nil
             }
             self.mediaURL = recordingURL
+            self.reviewSourceMediaURL = recordingURL
+            self.reviewSourceStatusMessage = nil
         }
         return recordingURL
+    }
+
+    private func prepareAudibleReviewSource(meetingID: String) -> URL? {
+        _ = try? chunkAssembler.flush(minDurationSec: 0.1)
+        return concatenateWAVChunks(meetingID: meetingID)
     }
 
     private func usableVideoRecordingURL(_ url: URL?) -> URL? {

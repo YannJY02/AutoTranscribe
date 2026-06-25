@@ -100,3 +100,7 @@ Owner retest:
 - Confirm the Smart Minutes review header shows `导出 Markdown` and `导出 PDF`.
 - Click `导出 Markdown` and confirm a Markdown file is produced and the review header shows the exported file name.
 - Optionally click `导出 PDF` and confirm a PDF file is produced.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed that Smart Minutes can now be exported from the review flow in the installed app.

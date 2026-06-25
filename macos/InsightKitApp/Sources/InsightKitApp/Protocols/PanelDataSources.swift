@@ -25,6 +25,8 @@ protocol CenterStageDataSource: ObservableObject {
     var canExportDocument: Bool { get }
     var lastExportPath: String { get }
     var mediaURL: URL? { get }
+    var reviewSourceMediaURL: URL? { get }
+    var reviewSourceStatusMessage: String? { get }
     var currentPlaybackTime: TimeInterval? { get }
     var mediaSeekRequest: MediaSeekRequest? { get }
     func onStartRecording()
@@ -44,6 +46,8 @@ extension CenterStageDataSource {
     var capturePreviewStatusMessage: String? { nil }
     var canExportDocument: Bool { false }
     var lastExportPath: String { "" }
+    var reviewSourceMediaURL: URL? { mediaURL }
+    var reviewSourceStatusMessage: String? { nil }
     func onExportDocument(format: String) {}
 }
 

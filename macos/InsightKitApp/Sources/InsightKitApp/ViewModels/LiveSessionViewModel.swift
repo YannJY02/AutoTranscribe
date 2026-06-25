@@ -101,6 +101,8 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var visualPreviewSource: LiveVisualPreviewSource = .none
     @Published var capturePreviewStatusMessage: String?
     @Published var mediaURL: URL?
+    @Published var reviewSourceMediaURL: URL?
+    @Published var reviewSourceStatusMessage: String?
     let videoCaptureService = VideoCaptureService()
     var recordingDurationTimer: Timer?
 
@@ -827,6 +829,8 @@ final class LiveSessionViewModel: ObservableObject {
         recordingStatusMessage = nil
         isFinalizingLiveSession = false
         mediaURL = nil
+        reviewSourceMediaURL = nil
+        reviewSourceStatusMessage = nil
         temporaryRecordingURL = nil
         stopRecordingDurationTimer()
     }
@@ -954,6 +958,8 @@ extension LiveSessionViewModel {
         selectedSystemSourceID = selectedSystemSourceID ?? "ui-test-system-source"
         transcriptSegments = Self.uiTestTranscriptSegments
         mediaURL = nil
+        reviewSourceMediaURL = nil
+        reviewSourceStatusMessage = nil
         temporaryRecordingURL = nil
         recordingStatusMessage = nil
         metrics.firstSegmentMs = transcriptSegments.first?.startMs ?? 0

@@ -26,9 +26,11 @@ Issue 13 has a code-level Live Session stop/start boundary fix installed in buil
 
 Issue 14 has a code-level Live Workspace progress-feedback fix installed in build `20260625183127`; owner retest passed.
 
-Issue 17 has a code-level Smart Minutes review export fix installed in build `20260625185114`; it needs owner retest.
+Issue 17 has a code-level Smart Minutes review export fix installed in build `20260625185114`; owner retest passed.
 
-Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, and 17 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, 19, and 20 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
+Issue 20 has a code-level Smart Minutes review-source audio fix installed in build `20260625192450`; it needs owner retest.
+
+Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, 17, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, and 20 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, and 19 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
 
 ## Test Baseline
 
@@ -42,10 +44,10 @@ Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dep
 - QA date: 2026-06-25
 
 Latest fix sync:
-- Build version: `20260625165436`
-- Git revision: `1463cd7`
+- Build version: `20260625192450`
+- Git revision: `a6fc23c`
 - Build source: `local-workspace-dirty`
-- Scope: issue 13 Live Session stop/start backlog boundary
+- Scope: issue 20 Smart Minutes review-source audio playback
 
 ## Recording Rules
 
@@ -110,10 +112,10 @@ Reported during owner-led manual QA against InsightKit build `20260625003524`.
 - `.scratch/manual-qa-2026-06-25/issues/14-live-workspace-loading-states-lack-progress-feedback.md` - Live Workspace loading states lack progress feedback. Code fix installed in build `20260625183127`; owner retest passed.
 - `.scratch/manual-qa-2026-06-25/issues/15-speaker-diarization-can-fail-or-label-speakers-incorrectly.md` - Speaker diarization can fail or label speakers incorrectly. Triaged as `needs-info` pending a concrete failing sample.
 - `.scratch/manual-qa-2026-06-25/issues/16-speaker-labels-cannot-be-edited-after-transcription.md` - Speaker labels cannot be edited after transcription. Triaged as `ready-for-agent`.
-- `.scratch/manual-qa-2026-06-25/issues/17-smart-minutes-cannot-be-exported-from-review-flow.md` - Smart Minutes cannot be exported from the review flow. Code fix installed in build `20260625185114`; owner retest required.
+- `.scratch/manual-qa-2026-06-25/issues/17-smart-minutes-cannot-be-exported-from-review-flow.md` - Smart Minutes cannot be exported from the review flow. Code fix installed in build `20260625185114`; owner retest passed.
 - `.scratch/manual-qa-2026-06-25/issues/18-record-default-names-are-hard-to-read.md` - Record default names are hard to read. Triaged as `ready-for-agent`.
 - `.scratch/manual-qa-2026-06-25/issues/19-records-cannot-be-renamed.md` - Records cannot be renamed. Triaged as `ready-for-agent`.
-- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Triaged as `ready-for-agent`.
+- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Code fix installed in build `20260625192450`; owner retest required.
 - `.scratch/manual-qa-2026-06-25/triage-dependency-map.md` - Batch dependency triage for issues 01-20.
 
 ## Comments
@@ -190,12 +192,13 @@ Current issue state after later QA updates:
 - conditional owner retest passed: issue 12, because the completed-summary review presentation works when issue 13's stop/start backlog problem does not prevent the flow from reaching the post-session Smart Minutes choice.
 - owner retest passed: issue 13 after the Live Session stop/start boundary fix.
 - owner retest passed: issue 14 after the Live Workspace progress-feedback fix.
-- `ready-for-human`: issue 17, because the Smart Minutes review export fix is installed and needs owner retest.
-- `ready-for-agent`: issues 16, 18, 19, and 20 after batch triage.
+- owner retest passed: issue 17 after the Smart Minutes review export fix.
+- `ready-for-human`: issue 20, because the Smart Minutes review-source audio fix is installed and needs owner retest.
+- `ready-for-agent`: issues 16, 18, and 19 after batch triage and later fixes.
 - `needs-info`: issue 15, because automatic speaker diarization accuracy needs a concrete failing sample.
 
 Recommended current next action:
-1. Retest issue 17 in the installed app when the owner is ready.
+1. Retest issue 20 in the installed app when the owner is ready.
 2. Retest issues 09, 10, and 11 if not already covered by the same Live Workspace pass.
 3. Retest issues 03, 06, and 07 when the owner is ready.
 4. Provide a concrete failing speaker diarization sample before issue 15 can move past `needs-info`.
@@ -419,7 +422,7 @@ The same QA pass found seven additional product and UX issues:
 - issue 19: Records cannot be renamed.
 - issue 20: Smart Minutes review source playback has no audio.
 
-Batch triage later moved issues 14, 16, 17, 18, 19, and 20 to `ready-for-agent`; issue 15 moved to `needs-info` pending a concrete failing diarization sample. Issue 14 now has an installed code fix and has passed owner retest. Issue 17 now has an installed code fix and is `ready-for-human`.
+Batch triage later moved issues 14, 16, 17, 18, 19, and 20 to `ready-for-agent`; issue 15 moved to `needs-info` pending a concrete failing diarization sample. Issue 14 now has an installed code fix and has passed owner retest. Issue 17 now has an installed code fix and has passed owner retest. Issue 20 now has an installed code fix and is `ready-for-human`.
 
 ### 2026-06-25 - Issues 14-20 batch triage completed
 
@@ -428,12 +431,12 @@ Batch triage classified the latest QA findings as follows:
 - issue 14: owner retest passed; progress-feedback fix installed in build `20260625183127`.
 - issue 15: `needs-info`; automatic speaker diarization accuracy needs a concrete failing sample and expected speaker labels.
 - issue 16: `ready-for-agent`; manual speaker-label correction is actionable independently of issue 15.
-- issue 17: `ready-for-human`; Smart Minutes export from the review flow fix installed in build `20260625185114`.
+- issue 17: owner retest passed; Smart Minutes export from the review flow fix installed in build `20260625185114`.
 - issue 18: `ready-for-agent`; default Record display names can improve without renaming folders.
 - issue 19: `ready-for-agent`; manual Record renaming can persist a human-readable name in metadata.
-- issue 20: `ready-for-agent`; Smart Minutes review source playback needs audible media or a clear audio-unavailable state.
+- issue 20: `ready-for-human`; Smart Minutes review source playback fix installed in build `20260625192450`.
 
-Recommended next implementation target: issue 20 if the owner wants to continue Smart Minutes review utility, or issue 18/19 if the owner wants to improve Records naming next. Issue 16 is ready but larger because it changes speaker-label persistence.
+Recommended next implementation target: issue 18/19 if the owner wants to improve Records naming next. Issue 16 is ready but larger because it changes speaker-label persistence.
 
 ### 2026-06-25 - Issue 14 implemented
 
@@ -464,6 +467,25 @@ Issue 17 now has a code fix and installed-app sync proof:
   - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests`, 35 tests, 0 failures
   - `swift test --package-path macos/InsightKitApp --filter RecordDocumentExporterTests`, 4 tests, 0 failures
 - broad Swift gate: `swift test --package-path macos/InsightKitApp`, 153 tests, 0 failures
+- installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
+
+It is now `ready-for-human` for owner retest.
+
+### 2026-06-25 - Issue 17 owner retest passed
+
+The owner confirmed issue 17 passes in the installed app.
+
+### 2026-06-25 - Issue 20 implemented
+
+Issue 20 now has a code fix and installed-app sync proof:
+
+- installed build: `20260625192450`
+- proof: `logs/workflow/latest_sync.json`
+- TDD RED/GREEN tests added to `LiveSessionViewModelTests`
+- narrow gates:
+  - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests/testPrepareTemporaryRecording` passed, 7 tests, 0 failures
+  - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests` passed, 37 tests, 0 failures
+- broad Swift gate: `swift test --package-path macos/InsightKitApp`, 155 tests, 0 failures
 - installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
 
 It is now `ready-for-human` for owner retest.
