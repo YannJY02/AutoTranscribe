@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKAGE_SCRIPT="$ROOT_DIR/scripts/package_insightkit_app.sh"
 
 INSTALL_DIR="${INSIGHTKIT_INSTALL_DIR:-$HOME/Applications}"
+PACKAGE_OUTPUT_DIR="${INSIGHTKIT_PACKAGE_OUTPUT_DIR:-}"
 RUN_TESTS=1
 VERIFY_SYNC=1
 CONFIG_FLAG=""
@@ -277,8 +278,11 @@ fi
 
 LAST_STEP="package_install"
 FINAL_REASON="package/install failed"
+if [[ -z "$PACKAGE_OUTPUT_DIR" ]]; then
+  PACKAGE_OUTPUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/insightkit-sync-package.XXXXXX")"
+fi
 # shellcheck disable=SC2086
-"$PACKAGE_SCRIPT" $CONFIG_FLAG $CLEAN_FLAG --install-dir "$INSTALL_DIR" $VERSION_ARG
+"$PACKAGE_SCRIPT" $CONFIG_FLAG $CLEAN_FLAG --output-dir "$PACKAGE_OUTPUT_DIR" --install-dir "$INSTALL_DIR" $VERSION_ARG
 
 if [[ $VERIFY_SYNC -eq 1 ]]; then
   LAST_STEP="verify_install"
