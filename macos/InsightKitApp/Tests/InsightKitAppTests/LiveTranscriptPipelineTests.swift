@@ -150,6 +150,63 @@ final class LiveTranscriptPipelineTests: XCTestCase {
             return XCTFail("Expected timeout pause")
         }
     }
+
+    func testLiveRefreshTimeoutDegradesWithoutThrowingWhileKeepingTranscript() throws {
+        let runtime = LiveTranscriptPipelineRuntimeMock()
+        runtime.transcribeResult = [makeDelta(text: "Transcript survives live refresh timeout.")]
+        runtime.transcriptDeltaResult = 1
+        runtime.refreshError = NSError(
+            domain: "InsightKitTests",
+            code: 408,
+            userInfo: [NSLocalizedDescriptionKey: "调用超时: insight.refresh_live"]
+        )
+        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
+
+        let outcome = try pipeline.process(
+            chunk: makeChunk(index: 0),
+            context: makeContext(warmReady: true, hasTranscript: true)
+        )
+
+        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives live refresh timeout."])
+        XCTAssertEqual(runtime.refreshCalls.count, 1)
+        XCTAssertEqual(outcome.providerMetric, "analysis-refresh-timeout")
+        XCTAssertEqual(outcome.analysisRuntimeState, .ready)
+        XCTAssertNil(outcome.errorMessage)
+        XCTAssertEqual(outcome.captureState, .transcribing)
+        guard case .paused(.timeout) = outcome.refresh else {
+            return XCTFail("Expected recoverable timeout pause")
+        }
+    }
+
+    func testProviderNonJSONPayloadDegradesWithSanitizedMessageWhileKeepingTranscript() throws {
+        let runtime = LiveTranscriptPipelineRuntimeMock()
+        runtime.transcribeResult = [makeDelta(text: "Transcript survives invalid provider response.")]
+        runtime.transcriptDeltaResult = 1
+        runtime.refreshError = NSError(
+            domain: "InsightKitTests",
+            code: -10,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Insight 侧车错误: provider returned non-JSON payload: Expecting ',' delimiter: line 42 column 32 (char 1169)"
+            ]
+        )
+        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
+
+        let outcome = try pipeline.process(
+            chunk: makeChunk(index: 0),
+            context: makeContext(warmReady: true, hasTranscript: true)
+        )
+
+        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives invalid provider response."])
+        XCTAssertEqual(runtime.refreshCalls.count, 1)
+        XCTAssertEqual(outcome.providerMetric, "analysis-invalid-response")
+        XCTAssertTrue(outcome.errorMessage?.contains("分析服务返回格式异常") == true)
+        XCTAssertFalse(outcome.errorMessage?.contains("line 42") == true)
+        XCTAssertFalse(outcome.errorMessage?.contains("char 1169") == true)
+        XCTAssertEqual(outcome.captureState, .transcribing)
+        guard case .paused = outcome.refresh else {
+            return XCTFail("Expected invalid provider response pause")
+        }
+    }
 }
 
 private final class LiveTranscriptPipelineRuntimeMock: LiveTranscriptPipelineRuntime {

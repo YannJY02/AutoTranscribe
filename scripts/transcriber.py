@@ -13,6 +13,7 @@ import logging
 import json
 import math
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -21,6 +22,7 @@ import threading
 import time
 import wave
 import importlib.util
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
@@ -134,7 +136,7 @@ def _diarization_engine() -> str:
     return normalize_diarization_engine(DIARIZATION_ENGINE)
 
 
-_models: dict[str, Any] = {}
+_models: dict[Any, Any] = {}
 _model_registry_lock = threading.Lock()
 _models_lock = _model_registry_lock
 _runtime_state_lock = threading.Lock()
@@ -144,6 +146,76 @@ _prewarm_thread: threading.Thread | None = None
 _prewarm_timer: threading.Timer | None = None
 _prewarm_generation = 0
 _prewarm_key: tuple[str, str] | None = None
+
+
+class _QwenMLXWorker:
+    def __init__(self, model_source: str):
+        self.model_source = model_source
+        self._requests: queue.Queue[tuple[str, dict[str, Any], Future[Any]] | None] = queue.Queue()
+        self._failed: BaseException | None = None
+        self._thread = threading.Thread(
+            target=self._run,
+            name="qwen-mlx-worker",
+            daemon=True,
+        )
+        self._thread.start()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._thread.is_alive() and self._failed is None
+
+    def ensure_loaded(self) -> None:
+        self._submit("warm", {})
+
+    def transcribe(self, **kwargs: Any) -> Any:
+        return self._submit("transcribe", kwargs)
+
+    def shutdown(self) -> None:
+        self._requests.put(None)
+
+    def _submit(self, action: str, payload: dict[str, Any]) -> Any:
+        if self._failed is not None:
+            raise RuntimeError("Qwen MLX worker failed") from self._failed
+        future: Future[Any] = Future()
+        self._requests.put((action, payload, future))
+        return future.result()
+
+    def _run(self) -> None:
+        try:
+            session = _create_qwen_mlx_session(self.model_source)
+        except BaseException as exc:  # noqa: BLE001 - propagate worker startup failure to callers.
+            self._failed = exc
+            self._drain_failed(exc)
+            return
+
+        while True:
+            item = self._requests.get()
+            if item is None:
+                return
+            action, payload, future = item
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                if action == "warm":
+                    future.set_result(None)
+                elif action == "transcribe":
+                    future.set_result(session.transcribe(**payload))
+                else:
+                    future.set_exception(RuntimeError(f"unknown Qwen MLX worker action: {action}"))
+            except BaseException as exc:  # noqa: BLE001 - preserve MLX runtime errors for the caller.
+                future.set_exception(exc)
+
+    def _drain_failed(self, exc: BaseException) -> None:
+        while True:
+            try:
+                item = self._requests.get_nowait()
+            except queue.Empty:
+                return
+            if item is None:
+                continue
+            _, _, future = item
+            if future.set_running_or_notify_cancel():
+                future.set_exception(exc)
 
 
 def _supported_compute_types(device: str) -> list[str]:
@@ -299,10 +371,32 @@ def _finalize_warm_failure(generation: int, error: str) -> None:
         _prewarm_key = None
 
 
+def _shutdown_cached_model(value: Any) -> None:
+    shutdown = getattr(value, "shutdown", None)
+    if callable(shutdown):
+        try:
+            shutdown()
+        except Exception:
+            logger.debug("cached model shutdown failed", exc_info=True)
+
+
 def _discard_engine_cache(engine_name: str) -> None:
     key = _normalize_engine_name(engine_name)
+    discarded: list[Any] = []
     with _model_registry_lock:
-        _models.pop(key, None)
+        if key == QWEN_MLX_ENGINE:
+            for cache_key in list(_models):
+                if cache_key == key or (
+                    isinstance(cache_key, tuple)
+                    and len(cache_key) >= 1
+                    and cache_key[0] == QWEN_MLX_ENGINE
+                ):
+                    discarded.append(_models.pop(cache_key, None))
+        else:
+            discarded.append(_models.pop(key, None))
+    for value in discarded:
+        if value is not None:
+            _shutdown_cached_model(value)
 
 
 def _prewarm_watchdog_expired(generation: int, timeout_sec: int) -> None:
@@ -351,7 +445,11 @@ def _reset_runtime_state_for_tests() -> None:
         _prewarm_timer = None
         _prewarm_key = None
     with _model_registry_lock:
+        cached_values = list(_models.values())
         _models.clear()
+    for value in cached_values:
+        _shutdown_cached_model(value)
+
 
 def _write_silence_wav(duration_sec: float = 0.25, sample_rate: int = 16_000) -> Path:
     path = Path(tempfile.mktemp(suffix="_warmup.wav"))
@@ -689,28 +787,30 @@ def _resolve_qwen_forced_aligner_source() -> str | None:
     return qwen_mlx_repo_for_model(QWEN_MLX_FORCED_ALIGNER)
 
 
-def _load_qwen_mlx_session():
-    with _model_registry_lock:
-        cached = _models.get(QWEN_MLX_ENGINE)
-    if cached is not None:
-        return cached
-
+def _create_qwen_mlx_session(model_source: str):
     try:
         from mlx_qwen3_asr import Session
     except Exception as exc:
         raise RuntimeError("未安装 mlx-qwen3-asr。请先执行 asr.runtime.bootstrap。") from exc
 
-    model_source = _resolve_qwen_mlx_source()
     logger.info("加载 Qwen3-ASR MLX 模型: source=%s", model_source)
     session = Session(model=model_source)
     _set_backend_status(_resolved_backend_status(QWEN_MLX_ENGINE))
+    return session
 
+
+def _load_qwen_mlx_session() -> _QwenMLXWorker:
+    model_source = _resolve_qwen_mlx_source()
+    cache_key = (QWEN_MLX_ENGINE, str(model_source))
     with _model_registry_lock:
-        cached = _models.get(QWEN_MLX_ENGINE)
-        if cached is None:
-            _models[QWEN_MLX_ENGINE] = session
-            return session
-        return cached
+        cached = _models.get(cache_key)
+        if isinstance(cached, _QwenMLXWorker) and cached.is_alive:
+            worker = cached
+        else:
+            worker = _QwenMLXWorker(str(model_source))
+            _models[cache_key] = worker
+    worker.ensure_loaded()
+    return worker
 
 
 def _speech_exists(audio_path: Path) -> bool:
@@ -1267,7 +1367,7 @@ def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> t
     if not _speech_exists(audio_path):
         return "unknown", []
 
-    session = _load_qwen_mlx_session()
+    worker = _load_qwen_mlx_session()
     diarize = attach_diarization and _qwen_diarization_ready()
     if diarize and not os.environ.get("PYANNOTE_AUTH_TOKEN"):
         token = _hf_auth_token()
@@ -1291,7 +1391,7 @@ def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> t
     if max_new_tokens:
         kwargs["max_new_tokens"] = int(max_new_tokens)
 
-    result = session.transcribe(**kwargs)
+    result = worker.transcribe(**kwargs)
     segments = _qwen_segments_from_result(result)
     if attach_diarization:
         segments = _attach_diarization_labels(audio_path, segments)

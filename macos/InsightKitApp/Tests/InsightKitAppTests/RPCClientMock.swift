@@ -27,6 +27,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptListStub: [TranscriptSegment] = []
     var buildFinalDelaySec: TimeInterval = 0
     var buildFinalCalls = 0
+    var buildFinalError: Error?
     var asrPrewarmError: Error?
     var asrPrewarmCalls: [(model: String, engine: LocalASREngine?, timeoutSec: Int)] = []
     var asrRuntimeStatusQueue: [ASRRuntimeStatus] = []
@@ -83,6 +84,9 @@ final class RPCClientMock: InsightRPCClientProtocol {
         buildFinalCalls += 1
         if buildFinalDelaySec > 0 {
             Thread.sleep(forTimeInterval: buildFinalDelaySec)
+        }
+        if let buildFinalError {
+            throw buildFinalError
         }
         return fakeInsightResult()
     }

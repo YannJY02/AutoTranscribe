@@ -50,6 +50,7 @@ enum LiveTranscriptPipelinePauseReason {
     case alreadySuspended
     case authFailed
     case timeout
+    case invalidProviderResponse
 }
 
 struct LiveTranscriptPipelineOutcome {
@@ -69,6 +70,20 @@ struct LiveTranscriptPipelineOutcome {
 struct LiveTranscriptPipelineErrorClassifier {
     let isProviderAuthFailure: (Error) -> Bool
     let isProviderProbeTimeout: (Error) -> Bool
+    let isLiveRefreshTimeout: (Error) -> Bool
+    let isProviderInvalidResponse: (Error) -> Bool
+
+    init(
+        isProviderAuthFailure: @escaping (Error) -> Bool,
+        isProviderProbeTimeout: @escaping (Error) -> Bool,
+        isLiveRefreshTimeout: @escaping (Error) -> Bool = { _ in false },
+        isProviderInvalidResponse: @escaping (Error) -> Bool = { _ in false }
+    ) {
+        self.isProviderAuthFailure = isProviderAuthFailure
+        self.isProviderProbeTimeout = isProviderProbeTimeout
+        self.isLiveRefreshTimeout = isLiveRefreshTimeout
+        self.isProviderInvalidResponse = isProviderInvalidResponse
+    }
 
     static let localizedDescription = LiveTranscriptPipelineErrorClassifier(
         isProviderAuthFailure: { error in
@@ -83,6 +98,14 @@ struct LiveTranscriptPipelineErrorClassifier {
             return lower.contains("调用超时: analysis.provider.probe")
                 || lower.contains("调用超时: analysis.providers.status")
                 || lower.contains("probe_timeout")
+        },
+        isLiveRefreshTimeout: { error in
+            let lower = error.localizedDescription.lowercased()
+            return lower.contains("调用超时: insight.refresh_live")
+                || (lower.contains("insight.refresh_live") && (lower.contains("timeout") || lower.contains("超时")))
+        },
+        isProviderInvalidResponse: { error in
+            AnalysisProviderErrorPresentation.isInvalidResponse(error)
         }
     )
 }
@@ -221,6 +244,38 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
                     providerMetric: "analysis-paused",
                     analysisRuntimeState: .pausedTimeout,
                     errorMessage: "智能分析探测超时，转写继续、洞察已暂停。请稍后重试或检查网络。"
+                )
+            }
+            if errorClassifier.isLiveRefreshTimeout(error) {
+                coordinator.markRefreshed(at: processedAt)
+                return outcome(
+                    context: context,
+                    chunkIndex: chunkIndex,
+                    latencyMs: latencyMs,
+                    ingested: ingested,
+                    transcriptSegments: transcriptSegments,
+                    processedAt: processedAt,
+                    firstSegmentMs: firstSegmentMs,
+                    refresh: .paused(.timeout),
+                    providerMetric: "analysis-refresh-timeout",
+                    analysisRuntimeState: .ready,
+                    errorMessage: nil
+                )
+            }
+            if errorClassifier.isProviderInvalidResponse(error) {
+                coordinator.markRefreshed(at: processedAt)
+                return outcome(
+                    context: context,
+                    chunkIndex: chunkIndex,
+                    latencyMs: latencyMs,
+                    ingested: ingested,
+                    transcriptSegments: transcriptSegments,
+                    processedAt: processedAt,
+                    firstSegmentMs: firstSegmentMs,
+                    refresh: .paused(.invalidProviderResponse),
+                    providerMetric: "analysis-invalid-response",
+                    analysisRuntimeState: .pausedInvalidResponse,
+                    errorMessage: AnalysisProviderErrorPresentation.invalidResponseMessage
                 )
             }
             throw error
