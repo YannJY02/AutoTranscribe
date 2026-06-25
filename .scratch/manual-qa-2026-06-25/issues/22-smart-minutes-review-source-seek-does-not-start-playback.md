@@ -1,6 +1,6 @@
 # Smart Minutes review source seek does not start playback
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -39,3 +39,32 @@ This is separate from whether the review source is video or audio-only. The inte
 ### 2026-06-25 - Manual QA
 
 The owner reported that clicking chapters or transcript rows does not seek to the matching review-source position and start playback.
+
+### 2026-06-25 - Implemented
+
+Diagnosis:
+
+- `LiveSessionViewModel` already created a `MediaSeekRequest` for Timeline Beat and Transcript Segment clicks.
+- The Smart Minutes review source still received `isPlaying: false`, so a click could seek without starting playback.
+
+Fix:
+
+- Added a Live review-source playback request state.
+- Timeline Beat and Transcript Segment clicks now set that state when they seek.
+- The Smart Minutes `回看资料` primary video and supplemental audio players now receive the playback request.
+
+Proof:
+
+- RED-capable regression loop: `swift test --package-path macos/InsightKitApp --filter MediaSeekRequestTests/testLiveReviewTranscriptTapRequestsPlayback --filter MediaSeekRequestTests/testLiveReviewChapterTapRequestsPlayback`
+- GREEN: same loop passed with 2 tests, 0 failures.
+- Related gate: `swift test --package-path macos/InsightKitApp --filter MediaSeekRequestTests`, 9 tests, 0 failures.
+- Broad gate: `swift test --package-path macos/InsightKitApp`, 158 tests, 0 failures.
+- Installed app sync passed for `/Users/yann.jy/Applications/InsightKit.app`; proof is recorded in `logs/workflow/latest_sync.json`.
+
+Acceptance for owner retest:
+
+- Generate or open a Smart Minutes review with review source media.
+- Click a Timeline Beat.
+- Confirm `回看资料` jumps to the selected timestamp and starts playback.
+- Click a Transcript Segment.
+- Confirm `回看资料` jumps to the selected timestamp and starts playback.

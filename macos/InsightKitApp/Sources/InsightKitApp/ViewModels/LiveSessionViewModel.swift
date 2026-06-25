@@ -95,6 +95,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var notes: [TimestampedNote] = []
     @Published var currentPlaybackTime: TimeInterval?
     @Published var mediaSeekRequest: MediaSeekRequest?
+    @Published var reviewSourcePlaybackRequested = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var recordingStatusMessage: String?
     @Published var isFinalizingLiveSession = false
@@ -825,6 +826,7 @@ final class LiveSessionViewModel: ObservableObject {
         notes = []
         currentPlaybackTime = nil
         mediaSeekRequest = nil
+        reviewSourcePlaybackRequested = false
         recordingDuration = 0
         recordingStatusMessage = nil
         isFinalizingLiveSession = false
@@ -967,6 +969,7 @@ extension LiveSessionViewModel {
         metrics.provider = "ui-test"
         metrics.lastRefreshAt = Date()
         currentPlaybackTime = nil
+        reviewSourcePlaybackRequested = false
         notes = []
         smartMinutesData = nil
         lastInsightPackage = nil

@@ -447,7 +447,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             if presentation.showsPrimaryMedia {
                 MediaPlayerView(
                     url: presentation.primaryMediaURL,
-                    isPlaying: false,
+                    isPlaying: dataSource.reviewSourcePlaybackRequested,
                     seekRequest: dataSource.mediaSeekRequest,
                     onSeek: { time in
                         dataSource.onSeek(to: time)
@@ -465,7 +465,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                         .foregroundStyle(InsightTheme.textSecondary)
                     MediaPlayerView(
                         url: presentation.supplementalAudioURL,
-                        isPlaying: false,
+                        isPlaying: dataSource.reviewSourcePlaybackRequested,
                         seekRequest: dataSource.mediaSeekRequest,
                         onSeek: { time in
                             dataSource.onSeek(to: time)

@@ -29,6 +29,7 @@ protocol CenterStageDataSource: ObservableObject {
     var reviewSourceStatusMessage: String? { get }
     var currentPlaybackTime: TimeInterval? { get }
     var mediaSeekRequest: MediaSeekRequest? { get }
+    var reviewSourcePlaybackRequested: Bool { get }
     func onStartRecording()
     func onStopRecording()
     func onPauseRecording()
@@ -41,6 +42,7 @@ protocol CenterStageDataSource: ObservableObject {
 
 extension CenterStageDataSource {
     var mediaSeekRequest: MediaSeekRequest? { nil }
+    var reviewSourcePlaybackRequested: Bool { false }
     var recordingStatusMessage: String? { nil }
     var liveProgressPresentation: LiveProgressPresentation? { nil }
     var capturePreviewStatusMessage: String? { nil }

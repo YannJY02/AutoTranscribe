@@ -73,6 +73,27 @@ final class MediaSeekRequestTests: XCTestCase {
         XCTAssertEqual(vm.mediaSeekRequest?.time, 31)
     }
 
+    func testLiveReviewTranscriptTapRequestsPlayback() {
+        let vm = LiveSessionViewModel(rpcClient: RPCClientMock())
+        vm.sessionPhase = .reviewing
+        let entry = TranscriptEntry(timestamp: 31, speaker: nil, text: "chapter start")
+
+        vm.onTranscriptEntryTapped(entry)
+
+        XCTAssertTrue(vm.reviewSourcePlaybackRequested)
+    }
+
+    func testLiveReviewChapterTapRequestsPlayback() {
+        let vm = LiveSessionViewModel(rpcClient: RPCClientMock())
+        vm.sessionPhase = .reviewing
+        let chapter = ChapterSummary(timestamp: 12, title: "Opening", summary: "Started the review.")
+
+        vm.onChapterTapped(chapter)
+
+        XCTAssertEqual(vm.mediaSeekRequest?.time, 12)
+        XCTAssertTrue(vm.reviewSourcePlaybackRequested)
+    }
+
     func testRecordReviewChapterTapCreatesVisibleSeekStatus() throws {
         let dataSource = try makeRecordReviewDataSource()
         let chapter = ChapterSummary(timestamp: 11, title: "提出解决方案", summary: "告知用户注册。")
