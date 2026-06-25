@@ -458,26 +458,6 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 .frame(minHeight: 160, maxHeight: 220)
             }
 
-            if presentation.showsSupplementalAudio {
-                VStack(alignment: .leading, spacing: InsightSpacing.xs) {
-                    Text("原始声音")
-                        .font(InsightTypography.caption)
-                        .foregroundStyle(InsightTheme.textSecondary)
-                    MediaPlayerView(
-                        url: presentation.supplementalAudioURL,
-                        isPlaying: dataSource.reviewSourcePlaybackRequested,
-                        seekRequest: dataSource.mediaSeekRequest,
-                        onSeek: { time in
-                            dataSource.onSeek(to: time)
-                        },
-                        onTimeUpdate: { _ in }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 36, maxHeight: 44)
-                }
-                .accessibilityIdentifier("live_summary_review_source_audio")
-            }
-
             if let message = presentation.statusMessage {
                 HStack(alignment: .top, spacing: InsightSpacing.sm) {
                     Image(systemName: "speaker.wave.2.fill")

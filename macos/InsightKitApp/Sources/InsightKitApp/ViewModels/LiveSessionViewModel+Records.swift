@@ -106,12 +106,29 @@ extension LiveSessionViewModel {
     func prepareTemporaryRecordingForSave(meetingID: String, expectedVisualMedia: Bool = false) -> URL? {
         if let videoURL = usableVideoRecordingURL(temporaryRecordingURL) {
             let reviewAudioURL = prepareAudibleReviewSource(meetingID: meetingID)
+            let composedVideoURL = reviewAudioURL.flatMap { audioURL -> URL? in
+                do {
+                    return try reviewMediaComposer.composeVideoWithAudio(
+                        videoURL: videoURL,
+                        audioURL: audioURL,
+                        outputURL: composedReviewVideoURL(meetingID: meetingID)
+                    )
+                } catch {
+                    return nil
+                }
+            }
+            let reviewURL = composedVideoURL ?? videoURL
+            temporaryRecordingURL = reviewURL
             updateMain {
-                self.recordingStatusMessage = nil
-                self.mediaURL = videoURL
-                self.reviewSourceMediaURL = reviewAudioURL
-                if reviewAudioURL != nil {
-                    self.reviewSourceStatusMessage = "为保证声音可听，已保留视频回看，并提供音频播放。"
+                self.mediaURL = reviewURL
+                self.reviewSourceMediaURL = reviewURL
+                if reviewAudioURL != nil, composedVideoURL == nil {
+                    let message = "视频回看已保存，但音频合成失败；本次回看可能没有声音。"
+                    self.recordingStatusMessage = message
+                    self.reviewSourceStatusMessage = message
+                } else if composedVideoURL != nil {
+                    self.recordingStatusMessage = nil
+                    self.reviewSourceStatusMessage = nil
                 } else if expectedVisualMedia {
                     let message = "视频回看已保存，但本次没有可播放音频。请检查麦克风或系统音频输入。"
                     self.recordingStatusMessage = message
@@ -120,7 +137,7 @@ extension LiveSessionViewModel {
                     self.reviewSourceStatusMessage = nil
                 }
             }
-            return videoURL
+            return reviewURL
         }
 
         guard let recordingURL = prepareAudibleReviewSource(meetingID: meetingID) else {
@@ -148,6 +165,13 @@ extension LiveSessionViewModel {
     private func prepareAudibleReviewSource(meetingID: String) -> URL? {
         _ = try? chunkAssembler.flush(minDurationSec: 0.1)
         return concatenateWAVChunks(meetingID: meetingID)
+    }
+
+    private func composedReviewVideoURL(meetingID: String) -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+            .appendingPathComponent("recording-with-audio.mp4")
     }
 
     private func usableVideoRecordingURL(_ url: URL?) -> URL? {

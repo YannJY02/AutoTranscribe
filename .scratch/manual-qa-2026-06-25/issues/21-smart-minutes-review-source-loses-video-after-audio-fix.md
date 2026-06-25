@@ -51,10 +51,8 @@ Diagnosis:
 
 Implementation summary:
 
-- Added a Smart Minutes review-source presentation decision that separates the primary visible media from supplemental audio.
-- When captured video exists, `回看资料` keeps the video as the primary player.
-- When a separate audible review source exists, the view shows it as an additional compact audio player instead of replacing the video.
-- Updated the audio fallback status message so it says video is preserved while audio playback is available.
+- Added a Smart Minutes review-source presentation decision that kept captured video visible instead of replacing it with audio-only media.
+- This was later superseded by issue 23, which removes the separate audio-player model and composes audio/video into one standard review media file.
 
 TDD proof:
 
@@ -76,5 +74,5 @@ Owner retest:
 - Capture a Live Workspace session with camera or screen enabled and microphone or mixed audio enabled.
 - Stop the session and generate Smart Minutes.
 - In Smart Minutes `回看资料`, confirm the captured video is visible.
-- If separate audio playback is shown, confirm it is supplemental and does not replace the video.
+- Confirm together with issue 23 that audio/video are no longer split into separate playback surfaces.
 - Note: issue 22 still tracks click-to-seek-and-play behavior for Timeline Beats and Transcript Segments.

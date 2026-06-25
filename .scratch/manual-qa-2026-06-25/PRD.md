@@ -28,13 +28,15 @@ Issue 14 has a code-level Live Workspace progress-feedback fix installed in buil
 
 Issue 17 has a code-level Smart Minutes review export fix installed in build `20260625185114`; owner retest passed.
 
-Issue 20 has a code-level Smart Minutes review-source audio fix installed in build `20260625192450`; owner retest found follow-up regressions now filed as issues 21 and 22.
+Issue 20 has a code-level Smart Minutes review-source audio fix installed in build `20260625192450`; owner retest found follow-up regressions now filed as issues 21, 22, and 23.
 
 Issue 21 has a code-level Smart Minutes review-source video fix installed in build `20260625203632`; it needs owner retest.
 
 Issue 22 has a code-level Smart Minutes review-source click-to-seek-and-play fix installed; it needs owner retest.
 
-Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, 17, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, 20, 21, and 22 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, and 19 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
+Issue 23 has a code-level Smart Minutes review-source single-player fix implemented; it needs owner retest.
+
+Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, 17, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, 20, 21, 22, and 23 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, and 19 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
 
 ## Test Baseline
 
@@ -119,10 +121,11 @@ Reported during owner-led manual QA against InsightKit build `20260625003524`.
 - `.scratch/manual-qa-2026-06-25/issues/17-smart-minutes-cannot-be-exported-from-review-flow.md` - Smart Minutes cannot be exported from the review flow. Code fix installed in build `20260625185114`; owner retest passed.
 - `.scratch/manual-qa-2026-06-25/issues/18-record-default-names-are-hard-to-read.md` - Record default names are hard to read. Triaged as `ready-for-agent`.
 - `.scratch/manual-qa-2026-06-25/issues/19-records-cannot-be-renamed.md` - Records cannot be renamed. Triaged as `ready-for-agent`.
-- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Code fix installed in build `20260625192450`; owner retest found follow-up regressions tracked as issues 21 and 22.
+- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Code fix installed in build `20260625192450`; owner retest found follow-up regressions tracked as issues 21, 22, and 23.
 - `.scratch/manual-qa-2026-06-25/issues/21-smart-minutes-review-source-loses-video-after-audio-fix.md` - Smart Minutes review source loses video after the audio fix. Code fix installed in build `20260625203632`; owner retest required.
 - `.scratch/manual-qa-2026-06-25/issues/22-smart-minutes-review-source-seek-does-not-start-playback.md` - Smart Minutes review source seek does not start playback. Code fix installed; owner retest required.
-- `.scratch/manual-qa-2026-06-25/triage-dependency-map.md` - Batch dependency triage for issues 01-22.
+- `.scratch/manual-qa-2026-06-25/issues/23-smart-minutes-review-source-splits-audio-and-video.md` - Smart Minutes review source splits audio and video. Code fix implemented; owner retest required.
+- `.scratch/manual-qa-2026-06-25/triage-dependency-map.md` - Batch dependency triage for issues 01-23.
 
 ## Comments
 
@@ -443,8 +446,9 @@ Batch triage classified the latest QA findings as follows:
 - issue 20: `ready-for-human`; Smart Minutes review source playback fix installed in build `20260625192450`.
 - issue 21: `ready-for-human`; Smart Minutes review source video fix installed in build `20260625203632`.
 - issue 22: `ready-for-human`; Smart Minutes review source click-to-seek-and-play fix installed.
+- issue 23: `ready-for-human`; Smart Minutes review source single-player audio/video fix implemented.
 
-Recommended next step: owner retest issues 20, 21, and 22 together as the Smart Minutes review-source bundle. After that, issue 18/19 can resume the Records naming lane, or issue 16 can start speaker-label editing.
+Recommended next step: owner retest issues 20, 21, 22, and 23 together as the Smart Minutes review-source bundle. After that, issue 18/19 can resume the Records naming lane, or issue 16 can start speaker-label editing.
 
 ### 2026-06-25 - Issue 14 implemented
 
@@ -498,11 +502,23 @@ Issue 20 now has a code fix and installed-app sync proof:
 
 It is now `ready-for-human` for owner retest.
 
-### 2026-06-25 - Issues 21 and 22 added from issue 20 owner retest
+### 2026-06-25 - Issues 21, 22, and 23 added from issue 20 owner retest
 
-The owner reported two follow-up regressions after testing build `20260625192450`:
+The owner reported follow-up regressions after testing build `20260625192450` and the later issue 22 installed fix:
 
 - issue 21: Smart Minutes `回看资料` no longer displays captured video after the review-source audio fix.
 - issue 22: clicking Timeline Beats or Transcript Segments does not seek to the matching source position and start playback.
+- issue 23: Smart Minutes `回看资料` should not split audio and video into separate playback surfaces.
 
-Issue 21 now has an installed code fix and is `ready-for-human`. Issue 22 now has an installed code fix and is `ready-for-human`. Retest issues 20, 21, and 22 together as the Smart Minutes review-source bundle.
+Issue 21 now has an installed code fix and is `ready-for-human`. Issue 22 now has an installed code fix and is `ready-for-human`. Issue 23 now has a code fix and is `ready-for-human`. Retest issues 20, 21, 22, and 23 together as the Smart Minutes review-source bundle.
+
+### 2026-06-25 - Issue 23 implemented
+
+Issue 23 now has a code fix and test proof:
+
+- red/green regression loop:
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoReviewSourceUsesSingleStandardPlayerEvenWhenLegacySeparateAudioExists`
+- narrow gates:
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoReviewSourceUsesSingleStandardPlayerEvenWhenLegacySeparateAudioExists --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingComposesSinglePlayableVideoWhenVideoAndAudioAreCaptured`, 2 tests, 0 failures
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests --filter LiveSessionViewModelTests/testPrepareTemporaryRecording --filter MediaSeekRequestTests`, 17 tests, 0 failures
+- broad Swift gate: `swift test --package-path macos/InsightKitApp`, 158 tests, 0 failures

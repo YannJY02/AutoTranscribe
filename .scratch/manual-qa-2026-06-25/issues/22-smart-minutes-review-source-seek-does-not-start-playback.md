@@ -51,7 +51,8 @@ Fix:
 
 - Added a Live review-source playback request state.
 - Timeline Beat and Transcript Segment clicks now set that state when they seek.
-- The Smart Minutes `回看资料` primary video and supplemental audio players now receive the playback request.
+- The Smart Minutes `回看资料` media player now receives the playback request.
+- Issue 23 later removed the separate supplemental audio-player path so the request targets one standard review media player.
 
 Proof:
 
@@ -64,6 +65,7 @@ Proof:
 Acceptance for owner retest:
 
 - Generate or open a Smart Minutes review with review source media.
+- Confirm together with issue 23 that `回看资料` uses one media player rather than separate audio/video controls.
 - Click a Timeline Beat.
 - Confirm `回看资料` jumps to the selected timestamp and starts playback.
 - Click a Transcript Segment.

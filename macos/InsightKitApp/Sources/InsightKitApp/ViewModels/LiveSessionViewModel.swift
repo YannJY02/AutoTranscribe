@@ -49,6 +49,7 @@ final class LiveSessionViewModel: ObservableObject {
     let chunkAssembler: ChunkAssembler
     let asrService: LiveASRServiceProtocol
     let transcriptPipeline: LiveTranscriptProcessing
+    let reviewMediaComposer: ReviewMediaComposing
 
     // Queues — internal so extensions can access them
     let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
@@ -120,7 +121,8 @@ final class LiveSessionViewModel: ObservableObject {
         mixBus: AudioMixBus = AudioMixBus(),
         chunkAssembler: ChunkAssembler = ChunkAssembler(),
         asrService: LiveASRServiceProtocol = LiveASRService(),
-        transcriptPipeline: LiveTranscriptProcessing? = nil
+        transcriptPipeline: LiveTranscriptProcessing? = nil,
+        reviewMediaComposer: ReviewMediaComposing = AVFoundationReviewMediaComposer()
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
@@ -129,6 +131,7 @@ final class LiveSessionViewModel: ObservableObject {
         self.mixBus = mixBus
         self.chunkAssembler = chunkAssembler
         self.asrService = asrService
+        self.reviewMediaComposer = reviewMediaComposer
         self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
             runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
         )

@@ -34,6 +34,7 @@ The Matt workflow rule for this lane is batch triage, single-issue implementatio
 - `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md`
 - `.scratch/manual-qa-2026-06-25/issues/21-smart-minutes-review-source-loses-video-after-audio-fix.md`
 - `.scratch/manual-qa-2026-06-25/issues/22-smart-minutes-review-source-seek-does-not-start-playback.md`
+- `.scratch/manual-qa-2026-06-25/issues/23-smart-minutes-review-source-splits-audio-and-video.md`
 - `CONTEXT-MAP.md`
 - `docs/contexts/product/CONTEXT.md`
 - `docs/contexts/macos-app/CONTEXT.md`
@@ -341,7 +342,7 @@ Suggested next loop:
 4. Owner retest: issue 09 recoverable Live Insight Refresh timeout fix.
 5. Owner retest: issue 10 Provider response-format sanitizer.
 6. Optional owner retest: issue 12 completed-summary review presentation fix, now that issue 13 has passed owner retest.
-7. Owner retest still open: issue 20/21/22 Smart Minutes review-source bundle: audio playback, video visibility, and click-to-seek-and-play.
+7. Owner retest still open: issue 20/21/22/23 Smart Minutes review-source bundle: audio playback, video visibility, click-to-seek-and-play, and one standard audio/video media player.
 8. Ready implementation candidates: issues 16, 18, and 19 for later product work.
 9. Issue 15 remains `needs-info` until a concrete failing diarization sample is available.
 
@@ -395,11 +396,12 @@ Triage outcome:
 - issue 17: owner retest passed after installed Smart Minutes export from review flow fix.
 - issue 18: `ready-for-agent`, readable default Record names.
 - issue 19: `ready-for-agent`, manual Record renaming.
-- issue 20: `ready-for-human`, installed Smart Minutes review source playback fix; owner retest found follow-up regressions filed as issues 21 and 22.
+- issue 20: `ready-for-human`, installed Smart Minutes review source playback fix; owner retest found follow-up regressions filed as issues 21, 22, and 23.
 - issue 21: `ready-for-human`, installed fix restores captured video in Smart Minutes review source after the audio fix.
 - issue 22: `ready-for-human`, installed fix makes Timeline Beat and Transcript Segment clicks seek and start playback.
+- issue 23: `ready-for-human`, code fix composes audio/video into one Smart Minutes review-source media file and removes separate playback surfaces.
 
-Recommended next step: owner retest issues 20, 21, and 22 together as the Smart Minutes review-source bundle. Issue 18/19 can follow when the Records naming lane resumes. Issue 16 is ready but larger because it changes speaker-label persistence.
+Recommended next step: owner retest issues 20, 21, 22, and 23 together as the Smart Minutes review-source bundle. Issue 18/19 can follow when the Records naming lane resumes. Issue 16 is ready but larger because it changes speaker-label persistence.
 
 ### 2026-06-25 - Batch triage
 
@@ -628,14 +630,15 @@ Issue 20 now has a code fix and installed-app sync proof:
 
 Issue 20 is now a retest item, not an implementation candidate.
 
-### 2026-06-25 - Issues 21 and 22 added from issue 20 owner retest
+### 2026-06-25 - Issues 21, 22, and 23 added from issue 20 owner retest
 
-The owner reported two Smart Minutes review regressions after testing build `20260625192450`:
+The owner reported Smart Minutes review regressions after testing build `20260625192450` and the later issue 22 installed fix:
 
 - issue 21: `回看资料` no longer displays captured video after the audio fix.
 - issue 22: clicking Timeline Beats or Transcript Segments does not seek to the matching source position and start playback.
+- issue 23: audio and video should not be split into separate playback surfaces.
 
-Issue 21 now has an installed code fix and is `ready-for-human`. Issue 22 now has an installed code fix and is `ready-for-human`. The current manual-QA lane has ready implementation candidates in issues 16, 18, and 19; issue 15 remains `needs-info`.
+Issue 21 now has an installed code fix and is `ready-for-human`. Issue 22 now has an installed code fix and is `ready-for-human`. Issue 23 now has a code fix and is `ready-for-human`. The current manual-QA lane has ready implementation candidates in issues 16, 18, and 19; issue 15 remains `needs-info`.
 
 ### 2026-06-25 - Issue 21 implemented
 
@@ -643,10 +646,10 @@ Issue 21 now has a code fix and installed-app sync proof:
 
 - installed build: `20260625203632`
 - proof: `logs/workflow/latest_sync.json`
-- red/green regression test: `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoRemainsPrimaryReviewSourceWhenSeparateAudioFallbackExists`
+- red/green regression test: `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoReviewSourceUsesSingleStandardPlayerEvenWhenLegacySeparateAudioExists`
 - related gates:
   - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests`, 1 test, 0 failures
-  - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingKeepsAudibleReviewSourceWhenVideoHasNoAudioTrack`, 1 test, 0 failures
+  - `swift test --package-path macos/InsightKitApp --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingComposesSinglePlayableVideoWhenVideoAndAudioAreCaptured`, 1 test, 0 failures
 - broad Swift gate: `swift test --package-path macos/InsightKitApp`, 156 tests, 0 failures
 - installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
 
@@ -662,4 +665,17 @@ Issue 22 now has a code fix and installed-app sync proof:
 - related gate: `swift test --package-path macos/InsightKitApp --filter MediaSeekRequestTests`, 9 tests, 0 failures
 - broad Swift gate: `swift test --package-path macos/InsightKitApp`, 158 tests, 0 failures
 
-Issue 22 is now a retest item, not an implementation candidate. Retest it together with issues 20 and 21.
+Issue 22 is now a retest item, not an implementation candidate.
+
+### 2026-06-25 - Issue 23 implemented
+
+Issue 23 now has a code fix and test proof:
+
+- red/green regression loop:
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoReviewSourceUsesSingleStandardPlayerEvenWhenLegacySeparateAudioExists`
+- narrow gates:
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests/testVideoReviewSourceUsesSingleStandardPlayerEvenWhenLegacySeparateAudioExists --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingComposesSinglePlayableVideoWhenVideoAndAudioAreCaptured`, 2 tests, 0 failures
+  - `swift test --package-path macos/InsightKitApp --filter LiveReviewSourcePresentationTests --filter LiveSessionViewModelTests/testPrepareTemporaryRecording --filter MediaSeekRequestTests`, 17 tests, 0 failures
+- broad Swift gate: `swift test --package-path macos/InsightKitApp`, 158 tests, 0 failures
+
+Issue 23 is now a retest item, not an implementation candidate. Retest it together with issues 20, 21, 22, and 23.

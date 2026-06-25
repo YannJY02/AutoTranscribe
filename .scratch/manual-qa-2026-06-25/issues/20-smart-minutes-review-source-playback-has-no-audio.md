@@ -74,6 +74,7 @@ Implementation summary:
 - Kept captured video as the normal review media while generating a WAV audio source from captured audio chunks for the Smart Minutes review source.
 - Changed the Smart Minutes `回看资料` section to play the review-source URL, so a video-only MP4 no longer appears as a silent player.
 - Added an explicit audio-unavailable status when video exists but no playable audio was captured.
+- This implementation was later superseded by issue 23, which composes video and audio into one standard review media file instead of keeping separate playback surfaces.
 
 TDD proof:
 
@@ -103,5 +104,6 @@ The owner reported that the issue 20 build introduced two follow-up regressions 
 
 - issue 21: `回看资料` no longer displays captured video.
 - issue 22: clicking Timeline Beats or Transcript Segments does not seek to the selected moment and start playback.
+- issue 23: audio and video should not be split into separate playback surfaces.
 
-Issue 20 remains `ready-for-human` for the audio-specific acceptance check, but Smart Minutes review-source work should handle issues 21 and 22 before treating the review experience as clean.
+Issue 20 remains `ready-for-human` for the audio-specific acceptance check, but Smart Minutes review-source work should handle issues 21, 22, and 23 before treating the review experience as clean.

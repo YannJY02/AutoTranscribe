@@ -2,15 +2,10 @@ import Foundation
 
 struct LiveReviewSourcePresentation: Equatable {
     let primaryMediaURL: URL?
-    let supplementalAudioURL: URL?
     let statusMessage: String?
 
     var showsPrimaryMedia: Bool {
         primaryMediaURL != nil
-    }
-
-    var showsSupplementalAudio: Bool {
-        supplementalAudioURL != nil
     }
 
     static func make(
@@ -18,26 +13,19 @@ struct LiveReviewSourcePresentation: Equatable {
         reviewSourceMediaURL: URL?,
         statusMessage: String?
     ) -> LiveReviewSourcePresentation {
-        if let mediaURL, isVisualMedia(mediaURL) {
-            let supplementalAudioURL: URL?
-            if let reviewSourceMediaURL,
-               reviewSourceMediaURL != mediaURL,
-               isAudioMedia(reviewSourceMediaURL) {
-                supplementalAudioURL = reviewSourceMediaURL
-            } else {
-                supplementalAudioURL = nil
-            }
-
+        if let mediaURL,
+           isVisualMedia(mediaURL),
+           let reviewSourceMediaURL,
+           reviewSourceMediaURL != mediaURL,
+           isAudioMedia(reviewSourceMediaURL) {
             return LiveReviewSourcePresentation(
                 primaryMediaURL: mediaURL,
-                supplementalAudioURL: supplementalAudioURL,
                 statusMessage: statusMessage
             )
         }
 
         return LiveReviewSourcePresentation(
             primaryMediaURL: reviewSourceMediaURL ?? mediaURL,
-            supplementalAudioURL: nil,
             statusMessage: statusMessage
         )
     }

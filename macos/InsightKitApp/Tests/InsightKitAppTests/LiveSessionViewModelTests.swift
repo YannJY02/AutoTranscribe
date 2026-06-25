@@ -501,7 +501,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
-    func testPrepareTemporaryRecordingKeepsAudibleReviewSourceWhenVideoHasNoAudioTrack() throws {
+    func testPrepareTemporaryRecordingComposesSinglePlayableVideoWhenVideoAndAudioAreCaptured() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitVideoAndAudioLiveRecording_\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -513,6 +513,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         let outputRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
+        let composer = ReviewMediaComposerSpy()
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
             sidecarManager: SidecarManager(),
@@ -520,7 +521,8 @@ final class LiveSessionViewModelTests: XCTestCase {
             systemAudioCapture: SystemAudioCaptureService(),
             mixBus: AudioMixBus(),
             chunkAssembler: assembler,
-            asrService: LiveASRService()
+            asrService: LiveASRService(),
+            reviewMediaComposer: composer
         )
         defer { try? FileManager.default.removeItem(at: tmp) }
         defer { try? FileManager.default.removeItem(at: outputRoot) }
@@ -535,13 +537,17 @@ final class LiveSessionViewModelTests: XCTestCase {
             )
         )
 
-        let reviewSourceURL = try XCTUnwrap(viewModel.reviewSourceMediaURL)
-        XCTAssertEqual(recordingURL, videoURL)
-        XCTAssertEqual(viewModel.temporaryRecordingURL, videoURL)
-        XCTAssertEqual(viewModel.mediaURL, videoURL)
-        XCTAssertEqual(reviewSourceURL.pathExtension, "wav")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: reviewSourceURL.path))
-        XCTAssertTrue(viewModel.reviewSourceStatusMessage?.contains("音频播放") == true)
+        let call = try XCTUnwrap(composer.calls.first)
+        XCTAssertEqual(call.videoURL, videoURL)
+        XCTAssertEqual(call.audioURL.pathExtension, "wav")
+        XCTAssertEqual(recordingURL.lastPathComponent, "recording-with-audio.mp4")
+        XCTAssertEqual(recordingURL, call.outputURL)
+        XCTAssertEqual(viewModel.temporaryRecordingURL, recordingURL)
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        XCTAssertEqual(viewModel.reviewSourceMediaURL, recordingURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recordingURL.path))
+        XCTAssertNil(viewModel.recordingStatusMessage)
+        XCTAssertNil(viewModel.reviewSourceStatusMessage)
     }
 
     func testPrepareTemporaryRecordingShowsAudioUnavailableStatusWhenVideoHasNoCapturedAudio() throws {
@@ -577,7 +583,7 @@ final class LiveSessionViewModelTests: XCTestCase {
 
         XCTAssertEqual(recordingURL, videoURL)
         XCTAssertEqual(viewModel.mediaURL, videoURL)
-        XCTAssertNil(viewModel.reviewSourceMediaURL)
+        XCTAssertEqual(viewModel.reviewSourceMediaURL, videoURL)
         XCTAssertTrue(viewModel.reviewSourceStatusMessage?.contains("没有可播放音频") == true)
     }
 
@@ -1024,6 +1030,20 @@ private final class LiveTranscriptProcessingMock: LiveTranscriptProcessing {
     func process(chunk: AudioChunk, context: LiveTranscriptPipelineContext) throws -> LiveTranscriptPipelineOutcome {
         processCalls.append((chunk: chunk, context: context))
         return outcome
+    }
+}
+
+private final class ReviewMediaComposerSpy: ReviewMediaComposing {
+    private(set) var calls: [(videoURL: URL, audioURL: URL, outputURL: URL)] = []
+
+    func composeVideoWithAudio(videoURL: URL, audioURL: URL, outputURL: URL) throws -> URL {
+        calls.append((videoURL: videoURL, audioURL: audioURL, outputURL: outputURL))
+        try FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("merged mp4".utf8).write(to: outputURL)
+        return outputURL
     }
 }
 
