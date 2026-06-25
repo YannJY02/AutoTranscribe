@@ -96,3 +96,12 @@ Owner retest:
 - Generate Smart Minutes.
 - In the Smart Minutes review experience, play `回看资料` and confirm audio is audible.
 - If no audio input was captured, confirm the app shows a clear no-playable-audio message instead of a silent player.
+
+### 2026-06-25 - Owner retest found follow-up regressions
+
+The owner reported that the issue 20 build introduced two follow-up regressions during Smart Minutes review:
+
+- issue 21: `回看资料` no longer displays captured video.
+- issue 22: clicking Timeline Beats or Transcript Segments does not seek to the selected moment and start playback.
+
+Issue 20 remains `ready-for-human` for the audio-specific acceptance check, but Smart Minutes review-source work should handle issues 21 and 22 before treating the review experience as clean.

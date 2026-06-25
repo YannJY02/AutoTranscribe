@@ -28,9 +28,9 @@ Issue 14 has a code-level Live Workspace progress-feedback fix installed in buil
 
 Issue 17 has a code-level Smart Minutes review export fix installed in build `20260625185114`; owner retest passed.
 
-Issue 20 has a code-level Smart Minutes review-source audio fix installed in build `20260625192450`; it needs owner retest.
+Issue 20 has a code-level Smart Minutes review-source audio fix installed in build `20260625192450`; owner retest found follow-up regressions now filed as issues 21 and 22.
 
-Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, 17, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, and 20 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, and 19 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
+Batch dependency triage is recorded in `.scratch/manual-qa-2026-06-25/triage-dependency-map.md`. Issues 01, 02, 04, 05, 08, 13, 14, 17, and conditionally 12 have passed owner retest after their installed fixes; issues 03, 06, 07, 09, 10, 11, and 20 are `ready-for-human` for owner retest after installed fixes. Issues 16, 18, 19, 21, and 22 are `ready-for-agent`; issue 15 is `needs-info` for a concrete diarization sample.
 
 ## Test Baseline
 
@@ -115,8 +115,10 @@ Reported during owner-led manual QA against InsightKit build `20260625003524`.
 - `.scratch/manual-qa-2026-06-25/issues/17-smart-minutes-cannot-be-exported-from-review-flow.md` - Smart Minutes cannot be exported from the review flow. Code fix installed in build `20260625185114`; owner retest passed.
 - `.scratch/manual-qa-2026-06-25/issues/18-record-default-names-are-hard-to-read.md` - Record default names are hard to read. Triaged as `ready-for-agent`.
 - `.scratch/manual-qa-2026-06-25/issues/19-records-cannot-be-renamed.md` - Records cannot be renamed. Triaged as `ready-for-agent`.
-- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Code fix installed in build `20260625192450`; owner retest required.
-- `.scratch/manual-qa-2026-06-25/triage-dependency-map.md` - Batch dependency triage for issues 01-20.
+- `.scratch/manual-qa-2026-06-25/issues/20-smart-minutes-review-source-playback-has-no-audio.md` - Smart Minutes review source playback has no audio. Code fix installed in build `20260625192450`; owner retest found follow-up regressions tracked as issues 21 and 22.
+- `.scratch/manual-qa-2026-06-25/issues/21-smart-minutes-review-source-loses-video-after-audio-fix.md` - Smart Minutes review source loses video after the audio fix. Triaged as `ready-for-agent`.
+- `.scratch/manual-qa-2026-06-25/issues/22-smart-minutes-review-source-seek-does-not-start-playback.md` - Smart Minutes review source seek does not start playback. Triaged as `ready-for-agent`.
+- `.scratch/manual-qa-2026-06-25/triage-dependency-map.md` - Batch dependency triage for issues 01-22.
 
 ## Comments
 
@@ -422,7 +424,7 @@ The same QA pass found seven additional product and UX issues:
 - issue 19: Records cannot be renamed.
 - issue 20: Smart Minutes review source playback has no audio.
 
-Batch triage later moved issues 14, 16, 17, 18, 19, and 20 to `ready-for-agent`; issue 15 moved to `needs-info` pending a concrete failing diarization sample. Issue 14 now has an installed code fix and has passed owner retest. Issue 17 now has an installed code fix and has passed owner retest. Issue 20 now has an installed code fix and is `ready-for-human`.
+Batch triage later moved issues 14, 16, 17, 18, 19, and 20 to `ready-for-agent`; issue 15 moved to `needs-info` pending a concrete failing diarization sample. Issue 14 now has an installed code fix and has passed owner retest. Issue 17 now has an installed code fix and has passed owner retest. Issue 20 now has an installed code fix; owner retest found follow-up regressions now filed as issues 21 and 22.
 
 ### 2026-06-25 - Issues 14-20 batch triage completed
 
@@ -436,7 +438,7 @@ Batch triage classified the latest QA findings as follows:
 - issue 19: `ready-for-agent`; manual Record renaming can persist a human-readable name in metadata.
 - issue 20: `ready-for-human`; Smart Minutes review source playback fix installed in build `20260625192450`.
 
-Recommended next implementation target: issue 18/19 if the owner wants to improve Records naming next. Issue 16 is ready but larger because it changes speaker-label persistence.
+Recommended next implementation target: issue 21 or issue 22 to clean up the Smart Minutes review regression from the issue 20 pass. Issue 18/19 can follow when the Records naming lane resumes.
 
 ### 2026-06-25 - Issue 14 implemented
 
@@ -489,3 +491,12 @@ Issue 20 now has a code fix and installed-app sync proof:
 - installed smoke: launched `/Users/yann.jy/Applications/InsightKit.app` in Live UI-test route and quit successfully
 
 It is now `ready-for-human` for owner retest.
+
+### 2026-06-25 - Issues 21 and 22 added from issue 20 owner retest
+
+The owner reported two follow-up regressions after testing build `20260625192450`:
+
+- issue 21: Smart Minutes `回看资料` no longer displays captured video after the review-source audio fix.
+- issue 22: clicking Timeline Beats or Transcript Segments does not seek to the matching source position and start playback.
+
+Both issues are `ready-for-agent`. Issue 21 should restore video visibility without losing audible playback. Issue 22 should make review shortcuts seek and start playback for the selected moment.
