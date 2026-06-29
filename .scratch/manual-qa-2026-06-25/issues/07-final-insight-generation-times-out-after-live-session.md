@@ -87,3 +87,9 @@ Remaining human check:
 - Retest a short Live Workspace session in the installed app and stop the session.
 - Expected: normal slow Final Insight Generation should complete without the `调用超时: insight.build_final` banner.
 - If a provider genuinely exceeds 60 seconds, the app can still show a timeout; that should become a follow-up UX/retry issue rather than reopening this narrow timeout-regression fix.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 07 is resolved.
+
+The `insight.build_final` timeout is no longer an active blocker for continuing manual QA.

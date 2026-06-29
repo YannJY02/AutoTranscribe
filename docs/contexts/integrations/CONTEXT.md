@@ -2,6 +2,12 @@
 
 Language for InsightKit's external host integration surface. This context currently centers on the AttentionOS module path and should keep host-specific vocabulary from leaking into the product model.
 
+## Current Boundary
+
+The integration layer is optional. InsightKit's Python sidecar is primarily the local AI runtime for the native app, and external hosts must call proven product actions instead of creating parallel runtime behavior.
+
+The current external host demand is not active enough to justify new integration-first runtime work. The AttentionOS Module remains a thin generated wrapper. Older Bridge Actions such as `insight.build_final` may be accepted as compatibility aliases, but they should forward to product actions such as `smart_minutes.generate`.
+
 ## Language
 
 **AttentionOS Module**:

@@ -12,6 +12,14 @@ _Avoid_: Backend, server
 A named callable operation exposed by the sidecar to the app or an integration host.
 _Avoid_: Endpoint, API route
 
+**Sidecar Action Registry**:
+The runtime-owned catalog of app-facing RPC Actions, their current availability state, requirements, and degradation reasons.
+_Avoid_: Method list, integration manifest, Python function map
+
+**Runtime Action Boundary**:
+The stable app-facing contract for a product action exposed by the sidecar, including input requirements, result shape, availability, and error or degradation meanings.
+_Avoid_: Internal handler, endpoint signature
+
 **RPC Event**:
 A pushed runtime message sent over the persistent RPC connection, such as transcription progress, transcription completion, or warmup state changes.
 _Avoid_: Callback, notification
@@ -33,7 +41,7 @@ The local speech runtime environment needed before an ASR engine can transcribe 
 _Avoid_: Dependency setup, model folder
 
 **ASR Runtime Profile**:
-The shared runtime rule set for ASR engine selection, model readiness, backend status, warm state, and diarization reporting.
+The shared runtime rule set for ASR engine selection, configured and active engine reporting, live and final-media readiness, backend status, warm state, degradation, diarization reporting, and user-facing recovery hints.
 _Avoid_: ASR config helper, status wrapper
 
 **ASR Model Catalog**:
@@ -87,6 +95,10 @@ _Avoid_: Local save call, direct JSON write
 **Live Transcript Delta**:
 New transcript segments produced during an active live session and appended to the current meeting.
 _Avoid_: Streaming text, partial result
+
+**Final Media Transcription**:
+The post-capture transcription pass that reads the completed media file and returns Transcript Segments on that media's playback timeline.
+_Avoid_: Live chunk transcription, draft transcript
 
 **Final Insight Generation**:
 The post-session pass that turns accumulated transcript evidence into the final insight package.

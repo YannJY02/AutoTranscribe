@@ -100,3 +100,9 @@ Verification:
 - Installed bundle contains `_QwenMLXWorker` in `Contents/Resources/insightkit_runtime/scripts/transcriber.py`.
 
 Manual retest should be short and guarded: open Activity Monitor or another memory view, start a brief Live Workspace session, and stop immediately if the Sidecar memory climbs abnormally. Do not intentionally continue toward a system freeze.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 06 is resolved.
+
+The prior Sidecar memory-spike/system-freeze risk is no longer treated as an active blocker for short manual QA sessions. Continue to avoid intentional long stress tests unless a new stress-test issue defines the scope and safety gate.

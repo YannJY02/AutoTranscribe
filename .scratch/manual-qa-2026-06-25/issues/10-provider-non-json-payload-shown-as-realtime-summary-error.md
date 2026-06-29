@@ -110,3 +110,9 @@ Owner retest should confirm:
 - the banner instead says the analysis service returned an invalid format and suggests retrying or checking Provider settings;
 - transcript rows and existing Smart Minutes remain visible;
 - the `打开设置` action remains usable.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 10 is resolved.
+
+Provider non-JSON payload sanitization is no longer an active blocker for continuing manual QA.

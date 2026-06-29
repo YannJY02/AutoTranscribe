@@ -118,3 +118,9 @@ Owner retest should confirm:
 - transcript rows continue to appear;
 - existing Smart Minutes content remains visible;
 - the lower status may mention a temporary analysis-refresh timeout and retry, but the session should not look fully broken.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 09 is resolved.
+
+Recoverable `insight.refresh_live` timeouts are no longer an active blocker for continuing manual QA.

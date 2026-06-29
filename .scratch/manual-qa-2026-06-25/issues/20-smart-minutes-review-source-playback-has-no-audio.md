@@ -107,3 +107,9 @@ The owner reported that the issue 20 build introduced two follow-up regressions 
 - issue 23: audio and video should not be split into separate playback surfaces.
 
 Issue 20 remains `ready-for-human` for the audio-specific acceptance check, but Smart Minutes review-source work should handle issues 21, 22, and 23 before treating the review experience as clean.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed the Smart Minutes review-source audio path is fixed in the installed app.
+
+The follow-up review-source regressions tracked as issues 21, 22, and 23 were also confirmed fixed in the same owner QA update, so this issue no longer blocks the Smart Minutes review-source bundle.

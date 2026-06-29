@@ -1,6 +1,6 @@
 # Record default names are hard to read
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -62,3 +62,32 @@ Suggested verification:
 
 - Add a pure display-name test for Records with and without `summaryPreview`.
 - Owner retest should confirm Records are distinguishable in the Records Workspace without opening every Record.
+
+### 2026-06-25 - Code fix installed for owner retest
+
+Status changed to `ready-for-human`.
+
+Implemented:
+
+- `RecordMetadata` now has a user-facing `displayTitle`.
+- Display title priority is: manual title, then Smart Minutes `summaryPreview`, then a readable source/date fallback such as `实时记录 ...` or `导入记录 ...`.
+- Home recent records, Record list items, Record grid items, Record Review header, and exports use the readable display title instead of falling back directly to the technical Record ID.
+- Stable Record IDs and Record Folder names are preserved.
+
+Proof:
+
+- RED: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRecordDisplayTitlePrefersManualTitleThenSummaryThenReadableFallback` failed before implementation because `displayTitle` did not exist.
+- GREEN: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRecordDisplayTitlePrefersManualTitleThenSummaryThenReadableFallback`, 1 relevant test, 0 failures.
+- Related gate: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests --filter RecordDocumentExporterTests`, 16 tests, 0 failures.
+- Broad Swift gate: `swift test --package-path macos/InsightKitApp`, 161 tests, 0 failures.
+- Standard sync: `bash scripts/sync_insightkit_app.sh`, Swift and Python gates passed; installed build `20260625222052` to `/Users/yann.jy/Applications/InsightKit.app`.
+
+Owner retest:
+
+- Open Records Workspace.
+- Confirm Records show readable titles in the list and review header.
+- Confirm Records without Smart Minutes summary no longer show only an opaque technical ID as their main visible name.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed Records now show readable names as expected in the installed app.

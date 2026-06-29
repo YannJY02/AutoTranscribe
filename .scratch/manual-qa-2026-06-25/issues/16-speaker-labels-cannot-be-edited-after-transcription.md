@@ -1,6 +1,6 @@
 # Speaker labels cannot be edited after transcription
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -62,3 +62,32 @@ Suggested verification:
 
 - Add tests that update a speaker label in a persisted Record and confirm transcript/export-facing data uses the new label.
 - Owner retest should confirm a wrong generic label can be corrected without editing files by hand.
+
+### 2026-06-25 - Code fix installed for owner retest
+
+Status changed to `ready-for-human`.
+
+Implemented:
+
+- Record Review now exposes a `说话人` menu listing speaker labels found in the transcript.
+- A speaker label can be renamed from that menu or from a transcript row context menu.
+- The rename is written back to `transcript.json`, and Record Review reloads Transcript Segments plus Smart Minutes speaker summaries from the corrected labels.
+- Record export now uses the corrected speaker labels because export reads the updated transcript.
+
+Proof:
+
+- RED: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRecordReviewRenamesSpeakerAndExportUsesCorrectedLabel` failed before implementation because `renameSpeaker` did not exist.
+- GREEN: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRecordReviewRenamesSpeakerAndExportUsesCorrectedLabel`, 1 relevant test, 0 failures.
+- Related gate: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests --filter RecordDocumentExporterTests`, 16 tests, 0 failures.
+- Broad Swift gate: `swift test --package-path macos/InsightKitApp`, 161 tests, 0 failures.
+- Standard sync: `bash scripts/sync_insightkit_app.sh`, Swift and Python gates passed; installed build `20260625222052` to `/Users/yann.jy/Applications/InsightKit.app`.
+
+Owner retest:
+
+- Open a saved Record in Records Workspace.
+- Use the Record Review `说话人` menu or a transcript row context menu to rename a generic speaker label such as `SPEAKER_00`.
+- Confirm transcript rows and Smart Minutes speaker summaries update, and exported Markdown/PDF use the corrected name.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed the installed Record Review speaker-label rename workflow works as expected.

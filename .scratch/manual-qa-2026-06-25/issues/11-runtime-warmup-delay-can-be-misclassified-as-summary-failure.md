@@ -102,3 +102,9 @@ Owner retest focus:
 - During the early waiting period before the first Transcript Segment, the app should not show the top "实时语音总结异常" banner solely because no transcript exists yet.
 - A lower-severity recording status may say it is waiting for transcript input.
 - Once transcript rows appear, the waiting hint should clear.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 11 is resolved.
+
+Runtime Warmup / waiting-for-first-transcript state is no longer an active blocker for continuing manual QA.

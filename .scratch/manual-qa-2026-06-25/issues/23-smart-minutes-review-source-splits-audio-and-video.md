@@ -65,3 +65,7 @@ Acceptance for owner retest:
 - In Smart Minutes `回看资料`, confirm there is one standard media player, not a separate video player plus an audio player.
 - Confirm the single player shows the video and plays audible sound.
 - Click a Timeline Beat and a Transcript Segment; confirm the same player seeks and starts playback.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed Smart Minutes `回看资料` no longer feels split into separate audio and video playback surfaces.

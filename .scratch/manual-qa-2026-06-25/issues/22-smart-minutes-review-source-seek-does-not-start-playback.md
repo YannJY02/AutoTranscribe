@@ -70,3 +70,7 @@ Acceptance for owner retest:
 - Confirm `回看资料` jumps to the selected timestamp and starts playback.
 - Click a Transcript Segment.
 - Confirm `回看资料` jumps to the selected timestamp and starts playback.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed Timeline Beat and Transcript Segment clicks now seek the Smart Minutes review source and start playback as expected.

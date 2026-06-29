@@ -16,6 +16,14 @@ _Avoid_: InsightKit
 A durable personal knowledge object created from a meeting or recording. It combines media, transcript, structured minutes, notes, and exportable documents.
 _Avoid_: File, artifact, project
 
+**Canonical Meeting Asset Source**:
+The single saved meeting-asset state that Record Review, Smart Minutes, exports, and notes should read from for the same record. It keeps media, media-timed transcript, speaker names, notes, and the insight package consistent across views.
+_Avoid_: Per-view copy, duplicate review source, separate summary resource
+
+**Meeting Asset Health**:
+The app-visible completeness state of a saved meeting asset, such as complete, missing transcript, fallback Smart Minutes, damaged transcript, or missing media.
+_Avoid_: File validation, loader status, diagnostics result
+
 **Record Folder**:
 The local folder representation of a saved record. It contains the media file, metadata, transcript, minutes, insight package, notes, and exports needed to reopen or recover the meeting asset.
 _Avoid_: Dump folder, cache directory
@@ -87,6 +95,10 @@ _Avoid_: Related link
 **Evidence Span**:
 A timestamp range that ties a generated insight, decision, or action back to the underlying transcript or media.
 _Avoid_: Citation, timestamp
+
+**Media-Timed Transcript**:
+A transcript whose timestamp ranges are measured against the saved media playback clock, so each row points to where the words are heard in the final audio or video.
+_Avoid_: Live chunk transcript, processing-time transcript
 
 **Local Personal Substitute**:
 A deliberately personal/local replacement for a team or cloud collaboration feature.

@@ -103,3 +103,9 @@ The owner reported that issue 12 conditionally passes: when the newly filed issu
 Residual dependency:
 
 - issue 13 can still prevent the flow from reliably reaching the post-session Smart Minutes choice, so issue 12 should remain recorded as conditionally passed rather than independently closing all Live Workspace summary-transition behavior.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 12 is resolved after the related stop/start backlog path was also handled.
+
+Generated Smart Minutes now open into the expected summary review experience and are no longer an active blocker for continuing manual QA.

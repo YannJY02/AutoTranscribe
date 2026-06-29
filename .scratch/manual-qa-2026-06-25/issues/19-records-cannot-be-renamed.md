@@ -1,6 +1,6 @@
 # Records cannot be renamed
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -64,3 +64,34 @@ Suggested verification:
 - Add RecordsIndexService or RecordMetadata tests for persisting a renamed title.
 - Add a UI-facing test seam proving the Record Index uses the manual title after rename.
 - Owner retest should confirm a Record can be renamed from the app without touching files.
+
+### 2026-06-25 - Code fix installed for owner retest
+
+Status changed to `ready-for-human`.
+
+Implemented:
+
+- Records can be renamed from the Record list context menu.
+- Records can also be renamed from the Record Review toolbar.
+- The manual title is persisted in `metadata.json` as `title`.
+- Search includes the manual title.
+- Manual title overrides generated default display names while keeping Record Folder IDs stable.
+
+Proof:
+
+- RED: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRenameRecordPersistsManualTitleAndSearchUsesIt` failed before implementation because `renameRecord` and `title` did not exist.
+- GREEN: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests/testRenameRecordPersistsManualTitleAndSearchUsesIt`, 1 relevant test, 0 failures.
+- Related gate: `swift test --package-path macos/InsightKitApp --filter RecordsIndexServiceTests --filter RecordDocumentExporterTests`, 16 tests, 0 failures.
+- Broad Swift gate: `swift test --package-path macos/InsightKitApp`, 161 tests, 0 failures.
+- Standard sync: `bash scripts/sync_insightkit_app.sh`, Swift and Python gates passed; installed build `20260625222052` to `/Users/yann.jy/Applications/InsightKit.app`.
+
+Owner retest:
+
+- Open Records Workspace.
+- Rename a saved Record from the list context menu or Record Review toolbar.
+- Return to the Record list or search for the new title.
+- Confirm the new name persists after reopening the app.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed saved Records can be renamed and the new names persist as expected.

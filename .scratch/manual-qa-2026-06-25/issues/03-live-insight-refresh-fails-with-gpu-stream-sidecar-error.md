@@ -164,3 +164,9 @@ Current verification:
 - Full Python pytest suite - `212 passed, 1 warning`.
 
 No additional runtime app code change was needed beyond the Qwen MLX worker fix already installed in build `20260625094746`. The remaining gate is a short owner retest in the installed Live Workspace.
+
+### 2026-06-25 - Owner retest passed
+
+The owner confirmed issue 03 is resolved.
+
+The raw Qwen MLX GPU stream Sidecar error is no longer treated as an active blocker for the next manual QA implementation pass.

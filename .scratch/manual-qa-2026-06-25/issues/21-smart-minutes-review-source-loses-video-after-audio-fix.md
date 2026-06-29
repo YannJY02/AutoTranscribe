@@ -76,3 +76,7 @@ Owner retest:
 - In Smart Minutes `回看资料`, confirm the captured video is visible.
 - Confirm together with issue 23 that audio/video are no longer split into separate playback surfaces.
 - Note: issue 22 still tracks click-to-seek-and-play behavior for Timeline Beats and Transcript Segments.
+
+### 2026-06-26 - Owner retest passed
+
+The owner confirmed the Smart Minutes review source now preserves visible video after the audio fixes.

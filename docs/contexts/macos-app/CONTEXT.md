@@ -12,6 +12,10 @@ _Avoid_: Dashboard, landing page
 The workflow for capturing an active meeting and producing live transcript and insight state.
 _Avoid_: Recording page, live view
 
+**Live Session Finalization**:
+The post-stop Live Workspace phase that turns captured media, transcript state, Smart Minutes, and notes into a saved record-ready meeting asset.
+_Avoid_: Stop handler, save helper, cleanup step
+
 **Session Shell**:
 The shared three-panel app skeleton used by live, import, and record-review workflows to keep Smart Minutes, media/transcript, and notes aligned.
 _Avoid_: Layout wrapper, split view
@@ -59,6 +63,14 @@ _Avoid_: Comment, annotation
 **Media Seek**:
 A user action that jumps playback to the time represented by a transcript row, timeline beat, evidence span, or note.
 _Avoid_: Jump, scrub
+
+**Media Timeline**:
+The playback clock inside the saved audio or video, starting at 00:00 when the record media begins. Record Review timestamps should refer to this clock, not to when live processing happened.
+_Avoid_: Wall-clock time, chunk time, processing time
+
+**Transcript Recovery**:
+The user-triggered path for regenerating a missing or stale media-timed transcript from a saved record's media.
+_Avoid_: Retry button, draft transcript restore
 
 **Insight Refresh**:
 An app-visible update of live or final Smart Minutes based on the current transcript and provider state.
