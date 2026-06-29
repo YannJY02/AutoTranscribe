@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,12 +47,27 @@ class RecordWriter:
     ) -> Path:
         """Write record folder and return its Path."""
         root = Path(root_dir).expanduser()
-        record_dir = root / meeting_id
-        record_dir.mkdir(parents=True, exist_ok=True)
+        root.mkdir(parents=True, exist_ok=True)
 
         # ── metadata.json ────────────────────────────────────────────────
         # CRITICAL: use strftime Z suffix — Swift JSONDecoder .iso8601 rejects +00:00
-        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        default_created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        existing_record_dir = self._existing_record_dir(root, meeting_id)
+        if existing_record_dir is None:
+            created_at = default_created_at
+            record_dir = self._new_record_dir(
+                root=root,
+                meeting_id=meeting_id,
+                title=title,
+                record_source=record_source,
+                insight_package=insight_package,
+                created_at=created_at,
+            )
+        else:
+            record_dir = existing_record_dir
+            created_at = self._existing_created_at(record_dir) or default_created_at
+        record_dir.mkdir(parents=True, exist_ok=True)
+
         overview = self._safe_str(insight_package, ["session_overview", "overview"])
         topics = self._safe_list(insight_package, ["session_overview", "topics"])
         metadata = {
@@ -134,6 +150,125 @@ class RecordWriter:
         return record_dir
 
     # ── helpers ───────────────────────────────────────────────────────────
+
+    @classmethod
+    def _existing_record_dir(cls, root: Path, meeting_id: str) -> Path | None:
+        direct = root / meeting_id
+        if cls._metadata_id(direct / "metadata.json") == meeting_id:
+            return direct
+        if direct.exists() and direct.is_dir() and not (direct / "metadata.json").exists():
+            return direct
+        for child in root.iterdir():
+            if not child.is_dir() or child == direct:
+                continue
+            if cls._metadata_id(child / "metadata.json") == meeting_id:
+                return child
+        return None
+
+    @classmethod
+    def _new_record_dir(
+        cls,
+        *,
+        root: Path,
+        meeting_id: str,
+        title: str,
+        record_source: str,
+        insight_package: dict[str, Any] | None,
+        created_at: str,
+    ) -> Path:
+        timestamp = cls._folder_timestamp(created_at)
+        source = cls._source_slug(record_source)
+        topic = cls._topic_slug(title=title, insight_package=insight_package)
+        short_id = cls._short_id(meeting_id)
+        base = f"{timestamp}-{source}-{topic}-{short_id}"
+        candidate = root / base
+        suffix = 2
+        while candidate.exists():
+            candidate = root / f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
+    @staticmethod
+    def _metadata_id(path: Path) -> str | None:
+        data = RecordWriter._metadata(path)
+        value = data.get("id") if isinstance(data, dict) else None
+        return str(value) if value else None
+
+    @staticmethod
+    def _existing_created_at(record_dir: Path) -> str | None:
+        data = RecordWriter._metadata(record_dir / "metadata.json")
+        value = data.get("createdAt") if isinstance(data, dict) else None
+        return str(value) if value else None
+
+    @staticmethod
+    def _metadata(path: Path) -> dict[str, Any]:
+        if not path.exists() or not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _folder_timestamp(created_at: str) -> str:
+        try:
+            dt = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).astimezone()
+            return dt.strftime("%Y%m%d-%H%M")
+        except ValueError:
+            return datetime.now().astimezone().strftime("%Y%m%d-%H%M")
+
+    @staticmethod
+    def _source_slug(record_source: str) -> str:
+        normalized = str(record_source or "").strip().lower()
+        if normalized == "imported":
+            return "import"
+        if normalized == "live":
+            return "live"
+        return RecordWriter._slugify(normalized, fallback="record", limit=16)
+
+    @classmethod
+    def _topic_slug(cls, *, title: str, insight_package: dict[str, Any] | None) -> str:
+        candidates = [
+            title,
+            cls._safe_str(insight_package, ["session_overview", "title"]),
+            cls._safe_str(insight_package, ["session_overview", "overview"]),
+        ]
+        for candidate in candidates:
+            if cls._is_generic_title(candidate):
+                continue
+            slug = cls._slugify(candidate, fallback="", limit=48)
+            if slug:
+                return slug
+        return "record"
+
+    @staticmethod
+    def _is_generic_title(value: str) -> bool:
+        normalized = str(value or "").strip().lower()
+        return not normalized or normalized in {"live", "直播洞察", "直播会话", "未命名会话", "record"}
+
+    @staticmethod
+    def _short_id(meeting_id: str) -> str:
+        normalized = re.sub(r"^(file|live)-", "", str(meeting_id or "").strip().lower())
+        compact = "".join(ch for ch in normalized if ch.isalnum())
+        return (compact[-8:] if compact else "record")
+
+    @staticmethod
+    def _slugify(value: str, *, fallback: str, limit: int) -> str:
+        normalized = str(value or "").strip().lower()
+        parts: list[str] = []
+        last_was_dash = False
+        for ch in normalized:
+            if ch.isalnum():
+                parts.append(ch)
+                last_was_dash = False
+            elif not last_was_dash:
+                parts.append("-")
+                last_was_dash = True
+        slug = "".join(parts).strip("-")
+        if len(slug) > limit:
+            slug = slug[:limit].strip("-")
+        return slug or fallback
 
     @staticmethod
     def _write_json(path: Path, data: Any) -> None:

@@ -176,6 +176,36 @@ class InsightStore:
         )
         self.conn.commit()
 
+    def replace_segments(self, meeting_id: str, segments: list[dict[str, Any]]) -> int:
+        with self.conn:
+            self.conn.execute("DELETE FROM segments WHERE meeting_id=?", (meeting_id,))
+            ingested = 0
+            for seg in segments:
+                text = str(seg.get("text", "") or "").strip()
+                if not text:
+                    continue
+                start_ms = int(seg.get("start_ms", 0) or 0)
+                end_ms = int(seg.get("end_ms", start_ms + 1200) or (start_ms + 1200))
+                if end_ms <= start_ms:
+                    end_ms = start_ms + 1200
+                self.conn.execute(
+                    """
+                    INSERT INTO segments(meeting_id, start_ms, end_ms, speaker, source, text, confidence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        meeting_id,
+                        start_ms,
+                        end_ms,
+                        str(seg.get("speaker", "") or ""),
+                        str(seg.get("source", "") or ""),
+                        text,
+                        float(seg.get("confidence", 0.0) or 0.0),
+                    ),
+                )
+                ingested += 1
+        return ingested
+
     def list_segments(self, meeting_id: str) -> list[dict[str, Any]]:
         cur = self.conn.execute(
             "SELECT start_ms, end_ms, COALESCE(speaker, '') AS speaker, COALESCE(source, '') AS source, text FROM segments WHERE meeting_id=? ORDER BY start_ms",

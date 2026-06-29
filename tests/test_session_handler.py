@@ -48,6 +48,29 @@ class TestSessionHandler(unittest.TestCase):
         result = self.handler.transcript_list({"meeting_id": "m-1", "limit": 1})
         self.assertEqual(len(result["segments"]), 1)
 
+    def test_transcript_replace_removes_live_chunk_segments(self):
+        self.handler.session_start({"meeting_id": "m-1", "title": "t", "source": "mic"})
+        self.handler.transcript_delta({
+            "meeting_id": "m-1",
+            "segments": [
+                {"start_ms": 0, "end_ms": 1000, "speaker": "live", "source": "mic", "text": "stale live", "confidence": 0.8},
+            ],
+        })
+
+        result = self.handler.transcript_replace({
+            "meeting_id": "m-1",
+            "segments": [
+                {"start_ms": 22000, "end_ms": 25500, "speaker": "SPEAKER_00", "source": "media", "text": "final media", "confidence": 0.9},
+            ],
+        })
+
+        self.assertEqual(result["replaced"], 1)
+        rows = self.store.list_segments("m-1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["start_ms"], 22000)
+        self.assertEqual(rows[0]["source"], "media")
+        self.assertEqual(rows[0]["text"], "final media")
+
     def test_live_session_start_and_stop(self):
         result = self.handler.live_session_start({"meeting_id": "m-2", "title": "live", "source": "mixed"})
         self.assertEqual(result["state"], "running")

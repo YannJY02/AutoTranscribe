@@ -61,6 +61,12 @@ class SessionHandler:
             ingested += 1
         return {"ingested": ingested}
 
+    def transcript_replace(self, params: dict[str, Any]) -> dict[str, Any]:
+        meeting_id = params["meeting_id"]
+        segments = params.get("segments", [])
+        replaced = self.store.replace_segments(meeting_id, segments)
+        return {"meeting_id": meeting_id, "replaced": replaced}
+
     def transcript_list(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = params["meeting_id"]
         limit = int(params.get("limit", 1000))

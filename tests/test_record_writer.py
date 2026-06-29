@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -303,7 +304,90 @@ class TestRecordWriter:
             duration_sec=6.0,
         )
         assert isinstance(record_path, Path)
-        assert record_path.name == "test-meeting-009"
+        assert record_path.name != "test-meeting-009"
+        assert re.match(r"\d{8}-\d{4}-import-test-[a-z0-9]+$", record_path.name)
+
+    def test_record_folder_name_is_readable_while_metadata_keeps_stable_id(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="file-11112222-3333-4444-5555-abcdef123456",
+            title="Quarterly Roadmap Review",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="imported",
+            duration_sec=6.0,
+        )
+
+        assert re.match(
+            r"\d{8}-\d{4}-import-quarterly-roadmap-review-[a-z0-9]+$",
+            record_path.name,
+        )
+        metadata = json.loads((record_path / "metadata.json").read_text())
+        assert metadata["id"] == "file-11112222-3333-4444-5555-abcdef123456"
+
+    def test_repeated_write_reuses_existing_readable_record_folder(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        first_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="live-11112222-3333-4444-5555-abcdef123456",
+            title="Live",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=None,
+            media_type="audio",
+            record_source="live",
+            duration_sec=6.0,
+        )
+        second_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="live-11112222-3333-4444-5555-abcdef123456",
+            title="Live With Final Insight",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="live",
+            duration_sec=6.0,
+        )
+
+        assert second_path == first_path
+        assert first_path.name != "live-11112222-3333-4444-5555-abcdef123456"
+
+    def test_repeated_write_preserves_original_created_at(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="file-22223333-4444-5555-6666-abcdef123456",
+            title="Original Meeting",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=None,
+            media_type="audio",
+            record_source="imported",
+            duration_sec=6.0,
+        )
+        metadata_path = record_path / "metadata.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["createdAt"] = "2026-06-01T01:02:03Z"
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="file-22223333-4444-5555-6666-abcdef123456",
+            title="Updated Meeting",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="imported",
+            duration_sec=6.0,
+        )
+
+        updated = json.loads(metadata_path.read_text())
+        assert updated["createdAt"] == "2026-06-01T01:02:03Z"
 
     def test_notes_md_created_empty(self, tmp_root, sample_audio):
         writer = RecordWriter()

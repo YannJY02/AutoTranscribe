@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from insightkit.ipc.asr_dispatcher import ASRDispatcher
@@ -14,6 +15,9 @@ class TestASRDispatcher(unittest.TestCase):
         self.assertTrue(result["ready"])
         self.assertIn("backend", result)
         self.assertIn("warm", result)
+        self.assertIn("profile", result)
+        self.assertEqual(result["profile"]["active_engine"], "funasr")
+        self.assertTrue(result["profile"]["final_media_asr"]["ready"])
 
     @mock.patch("insightkit.ipc.asr_dispatcher.bootstrap_runtime", return_value={"ok": True})
     def test_runtime_bootstrap(self, mock_bootstrap):
@@ -38,6 +42,48 @@ class TestASRDispatcher(unittest.TestCase):
         dispatcher = ASRDispatcher()
         with self.assertRaises(ValueError):
             dispatcher.asr_transcribe_chunk({"wav_path": ""})
+
+    @mock.patch(
+        "insightkit.ipc.asr_dispatcher.transcribe",
+        return_value={
+            "lang": "zh",
+            "duration": 31.0,
+            "segments": [
+                {
+                    "start": 22000,
+                    "end": 25500,
+                    "speaker": "SPEAKER_00",
+                    "text": "final media aligned transcript",
+                    "confidence": 0.91,
+                }
+            ],
+        },
+    )
+    def test_transcribe_media_uses_final_media_timeline_without_offset(self, mock_transcribe):
+        dispatcher = ASRDispatcher()
+
+        result = dispatcher.asr_transcribe_media({
+            "media_path": "/tmp/final-recording.mp4",
+            "source": "media",
+        })
+
+        self.assertEqual(mock_transcribe.call_args.args[0], Path("/tmp/final-recording.mp4").resolve())
+        self.assertEqual(result["duration"], 31.0)
+        self.assertEqual(result["segments"], [
+            {
+                "start_ms": 22000,
+                "end_ms": 25500,
+                "speaker": "SPEAKER_00",
+                "text": "final media aligned transcript",
+                "confidence": 0.91,
+                "source": "media",
+            }
+        ])
+
+    def test_transcribe_media_requires_media_path(self):
+        dispatcher = ASRDispatcher()
+        with self.assertRaises(ValueError):
+            dispatcher.asr_transcribe_media({"media_path": ""})
 
 
 if __name__ == "__main__":

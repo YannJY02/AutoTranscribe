@@ -32,12 +32,19 @@ import os
 
 SOCKET_PATH = os.getenv(\"INSIGHTKIT_SOCKET\", "/tmp/insightkit.sock")
 
+PRODUCT_ACTION_ALIASES = {
+    \"records.save\": \"record.save\",
+    \"asr.transcribe_media\": \"media.transcribe_final\",
+    \"transcript.replace\": \"runtime.transcript.replace\",
+    \"insight.build_final\": \"smart_minutes.generate\"
+}
+
 
 def rpc_call(method, params, req_id=1):
     req = {\"jsonrpc\": \"2.0\", \"id\": req_id, \"method\": method, \"params\": params}
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.connect(SOCKET_PATH)
-        s.sendall(json.dumps(req).encode(\"utf-8\"))
+        s.sendall((json.dumps(req, ensure_ascii=False) + \"\\n\").encode(\"utf-8\"))
         data = s.recv(4 * 1024 * 1024)
     resp = json.loads(data.decode(\"utf-8\"))
     if \"error\" in resp:
@@ -49,7 +56,8 @@ def main():
     raw = input().strip()
     payload = json.loads(raw) if raw else {}
 
-    action = payload.get(\"action\", \"insight.build_final\")
+    requested_action = payload.get(\"action\", \"smart_minutes.generate\")
+    action = PRODUCT_ACTION_ALIASES.get(requested_action, requested_action)
     meeting_id = payload.get(\"meeting_id\")
     ext_payload = payload.get(\"payload\", {})
 
@@ -77,6 +85,10 @@ def main():
         })
     elif action == \"sidecar.version\":
         result = rpc_call(\"sidecar.version\", {})
+    elif action == \"sidecar.action_registry\":
+        result = rpc_call(\"sidecar.action_registry\", {})
+    elif action == \"sidecar.compatibility_routes\":
+        result = rpc_call(\"sidecar.compatibility_routes\", {})
     elif action == \"diagnostics.quick_check\":
         result = rpc_call(\"diagnostics.quick_check\", {})
     elif action == \"asr.runtime.status\":
@@ -93,8 +105,28 @@ def main():
             \"meeting_id\": meeting_id,
             \"window_sec\": int(ext_payload.get(\"window_sec\", 120))
         })
-    elif action == \"insight.build_final\":
-        result = rpc_call(\"insight.build_final\", {\"meeting_id\": meeting_id})
+    elif action == \"record.save\":
+        params = dict(ext_payload)
+        if meeting_id and not params.get(\"meeting_id\"):
+            params[\"meeting_id\"] = meeting_id
+        result = rpc_call(\"record.save\", params)
+    elif action == \"transcript.recover\":
+        params = dict(ext_payload)
+        if meeting_id and not params.get(\"meeting_id\"):
+            params[\"meeting_id\"] = meeting_id
+        result = rpc_call(\"transcript.recover\", params)
+    elif action == \"media.transcribe_final\":
+        result = rpc_call(\"media.transcribe_final\", {
+            \"media_path\": ext_payload.get(\"media_path\", \"\"),
+            \"source\": ext_payload.get(\"source\", \"media\")
+        })
+    elif action == \"runtime.transcript.replace\":
+        result = rpc_call(\"runtime.transcript.replace\", {
+            \"meeting_id\": meeting_id or ext_payload.get(\"meeting_id\", \"\"),
+            \"segments\": ext_payload.get(\"segments\", [])
+        })
+    elif action == \"smart_minutes.generate\":
+        result = rpc_call(\"smart_minutes.generate\", {\"meeting_id\": meeting_id})
     elif action == \"document.export\":
         result = rpc_call(\"document.export\", {
             \"meeting_id\": meeting_id,
@@ -124,7 +156,7 @@ def main():
 
     output = {
         \"ok\": True,
-        \"summary\": f\"InsightKit action {action} completed\",
+        \"summary\": f\"InsightKit action {requested_action if requested_action == action else requested_action + ' -> ' + action} completed\",
         \"result\": result
     }
     print(json.dumps(output, ensure_ascii=False))
@@ -150,11 +182,17 @@ A Host Call selects one Bridge Action and passes a Bridge Payload. The returned 
 - `live.session.status`
 - `sidecar.ensure_ready`
 - `sidecar.version`
+- `sidecar.action_registry`
+- `sidecar.compatibility_routes`
 - `diagnostics.quick_check`
 - `asr.runtime.status`
 - `asr.runtime.bootstrap`
 - `insight.refresh_live`
-- `insight.build_final`
+- `record.save`
+- `transcript.recover`
+- `media.transcribe_final`
+- `runtime.transcript.replace`
+- `smart_minutes.generate`
 - `document.export`
 - `transcription.import_file`
 - `transcription.watch.start`
@@ -165,11 +203,15 @@ A Host Call selects one Bridge Action and passes a Bridge Payload. The returned 
 ## Host Call Shape
 ```json
 {
-  "action": "insight.build_final",
+  "action": "smart_minutes.generate",
   "meeting_id": "your-session-id",
   "payload": {}
 }
 ```
+
+## Compatibility Bridge Aliases
+
+Older Host Calls using `records.save`, `asr.transcribe_media`, `transcript.replace`, or `insight.build_final` are mapped to the product actions above.
 
 ## Bridge Payload
 

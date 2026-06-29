@@ -17,7 +17,10 @@ except ImportError:
     from asr_model_catalog import QWEN_MLX_ENGINE
 
 
+APPLE_SPEECH_ENGINE = "apple-speech"
 ASR_ENGINE_OPTIONS = ("whisper", "funasr", QWEN_MLX_ENGINE)
+ASR_PEER_ENGINE_OPTIONS = (*ASR_ENGINE_OPTIONS, APPLE_SPEECH_ENGINE)
+ASR_PROFILE_SCHEMA_VERSION = 1
 
 
 def normalize_engine_name(engine_name: str | None, *, default_engine: str | None = None) -> str:
@@ -31,6 +34,10 @@ def normalize_engine_name(engine_name: str | None, *, default_engine: str | None
 
 def engine_options() -> list[str]:
     return list(ASR_ENGINE_OPTIONS)
+
+
+def peer_engine_options() -> list[str]:
+    return list(ASR_PEER_ENGINE_OPTIONS)
 
 
 def normalize_diarization_engine(engine_name: str | None = None) -> str:
@@ -190,6 +197,274 @@ def engine_status_snapshot(
     if timestamps is not None:
         status["timestamps"] = dict(timestamps)
     return status
+
+
+def apple_speech_engine_profile(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    source = env or os.environ
+    prototype_enabled = source.get("INSIGHTKIT_APPLE_SPEECH_PROTOTYPE_ENABLED", "").strip() == "1"
+    limitations = [
+        "Apple Speech is currently owned by the Swift final-media adapter, not the Python Sidecar runtime.",
+        "Live Workspace realtime ASR is not wired to Apple Speech.",
+        "Diarization parity has not been proven for Apple Speech.",
+    ]
+    if not prototype_enabled:
+        limitations.insert(0, "The experimental Apple Speech final-media prototype is disabled.")
+
+    return {
+        "engine": APPLE_SPEECH_ENGINE,
+        "display_name": "Apple Speech",
+        "active": False,
+        "configured": prototype_enabled,
+        "selectable": False,
+        "ready": False,
+        "availability_state": "degraded" if prototype_enabled else "unavailable",
+        "capabilities": {
+            "live_asr": False,
+            "final_media_asr": prototype_enabled,
+            "diarization": False,
+            "strict_local": True,
+            "runtime_owner": "swift-final-media-adapter",
+        },
+        "limitations": limitations,
+        "user_recovery_hint": (
+            "Apple Speech 目前只能作为音频最终媒体的实验转写原型；实时转写仍需使用已配置的本地 ASR Engine。"
+            if prototype_enabled
+            else "如需试用 Apple Speech，请先在设置中启用实验性音频最终媒体转写；实时转写仍需使用已配置的本地 ASR Engine。"
+        ),
+    }
+
+
+def attach_asr_runtime_profile(
+    status: Mapping[str, Any],
+    *,
+    backend: Mapping[str, Any] | None = None,
+    warm: Mapping[str, Any] | None = None,
+    configured_engine: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Attach the shared ASR Runtime Profile while preserving legacy status fields."""
+    merged = dict(status)
+    backend_snapshot = dict(backend or merged.get("backend") or {})
+    warm_snapshot = _sanitize_warm_status(warm or merged.get("warm") or {})
+    merged["backend"] = backend_snapshot
+    merged["warm"] = warm_snapshot
+    merged["profile"] = asr_runtime_profile_snapshot(
+        merged,
+        backend=backend_snapshot,
+        warm=warm_snapshot,
+        configured_engine=configured_engine,
+        env=env,
+    )
+    return merged
+
+
+def asr_runtime_profile_snapshot(
+    status: Mapping[str, Any],
+    *,
+    backend: Mapping[str, Any] | None = None,
+    warm: Mapping[str, Any] | None = None,
+    configured_engine: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    active_engine = normalize_engine_name(str(status.get("engine", "") or ""))
+    configured = normalize_engine_name(configured_engine or str(status.get("engine", "") or active_engine))
+    backend_snapshot = dict(backend or status.get("backend") or {})
+    warm_snapshot = _sanitize_warm_status(warm or status.get("warm") or {})
+    ready_by_engine = {
+        engine: bool((status.get("ready_by_engine") or {}).get(engine, False))
+        for engine in ASR_ENGINE_OPTIONS
+    }
+    if active_engine in ready_by_engine:
+        ready_by_engine[active_engine] = bool(status.get("ready", ready_by_engine[active_engine]))
+
+    active_ready = bool(status.get("ready", False))
+    warm_ready = bool(warm_snapshot.get("ready", False))
+    warm_in_progress = bool(warm_snapshot.get("in_progress", False))
+    warm_state = str(warm_snapshot.get("state", "") or "")
+    diarization = dict(status.get("speaker_diarization") or {})
+    diarization_degraded = bool(diarization.get("enabled", False)) and bool(diarization.get("degraded", False))
+    live_ready = active_ready and warm_ready
+    final_media_ready = active_ready
+    technical_status = _technical_status(
+        runtime_ready=active_ready,
+        warm_ready=warm_ready,
+        warm_in_progress=warm_in_progress,
+        warm_state=warm_state,
+        diarization_degraded=diarization_degraded,
+    )
+    degradation_reason = _degradation_reason(
+        runtime_ready=active_ready,
+        warm_ready=warm_ready,
+        warm_in_progress=warm_in_progress,
+        diarization=diarization,
+        status=status,
+    )
+    engine_profiles = {
+        engine: _python_engine_profile(
+            engine=engine,
+            active_engine=active_engine,
+            configured_engine=configured,
+            ready=ready_by_engine[engine],
+            status=status,
+        )
+        for engine in ASR_ENGINE_OPTIONS
+    }
+    engine_profiles[APPLE_SPEECH_ENGINE] = apple_speech_engine_profile(env=env)
+
+    return {
+        "schema_version": ASR_PROFILE_SCHEMA_VERSION,
+        "configured_engine": configured,
+        "active_engine": active_engine,
+        "engine_options": engine_options(),
+        "peer_engine_options": peer_engine_options(),
+        "engine_profiles": engine_profiles,
+        "live_asr": {
+            "ready": live_ready,
+            "requires_warm_runtime": True,
+            "reason": "" if live_ready else degradation_reason,
+        },
+        "final_media_asr": {
+            "ready": final_media_ready,
+            "requires_warm_runtime": False,
+            "reason": "" if final_media_ready else degradation_reason,
+        },
+        "warm": warm_snapshot,
+        "backend": backend_snapshot,
+        "diarization": diarization,
+        "technical_status": technical_status,
+        "degradation": {
+            "active": technical_status in {"warming", "degraded", "unavailable"},
+            "reason": "" if technical_status == "ready" else degradation_reason,
+        },
+        "user_recovery_hint": _user_recovery_hint(technical_status, degradation_reason),
+    }
+
+
+def _sanitize_warm_status(warm: Mapping[str, Any] | None) -> dict[str, Any]:
+    source = warm or {}
+    return {
+        "ready": bool(source.get("ready", False)),
+        "state": str(source.get("state", "idle") or "idle"),
+        "in_progress": bool(source.get("in_progress", False)),
+        "attempt": int(source.get("attempt", 0) or 0),
+        "last_warm_ms": int(source.get("last_warm_ms", 0) or 0),
+        "last_error": str(source.get("last_error", "") or ""),
+        "watchdog_sec": int(source.get("watchdog_sec", 0) or 0),
+    }
+
+
+def _python_engine_profile(
+    *,
+    engine: str,
+    active_engine: str,
+    configured_engine: str,
+    ready: bool,
+    status: Mapping[str, Any],
+) -> dict[str, Any]:
+    active = engine == active_engine
+    model = dict(status.get("model") or {}) if active else {}
+    if not active:
+        model_name = ""
+    else:
+        model_name = str(model.get("name", "") or "")
+    return {
+        "engine": engine,
+        "display_name": _engine_display_name(engine),
+        "active": active,
+        "configured": engine == configured_engine,
+        "selectable": True,
+        "ready": bool(ready),
+        "availability_state": "available" if ready else "unavailable",
+        "model": model,
+        "capabilities": {
+            "live_asr": bool(ready),
+            "final_media_asr": bool(ready),
+            "diarization": bool(active and (status.get("speaker_diarization") or {}).get("ready", False)),
+            "strict_local": True,
+            "runtime_owner": "python-sidecar",
+        },
+        "limitations": [] if ready else [f"{_engine_display_name(engine)} local runtime is not ready."],
+        "user_recovery_hint": (
+            ""
+            if ready
+            else f"请在设置中修复 {_engine_display_name(engine)} 语音识别模型和依赖。"
+        ),
+        "model_name": model_name,
+    }
+
+
+def _engine_display_name(engine: str) -> str:
+    if engine == QWEN_MLX_ENGINE:
+        return "Qwen MLX"
+    if engine == "funasr":
+        return "FunASR"
+    return "Whisper"
+
+
+def _technical_status(
+    *,
+    runtime_ready: bool,
+    warm_ready: bool,
+    warm_in_progress: bool,
+    warm_state: str,
+    diarization_degraded: bool,
+) -> str:
+    _ = warm_ready
+    if not runtime_ready:
+        return "unavailable"
+    if warm_in_progress:
+        return "warming"
+    if warm_state == "failed":
+        return "degraded"
+    if diarization_degraded:
+        return "degraded"
+    return "ready"
+
+
+def _degradation_reason(
+    *,
+    runtime_ready: bool,
+    warm_ready: bool,
+    warm_in_progress: bool,
+    diarization: Mapping[str, Any],
+    status: Mapping[str, Any],
+) -> str:
+    if not runtime_ready:
+        missing = _missing_runtime_reason(status)
+        return missing or "ASR runtime is not ready."
+    if warm_in_progress:
+        return "ASR Runtime Warmup is still in progress."
+    if not warm_ready:
+        return "ASR Runtime Warmup has not completed for live transcription."
+    if bool(diarization.get("enabled", False)) and bool(diarization.get("degraded", False)):
+        reason = str(diarization.get("reason", "") or "").strip()
+        return reason or "Diarization is degraded."
+    return ""
+
+
+def _missing_runtime_reason(status: Mapping[str, Any]) -> str:
+    model = status.get("model") or {}
+    if isinstance(model, Mapping) and not bool(model.get("exists", False)):
+        name = str(model.get("name", "") or "").strip()
+        return f"missing local ASR model: {name}" if name else "missing local ASR model"
+    required = ((status.get("dependencies") or {}).get("required") or {})
+    if isinstance(required, Mapping):
+        missing = [name for name, ready in required.items() if not ready]
+        if missing:
+            return "missing required ASR dependencies: " + ", ".join(sorted(map(str, missing)))
+    return ""
+
+
+def _user_recovery_hint(technical_status: str, reason: str) -> str:
+    if technical_status == "ready":
+        return ""
+    if technical_status == "warming":
+        return "本地语音识别正在预热；请稍等，或在设置中重新运行语音识别修复。"
+    if technical_status == "degraded":
+        return "语音识别可继续使用，但部分能力降级；请检查说话人分离或模型依赖设置。"
+    if "missing local ASR model" in reason or "missing required ASR dependencies" in reason:
+        return "本地语音识别未就绪；请在设置中运行一键修复语音识别。"
+    return "本地语音识别未就绪；请检查模型、依赖和运行时状态后重试。"
 
 
 def configured_backend_status(

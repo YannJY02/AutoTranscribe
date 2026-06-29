@@ -9,7 +9,9 @@ from typing import Any, Callable
 
 from insightkit.insights.provider import providers_status
 from insightkit.insights.service import InsightService
+from scripts.asr_runtime_profile import attach_asr_runtime_profile
 from scripts.asr_runtime_bootstrap import runtime_status
+from scripts.transcriber import runtime_backend_status, runtime_warm_status
 
 
 class ProviderProbe:
@@ -102,12 +104,22 @@ class ProviderProbe:
                 "timed_out": False,
             })
 
-        asr = runtime_status()
+        asr = attach_asr_runtime_profile(
+            runtime_status(),
+            backend=runtime_backend_status(),
+            warm=runtime_warm_status(),
+        )
+        asr_profile = asr.get("profile") or {}
         checks.append({
             "id": "asr_runtime", "title": "本地语音识别",
-            "status": "pass" if asr.get("ready") else "fail",
-            "action_hint": "执行一键修复语音识别",
-            "details": f"engine={asr.get('engine')} model={asr.get('model', {}).get('name', '')}",
+            "status": "pass" if (asr_profile.get("final_media_asr") or {}).get("ready") else "fail",
+            "action_hint": str(asr_profile.get("user_recovery_hint") or "执行一键修复语音识别"),
+            "details": (
+                f"engine={asr_profile.get('active_engine', asr.get('engine'))} "
+                f"model={asr.get('model', {}).get('name', '')} "
+                f"profile_status={asr_profile.get('technical_status', '')}"
+            ),
+            "runtime_profile": asr_profile,
             "timed_out": False,
         })
 

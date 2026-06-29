@@ -1,11 +1,14 @@
 import os
 
 from scripts.asr_runtime_profile import (
+    APPLE_SPEECH_ENGINE,
+    attach_asr_runtime_profile,
     configured_backend_status,
     engine_status_snapshot,
     engine_options,
     normalize_diarization_engine,
     normalize_engine_name,
+    peer_engine_options,
     resolve_fluid_audio_cli,
     speaker_diarization_status,
 )
@@ -18,6 +21,7 @@ def test_normalize_engine_name_keeps_canonical_engines():
     assert normalize_engine_name("qwen_mlx") == "qwen-mlx"
     assert normalize_engine_name(None, default_engine="qwen-mlx") == "qwen-mlx"
     assert engine_options() == ["whisper", "funasr", "qwen-mlx"]
+    assert peer_engine_options() == ["whisper", "funasr", "qwen-mlx", "apple-speech"]
 
 
 def test_normalize_diarization_engine_keeps_hidden_switch_consistent():
@@ -108,3 +112,76 @@ def test_engine_status_snapshot_builds_public_runtime_shape(tmp_path):
     assert status["timestamps"]["engine"] == "qwen-forced-aligner"
     assert status["speaker_diarization"]["engine"] == "none"
     assert status["ready"] is True
+
+
+def test_attach_asr_runtime_profile_separates_live_and_final_media_readiness():
+    status = {
+        "engine": "qwen-mlx",
+        "engine_options": ["whisper", "funasr", "qwen-mlx"],
+        "ready": True,
+        "ready_by_engine": {"whisper": False, "funasr": False, "qwen-mlx": True},
+        "model": {"name": "Qwen3-ASR-1.7B-MLX-4bit", "exists": True},
+        "dependencies": {"required": {"mlx-qwen3-asr": True}},
+        "speaker_diarization": {"enabled": True, "ready": True, "degraded": False},
+    }
+
+    result = attach_asr_runtime_profile(
+        status,
+        backend={"device": "mlx", "compute_type": "mlx", "resolved": "mlx"},
+        warm={"ready": False, "state": "idle", "in_progress": False},
+        configured_engine="qwen",
+    )
+
+    profile = result["profile"]
+    assert profile["schema_version"] == 1
+    assert profile["configured_engine"] == "qwen-mlx"
+    assert profile["active_engine"] == "qwen-mlx"
+    assert profile["technical_status"] == "ready"
+    assert profile["final_media_asr"]["ready"] is True
+    assert profile["live_asr"]["ready"] is False
+    assert "Warmup" in profile["live_asr"]["reason"]
+    assert profile["degradation"]["active"] is False
+    assert result["backend"]["device"] == "mlx"
+
+
+def test_attach_asr_runtime_profile_reports_warming_state_for_live_runtime():
+    result = attach_asr_runtime_profile(
+        {
+            "engine": "whisper",
+            "ready": True,
+            "ready_by_engine": {"whisper": True, "funasr": False, "qwen-mlx": False},
+            "model": {"name": "large-v3", "exists": True},
+            "dependencies": {"required": {"faster-whisper": True}},
+            "speaker_diarization": {"enabled": False, "ready": False, "degraded": False},
+        },
+        warm={"ready": False, "state": "warming", "in_progress": True, "attempt": 1},
+    )
+
+    profile = result["profile"]
+    assert profile["technical_status"] == "warming"
+    assert profile["degradation"]["active"] is True
+    assert profile["live_asr"]["ready"] is False
+    assert profile["final_media_asr"]["ready"] is True
+
+
+def test_asr_runtime_profile_represents_apple_speech_as_limited_peer_engine():
+    result = attach_asr_runtime_profile(
+        {
+            "engine": "whisper",
+            "ready": False,
+            "ready_by_engine": {"whisper": False, "funasr": False, "qwen-mlx": False},
+            "model": {"name": "large-v3", "exists": False},
+            "dependencies": {"required": {"faster-whisper": False}},
+            "speaker_diarization": {"enabled": False, "ready": False, "degraded": False},
+        },
+        env={"INSIGHTKIT_APPLE_SPEECH_PROTOTYPE_ENABLED": "1"},
+    )
+
+    apple = result["profile"]["engine_profiles"][APPLE_SPEECH_ENGINE]
+    assert apple["engine"] == "apple-speech"
+    assert apple["selectable"] is False
+    assert apple["availability_state"] == "degraded"
+    assert apple["capabilities"]["final_media_asr"] is True
+    assert apple["capabilities"]["live_asr"] is False
+    assert apple["capabilities"]["diarization"] is False
+    assert apple["limitations"]

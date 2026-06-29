@@ -27,6 +27,41 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SOCKET = Path("/tmp/insightkit.sock")
 
+PRODUCT_ACTION_NAMES = (
+    "record.save",
+    "transcript.recover",
+    "media.transcribe_final",
+    "runtime.transcript.replace",
+    "smart_minutes.generate",
+)
+
+COMPATIBILITY_ROUTES = (
+    {
+        "legacy_method": "records.save",
+        "replacement": "record.save",
+        "state": "compatibility_shim",
+        "reason": "Kept for older app builds and local automation that call the Record Writer directly.",
+    },
+    {
+        "legacy_method": "asr.transcribe_media",
+        "replacement": "media.transcribe_final",
+        "state": "compatibility_shim",
+        "reason": "Kept while transcript recovery and final-media transcription share the ASR media implementation.",
+    },
+    {
+        "legacy_method": "transcript.replace",
+        "replacement": "runtime.transcript.replace",
+        "state": "compatibility_shim",
+        "reason": "Kept for older app builds that replace the runtime transcript through the session handler.",
+    },
+    {
+        "legacy_method": "insight.build_final",
+        "replacement": "smart_minutes.generate",
+        "state": "compatibility_shim",
+        "reason": "Kept for older app builds and optional integration routes that request final Smart Minutes.",
+    },
+)
+
 
 class InsightRPCServer:
     def __init__(
@@ -158,18 +193,21 @@ class InsightRPCServer:
             "session.stop": self._session_stop,
             "stream.push_audio": self._stream_push_audio,
             "transcript.delta": self._transcript_delta,
+            "transcript.replace": self._transcript_replace,
             "transcript.list": self._transcript_list,
             "insight.refresh_live": self._insight_refresh_live,
             "insight.build_final": self._insight_build_final,
             "document.export": self._document_export,
             "sidecar.status": self._sidecar_status,
             "sidecar.version": self._sidecar_version,
+            "sidecar.compatibility_routes": self._sidecar_compatibility_routes,
             "sidecar.shutdown": self._sidecar_shutdown,
             "sidecar.ensure_ready": self._sidecar_ensure_ready,
             "asr.runtime.status": self._asr_runtime_status,
             "asr.runtime.bootstrap": self._asr_runtime_bootstrap,
             "asr.prewarm": self._asr_prewarm,
             "asr.transcribe_chunk": self._asr_transcribe_chunk,
+            "asr.transcribe_media": self._asr_transcribe_media,
             "analysis.providers.status": self._analysis_providers_status,
             "analysis.provider.probe": self._analysis_provider_probe,
             "diagnostics.quick_check": self._diagnostics_quick_check,
@@ -181,6 +219,12 @@ class InsightRPCServer:
             "transcription.watch.stop": self._transcription_watch_stop,
             "transcription.status": self._transcription_status,
             "transcription.cancel_job": self._transcription_cancel_job,
+            "sidecar.action_registry": self._sidecar_action_registry,
+            "record.save": self._record_save_action,
+            "transcript.recover": self._transcript_recover_action,
+            "media.transcribe_final": self._media_transcribe_final_action,
+            "runtime.transcript.replace": self._runtime_transcript_replace_action,
+            "smart_minutes.generate": self._smart_minutes_generate_action,
             "module.capabilities": self._module_capabilities,
             "module.run": self._module_run,
             "records.save": self._records_save,
@@ -213,6 +257,9 @@ class InsightRPCServer:
 
     def _transcript_delta(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.transcript_delta(params)
+
+    def _transcript_replace(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._session_handler.transcript_replace(params)
 
     def _transcript_list(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.transcript_list(params)
@@ -250,6 +297,9 @@ class InsightRPCServer:
 
     def _asr_transcribe_chunk(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._asr_dispatcher.asr_transcribe_chunk(params)
+
+    def _asr_transcribe_media(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._asr_dispatcher.asr_transcribe_media(params)
 
     # ── ProviderProbe delegates ───────────────────────────────────────
 
@@ -306,6 +356,8 @@ class InsightRPCServer:
             "version": self._version,
             "build": self._build,
             "capabilities": self._module_capabilities({}).get("actions", []),
+            "action_registry": self._sidecar_action_registry({}),
+            "compatibility_routes": self._sidecar_compatibility_routes({}),
         }
 
     def _sidecar_shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -327,6 +379,59 @@ class InsightRPCServer:
             time.sleep(0.1)
         raise RuntimeError(f"sidecar not ready within {timeout_sec}s")
 
+    def _sidecar_action_registry(self, params: dict[str, Any]) -> dict[str, Any]:
+        _ = params
+        return {
+            "registry_version": "2026-06-29",
+            "state_model": ["available", "unavailable", "degraded", "unsupported", "busy"],
+            "actions": [
+                {
+                    "name": "record.save",
+                    "state": "available",
+                    "reason": "",
+                    "requirements": ["meeting_id", "source_path"],
+                    "result": "record_path",
+                },
+                {
+                    "name": "transcript.recover",
+                    "state": "available",
+                    "reason": "",
+                    "requirements": ["record_media"],
+                    "result": "media_timed_transcript",
+                },
+                {
+                    "name": "media.transcribe_final",
+                    "state": "available",
+                    "reason": "",
+                    "requirements": ["media_path"],
+                    "result": "media_timed_transcript",
+                },
+                {
+                    "name": "runtime.transcript.replace",
+                    "state": "available",
+                    "reason": "",
+                    "requirements": ["meeting_id", "segments"],
+                    "result": "replaced_count",
+                },
+                {
+                    "name": "smart_minutes.generate",
+                    "state": "available",
+                    "reason": "",
+                    "requirements": ["meeting_id"],
+                    "result": "insight_package",
+                },
+            ],
+        }
+
+    @staticmethod
+    def _sidecar_compatibility_routes(params: dict[str, Any]) -> dict[str, Any]:
+        _ = params
+        return {
+            "registry_version": "2026-06-29",
+            "policy": "Compatibility shims remain until app-facing product actions are proven and older callers are intentionally retired.",
+            "routes": [dict(route) for route in COMPATIBILITY_ROUTES],
+        }
+
     # ── Module bridge (kept in server) ────────────────────────────────
 
     @staticmethod
@@ -341,10 +446,10 @@ class InsightRPCServer:
                 "transcript.delta",
                 "transcript.list",
                 "insight.refresh_live",
-                "insight.build_final",
                 "document.export",
                 "sidecar.status",
                 "sidecar.version",
+                "sidecar.compatibility_routes",
                 "sidecar.shutdown",
                 "sidecar.ensure_ready",
                 "asr.runtime.status",
@@ -362,10 +467,72 @@ class InsightRPCServer:
                 "transcription.watch.stop",
                 "transcription.status",
                 "transcription.cancel_job",
-                "records.save",
+                "sidecar.action_registry",
+                *PRODUCT_ACTION_NAMES,
+                *(route["legacy_method"] for route in COMPATIBILITY_ROUTES),
             ],
             "transport": "unix_socket_jsonrpc",
         }
+
+    def _record_save_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = self._records_save(params)
+        result["status"] = "available"
+        return result
+
+    def _transcript_recover_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        media_path = params.get("media_path") or params.get("record_media") or params.get("source_path")
+        result = self._asr_transcribe_media({
+            "media_path": media_path,
+            "source": params.get("source", "media"),
+        })
+        result["ok"] = True
+        result["status"] = "available"
+        meeting_id = str(params.get("meeting_id", "") or "").strip()
+        if meeting_id:
+            replaced = self.store.replace_segments(meeting_id, result.get("segments", []))
+            result["meeting_id"] = meeting_id
+            result["replaced"] = replaced
+        return result
+
+    def _media_transcribe_final_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = self._asr_transcribe_media(params)
+        result["ok"] = True
+        result["status"] = "available"
+        return result
+
+    def _runtime_transcript_replace_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        meeting_id = str(params.get("meeting_id", "") or "").strip()
+        if not meeting_id:
+            raise ValueError("meeting_id is required")
+        segments = params.get("segments", [])
+        if not isinstance(segments, list):
+            raise ValueError("segments must be a list")
+        if any(not isinstance(segment, dict) for segment in segments):
+            raise ValueError("segments must be a list of objects")
+        handler = getattr(self._session_handler, "transcript_replace", None)
+        if not callable(handler):
+            raise RuntimeError("runtime transcript replacement unsupported")
+        result = handler({"meeting_id": meeting_id, "segments": segments})
+        result["status"] = "available"
+        return result
+
+    def _smart_minutes_generate_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        meeting_id = str(params.get("meeting_id", "") or "").strip()
+        if not meeting_id:
+            raise ValueError("meeting_id is required")
+        transcript_count = self.store.count_segments(meeting_id)
+        try:
+            result = self._insight_build_final(params)
+        except Exception as exc:
+            raise RuntimeError(f"retryable failure: {exc}") from exc
+        result["transcript_state"] = "sufficient" if transcript_count > 0 else "insufficient"
+        if str(result.get("provider_vendor", "") or "") == "local-extractive":
+            result["status"] = "degraded"
+            result["degradation_reason"] = "provider unavailable; used local extractive fallback"
+        else:
+            result["status"] = "available"
+            result.setdefault("degradation_reason", "")
+        return result
 
     def _records_save(self, params: dict[str, Any]) -> dict[str, Any]:
         from insightkit.records.record_writer import RecordWriter, detect_media_type, detect_duration
@@ -418,6 +585,27 @@ class InsightRPCServer:
                 "meeting_id": meeting_id,
                 "segments": payload.get("segments", []),
             })
+        if action == "record.save":
+            merged = dict(payload)
+            if meeting_id and "meeting_id" not in merged:
+                merged["meeting_id"] = meeting_id
+            return self._record_save_action(merged)
+        if action == "transcript.recover":
+            return self._transcript_recover_action(payload)
+        if action == "media.transcribe_final":
+            return self._media_transcribe_final_action(payload)
+        if action == "runtime.transcript.replace":
+            return self._runtime_transcript_replace_action({
+                "meeting_id": meeting_id or payload.get("meeting_id", ""),
+                "segments": payload.get("segments", []),
+            })
+        if action == "smart_minutes.generate":
+            return self._smart_minutes_generate_action({
+                "meeting_id": meeting_id or payload.get("meeting_id", ""),
+                "provider_vendor": payload.get("provider_vendor", ""),
+                "provider_model": payload.get("provider_model", ""),
+                "strict_mode": payload.get("strict_mode"),
+            })
         if action == "transcript.list":
             return self._transcript_list({
                 "meeting_id": meeting_id,
@@ -448,6 +636,8 @@ class InsightRPCServer:
             return self._sidecar_status({})
         if action == "sidecar.version":
             return self._sidecar_version({})
+        if action == "sidecar.compatibility_routes":
+            return self._sidecar_compatibility_routes({})
         if action == "sidecar.shutdown":
             return self._sidecar_shutdown({})
         if action == "sidecar.ensure_ready":
@@ -474,6 +664,16 @@ class InsightRPCServer:
                 "wav_path": payload.get("wav_path", ""),
                 "offset_ms": int(payload.get("offset_ms", 0)),
                 "source": payload.get("source", ""),
+            })
+        if action == "asr.transcribe_media":
+            return self._asr_transcribe_media({
+                "media_path": payload.get("media_path", ""),
+                "source": payload.get("source", ""),
+            })
+        if action == "transcript.replace":
+            return self._transcript_replace({
+                "meeting_id": meeting_id,
+                "segments": payload.get("segments", []),
             })
         if action == "analysis.providers.status":
             return self._analysis_providers_status({

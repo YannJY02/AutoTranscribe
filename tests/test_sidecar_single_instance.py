@@ -18,6 +18,8 @@ class TestSidecarSingleInstance(unittest.TestCase):
             self.assertIn("build", version)
             self.assertIn("capabilities", version)
             self.assertIn("sidecar.shutdown", version["capabilities"])
+            self.assertIn("asr.transcribe_media", version["capabilities"])
+            self.assertIn("transcript.replace", version["capabilities"])
             status = server._sidecar_status({})
             self.assertIn("last_error_code", status)
             self.assertIn("last_latency_ms", status)

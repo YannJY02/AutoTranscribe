@@ -28,6 +28,7 @@ try:
     )
     from .asr_runtime_profile import (
         ASR_ENGINE_OPTIONS,
+        attach_asr_runtime_profile,
         configured_backend_status,
         engine_status_snapshot,
         engine_options,
@@ -53,6 +54,7 @@ except ImportError:
     )
     from asr_runtime_profile import (
         ASR_ENGINE_OPTIONS,
+        attach_asr_runtime_profile,
         configured_backend_status,
         engine_status_snapshot,
         engine_options,
@@ -308,7 +310,7 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
     else:
         active = whisper_status
 
-    return {
+    status = {
         "python": {
             "executable": sys.executable,
             "version": sys.version.split()[0],
@@ -340,6 +342,12 @@ def runtime_status(engine: str | None = None) -> dict[str, Any]:
         },
         "ready": bool(active["ready"]),
     }
+    return attach_asr_runtime_profile(
+        status,
+        backend=status["backend"],
+        warm=status["warm"],
+        configured_engine=normalized_engine,
+    )
 
 
 def _run(cmd: list[str], timeout: int = 3600) -> tuple[bool, str]:

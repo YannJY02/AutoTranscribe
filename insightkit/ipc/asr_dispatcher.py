@@ -5,17 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from scripts.asr_runtime_profile import attach_asr_runtime_profile
 from scripts.asr_runtime_bootstrap import bootstrap_runtime, runtime_status
-from scripts.transcriber import prewarm_asr, runtime_backend_status, runtime_warm_status, transcribe_audio_chunk
+from scripts.transcriber import prewarm_asr, runtime_backend_status, runtime_warm_status, transcribe, transcribe_audio_chunk
 
 
 class ASRDispatcher:
     def asr_runtime_status(self, params: dict[str, Any]) -> dict[str, Any]:
         engine = str(params.get("engine", "") or "").strip() or None
         status = runtime_status(engine=engine)
-        status["backend"] = runtime_backend_status(engine=engine)
-        status["warm"] = runtime_warm_status()
-        return status
+        return attach_asr_runtime_profile(
+            status,
+            backend=runtime_backend_status(engine=engine),
+            warm=runtime_warm_status(),
+            configured_engine=engine,
+        )
 
     def asr_runtime_bootstrap(self, params: dict[str, Any]) -> dict[str, Any]:
         model = str(params.get("model", "") or "").strip() or None
@@ -46,3 +50,32 @@ class ASRDispatcher:
         for seg in segments:
             seg["source"] = source
         return {"segments": segments}
+
+    def asr_transcribe_media(self, params: dict[str, Any]) -> dict[str, Any]:
+        media_path = str(params.get("media_path", "") or "").strip()
+        if not media_path:
+            raise ValueError("media_path is required")
+        source = str(params.get("source", "") or "").strip() or "media"
+        result = transcribe(Path(media_path).expanduser().resolve())
+        segments = []
+        for seg in result.get("segments", []):
+            text = str(seg.get("text", "") or "").strip()
+            if not text:
+                continue
+            start_ms = int(seg.get("start", 0) or 0)
+            end_ms = int(seg.get("end", 0) or 0)
+            if end_ms <= start_ms:
+                end_ms = start_ms + 1200
+            segments.append({
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "speaker": str(seg.get("speaker", "") or ""),
+                "text": text,
+                "confidence": float(seg.get("confidence", 0.0) or 0.0),
+                "source": source,
+            })
+        return {
+            "duration": float(result.get("duration", 0.0) or 0.0),
+            "lang": str(result.get("lang", "") or ""),
+            "segments": segments,
+        }

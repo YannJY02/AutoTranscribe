@@ -21,6 +21,7 @@ class TestASRRuntimeStatus(unittest.TestCase):
         self.assertIn("ready", status)
         self.assertIn("backend", status)
         self.assertIn("warm", status)
+        self.assertIn("profile", status)
 
         self.assertTrue(isinstance(status["ready"], bool))
         self.assertTrue(isinstance(status["python"], dict))
@@ -41,6 +42,11 @@ class TestASRRuntimeStatus(unittest.TestCase):
         self.assertIn("attempt", status["warm"])
         self.assertIn("last_warm_ms", status["warm"])
         self.assertIn("last_error", status["warm"])
+        self.assertEqual(status["profile"]["schema_version"], 1)
+        self.assertIn("live_asr", status["profile"])
+        self.assertIn("final_media_asr", status["profile"])
+        self.assertIn("engine_profiles", status["profile"])
+        self.assertIn("apple-speech", status["profile"]["engine_profiles"])
 
     def test_runtime_snapshot_defaults_include_background_warmup_fields(self):
         backend = runtime_backend_status()

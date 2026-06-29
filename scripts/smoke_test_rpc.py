@@ -181,6 +181,8 @@ def main() -> int:
     methods = [
         ("sidecar.status", {}),
         ("sidecar.version", {}),
+        ("sidecar.action_registry", {}),
+        ("sidecar.compatibility_routes", {}),
         ("sidecar.ensure_ready", {"timeout_sec": 3}),
         ("asr.runtime.status", {}),
         ("analysis.providers.status", {"probe_active": False}),

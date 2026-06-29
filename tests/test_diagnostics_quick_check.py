@@ -20,6 +20,9 @@ class TestDiagnosticsQuickCheck(unittest.TestCase):
             self.assertIn("asr_runtime", ids)
             self.assertIn("analysis_provider", ids)
             self.assertIn("analysis_provider_probe", ids)
+            asr_check = next(item for item in checks if item.get("id") == "asr_runtime")
+            self.assertIn("runtime_profile", asr_check)
+            self.assertIn("final_media_asr", asr_check["runtime_profile"])
             server.shutdown()
 
 

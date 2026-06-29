@@ -1,4 +1,10 @@
+import json
+import os
+import socket
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -25,8 +31,70 @@ class TestAttentionOSBridge(unittest.TestCase):
                 "Bridge Payload",
                 "Module State",
                 "meeting-asset",
+                "smart_minutes.generate",
+                "Compatibility Bridge Aliases",
             ]:
                 self.assertIn(marker, readme)
+
+    def test_exported_entry_maps_legacy_bridge_actions_to_product_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = export_module(Path(tmp) / "module")
+            index = (out / "index.py").read_text(encoding="utf-8")
+
+            self.assertIn('payload.get("action", "smart_minutes.generate")', index)
+            self.assertIn('"insight.build_final": "smart_minutes.generate"', index)
+            self.assertIn('rpc_call("smart_minutes.generate"', index)
+            self.assertNotIn('rpc_call("insight.build_final"', index)
+            self.assertIn('+ "\\n").encode("utf-8")', index)
+
+    def test_exported_entry_forwards_legacy_host_call_to_product_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            out = export_module(tmp_path / "module")
+            socket_path = tmp_path / "fake-sidecar.sock"
+            ready = threading.Event()
+            received: dict[str, object] = {}
+
+            def serve_once() -> None:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(str(socket_path))
+                    server.listen(1)
+                    ready.set()
+                    conn, _ = server.accept()
+                    with conn:
+                        request = json.loads(conn.makefile("rb").readline().decode("utf-8"))
+                        received["method"] = request["method"]
+                        response = {
+                            "id": request["id"],
+                            "result": {"forwarded_method": request["method"]},
+                        }
+                        conn.sendall(json.dumps(response).encode("utf-8"))
+
+            thread = threading.Thread(target=serve_once, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(timeout=2))
+
+            env = dict(os.environ)
+            env["INSIGHTKIT_SOCKET"] = str(socket_path)
+            proc = subprocess.run(
+                [sys.executable, str(out / "index.py")],
+                input=json.dumps({
+                    "action": "insight.build_final",
+                    "meeting_id": "bridge-meeting",
+                    "payload": {},
+                }),
+                text=True,
+                capture_output=True,
+                env=env,
+                timeout=5,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            output = json.loads(proc.stdout)
+            self.assertTrue(output["ok"])
+            self.assertEqual(received["method"], "smart_minutes.generate")
+            self.assertEqual(output["result"]["forwarded_method"], "smart_minutes.generate")
+            self.assertIn("insight.build_final -> smart_minutes.generate", output["summary"])
 
 
 if __name__ == "__main__":
