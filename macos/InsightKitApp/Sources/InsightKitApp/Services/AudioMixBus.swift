@@ -11,6 +11,8 @@ final class AudioMixBus {
         var targetSampleRate: Double = 16_000
         var micWeight: Float = 0.6
         var systemWeight: Float = 0.6
+        var mixedHeadroom: Float = 0.9
+        var sourceCeiling: Float = 0.98
         var mixedTailFlushSamples: Int = 8_000
     }
 
@@ -55,18 +57,19 @@ final class AudioMixBus {
         queue.async {
             guard let mono = self.convertToTargetSamples(buffer) else { return }
             guard !mono.isEmpty else { return }
+            let limitedMono = mono.map { AudioSampleLimiter.limit($0, ceiling: self.config.sourceCeiling) }
 
             switch self.mode {
             case .microphone:
                 if source == .microphone {
-                    self.onMixedSamples?(mono)
+                    self.onMixedSamples?(limitedMono)
                 }
             case .systemAudio:
                 if source == .systemAudio {
-                    self.onMixedSamples?(mono)
+                    self.onMixedSamples?(limitedMono)
                 }
             case .mixed:
-                self.mixIn(source: source, samples: mono)
+                self.mixIn(source: source, samples: limitedMono)
             }
         }
     }
@@ -83,9 +86,14 @@ final class AudioMixBus {
         if overlapCount > 0 {
             var out: [Float] = []
             out.reserveCapacity(overlapCount)
+            let gain = AudioSampleLimiter.mixedGain(
+                micWeight: config.micWeight,
+                systemWeight: config.systemWeight,
+                headroom: config.mixedHeadroom
+            )
             for idx in 0..<overlapCount {
-                let value = pendingMic[idx] * config.micWeight + pendingSystem[idx] * config.systemWeight
-                out.append(Self.clamp(value))
+                let value = (pendingMic[idx] * config.micWeight + pendingSystem[idx] * config.systemWeight) * gain
+                out.append(AudioSampleLimiter.limit(value, ceiling: config.mixedHeadroom))
             }
             pendingMic.removeFirst(overlapCount)
             pendingSystem.removeFirst(overlapCount)
@@ -99,14 +107,18 @@ final class AudioMixBus {
     private func flushTailIfNeeded() {
         if pendingMic.count > config.mixedTailFlushSamples {
             let flushCount = pendingMic.count - config.mixedTailFlushSamples
-            let tail = pendingMic.prefix(flushCount).map { Self.clamp($0 * config.micWeight) }
+            let tail = pendingMic.prefix(flushCount).map {
+                AudioSampleLimiter.limit($0 * config.micWeight, ceiling: config.mixedHeadroom)
+            }
             pendingMic.removeFirst(flushCount)
             onMixedSamples?(tail)
         }
 
         if pendingSystem.count > config.mixedTailFlushSamples {
             let flushCount = pendingSystem.count - config.mixedTailFlushSamples
-            let tail = pendingSystem.prefix(flushCount).map { Self.clamp($0 * config.systemWeight) }
+            let tail = pendingSystem.prefix(flushCount).map {
+                AudioSampleLimiter.limit($0 * config.systemWeight, ceiling: config.mixedHeadroom)
+            }
             pendingSystem.removeFirst(flushCount)
             onMixedSamples?(tail)
         }
@@ -168,7 +180,4 @@ final class AudioMixBus {
         return "\(format.sampleRate)-\(format.channelCount)-\(format.commonFormat.rawValue)-\(format.isInterleaved)-\(sd.mFormatFlags)-\(sd.mBytesPerFrame)"
     }
 
-    private static func clamp(_ value: Float) -> Float {
-        min(max(value, -1), 1)
-    }
 }

@@ -104,6 +104,76 @@ final class WorkflowCoordinatorTests: XCTestCase {
         XCTAssertEqual(openedSettingsCount, 1)
     }
 
+    func testDirectSettingsEntryCanOpenSettingsWorkspace() {
+        var openedSettingsCount = 0
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock(),
+            settingsOpener: {
+                openedSettingsCount += 1
+            }
+        )
+
+        coordinator.openSettings()
+
+        XCTAssertEqual(openedSettingsCount, 1)
+    }
+
+    func testBottomStatusPayloadExposesSettingsAction() {
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+
+        coordinator.openLive()
+
+        XCTAssertEqual(coordinator.bottomStatusPayload.actions, [.settings])
+    }
+
+    func testPrimaryNavigationFromRecordReviewReturnsToRecordsListInsteadOfHome() {
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+
+        coordinator.openRecords()
+        XCTAssertEqual(coordinator.primaryNavigationAction, .home)
+
+        coordinator.recordsNavigation.openReview(recordID: "record-review-fixture")
+
+        XCTAssertEqual(coordinator.primaryNavigationAction, .recordsList)
+
+        coordinator.performPrimaryNavigationAction()
+
+        XCTAssertEqual(coordinator.route, .records)
+        XCTAssertEqual(coordinator.appState.activeRoute, .records)
+        XCTAssertFalse(coordinator.recordsNavigation.isReviewingRecord)
+    }
+
     func testActiveLiveMeetingStillBlocksNewLiveStartWhileStopIsFinalizing() {
         let live = LiveSessionViewModel(rpcClient: RPCClientMock())
         let tx = TranscriptionSessionViewModel(

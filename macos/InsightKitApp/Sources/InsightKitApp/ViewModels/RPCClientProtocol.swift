@@ -6,6 +6,7 @@ protocol InsightRPCClientProtocol {
     func sessionStart(meetingID: String, title: String, source: String) throws
     func sessionStop(meetingID: String) throws
     func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int
+    func transcriptReplace(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int
     func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment]
     func refreshLive(meetingID: String, windowSec: Int) throws -> InsightRefreshResult
     func buildFinal(meetingID: String) throws -> InsightRefreshResult
@@ -23,6 +24,7 @@ protocol InsightRPCClientProtocol {
     func asrRuntimeBootstrap(model: String, engine: LocalASREngine?) throws -> ASRBootstrapResult
     func asrPrewarm(model: String, engine: LocalASREngine?, timeoutSec: Int) throws -> ASRPrewarmResult
     func asrTranscribeChunk(wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta]
+    func asrTranscribeMedia(mediaPath: String, source: String) throws -> [RPCSegmentDelta]
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus
     func providerProbe(vendor: ProviderVendor, model: String, baseURL: String, forceRefresh: Bool) throws -> ProviderProbeResult
     func diagnosticsQuickCheck(probeTimeoutSec: Int) throws -> DiagnosticReport

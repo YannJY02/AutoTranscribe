@@ -60,13 +60,7 @@ enum RecordDocumentExporter {
     }
 
     private static func persistedRecordPath(meetingID: String, recordsService: RecordsIndexService?) -> URL? {
-        guard let root = recordsService?.rootDirectory else { return nil }
-        let path = root.appendingPathComponent(meetingID, isDirectory: true)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return nil
-        }
-        return path
+        recordsService?.recordFolderURL(for: meetingID)
     }
 
     private static func loadMetadata(recordPath: URL) throws -> RecordMetadata {
@@ -84,20 +78,19 @@ enum RecordDocumentExporter {
     }
 
     static func renderMarkdown(metadata: RecordMetadata, recordPath: URL) throws -> String {
-        let minutes = loadMinutes(recordPath: recordPath)
-        let transcript = loadTranscript(recordPath: recordPath)
-        let notes = NotesFileIO.read(from: recordPath.appendingPathComponent("notes.md"))
+        let asset = MeetingAssetSnapshot.load(recordPath: recordPath, duration: metadata.duration)
+        let minutes = asset.smartMinutes ?? SmartMinutes()
+        let transcript = asset.transcriptEntries
+        let notes = asset.notes
         let speakers = uniqueSpeakers(from: transcript)
-        let title = metadata.summaryPreview?.isEmpty == false ? metadata.summaryPreview! : metadata.id
-        let mediaFile = firstExistingFile(
-            in: recordPath,
-            names: ["recording.mp4", "recording.mov", "recording.mkv", "recording.m4a", "recording.mp3", "recording.wav"]
-        )
+        let title = metadata.displayTitle
+        let mediaFile = asset.mediaURL
 
         var lines: [String] = []
         lines.append("# \(title)")
         lines.append("")
-        lines.append("- 文档标题：\(metadata.id)")
+        lines.append("- 文档标题：\(title)")
+        lines.append("- 记录 ID：\(metadata.id)")
         lines.append("- 会议主题：\(title)")
         lines.append("- 会议时间：\(formatDate(metadata.createdAt))")
         lines.append("- 参会人：\(speakers.isEmpty ? "本地记录未标注参会人；使用说话人标签降级。" : speakers.joined(separator: ", "))")
@@ -114,17 +107,20 @@ enum RecordDocumentExporter {
         lines.append("")
 
         appendList(title: "## 会议金句", items: minutes.highlights, fallback: "当前记录未包含会议金句。", to: &lines)
-        appendList(title: "## 发言人总结", items: speakerSummaries(from: transcript), fallback: "当前本地记录未包含独立发言人总结；已保留逐字稿说话人标签。", to: &lines)
+        let speakerSummaryItems = minutes.speakerSummaries.isEmpty
+            ? speakerSummaries(from: transcript)
+            : minutes.speakerSummaries.map { "\($0.speakerName)：\($0.summary)" }
+        appendList(title: "## 发言人总结", items: speakerSummaryItems, fallback: "当前本地记录未包含独立发言人总结；已保留逐字稿说话人标签。", to: &lines)
         appendList(title: "## 关键决策", items: minutes.keyDecisions, fallback: "当前记录未包含明确关键决策。", to: &lines)
         appendList(title: "## 待办事项", items: minutes.actionItems, fallback: "当前记录未包含待办事项。", to: &lines)
 
         lines.append("## 智能章节")
         lines.append("")
-        if minutes.timelineBeats.isEmpty {
+        if minutes.chapters.isEmpty {
             lines.append("当前记录未包含智能章节。")
         } else {
-            for beat in minutes.timelineBeats {
-                lines.append("- [\(beat.timestamp)] \(beat.title)：\(beat.summary)")
+            for beat in minutes.chapters {
+                lines.append("- [\(formatTimestamp(beat.timestamp))] \(beat.title)：\(beat.summary)")
             }
         }
         lines.append("")
@@ -153,7 +149,7 @@ enum RecordDocumentExporter {
             lines.append("当前记录未包含逐字稿。")
         } else {
             for segment in transcript {
-                lines.append("- [\(formatTimestamp(segment.startSeconds))] \(segment.speaker): \(segment.text)")
+                lines.append("- [\(formatTimestamp(segment.timestamp))] \(exportSpeakerLabel(segment.speaker)): \(segment.text)")
             }
         }
         lines.append("")
@@ -173,64 +169,24 @@ enum RecordDocumentExporter {
         lines.append("")
     }
 
-    private static func loadMinutes(recordPath: URL) -> RecordExportMinutes {
-        let url = recordPath.appendingPathComponent("minutes.json")
-        guard let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return RecordExportMinutes() }
-
-        let timeline = (object["timeline_beats"] as? [[String: Any]] ?? []).map {
-            RecordExportTimelineBeat(
-                timestamp: $0["timestamp"] as? String ?? "00:00",
-                title: $0["title"] as? String ?? "",
-                summary: $0["summary"] as? String ?? ""
-            )
-        }
-
-        return RecordExportMinutes(
-            structuredSummary: object["structured_summary"] as? String ?? "",
-            highlights: object["highlights"] as? [String] ?? [],
-            keyDecisions: object["key_decisions"] as? [String] ?? [],
-            actionItems: object["action_items"] as? [String] ?? [],
-            timelineBeats: timeline
-        )
+    private static func uniqueSpeakers(from transcript: [TranscriptEntry]) -> [String] {
+        Array(Set(transcript.map { exportSpeakerLabel($0.speaker) }.filter { !$0.isEmpty })).sorted()
     }
 
-    private static func loadTranscript(recordPath: URL) -> [RecordExportTranscriptSegment] {
-        let url = recordPath.appendingPathComponent("transcript.json")
-        guard let data = try? Data(contentsOf: url),
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else { return [] }
-
-        return rows.compactMap { row in
-            guard let text = row["text"] as? String, !text.isEmpty else { return nil }
-            return RecordExportTranscriptSegment(
-                startSeconds: TimeInterval(row["start_ms"] as? Int ?? 0) / 1000,
-                speaker: row["speaker"] as? String ?? "未标注",
-                text: text
-            )
-        }
-    }
-
-    private static func uniqueSpeakers(from transcript: [RecordExportTranscriptSegment]) -> [String] {
-        Array(Set(transcript.map(\.speaker).filter { !$0.isEmpty })).sorted()
-    }
-
-    private static func speakerSummaries(from transcript: [RecordExportTranscriptSegment]) -> [String] {
-        let grouped = Dictionary(grouping: transcript, by: \.speaker)
+    private static func speakerSummaries(from transcript: [TranscriptEntry]) -> [String] {
+        let grouped = Dictionary(grouping: transcript) { exportSpeakerLabel($0.speaker) }
         return grouped.keys.sorted().map { speaker in
             let segments = grouped[speaker] ?? []
             let seconds = segments.reduce(0.0) { total, segment in
-                max(total, segment.startSeconds)
+                max(total, segment.timestamp)
             }
             return "\(speaker)：\(segments.count) 条发言，最晚发言时间 \(formatTimestamp(seconds))。"
         }
     }
 
-    private static func firstExistingFile(in directory: URL, names: [String]) -> URL? {
-        names
-            .map { directory.appendingPathComponent($0) }
-            .first { FileManager.default.fileExists(atPath: $0.path) }
+    private static func exportSpeakerLabel(_ speaker: String?) -> String {
+        let trimmed = speaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "未标注" : trimmed
     }
 
     private static func writePDF(text: String, to url: URL) throws {
@@ -342,24 +298,4 @@ enum RecordDocumentExporter {
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter.string(from: Date())
     }
-}
-
-private struct RecordExportMinutes {
-    var structuredSummary: String = ""
-    var highlights: [String] = []
-    var keyDecisions: [String] = []
-    var actionItems: [String] = []
-    var timelineBeats: [RecordExportTimelineBeat] = []
-}
-
-private struct RecordExportTimelineBeat {
-    let timestamp: String
-    let title: String
-    let summary: String
-}
-
-private struct RecordExportTranscriptSegment {
-    let startSeconds: TimeInterval
-    let speaker: String
-    let text: String
 }

@@ -3,12 +3,25 @@ import SwiftUI
 
 struct RecordsView: View {
     @ObservedObject var recordsService: RecordsIndexService
+    @ObservedObject var recordsNavigation: RecordsWorkspaceNavigation
+    private let transcriptRecoveryService: TranscriptRecoveryServicing?
     @State private var searchQuery = ""
     @State private var selectedTags: Set<String> = []
     @State private var selectedType: MediaType?
     @State private var selectedTimeFilter: RecordTimeFilter?
     @State private var selectedRecordID: String?
     @State private var reviewDataSource: RecordReviewDataSource?
+    @State private var recordRenameTarget: RecordMetadata?
+
+    init(
+        recordsService: RecordsIndexService,
+        recordsNavigation: RecordsWorkspaceNavigation = RecordsWorkspaceNavigation(),
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
+    ) {
+        self.recordsService = recordsService
+        self.recordsNavigation = recordsNavigation
+        self.transcriptRecoveryService = transcriptRecoveryService
+    }
 
     var body: some View {
         HSplitView {
@@ -29,16 +42,18 @@ struct RecordsView: View {
                 // Three-panel preview
                 SessionShellFixed(
                     left: ChapterSidebarView(dataSource: dataSource),
-	                    center: RecordReviewCenterView(dataSource: dataSource) {
-	                        reviewDataSource = nil
-	                        selectedRecordID = nil
-	                    },
-	                    right: TimestampNotesEditor(
-	                        dataSource: dataSource,
-	                        autofocusInput: false,
-	                        autoScrollToPlaybackTime: false
-	                    )
-	                )
+                    center: RecordReviewCenterView(
+                        dataSource: dataSource,
+                        onRenameRecord: { beginRenameRecord(dataSource.metadata) }
+                    ) {
+                        recordsNavigation.closeReview()
+                    },
+                    right: TimestampNotesEditor(
+                        dataSource: dataSource,
+                        autofocusInput: false,
+                        autoScrollToPlaybackTime: false
+                    )
+                )
             } else {
                 recordList
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,6 +63,18 @@ struct RecordsView: View {
         .background(InsightTheme.canvas)
         .onAppear {
             recordsService.refreshIndexAsync()
+        }
+        .onReceive(recordsNavigation.$selectedRecordID) { recordID in
+            syncReviewSelection(recordID)
+        }
+        .sheet(item: $recordRenameTarget) { record in
+            RecordRenameSheet(
+                record: record,
+                onCancel: { recordRenameTarget = nil },
+                onSave: { newTitle in
+                    commitRecordRename(record, title: newTitle)
+                }
+            )
         }
     }
 
@@ -99,6 +126,7 @@ struct RecordsView: View {
                         RecordListItemView(
                             record: record,
                             onSelect: { selectRecord(record) },
+                            onRename: { beginRenameRecord(record) },
                             onRevealInFinder: { revealRecord(record) },
                             onDelete: { deleteRecord(record) }
                         )
@@ -116,21 +144,63 @@ struct RecordsView: View {
         selectedRecordID = record.id
         reviewDataSource = RecordReviewDataSource(
             metadata: record,
-            rootDirectory: recordsService.rootDirectory
+            rootDirectory: recordsService.rootDirectory,
+            recordPath: recordsService.recordFolderURL(for: record.id),
+            transcriptRecoveryService: transcriptRecoveryService
         )
+        recordsNavigation.openReview(recordID: record.id)
     }
 
     private func revealRecord(_ record: RecordMetadata) {
-        let folder = recordsService.rootDirectory.appendingPathComponent(record.id)
+        guard let folder = recordsService.recordFolderURL(for: record.id) else { return }
         NSWorkspace.shared.selectFile(folder.path, inFileViewerRootedAtPath: folder.deletingLastPathComponent().path)
+    }
+
+    private func beginRenameRecord(_ record: RecordMetadata) {
+        recordRenameTarget = record
+    }
+
+    private func commitRecordRename(_ record: RecordMetadata, title: String) {
+        recordsService.renameRecord(id: record.id, to: title)
+        if selectedRecordID == record.id,
+           let updated = recordsService.records.first(where: { $0.id == record.id }) {
+            reviewDataSource = RecordReviewDataSource(
+                metadata: updated,
+                rootDirectory: recordsService.rootDirectory,
+                recordPath: recordsService.recordFolderURL(for: record.id),
+                transcriptRecoveryService: transcriptRecoveryService
+            )
+        }
+        recordRenameTarget = nil
     }
 
     private func deleteRecord(_ record: RecordMetadata) {
         recordsService.deleteRecord(id: record.id)
         if selectedRecordID == record.id {
+            recordsNavigation.closeReview()
+        }
+    }
+
+    private func syncReviewSelection(_ recordID: String?) {
+        guard let recordID else {
             selectedRecordID = nil
             reviewDataSource = nil
+            return
         }
+
+        guard selectedRecordID != recordID else { return }
+        guard let record = recordsService.records.first(where: { $0.id == recordID }) else {
+            recordsNavigation.closeReview()
+            return
+        }
+
+        selectedRecordID = record.id
+        reviewDataSource = RecordReviewDataSource(
+            metadata: record,
+            rootDirectory: recordsService.rootDirectory,
+            recordPath: recordsService.recordFolderURL(for: record.id),
+            transcriptRecoveryService: transcriptRecoveryService
+        )
     }
 
     private func formatTimestamp(_ seconds: TimeInterval) -> String {
@@ -142,7 +212,9 @@ struct RecordsView: View {
 
 private struct RecordReviewCenterView: View {
     @ObservedObject var dataSource: RecordReviewDataSource
+    let onRenameRecord: () -> Void
     let onBack: () -> Void
+    @State private var speakerRenameRequest: SpeakerRenameRequest?
 
     var body: some View {
         VStack(spacing: InsightSpacing.panelGap) {
@@ -158,7 +230,37 @@ private struct RecordReviewCenterView: View {
                     .foregroundStyle(InsightTheme.accent)
                 }
                 .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dataSource.metadata.displayTitle)
+                        .font(InsightTypography.bodyMedium)
+                        .foregroundStyle(InsightTheme.textPrimary)
+                        .lineLimit(1)
+                    Text(dataSource.metadata.id)
+                        .font(InsightTypography.small)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                        .lineLimit(1)
+                }
+
                 Spacer()
+
+                Button("重命名") {
+                    onRenameRecord()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("record_rename_button")
+
+                Menu {
+                    ForEach(dataSource.editableSpeakers, id: \.self) { speaker in
+                        Button(speaker) {
+                            speakerRenameRequest = SpeakerRenameRequest(label: speaker)
+                        }
+                    }
+                } label: {
+                    Label("说话人", systemImage: "person.text.rectangle")
+                }
+                .disabled(dataSource.editableSpeakers.isEmpty)
+                .accessibilityIdentifier("record_speaker_menu")
 
                 Button("在访达中显示") {
                     dataSource.revealInFinder()
@@ -179,6 +281,16 @@ private struct RecordReviewCenterView: View {
             }
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.top, InsightSpacing.md)
+            .sheet(item: $speakerRenameRequest) { request in
+                SpeakerRenameSheet(
+                    speaker: request.label,
+                    onCancel: { speakerRenameRequest = nil },
+                    onSave: { newName in
+                        dataSource.renameSpeaker(from: request.label, to: newName)
+                        speakerRenameRequest = nil
+                    }
+                )
+            }
 
             if let message = dataSource.exportStatusMessage {
                 Text(message)
@@ -190,17 +302,16 @@ private struct RecordReviewCenterView: View {
             }
 
             if let url = dataSource.mediaURL {
-                MediaPlayerView(
+                ReviewMediaPlayerView(
                     url: url,
-	                    isPlaying: false,
-	                    seekRequest: dataSource.mediaSeekRequest,
-	                    onSeek: { time in dataSource.onSeek(to: time) },
-	                    onTimeUpdate: { time in dataSource.updatePlaybackTime(time) }
-	                )
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 180, maxHeight: 260)
+                    mediaKind: ReviewMediaKind(recordMediaType: dataSource.metadata.mediaType),
+                    seekRequest: dataSource.mediaSeekRequest,
+                    maximumVideoHeight: 360,
+                    accessibilityID: "record_media_player",
+                    onSeek: { time in dataSource.onSeek(to: time) },
+                    onTimeUpdate: { time in dataSource.updatePlaybackTime(time) }
+                )
                 .padding(.horizontal, InsightSpacing.panelPadding)
-                .accessibilityIdentifier("record_media_player")
 
                 if let seekStatus = dataSource.seekStatusMessage {
                     Text(seekStatus)
@@ -249,31 +360,79 @@ private struct RecordReviewCenterView: View {
                         .padding(.top, dataSource.smartMinutesData == nil ? 0 : InsightSpacing.md)
                         .accessibilityIdentifier("record_transcript_title")
 
-                    ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
-                        Button {
-                            dataSource.onTranscriptEntryTapped(entry)
-                        } label: {
-                            VStack(alignment: .leading, spacing: InsightSpacing.xs) {
-                                HStack(spacing: InsightSpacing.sm) {
-                                    Text(formatTimestamp(entry.timestamp))
-                                        .font(InsightTypography.caption)
-                                        .foregroundStyle(InsightTheme.accent)
-                                    if let speaker = entry.speaker, !speaker.isEmpty {
-                                        Text(speaker)
-                                            .font(InsightTypography.caption)
-                                            .foregroundStyle(InsightTheme.textSecondary)
-                                    }
-                                }
-                                Text(entry.text)
-                                    .font(InsightTypography.transcript)
-                                    .foregroundStyle(InsightTheme.textPrimary)
+                    if dataSource.canRecoverTranscript || dataSource.transcriptRecoveryStatusMessage != nil {
+                        HStack(alignment: .center, spacing: InsightSpacing.sm) {
+                            Image(systemName: "arrow.clockwise.circle")
+                                .foregroundStyle(InsightTheme.accent)
+                            Text(dataSource.transcriptRecoveryStatusMessage ?? "逐字稿缺失，可从已保存媒体恢复。")
+                                .font(InsightTypography.caption)
+                                .foregroundStyle(InsightTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                            Button {
+                                dataSource.recoverTranscript()
+                            } label: {
+                                Label("恢复逐字稿", systemImage: "text.badge.checkmark")
                             }
-                            .padding(InsightSpacing.sm)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(InsightTheme.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                            .buttonStyle(.bordered)
+                            .disabled(!dataSource.canRecoverTranscript)
+                            .accessibilityIdentifier("record_recover_transcript_button")
                         }
-                        .buttonStyle(.plain)
+                        .padding(InsightSpacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(InsightTheme.elevated)
+                        .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                        .accessibilityIdentifier("record_transcript_recovery_status")
+                    }
+
+                    ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
+                        HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                            Button {
+                                dataSource.onTranscriptEntryTapped(entry)
+                            } label: {
+                                VStack(alignment: .leading, spacing: InsightSpacing.xs) {
+                                    HStack(spacing: InsightSpacing.sm) {
+                                        Text(formatTimestamp(entry.timestamp))
+                                            .font(InsightTypography.caption)
+                                            .foregroundStyle(InsightTheme.accent)
+                                        if let speaker = visibleSpeaker(for: entry) {
+                                            Text(speaker)
+                                                .font(InsightTypography.caption)
+                                                .foregroundStyle(InsightTheme.textSecondary)
+                                        }
+                                    }
+                                    Text(entry.text)
+                                        .font(InsightTypography.transcript)
+                                        .foregroundStyle(InsightTheme.textPrimary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+
+                            if let action = RecordSpeakerRenamePresentation.rowAction(for: entry) {
+                                Button {
+                                    speakerRenameRequest = SpeakerRenameRequest(label: action.speakerLabel)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                                .help("重命名说话人")
+                                .accessibilityLabel("重命名说话人 \(action.speakerLabel)")
+                                .accessibilityIdentifier("\(action.accessibilityID)_\(index)")
+                            }
+                        }
+                        .padding(InsightSpacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(InsightTheme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                        .contextMenu {
+                            if let speaker = RecordSpeakerRenamePresentation.rowAction(for: entry)?.speakerLabel {
+                                Button("重命名说话人") {
+                                    speakerRenameRequest = SpeakerRenameRequest(label: speaker)
+                                }
+                            }
+                        }
                         .accessibilityIdentifier("record_transcript_row_\(index)")
                     }
                 }
@@ -287,6 +446,51 @@ private struct RecordReviewCenterView: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%02d:%02d", mins, secs)
+    }
+
+    private func visibleSpeaker(for entry: TranscriptEntry) -> String? {
+        RecordSpeakerRenamePresentation.rowAction(for: entry)?.speakerLabel
+    }
+}
+
+private struct RecordRenameSheet: View {
+    let record: RecordMetadata
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+    @State private var title: String
+
+    init(record: RecordMetadata, onCancel: @escaping () -> Void, onSave: @escaping (String) -> Void) {
+        self.record = record
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _title = State(initialValue: record.displayTitle)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: InsightSpacing.md) {
+            Text("重命名记录")
+                .font(InsightTypography.heading)
+                .foregroundStyle(InsightTheme.textPrimary)
+
+            TextField("记录名称", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("record_rename_field")
+
+            HStack {
+                Spacer()
+                Button("取消") {
+                    onCancel()
+                }
+                Button("保存") {
+                    onSave(title)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("record_rename_save_button")
+            }
+        }
+        .padding(InsightSpacing.lg)
+        .frame(width: 380)
     }
 }
 

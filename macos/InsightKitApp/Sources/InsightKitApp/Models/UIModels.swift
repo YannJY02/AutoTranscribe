@@ -74,8 +74,24 @@ struct BottomStatusPayload {
     var phaseLabel: String = ""
     var lastRefreshAt: Date?
     var meetingID: String = ""
+    var actions: [BottomStatusAction] = [.settings]
 
     var developer = BottomDebugPayload()
+}
+
+struct BottomStatusAction: Equatable, Identifiable {
+    var id: String { route }
+    var title: String
+    var systemImage: String
+    var accessibilityID: String
+    var route: String
+
+    static let settings = BottomStatusAction(
+        title: "设置",
+        systemImage: "gearshape",
+        accessibilityID: "bottom_status_open_settings",
+        route: "open_settings"
+    )
 }
 
 struct BottomDebugPayload: Equatable {

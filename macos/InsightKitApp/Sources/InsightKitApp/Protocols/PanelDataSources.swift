@@ -30,14 +30,20 @@ protocol CenterStageDataSource: ObservableObject {
     var currentPlaybackTime: TimeInterval? { get }
     var mediaSeekRequest: MediaSeekRequest? { get }
     var reviewSourcePlaybackRequested: Bool { get }
+    var editableSpeakers: [String] { get }
+    var canRecoverTranscript: Bool { get }
+    var transcriptRecoveryStatusMessage: String? { get }
     func onStartRecording()
     func onStopRecording()
     func onPauseRecording()
     func onTranscriptEntryTapped(_ entry: TranscriptEntry)
     func onSeek(to time: TimeInterval)
+    func onPlaybackTimeUpdated(_ time: TimeInterval)
     func onGenerateMinutes()
     func onSkipMinutes()
     func onExportDocument(format: String)
+    func renameSpeaker(from oldLabel: String, to newLabel: String)
+    func onRecoverTranscript()
 }
 
 extension CenterStageDataSource {
@@ -50,7 +56,13 @@ extension CenterStageDataSource {
     var lastExportPath: String { "" }
     var reviewSourceMediaURL: URL? { mediaURL }
     var reviewSourceStatusMessage: String? { nil }
+    var editableSpeakers: [String] { [] }
+    var canRecoverTranscript: Bool { false }
+    var transcriptRecoveryStatusMessage: String? { nil }
+    func onPlaybackTimeUpdated(_ time: TimeInterval) {}
     func onExportDocument(format: String) {}
+    func renameSpeaker(from oldLabel: String, to newLabel: String) {}
+    func onRecoverTranscript() {}
 }
 
 // MARK: - Notes Editor

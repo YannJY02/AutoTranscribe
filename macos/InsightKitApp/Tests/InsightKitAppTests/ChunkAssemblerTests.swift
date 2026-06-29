@@ -38,4 +38,52 @@ final class ChunkAssemblerTests: XCTestCase {
         XCTAssertEqual(String(data: data.subdata(in: 8..<12), encoding: .ascii), "WAVE")
         XCTAssertEqual(data.count, 44 + (140_000 * 2))
     }
+
+    func testWAVWriterAvoidsFullScaleClippingForOverRangeSamples() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ChunkAssemblerTests_\(UUID().uuidString)", isDirectory: true)
+
+        let assembler = ChunkAssembler(
+            chunkDurationSec: 1,
+            firstChunkDurationSec: 0.1,
+            sampleRate: 16_000,
+            chunkDir: tmp
+        )
+        _ = try assembler.append(samples: Array(repeating: Float(1.3), count: 1_600))
+
+        let combinedURL = tmp.appendingPathComponent("recording.wav")
+        _ = try XCTUnwrap(assembler.writeCombinedWAV(to: combinedURL))
+        let samples = try readInt16Samples(from: combinedURL)
+
+        XCTAssertFalse(samples.contains(Int16.max))
+        XCTAssertLessThan(samples.map { abs(Int($0)) }.max() ?? 0, Int(Int16.max))
+    }
+
+    func testAudibleContentIgnoresNearDigitalSilence() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ChunkAssemblerTests_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(
+            chunkDurationSec: 1,
+            firstChunkDurationSec: 0.1,
+            sampleRate: 16_000,
+            chunkDir: tmp
+        )
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.00002), count: 1_600))
+
+        XCTAssertFalse(assembler.hasAudibleContent())
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.02), count: 16_000))
+
+        XCTAssertTrue(assembler.hasAudibleContent())
+    }
+
+    private func readInt16Samples(from url: URL) throws -> [Int16] {
+        let data = try Data(contentsOf: url)
+        XCTAssertGreaterThan(data.count, 44)
+        return stride(from: 44, to: data.count, by: 2).map { offset in
+            let value = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            return Int16(bitPattern: value)
+        }
+    }
 }

@@ -409,10 +409,7 @@ final class ImportSessionViewModel: ObservableObject {
             loaded = true
         }
 
-        if let persistedMedia = firstExistingFile(
-            in: recordPath,
-            names: ["recording.mp4", "recording.mov", "recording.mkv", "recording.m4a", "recording.mp3", "recording.wav"]
-        ) {
+        if let persistedMedia = MeetingAssetSnapshot.canonicalMediaURL(in: recordPath) {
             mediaURL = persistedMedia
             loaded = true
         }
@@ -466,13 +463,7 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     private func persistedRecordPath(for meetingID: String) -> URL? {
-        guard let root = recordsService?.rootDirectory else { return nil }
-        let path = root.appendingPathComponent(meetingID, isDirectory: true)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return nil
-        }
-        return path
+        recordsService?.recordFolderURL(for: meetingID)
     }
 
     private func loadMetadata(from recordPath: URL) -> RecordMetadata? {
@@ -540,12 +531,6 @@ final class ImportSessionViewModel: ObservableObject {
             actionItems: actionItems,
             chapters: loadedChapters
         )
-    }
-
-    private func firstExistingFile(in directory: URL, names: [String]) -> URL? {
-        names
-            .map { directory.appendingPathComponent($0) }
-            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     private static func transcriptEntries(from segments: [TranscriptSegment]) -> [TranscriptEntry] {

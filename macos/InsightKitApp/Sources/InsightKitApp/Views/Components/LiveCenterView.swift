@@ -7,6 +7,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     @Binding var sources: [SourceToggleItem]
     var onDeviceSelect: ((String) -> Void)?
     @State private var showMinutesSheet = false
+    @State private var speakerRenameRequest: SpeakerRenameRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +31,16 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             liveProgressBanner
                 .padding(.top, InsightSpacing.md)
                 .padding(.horizontal, InsightSpacing.panelPadding)
+        }
+        .sheet(item: $speakerRenameRequest) { request in
+            SpeakerRenameSheet(
+                speaker: request.label,
+                onCancel: { speakerRenameRequest = nil },
+                onSave: { newName in
+                    dataSource.renameSpeaker(from: request.label, to: newName)
+                    speakerRenameRequest = nil
+                }
+            )
         }
     }
 
@@ -156,6 +167,12 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             recordingStatusBanner
                 .padding(.horizontal, InsightSpacing.panelPadding)
                 .padding(.bottom, InsightSpacing.md)
+            transcriptRecoveryControl
+                .padding(.horizontal, InsightSpacing.panelPadding)
+                .padding(.bottom, InsightSpacing.md)
+            smartMinutesSpeakerRenameStrip
+                .padding(.horizontal, InsightSpacing.panelPadding)
+                .padding(.bottom, InsightSpacing.md)
             SmartMinutesSheet(
                 duration: dataSource.recordingDuration,
                 onGenerate: {
@@ -199,6 +216,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: InsightSpacing.md) {
                 summaryReadyHeader(exportActions: plan.exportActions)
+                smartMinutesSpeakerRenameStrip
 
                 summaryTextSection(
                     title: "总结",
@@ -251,21 +269,26 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     private var transcriptFirstReviewingView: some View {
         VStack(spacing: InsightSpacing.panelGap) {
             // Media player
-            MediaPlayerView(
+            ReviewMediaPlayerView(
                 url: dataSource.mediaURL,
                 isPlaying: true,
                 seekRequest: dataSource.mediaSeekRequest,
+                maximumVideoHeight: 360,
+                accessibilityID: "live_review_media_player",
                 onSeek: { time in
                     dataSource.onSeek(to: time)
                 },
-                onTimeUpdate: { _ in }
+                onTimeUpdate: { time in
+                    dataSource.onPlaybackTimeUpdated(time)
+                }
             )
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 200, maxHeight: 300)
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.top, InsightSpacing.panelPadding)
 
             recordingStatusBanner
+                .padding(.horizontal, InsightSpacing.panelPadding)
+
+            transcriptRecoveryControl
                 .padding(.horizontal, InsightSpacing.panelPadding)
 
             // Full transcript (scrollable, clickable)
@@ -331,6 +354,47 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
         let path = dataSource.lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !path.isEmpty else { return nil }
         return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    @ViewBuilder
+    private var smartMinutesSpeakerRenameStrip: some View {
+        let presentation = RecordSpeakerRenamePresentation.make(
+            editableSpeakers: dataSource.editableSpeakers,
+            stripAccessibilityID: "live_summary_speaker_rename_strip",
+            buttonAccessibilityID: "live_summary_speaker_rename_button"
+        )
+        if presentation.showsSpeakerStrip {
+            HStack(alignment: .center, spacing: InsightSpacing.sm) {
+                Label("说话人校正", systemImage: "person.text.rectangle")
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: InsightSpacing.xs) {
+                        ForEach(presentation.speakerActions) { action in
+                            Button {
+                                speakerRenameRequest = SpeakerRenameRequest(label: action.speakerLabel)
+                            } label: {
+                                HStack(spacing: InsightSpacing.xs) {
+                                    Text(action.speakerLabel)
+                                        .lineLimit(1)
+                                    Image(systemName: "pencil")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .help("重命名说话人")
+                            .accessibilityIdentifier(action.accessibilityID)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, InsightSpacing.md)
+            .padding(.vertical, InsightSpacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightTheme.elevated)
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier(presentation.speakerStripAccessibilityID)
+        }
     }
 
     private func summaryTextSection(
@@ -445,17 +509,19 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             sectionTitle("回看资料")
 
             if presentation.showsPrimaryMedia {
-                MediaPlayerView(
+                ReviewMediaPlayerView(
                     url: presentation.primaryMediaURL,
-                    isPlaying: dataSource.reviewSourcePlaybackRequested,
+                    isPlaying: dataSource.reviewSourcePlaybackRequested ? true : nil,
                     seekRequest: dataSource.mediaSeekRequest,
+                    maximumVideoHeight: 320,
+                    accessibilityID: "live_review_source_media_player",
                     onSeek: { time in
                         dataSource.onSeek(to: time)
                     },
-                    onTimeUpdate: { _ in }
+                    onTimeUpdate: { time in
+                        dataSource.onPlaybackTimeUpdated(time)
+                    }
                 )
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 160, maxHeight: 220)
             }
 
             if let message = presentation.statusMessage {
@@ -476,11 +542,14 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             }
 
             if dataSource.transcriptEntries.isEmpty {
-                Text("等待转写输入…")
-                    .font(InsightTypography.caption)
-                    .foregroundStyle(InsightTheme.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("live_summary_review_transcript_empty")
+                VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+                    Text("等待转写输入…")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("live_summary_review_transcript_empty")
+                    transcriptRecoveryControl
+                }
             } else {
                 VStack(alignment: .leading, spacing: InsightSpacing.sm) {
                     ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
@@ -523,12 +592,15 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     private var transcriptList: some View {
         ScrollView {
             if dataSource.transcriptEntries.isEmpty {
-                Text("等待转写输入…")
-                    .font(InsightTypography.caption)
-                    .foregroundStyle(InsightTheme.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(InsightSpacing.panelPadding)
-                    .accessibilityIdentifier("live_transcript_empty_state")
+                VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+                    Text("等待转写输入…")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textTertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("live_transcript_empty_state")
+                    transcriptRecoveryControl
+                }
+                .padding(InsightSpacing.panelPadding)
             } else {
                 LazyVStack(alignment: .leading, spacing: InsightSpacing.sm) {
                     ForEach(Array(dataSource.transcriptEntries.enumerated()), id: \.element.id) { index, entry in
@@ -538,6 +610,36 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 .padding(.horizontal, InsightSpacing.panelPadding)
                 .padding(.vertical, InsightSpacing.sm)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var transcriptRecoveryControl: some View {
+        if dataSource.canRecoverTranscript || dataSource.transcriptRecoveryStatusMessage != nil {
+            HStack(alignment: .center, spacing: InsightSpacing.sm) {
+                Image(systemName: "arrow.clockwise.circle")
+                    .foregroundStyle(InsightTheme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dataSource.transcriptRecoveryStatusMessage ?? "逐字稿缺失，可从已保存媒体恢复。")
+                        .font(InsightTypography.caption)
+                        .foregroundStyle(InsightTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    dataSource.onRecoverTranscript()
+                } label: {
+                    Label("恢复逐字稿", systemImage: "text.badge.checkmark")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!dataSource.canRecoverTranscript)
+                .accessibilityIdentifier("live_recover_transcript_button")
+            }
+            .padding(InsightSpacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(InsightTheme.elevated)
+            .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+            .accessibilityIdentifier("live_transcript_recovery_status")
         }
     }
 

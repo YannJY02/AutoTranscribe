@@ -12,6 +12,7 @@ final class WorkflowCoordinator: ObservableObject {
     var transcriptionViewModel: TranscriptionSessionViewModel
     var importViewModel: ImportSessionViewModel
     var recordsService: RecordsIndexService
+    var recordsNavigation: RecordsWorkspaceNavigation
 
     private let capabilityClient: InsightRPCClientProtocol
     private let settingsOpener: () -> Void
@@ -26,6 +27,7 @@ final class WorkflowCoordinator: ObservableObject {
         transcriptionViewModel: TranscriptionSessionViewModel = TranscriptionSessionViewModel(autoRefresh: false, autoPolling: false),
         importViewModel: ImportSessionViewModel = ImportSessionViewModel(),
         recordsService: RecordsIndexService = RecordsIndexService(),
+        recordsNavigation: RecordsWorkspaceNavigation = RecordsWorkspaceNavigation(),
         capabilityClient: InsightRPCClientProtocol = InsightRPCClient(),
         settingsOpener: @escaping () -> Void = {
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
@@ -35,6 +37,7 @@ final class WorkflowCoordinator: ObservableObject {
         self.transcriptionViewModel = transcriptionViewModel
         self.importViewModel = importViewModel
         self.recordsService = recordsService
+        self.recordsNavigation = recordsNavigation
         self.capabilityClient = capabilityClient
         self.settingsOpener = settingsOpener
         // Phase 5: inject recordsService into child ViewModels
@@ -56,7 +59,11 @@ final class WorkflowCoordinator: ObservableObject {
     }
 
     var canBuildLiveFinal: Bool {
-        liveViewModel.canBuildFinal && livePhase == .livePostSession && supports("insight.build_final")
+        liveViewModel.canBuildFinal
+            && livePhase == .livePostSession
+            && supports("insight.build_final")
+            && supports("asr.transcribe_media")
+            && supports("transcript.replace")
     }
 
     var canBuildTranscriptionFinal: Bool {
@@ -183,8 +190,31 @@ final class WorkflowCoordinator: ObservableObject {
         }
     }
 
+    var primaryNavigationAction: WorkflowPrimaryNavigationAction {
+        switch route {
+        case .home:
+            return .none
+        case .records where recordsNavigation.isReviewingRecord:
+            return .recordsList
+        case .live, .transcription, .importMedia, .records:
+            return .home
+        }
+    }
+
+    func performPrimaryNavigationAction() {
+        switch primaryNavigationAction {
+        case .none:
+            break
+        case .home:
+            openHome()
+        case .recordsList:
+            recordsNavigation.closeReview()
+        }
+    }
+
     func openHome() {
         transcriptionViewModel.endMonitoring()
+        recordsNavigation.closeReview()
         route = .home
         appState.activeRoute = .home
         clearBanner()
@@ -192,6 +222,7 @@ final class WorkflowCoordinator: ObservableObject {
 
     func openLive() {
         transcriptionViewModel.endMonitoring()
+        recordsNavigation.closeReview()
         liveViewModel.prepareForLiveEntry()
         route = .live
         appState.activeRoute = .live
@@ -199,17 +230,20 @@ final class WorkflowCoordinator: ObservableObject {
     }
 
     func openImport() {
+        recordsNavigation.closeReview()
         route = .importMedia
         appState.activeRoute = .importMedia
         refreshSidecarCapabilities()
     }
 
     func openRecords() {
+        recordsNavigation.closeReview()
         route = .records
         appState.activeRoute = .records
     }
 
     func openTranscription() {
+        recordsNavigation.closeReview()
         route = .transcription
         appState.activeRoute = .transcription
         refreshSidecarCapabilities()
@@ -225,6 +259,10 @@ final class WorkflowCoordinator: ObservableObject {
                 actionRoute: "open_settings"
             )
         }
+    }
+
+    func openSettings() {
+        settingsOpener()
     }
 
     func handleIncomingURL(_ url: URL) {
@@ -332,7 +370,7 @@ final class WorkflowCoordinator: ObservableObject {
         let route = actionRoute ?? bannerMessage?.actionRoute ?? ""
         switch route {
         case "open_settings":
-            settingsOpener()
+            openSettings()
         case "open_mic":
             liveViewModel.openMicrophonePrivacySettings()
         case "open_screen":
@@ -390,12 +428,20 @@ final class WorkflowCoordinator: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        recordsNavigation.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     private var supportsLiveActions: Bool {
         supports("session.start")
             && supports("session.stop")
             && supports("asr.transcribe_chunk")
+            && supports("asr.transcribe_media")
+            && supports("transcript.replace")
             && supports("insight.refresh_live")
     }
 
@@ -407,6 +453,8 @@ final class WorkflowCoordinator: ObservableObject {
         "session.start",
         "session.stop",
         "asr.transcribe_chunk",
+        "asr.transcribe_media",
+        "transcript.replace",
         "insight.refresh_live",
         "insight.build_final",
         "document.export",

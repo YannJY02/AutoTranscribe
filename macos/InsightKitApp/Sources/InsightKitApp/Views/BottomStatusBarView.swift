@@ -1,14 +1,43 @@
 import SwiftUI
 
+enum BottomStatusBarLayout {
+    static let separatorHeight: CGFloat = 1
+    static let contentRowHeight: CGFloat = 46
+
+    static func barHeight(for mode: BottomPanelMode) -> CGFloat {
+        switch mode {
+        case .collapsed, .expandedDebug:
+            return separatorHeight + contentRowHeight
+        }
+    }
+
+    static func showsBottomStatusBar(for route: WorkflowRoute) -> Bool {
+        route != .home
+    }
+
+    static func reservedHeight(for route: WorkflowRoute, mode: BottomPanelMode) -> CGFloat {
+        showsBottomStatusBar(for: route) ? barHeight(for: mode) : 0
+    }
+
+    static func contentHeight(
+        availableHeight: CGFloat,
+        route: WorkflowRoute,
+        mode: BottomPanelMode
+    ) -> CGFloat {
+        max(0, availableHeight - reservedHeight(for: route, mode: mode))
+    }
+}
+
 struct BottomStatusBarView: View {
     @Binding var mode: BottomPanelMode
     let payload: BottomStatusPayload
+    let onAction: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             Rectangle()
                 .fill(InsightTheme.border.opacity(0.6))
-                .frame(height: 1)
+                .frame(height: BottomStatusBarLayout.separatorHeight)
 
             HStack(spacing: 10) {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -82,6 +111,19 @@ struct BottomStatusBarView: View {
 
                 Spacer(minLength: 8)
 
+                ForEach(payload.actions) { action in
+                    Button {
+                        onAction(action.route)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(InsightTheme.accent)
+                    .help("打开 Settings Workspace")
+                    .accessibilityIdentifier(action.accessibilityID)
+                }
+
                 Button(mode == .collapsed ? "开发者模式" : "收起开发者模式") {
                     withAnimation(.easeInOut(duration: 0.16)) {
                         mode = mode == .collapsed ? .expandedDebug : .collapsed
@@ -93,7 +135,7 @@ struct BottomStatusBarView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .frame(height: 46)
+            .frame(height: BottomStatusBarLayout.contentRowHeight)
             .background(InsightTheme.surface)
         }
     }

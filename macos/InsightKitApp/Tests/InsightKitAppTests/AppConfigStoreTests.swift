@@ -127,6 +127,31 @@ final class AppConfigStoreTests: XCTestCase {
         XCTAssertEqual(env["INSIGHTKIT_FLUIDAUDIO_CLI"], "/opt/fluidaudiocli")
     }
 
+    func testSidecarEnvironmentCarriesAppleSpeechPrototypeFlagWithoutChangingEngine() {
+        let config = makeRuntimeConfig(
+            selectedVendor: .deepseek,
+            providers: [
+                .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+            ],
+            appleSpeechPrototypeEnabled: true
+        )
+
+        let env = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: [:]
+        ) { _, _ in
+            ""
+        }
+
+        XCTAssertEqual(env["INSIGHTKIT_ASR_ENGINE"], "funasr")
+        XCTAssertEqual(env["INSIGHTKIT_APPLE_SPEECH_PROTOTYPE_ENABLED"], "1")
+    }
+
+    func testAppleSpeechPrototypeIsNotListedAsPeerLocalASREngine() {
+        XCTAssertEqual(LocalASREngine.allCases.map(\.rawValue), ["whisper", "funasr", "qwen-mlx"])
+        XCTAssertFalse(LocalASREngine.allCases.map(\.displayName).contains("Apple Speech"))
+    }
+
     func testSidecarEnvironmentFallsBackToProcessEnvForActiveProviderKey() {
         let config = RuntimeConfigV2(
             asr: RuntimeConfigV2.ASR(
@@ -159,7 +184,11 @@ final class AppConfigStoreTests: XCTestCase {
         XCTAssertEqual(env["DEEPSEEK_API_KEY"], "env-deepseek")
     }
 
-    private func makeRuntimeConfig(selectedVendor: ProviderVendor, providers: [ProviderProfile]) -> RuntimeConfigV2 {
+    private func makeRuntimeConfig(
+        selectedVendor: ProviderVendor,
+        providers: [ProviderProfile],
+        appleSpeechPrototypeEnabled: Bool = false
+    ) -> RuntimeConfigV2 {
         RuntimeConfigV2(
             asr: RuntimeConfigV2.ASR(
                 engine: .funasr,
@@ -169,7 +198,8 @@ final class AppConfigStoreTests: XCTestCase {
                 diarizationEnabled: true,
                 whisperProfile: .init(model: "large-v3"),
                 funasrProfile: .init(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"),
-                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit"),
+                appleSpeechPrototypeEnabled: appleSpeechPrototypeEnabled
             ),
             analysis: RuntimeConfigV2.Analysis(selectedVendor: selectedVendor, providers: providers),
             strict: RuntimeConfigV2.Strict(strictMode: true),

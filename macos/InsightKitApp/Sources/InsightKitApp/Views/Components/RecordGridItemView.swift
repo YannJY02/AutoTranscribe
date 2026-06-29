@@ -28,7 +28,7 @@ struct RecordGridItemView: View {
                 }
 
                 // Name
-                Text(record.id)
+                Text(record.displayTitle)
                     .font(InsightTypography.bodyMedium)
                     .foregroundStyle(InsightTheme.textPrimary)
                     .lineLimit(1)

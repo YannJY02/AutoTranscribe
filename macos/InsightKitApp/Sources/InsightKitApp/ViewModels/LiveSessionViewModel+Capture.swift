@@ -30,6 +30,10 @@ extension LiveSessionViewModel {
             return
         }
 
+        stateQueue.sync {
+            captureTimeline.markAudioStartIfNeeded()
+        }
+
         pipelineQueue.async { [weak self] in
             guard let self else { return }
             guard self.isRunning else { return }
@@ -102,7 +106,8 @@ extension LiveSessionViewModel {
             }
             return
         }
-        guard isRunning else {
+        let shouldDrainForStop = stateQueue.sync { stopDrainingMeetingID == meetingID }
+        guard isRunning || shouldDrainForStop else {
             queuedChunks.removeAll(keepingCapacity: false)
             chunkInFlight = false
             updateMain {
@@ -131,7 +136,8 @@ extension LiveSessionViewModel {
         pumpChunkQueueIfNeeded(meetingID: meetingID)
     }
 
-    func processChunk(_ chunk: AudioChunk, meetingID: String) throws {
+    @discardableResult
+    func processChunk(_ chunk: AudioChunk, meetingID: String) throws -> LiveTranscriptPipelineOutcome {
         updateMain {
             self.captureHealth.lastChunkAt = Date()
         }
@@ -147,6 +153,7 @@ extension LiveSessionViewModel {
 
         let outcome = try transcriptPipeline.process(chunk: chunk, context: context)
         applyTranscriptPipelineOutcome(outcome)
+        return outcome
     }
 
     func applyTranscriptPipelineOutcome(_ outcome: LiveTranscriptPipelineOutcome) {

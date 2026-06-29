@@ -14,6 +14,7 @@ final class InsightRPCClientFinalInsightTimeoutTests: XCTestCase {
             socketPath: socketPath,
             timeoutSec: 1,
             asrChunkTimeoutSec: 120,
+            asrMediaTimeoutSec: 900,
             providerProbeTimeoutSec: 6,
             finalInsightTimeoutSec: 3,
             maxRetries: 0,
@@ -26,7 +27,7 @@ final class InsightRPCClientFinalInsightTimeoutTests: XCTestCase {
         XCTAssertEqual(result.package.sessionOverview.title, "Final Insight Ready")
         XCTAssertEqual(result.package.sessionOverview.overview, "Final insight completed after a slow provider response.")
         XCTAssertEqual(result.provider, "fake:slow-test")
-        XCTAssertEqual(sidecar.receivedMethods, ["insight.build_final"])
+        XCTAssertEqual(sidecar.receivedMethods, ["smart_minutes.generate"])
     }
 }
 

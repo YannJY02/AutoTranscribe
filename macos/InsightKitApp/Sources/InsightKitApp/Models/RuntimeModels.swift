@@ -45,6 +45,7 @@ struct RuntimeConfigV2: Codable, Equatable {
             case whisperProfile
             case funasrProfile
             case qwenProfile
+            case appleSpeechPrototypeEnabled
         }
 
         var engine: LocalASREngine
@@ -55,6 +56,7 @@ struct RuntimeConfigV2: Codable, Equatable {
         var whisperProfile: ASRProfile
         var funasrProfile: ASRProfile
         var qwenProfile: ASRProfile
+        var appleSpeechPrototypeEnabled: Bool
 
         init(
             engine: LocalASREngine,
@@ -64,7 +66,8 @@ struct RuntimeConfigV2: Codable, Equatable {
             diarizationEnabled: Bool,
             whisperProfile: ASRProfile,
             funasrProfile: ASRProfile,
-            qwenProfile: ASRProfile
+            qwenProfile: ASRProfile,
+            appleSpeechPrototypeEnabled: Bool = false
         ) {
             self.engine = engine
             self.model = model
@@ -74,6 +77,7 @@ struct RuntimeConfigV2: Codable, Equatable {
             self.whisperProfile = whisperProfile
             self.funasrProfile = funasrProfile
             self.qwenProfile = qwenProfile
+            self.appleSpeechPrototypeEnabled = appleSpeechPrototypeEnabled
         }
 
         init(from decoder: Decoder) throws {
@@ -89,6 +93,10 @@ struct RuntimeConfigV2: Codable, Equatable {
                 ?? ASRProfile(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
             qwenProfile = try container.decodeIfPresent(ASRProfile.self, forKey: .qwenProfile)
                 ?? ASRProfile(model: "Qwen3-ASR-1.7B-MLX-4bit")
+            appleSpeechPrototypeEnabled = try container.decodeIfPresent(
+                Bool.self,
+                forKey: .appleSpeechPrototypeEnabled
+            ) ?? false
         }
     }
 
@@ -173,6 +181,61 @@ struct ASRWarmStatus: Equatable {
     let lastError: String
 }
 
+struct ASRRuntimeReadiness: Equatable {
+    let ready: Bool
+    let reason: String
+
+    static let empty = ASRRuntimeReadiness(ready: false, reason: "")
+}
+
+struct ASREngineProfile: Equatable {
+    let engine: String
+    let displayName: String
+    let selectable: Bool
+    let ready: Bool
+    let availabilityState: String
+    let liveASR: Bool
+    let finalMediaASR: Bool
+    let diarization: Bool
+    let limitations: [String]
+    let userRecoveryHint: String
+
+    static let empty = ASREngineProfile(
+        engine: "",
+        displayName: "",
+        selectable: false,
+        ready: false,
+        availabilityState: "",
+        liveASR: false,
+        finalMediaASR: false,
+        diarization: false,
+        limitations: [],
+        userRecoveryHint: ""
+    )
+}
+
+struct ASRRuntimeProfile: Equatable {
+    let schemaVersion: Int
+    let configuredEngine: String
+    let activeEngine: String
+    let technicalStatus: String
+    let liveASR: ASRRuntimeReadiness
+    let finalMediaASR: ASRRuntimeReadiness
+    let userRecoveryHint: String
+    let appleSpeech: ASREngineProfile?
+
+    static let empty = ASRRuntimeProfile(
+        schemaVersion: 0,
+        configuredEngine: "",
+        activeEngine: "",
+        technicalStatus: "",
+        liveASR: .empty,
+        finalMediaASR: .empty,
+        userRecoveryHint: "",
+        appleSpeech: nil
+    )
+}
+
 struct ASRRuntimeStatus: Equatable {
     let ready: Bool
     let pythonExecutable: String
@@ -190,6 +253,45 @@ struct ASRRuntimeStatus: Equatable {
     let readyByEngine: [String: Bool]
     let backend: ASRBackendStatus
     let warm: ASRWarmStatus
+    let profile: ASRRuntimeProfile
+
+    init(
+        ready: Bool,
+        pythonExecutable: String,
+        pythonVersion: String,
+        engine: String,
+        engineOptions: [String],
+        activeProfile: String,
+        modelName: String,
+        modelPath: String,
+        modelExists: Bool,
+        vadReady: Bool,
+        diarizationReady: Bool,
+        diarizationDegraded: Bool,
+        diarizationReason: String,
+        readyByEngine: [String: Bool],
+        backend: ASRBackendStatus,
+        warm: ASRWarmStatus,
+        profile: ASRRuntimeProfile = .empty
+    ) {
+        self.ready = ready
+        self.pythonExecutable = pythonExecutable
+        self.pythonVersion = pythonVersion
+        self.engine = engine
+        self.engineOptions = engineOptions
+        self.activeProfile = activeProfile
+        self.modelName = modelName
+        self.modelPath = modelPath
+        self.modelExists = modelExists
+        self.vadReady = vadReady
+        self.diarizationReady = diarizationReady
+        self.diarizationDegraded = diarizationDegraded
+        self.diarizationReason = diarizationReason
+        self.readyByEngine = readyByEngine
+        self.backend = backend
+        self.warm = warm
+        self.profile = profile
+    }
 }
 
 extension ASRRuntimeStatus {

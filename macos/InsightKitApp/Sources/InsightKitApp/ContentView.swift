@@ -40,43 +40,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            switch coordinator.route {
-            case .home:
-                WorkflowHomeView(
-                    onOpenLive: {
-                        coordinator.openLive()
-                    },
-                    onOpenTranscription: {
-                        coordinator.openTranscription()
-                    },
-                    onOpenImport: {
-                        coordinator.openImport()
-                    },
-                    onOpenRecords: {
-                        coordinator.openRecords()
-                    },
-                    statusSummary: homeStatusSummary,
-                    recentRecords: Array(coordinator.recordsService.records.prefix(3))
-                )
-            case .live:
-                LiveWorkspaceView(viewModel: coordinator.liveViewModel)
-                    .accessibilityIdentifier("live_workspace")
-            case .transcription:
-                TranscriptionWorkspaceView(
-                    viewModel: coordinator.transcriptionViewModel,
-                    onImportRequest: {
-                        openTranscriptionImportPicker()
-                    }
-                )
-            case .importMedia:
-                ImportWorkspaceView(viewModel: coordinator.importViewModel)
-                    .accessibilityIdentifier("import_workspace")
-            case .records:
-                RecordsView(recordsService: coordinator.recordsService)
-                    .accessibilityIdentifier("records_view")
-            }
-        }
+        contentWithBottomStatusBar
         .sheet(isPresented: $coordinator.liveViewModel.isSystemAudioPickerPresented) {
             SystemAudioPickerSheet(
                 sources: coordinator.liveViewModel.systemAudioSources,
@@ -107,14 +71,6 @@ struct ContentView: View {
                 permissionRecoveryBar
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            if coordinator.route != .home {
-                BottomStatusBarView(
-                    mode: $coordinator.bottomPanelMode,
-                    payload: coordinator.bottomStatusPayload
-                )
-            }
-        }
         .onAppear {
             coordinator.refreshSidecarCapabilities()
             coordinator.liveViewModel.reloadSystemAudioSources()
@@ -132,13 +88,86 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var contentWithBottomStatusBar: some View {
+        if BottomStatusBarLayout.showsBottomStatusBar(for: coordinator.route) {
+            VStack(spacing: 0) {
+                routeContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+
+                BottomStatusBarView(
+                    mode: $coordinator.bottomPanelMode,
+                    payload: coordinator.bottomStatusPayload,
+                    onAction: { actionRoute in
+                        coordinator.performBannerAction(for: actionRoute)
+                    }
+                )
+                .frame(height: BottomStatusBarLayout.reservedHeight(
+                    for: coordinator.route,
+                    mode: coordinator.bottomPanelMode
+                ))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            routeContent
+        }
+    }
+
+    @ViewBuilder
+    private var routeContent: some View {
+        switch coordinator.route {
+        case .home:
+            WorkflowHomeView(
+                onOpenLive: {
+                    coordinator.openLive()
+                },
+                onOpenTranscription: {
+                    coordinator.openTranscription()
+                },
+                onOpenImport: {
+                    coordinator.openImport()
+                },
+                onOpenRecords: {
+                    coordinator.openRecords()
+                },
+                onOpenSettings: {
+                    coordinator.openSettings()
+                },
+                statusSummary: homeStatusSummary,
+                recentRecords: Array(coordinator.recordsService.records.prefix(3))
+            )
+        case .live:
+            LiveWorkspaceView(viewModel: coordinator.liveViewModel)
+                .accessibilityIdentifier("live_workspace")
+        case .transcription:
+            TranscriptionWorkspaceView(
+                viewModel: coordinator.transcriptionViewModel,
+                onImportRequest: {
+                    openTranscriptionImportPicker()
+                }
+            )
+        case .importMedia:
+            ImportWorkspaceView(viewModel: coordinator.importViewModel)
+                .accessibilityIdentifier("import_workspace")
+        case .records:
+            RecordsView(
+                recordsService: coordinator.recordsService,
+                recordsNavigation: coordinator.recordsNavigation,
+                transcriptRecoveryService: coordinator.liveViewModel.transcriptRecoveryService
+            )
+            .accessibilityIdentifier("records_view")
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            if coordinator.route != .home {
-                Button("返回首页") {
-                    coordinator.openHome()
+            if coordinator.primaryNavigationAction != .none {
+                Button(coordinator.primaryNavigationAction.title) {
+                    coordinator.performPrimaryNavigationAction()
                 }
+                .accessibilityIdentifier(coordinator.primaryNavigationAction.accessibilityID)
             }
         }
 

@@ -38,6 +38,7 @@ final class ChunkAssembler {
     private var emittedSamples: Int = 0
     private var chunkIndex: Int = 0
     private var createdChunkURLs: [URL] = []
+    private var emittedChunkRMS: [Float] = []
 
     init(
         chunkDurationSec: Double = 8,
@@ -66,6 +67,11 @@ final class ChunkAssembler {
         chunkIndex = 0
         cleanupAllChunkFiles()
         createdChunkURLs.removeAll(keepingCapacity: true)
+        emittedChunkRMS.removeAll(keepingCapacity: true)
+    }
+
+    func hasAudibleContent(minimumRMS: Float = 0.001) -> Bool {
+        emittedChunkRMS.contains { $0 >= minimumRMS }
     }
 
     func append(samples: [Float]) throws -> [AudioChunk] {
@@ -161,6 +167,7 @@ final class ChunkAssembler {
             throw ChunkError.cannotWriteChunk
         }
         createdChunkURLs.append(url)
+        emittedChunkRMS.append(rms)
         cleanupOverflowChunkFilesIfNeeded()
 
         return AudioChunk(index: chunkIndex - 1, url: url, startMs: startMs, endMs: endMs, rms: rms)
@@ -189,6 +196,7 @@ final class ChunkAssembler {
             try? FileManager.default.removeItem(at: url)
         }
         createdChunkURLs.removeFirst(overflow)
+        emittedChunkRMS.removeFirst(min(overflow, emittedChunkRMS.count))
     }
 
     private func cleanupAllChunkFiles() {
@@ -232,8 +240,8 @@ final class ChunkAssembler {
         appendLE(UInt32(dataSize))
 
         for sample in samples {
-            let clamped = min(max(sample, -1), 1)
-            let int16 = Int16(clamped * Float(Int16.max))
+            let limited = AudioSampleLimiter.limit(sample)
+            let int16 = Int16(limited * Float(Int16.max))
             appendLE(UInt16(bitPattern: int16))
         }
 

@@ -63,12 +63,29 @@ extension LiveSessionViewModel: CenterStageDataSource {
         reviewSourcePlaybackRequested = true
     }
 
+    func onPlaybackTimeUpdated(_ time: TimeInterval) {
+        currentPlaybackTime = time
+    }
+
     func onSkipMinutes() {
         sessionPhase = .reviewing
     }
 
     func onExportDocument(format: String) {
         exportDocument(format: format)
+    }
+
+    var canRecoverTranscript: Bool {
+        let path = lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return false }
+        return transcriptRecoveryService.canRecover(
+            recordPath: URL(fileURLWithPath: path),
+            duration: recordingDuration
+        )
+    }
+
+    func onRecoverTranscript() {
+        recoverTranscriptFromSavedRecord()
     }
 }
 

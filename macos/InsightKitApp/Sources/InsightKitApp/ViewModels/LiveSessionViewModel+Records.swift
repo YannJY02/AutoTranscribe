@@ -6,62 +6,65 @@ extension LiveSessionViewModel {
 
     /// Called after stopLiveSession completes. Serializes transcript + insight
     /// and calls the records.save RPC to persist the record folder via Python RecordWriter.
-    func saveToRecords(meetingID: String, insightPackageOverride: InsightPackageV1? = nil) {
+    func saveToRecords(
+        meetingID: String,
+        insightPackageOverride: InsightPackageV1? = nil,
+        transcriptSegmentsOverride: [TranscriptSegment]? = nil
+    ) {
         // Capture @Published state on the calling thread to avoid data races.
         // These properties are mutated on main; reading them here (pipelineQueue)
         // is safe because stopLiveSession already stopped all producers and
         // updated UI state before invoking this method.
-        let capturedSegments = self.transcriptSegments
+        let capturedSegments = transcriptSegmentsOverride ?? self.transcriptSegments
         let capturedPackage = insightPackageOverride ?? self.lastInsightPackage
         let capturedRecordingURL = self.temporaryRecordingURL
         let capturedDuration = self.recordingDuration
         let capturedNotes = self.notes
         let capturedAnalysisMeta = Self.analysisMetadata(provider: self.metrics.provider, state: self.analysisRuntimeState)
+        let capturedTimelineSidecarURL = self.captureTimelineSidecarURL(meetingID: meetingID)
+        let capturedCachedFinalTranscript: [TranscriptSegment]? = {
+            guard let mediaPath = capturedRecordingURL?.path,
+                  let cache = self.finalizedMediaTranscriptCache,
+                  cache.mediaPath == mediaPath
+            else { return nil }
+            return cache.segments
+        }()
+        updateMain {
+            self.isFinalizingLiveSession = true
+            self.recordingStatusMessage = "录制已停止，正在保存回看资料、转写和笔记。"
+        }
 
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
-                let segments: [[String: Any]] = capturedSegments.map { seg in
-                    [
-                        "start_ms": seg.startMs,
-                        "end_ms": seg.endMs,
-                        "speaker": seg.speaker,
-                        "text": seg.text,
-                    ]
-                }
+                let durationSec = capturedRecordingURL
+                    .flatMap { self.mediaAssetInspector.durationSec(url: $0) }
+                    ?? capturedDuration
 
-                var insightPackage: [String: Any]? = nil
-                if let pkg = capturedPackage {
-                    let data = try JSONEncoder().encode(pkg)
-                    insightPackage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                }
-
-                let sourcePath = capturedRecordingURL?.path ?? ""
-
-                let mediaType: String
-                if let url = capturedRecordingURL {
-                    let ext = url.pathExtension.lowercased()
-                    mediaType = ["mp4", "mov", "mkv", "avi", "webm"].contains(ext) ? "video" : "audio"
-                } else {
-                    mediaType = "audio"
-                }
-
-                let durationSec = capturedDuration
-
-                let notesMD = NotesFileIO.serialize(capturedNotes)
-
-                let recordPath = try self.rpcClient.recordsSave(
-                    meetingID: meetingID,
-                    title: "直播洞察",
-                    sourcePath: sourcePath,
-                    segments: segments,
-                    insightPackage: insightPackage,
-                    mediaType: mediaType,
-                    recordSource: "live",
-                    durationSec: durationSec,
-                    analysisMeta: capturedAnalysisMeta,
-                    notesMD: notesMD
+                let adapter = InsightRuntimeActionRPCAdapter(rpcClient: self.rpcClient)
+                let finalizer = LiveSessionFinalizer(
+                    finalMediaTranscriber: self.finalMediaTranscriber,
+                    runtimeTranscriptReplacementAction: RuntimeTranscriptReplacementAction(adapter: adapter),
+                    recordSaveAction: RecordSaveAction(adapter: adapter),
+                    retryDelays: self.finalMediaTranscriptRetryDelays
                 )
+                let outcome = try finalizer.finalize(LiveSessionFinalizationSnapshot(
+                    meetingID: meetingID,
+                    capturedSegments: capturedSegments,
+                    insightPackage: capturedPackage,
+                    recordingURL: capturedRecordingURL,
+                    durationSec: durationSec,
+                    notes: capturedNotes,
+                    analysisMeta: capturedAnalysisMeta,
+                    cachedFinalTranscript: capturedCachedFinalTranscript
+                ))
+                let recordPath = outcome.recordPath
+                if !recordPath.isEmpty {
+                    self.copyCaptureTimelineSidecar(
+                        from: capturedTimelineSidecarURL,
+                        toRecordPath: recordPath
+                    )
+                }
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -69,9 +72,147 @@ extension LiveSessionViewModel {
                     if !recordPath.isEmpty {
                         self.lastExportPath = recordPath
                     }
+                    if let mediaPath = capturedRecordingURL?.path {
+                        self.finalizedMediaTranscriptCache = (
+                            mediaPath: mediaPath,
+                            segments: outcome.transcriptSegments
+                        )
+                    }
+                    self.transcriptSegments = outcome.transcriptSegments
+                    self.recordingStatusMessage = outcome.statusMessage
+                    self.transcriptRecoveryStatusMessage = outcome.recoveryAvailable
+                        ? "本次记录已保存媒体和笔记；可从已保存媒体恢复逐字稿。"
+                        : nil
+                    self.isFinalizingLiveSession = false
                 }
             } catch {
+                self.updateMain {
+                    self.isFinalizingLiveSession = false
+                }
                 self.publishError(error)
+            }
+        }
+    }
+
+    private func copyCaptureTimelineSidecar(from sourceURL: URL, toRecordPath recordPath: String) {
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+        let recordURL = URL(fileURLWithPath: recordPath)
+        let destinationURL = recordURL.appendingPathComponent("capture_timeline.json")
+        do {
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        } catch {
+            // Best-effort diagnostics only.
+        }
+    }
+
+    func finalTranscriptSegmentsForRecord(
+        mediaURL: URL?,
+        capturedSegments: [TranscriptSegment]
+    ) throws -> [TranscriptSegment] {
+        guard let mediaURL else {
+            return capturedSegments
+        }
+        let mediaPath = mediaURL.path
+        if let cache = finalizedMediaTranscriptCache, cache.mediaPath == mediaPath {
+            return cache.segments
+        }
+        let mediaSegments: [TranscriptSegment]
+        do {
+            updateMain {
+                self.isFinalizingLiveSession = true
+                self.recordingStatusMessage = "正在根据最终回看资料生成准确转写，请保持应用打开。"
+            }
+            mediaSegments = try transcribeFinalMediaWithRetry(mediaPath: mediaPath)
+        } catch {
+            finalizedMediaTranscriptCache = (mediaPath: mediaPath, segments: [])
+            updateMain {
+                self.transcriptSegments = []
+                self.recordingStatusMessage = "最终回看资料转写暂未完成；已保留媒体和笔记，可稍后重新生成。"
+            }
+            return []
+        }
+        finalizedMediaTranscriptCache = (mediaPath: mediaPath, segments: mediaSegments)
+        updateMain {
+            self.transcriptSegments = mediaSegments
+            self.recordingStatusMessage = mediaSegments.isEmpty
+                ? "最终回看资料没有产生可保存转写；已保留媒体和笔记。"
+                : nil
+        }
+        return mediaSegments
+    }
+
+    private func transcribeFinalMediaWithRetry(mediaPath: String) throws -> [TranscriptSegment] {
+        var lastError: Error?
+        let delays = finalMediaTranscriptRetryDelays
+        for attempt in 0...delays.count {
+            do {
+                return try finalMediaTranscriber.transcribeFinalMedia(mediaPath: mediaPath, source: "media")
+            } catch {
+                lastError = error
+                guard attempt < delays.count else {
+                    break
+                }
+                updateMain {
+                    self.recordingStatusMessage = "最终转写仍在后台处理中，正在等待完成，请保持应用打开。"
+                }
+                let delay = max(0, delays[attempt])
+                if delay > 0 {
+                    Thread.sleep(forTimeInterval: delay)
+                }
+            }
+        }
+        throw lastError ?? NSError(
+            domain: "InsightKit.FinalMediaTranscription",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "最终媒体转写失败"]
+        )
+    }
+
+    func replaceRuntimeTranscript(meetingID: String, segments: [TranscriptSegment]) throws {
+        let deltas = segments.map {
+            RPCSegmentDelta(
+                startMs: $0.startMs,
+                endMs: $0.endMs,
+                speaker: $0.speaker == "未标注" ? "" : $0.speaker,
+                text: $0.text,
+                confidence: 0.0,
+                source: $0.source
+            )
+        }
+        _ = try rpcClient.transcriptReplace(meetingID: meetingID, segments: deltas)
+    }
+
+    func recoverTranscriptFromSavedRecord() {
+        let path = lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        let recordPath = URL(fileURLWithPath: path)
+        let duration = recordingDuration
+        updateMain {
+            self.transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
+        }
+
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try self.transcriptRecoveryService.recoverTranscript(
+                    recordPath: recordPath,
+                    duration: duration
+                )
+                self.updateMain {
+                    self.transcriptSegments = result.segments
+                    self.recordsService?.refreshIndex()
+                    self.transcriptRecoveryStatusMessage = result.smartMinutesMayNeedRegeneration
+                        ? "逐字稿已恢复；现有智能纪要仍保留，但可能需要重新生成以匹配新逐字稿。"
+                        : "逐字稿已恢复。"
+                    self.recordingStatusMessage = nil
+                }
+            } catch {
+                self.updateMain {
+                    self.transcriptRecoveryStatusMessage = "逐字稿恢复失败：\(error.localizedDescription)"
+                }
             }
         }
     }
@@ -92,96 +233,34 @@ extension LiveSessionViewModel {
         return meta
     }
 
-    // MARK: - WAV chunk concatenation (audio-only fallback)
-
-    func concatenateWAVChunks(meetingID: String) -> URL? {
-        let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("InsightKit")
-            .appendingPathComponent(meetingID)
-        let outputURL = tmpDir.appendingPathComponent("recording.wav")
-        return chunkAssembler.writeCombinedWAV(to: outputURL)
-    }
+    // MARK: - Live review media preparation
 
     @discardableResult
     func prepareTemporaryRecordingForSave(meetingID: String, expectedVisualMedia: Bool = false) -> URL? {
-        if let videoURL = usableVideoRecordingURL(temporaryRecordingURL) {
-            let reviewAudioURL = prepareAudibleReviewSource(meetingID: meetingID)
-            let composedVideoURL = reviewAudioURL.flatMap { audioURL -> URL? in
-                do {
-                    return try reviewMediaComposer.composeVideoWithAudio(
-                        videoURL: videoURL,
-                        audioURL: audioURL,
-                        outputURL: composedReviewVideoURL(meetingID: meetingID)
-                    )
-                } catch {
-                    return nil
-                }
-            }
-            let reviewURL = composedVideoURL ?? videoURL
-            temporaryRecordingURL = reviewURL
-            updateMain {
-                self.mediaURL = reviewURL
-                self.reviewSourceMediaURL = reviewURL
-                if reviewAudioURL != nil, composedVideoURL == nil {
-                    let message = "视频回看已保存，但音频合成失败；本次回看可能没有声音。"
-                    self.recordingStatusMessage = message
-                    self.reviewSourceStatusMessage = message
-                } else if composedVideoURL != nil {
-                    self.recordingStatusMessage = nil
-                    self.reviewSourceStatusMessage = nil
-                } else if expectedVisualMedia {
-                    let message = "视频回看已保存，但本次没有可播放音频。请检查麦克风或系统音频输入。"
-                    self.recordingStatusMessage = message
-                    self.reviewSourceStatusMessage = message
-                } else {
-                    self.reviewSourceStatusMessage = nil
-                }
-            }
-            return reviewURL
-        }
+        let timeline = stateQueue.sync { captureTimeline }
+        let preparer = LiveSessionReviewMediaPreparer(
+            audioPreparer: chunkAssembler,
+            mediaAssetInspector: mediaAssetInspector,
+            reviewMediaComposer: reviewMediaComposer
+        )
+        let outcome = preparer.prepare(LiveSessionReviewMediaPreparationSnapshot(
+            meetingID: meetingID,
+            capturedVideoURL: temporaryRecordingURL,
+            expectedVisualMedia: expectedVisualMedia,
+            captureTimeline: timeline
+        ))
 
-        guard let recordingURL = prepareAudibleReviewSource(meetingID: meetingID) else {
-            updateMain {
-                self.recordingStatusMessage = "录音太短或未捕获到可保存音频，已保留转写与笔记；请检查输入源后重新录制。"
-                self.reviewSourceMediaURL = nil
-                self.reviewSourceStatusMessage = "本次没有可播放音频。请检查麦克风或系统音频输入。"
-            }
-            return nil
-        }
-        temporaryRecordingURL = recordingURL
+        temporaryRecordingURL = outcome.recordingURL
         updateMain {
-            if expectedVisualMedia {
-                self.recordingStatusMessage = "未保存到视频画面，回看将使用音频、转写与笔记。请检查摄像头或屏幕录制权限后重试。"
-            } else {
-                self.recordingStatusMessage = nil
-            }
-            self.mediaURL = recordingURL
-            self.reviewSourceMediaURL = recordingURL
-            self.reviewSourceStatusMessage = nil
+            self.mediaURL = outcome.mediaURL
+            self.reviewSourceMediaURL = outcome.reviewSourceMediaURL
+            self.recordingStatusMessage = outcome.recordingStatusMessage
+            self.reviewSourceStatusMessage = outcome.reviewSourceStatusMessage
         }
-        return recordingURL
+        return outcome.recordingURL
     }
 
-    private func prepareAudibleReviewSource(meetingID: String) -> URL? {
-        _ = try? chunkAssembler.flush(minDurationSec: 0.1)
-        return concatenateWAVChunks(meetingID: meetingID)
-    }
-
-    private func composedReviewVideoURL(meetingID: String) -> URL {
-        URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("InsightKit")
-            .appendingPathComponent(meetingID)
-            .appendingPathComponent("recording-with-audio.mp4")
-    }
-
-    private func usableVideoRecordingURL(_ url: URL?) -> URL? {
-        guard let url else { return nil }
-        let ext = url.pathExtension.lowercased()
-        guard ["mp4", "mov", "mkv"].contains(ext) else { return nil }
-        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              (values.fileSize ?? 0) > 0 else {
-            return nil
-        }
-        return url
+    func captureTimelineSidecarURL(meetingID: String) -> URL {
+        LiveSessionReviewMediaPreparer.captureTimelineSidecarURL(meetingID: meetingID)
     }
 }

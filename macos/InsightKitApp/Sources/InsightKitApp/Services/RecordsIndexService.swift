@@ -5,7 +5,7 @@ import Foundation
 
 /// Service for indexing, searching, and managing transcription records.
 /// Records are stored as folders under rootDirectory, each containing:
-/// metadata.json, recording.mp4/m4a, transcript.json, notes.md, minutes.json
+/// metadata.json, recording.mp4/m4a, transcript.json, notes.md, insight_package.json, minutes.json
 final class RecordsIndexService: ObservableObject {
     static let rootDirectoryDefaultsKey = "RecordsRootDirectory"
     private static let datalessFileFlag: UInt32 = 0x40000000
@@ -133,8 +133,16 @@ final class RecordsIndexService: ObservableObject {
         let accessToken = bookmarkStore.accessToken(for: rootDirectory)
         defer { accessToken?.stop() }
         guard let record = records.first(where: { $0.id == id }) else { return }
-        let folder = rootDirectory.appendingPathComponent(record.id)
+        guard let folder = recordFolderURL(for: record.id) else { return }
         try? fileManager.removeItem(at: folder)
+        refreshIndex()
+    }
+
+    func renameRecord(id: String, to title: String) {
+        guard let idx = records.firstIndex(where: { $0.id == id }) else { return }
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        records[idx].title = normalizedTitle.isEmpty ? nil : normalizedTitle
+        persistMetadata(records[idx])
         refreshIndex()
     }
 
@@ -145,6 +153,8 @@ final class RecordsIndexService: ObservableObject {
         let lower = query.lowercased()
         return records.filter { record in
             record.id.lowercased().contains(lower)
+                || record.displayTitle.lowercased().contains(lower)
+                || (record.title ?? "").lowercased().contains(lower)
                 || (record.summaryPreview ?? "").lowercased().contains(lower)
                 || record.userTags.contains(where: { $0.lowercased().contains(lower) })
                 || record.autoTags.contains(where: { $0.lowercased().contains(lower) })
@@ -191,17 +201,7 @@ final class RecordsIndexService: ObservableObject {
             return thumbnailURL
         }
 
-        // Find media file
-        let extensions = ["mp4", "mov", "mkv", "m4a", "mp3", "wav"]
-        var mediaURL: URL?
-        for ext in extensions {
-            let candidate = recordPath.appendingPathComponent("recording.\(ext)")
-            if fileManager.fileExists(atPath: candidate.path) {
-                mediaURL = candidate
-                break
-            }
-        }
-        guard let url = mediaURL else { return nil }
+        guard let url = MeetingAssetSnapshot.canonicalMediaURL(in: recordPath) else { return nil }
 
         let asset = AVAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
@@ -291,11 +291,53 @@ final class RecordsIndexService: ObservableObject {
     private func persistMetadata(_ metadata: RecordMetadata) {
         let accessToken = bookmarkStore.accessToken(for: rootDirectory)
         defer { accessToken?.stop() }
-        let folder = rootDirectory.appendingPathComponent(metadata.id)
+        guard let folder = recordFolderURL(for: metadata.id) else { return }
         let metaURL = folder.appendingPathComponent("metadata.json")
         if let data = try? jsonEncoder.encode(metadata) {
             try? data.write(to: metaURL)
         }
+    }
+
+    func recordFolderURL(for recordID: String) -> URL? {
+        Self.recordFolderURL(for: recordID, rootDirectory: rootDirectory, fileManager: fileManager)
+    }
+
+    static func recordFolderURL(
+        for recordID: String,
+        rootDirectory: URL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let direct = rootDirectory.appendingPathComponent(recordID, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: direct.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            return direct
+        }
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: rootDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        for folder in contents {
+            var childIsDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: folder.path, isDirectory: &childIsDirectory),
+                  childIsDirectory.boolValue
+            else { continue }
+            let metaURL = folder.appendingPathComponent("metadata.json")
+            guard isLocallyReadableRegularFile(metaURL),
+                  let data = try? Data(contentsOf: metaURL),
+                  let metadata = try? decoder.decode(RecordMetadata.self, from: data),
+                  metadata.id == recordID
+            else { continue }
+            return folder
+        }
+
+        return nil
     }
 
     private func recordContentMatches(_ record: RecordMetadata, lowercasedQuery: String) -> Bool {
@@ -303,7 +345,7 @@ final class RecordsIndexService: ObservableObject {
     }
 
     private static func buildContentSearchText(for folder: URL) -> String {
-        let filenames = ["transcript.json", "minutes.json", "notes.md"]
+        let filenames = ["transcript.json", "insight_package.json", "minutes.json", "notes.md"]
         var parts: [String] = []
         for name in filenames {
             let url = folder.appendingPathComponent(name)

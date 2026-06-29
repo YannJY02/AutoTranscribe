@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import Darwin
 import AppKit
 import XCTest
 @testable import InsightKitApp
@@ -13,10 +14,35 @@ final class LiveSessionViewModelTests: XCTestCase {
             systemAudioCapture: SystemAudioCaptureService(),
             mixBus: AudioMixBus(),
             chunkAssembler: ChunkAssembler(),
-            asrService: LiveASRService()
+            asrService: LiveASRService(),
+            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false)
         )
 
         XCTAssertEqual(viewModel.inputMode, .microphone)
+    }
+
+    func testDeinitDuringRunningSessionDoesNotTriggerAsyncFinalizationWork() {
+        var viewModel: LiveSessionViewModel? = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        weak var releasedViewModel = viewModel
+
+        viewModel?.stateQueue.sync {
+            viewModel?._isRunningLock.lock()
+            viewModel?._isRunning = true
+            viewModel?._isRunningLock.unlock()
+            viewModel?._sessionState.activeMeetingID = "live-deinit-test"
+        }
+
+        viewModel = nil
+
+        XCTAssertNil(releasedViewModel)
     }
 
     func testResetForNewSessionRestoresMicrophoneInputModeWithoutClearingSystemSource() {
@@ -474,6 +500,29 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.recordingStatusMessage)
     }
 
+    func testPrepareTemporaryRecordingTreatsNearSilentChunksAsNoCapturedAudio() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitSilentLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: tmp)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService()
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.00002), count: 40_000))
+
+        XCTAssertNil(viewModel.prepareTemporaryRecordingForSave(meetingID: "silent-live-recording-test"))
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+        XCTAssertNil(viewModel.mediaURL)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("未捕获到可保存音频") == true)
+    }
+
     func testPrepareTemporaryRecordingPrefersExistingVideoRecordingForReview() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitVideoLiveRecording_\(UUID().uuidString)", isDirectory: true)
@@ -514,6 +563,7 @@ final class LiveSessionViewModelTests: XCTestCase {
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
         let composer = ReviewMediaComposerSpy()
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false)
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
             sidecarManager: SidecarManager(),
@@ -522,7 +572,8 @@ final class LiveSessionViewModelTests: XCTestCase {
             mixBus: AudioMixBus(),
             chunkAssembler: assembler,
             asrService: LiveASRService(),
-            reviewMediaComposer: composer
+            reviewMediaComposer: composer,
+            mediaAssetInspector: inspector
         )
         defer { try? FileManager.default.removeItem(at: tmp) }
         defer { try? FileManager.default.removeItem(at: outputRoot) }
@@ -538,6 +589,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         )
 
         let call = try XCTUnwrap(composer.calls.first)
+        XCTAssertEqual(inspector.checkedURLs, [videoURL])
         XCTAssertEqual(call.videoURL, videoURL)
         XCTAssertEqual(call.audioURL.pathExtension, "wav")
         XCTAssertEqual(recordingURL.lastPathComponent, "recording-with-audio.mp4")
@@ -546,6 +598,103 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.mediaURL, recordingURL)
         XCTAssertEqual(viewModel.reviewSourceMediaURL, recordingURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: recordingURL.path))
+        XCTAssertNil(viewModel.recordingStatusMessage)
+        XCTAssertNil(viewModel.reviewSourceStatusMessage)
+    }
+
+    func testPrepareTemporaryRecordingPassesCaptureTimelineToReviewMediaComposer() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoAudioTimeline_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
+        let meetingID = "video-audio-timeline-test-\(UUID().uuidString)"
+        let outputRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+        let composer = ReviewMediaComposerSpy()
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService(),
+            reviewMediaComposer: composer,
+            mediaAssetInspector: inspector
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        defer { try? FileManager.default.removeItem(at: outputRoot) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        viewModel.temporaryRecordingURL = videoURL
+        viewModel.captureTimeline.markVideoStart(at: 100)
+        viewModel.captureTimeline.markAudioStartIfNeeded(at: 101.25)
+
+        _ = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: meetingID,
+                expectedVisualMedia: true
+            )
+        )
+
+        let call = try XCTUnwrap(composer.calls.first)
+        XCTAssertEqual(call.timeline.videoStartSec, 0, accuracy: 0.001)
+        XCTAssertEqual(call.timeline.audioStartSec, 1.25, accuracy: 0.001)
+
+        let sidecarURL = viewModel.captureTimelineSidecarURL(meetingID: meetingID)
+        let sidecar = try JSONDecoder().decode(
+            LiveMediaCaptureTimelineSidecarFixture.self,
+            from: Data(contentsOf: sidecarURL)
+        )
+        XCTAssertEqual(sidecar.compositionTimeline.videoStartSec, 0, accuracy: 0.001)
+        XCTAssertEqual(sidecar.compositionTimeline.audioStartSec, 1.25, accuracy: 0.001)
+    }
+
+
+    func testPrepareTemporaryRecordingKeepsOriginalVideoWhenItAlreadyHasAudio() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoWithNativeAudio_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
+        let composer = ReviewMediaComposerSpy()
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: true)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService(),
+            reviewMediaComposer: composer,
+            mediaAssetInspector: inspector
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        viewModel.temporaryRecordingURL = videoURL
+
+        let recordingURL = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: "video-with-native-audio-test",
+                expectedVisualMedia: true
+            )
+        )
+
+        XCTAssertEqual(inspector.checkedURLs, [videoURL])
+        XCTAssertTrue(composer.calls.isEmpty)
+        XCTAssertEqual(recordingURL, videoURL)
+        XCTAssertEqual(viewModel.temporaryRecordingURL, videoURL)
+        XCTAssertEqual(viewModel.mediaURL, videoURL)
+        XCTAssertEqual(viewModel.reviewSourceMediaURL, videoURL)
         XCTAssertNil(viewModel.recordingStatusMessage)
         XCTAssertNil(viewModel.reviewSourceStatusMessage)
     }
@@ -567,7 +716,8 @@ final class LiveSessionViewModelTests: XCTestCase {
             systemAudioCapture: SystemAudioCaptureService(),
             mixBus: AudioMixBus(),
             chunkAssembler: ChunkAssembler(),
-            asrService: LiveASRService()
+            asrService: LiveASRService(),
+            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false)
         )
         defer { try? FileManager.default.removeItem(at: tmp) }
         defer { try? FileManager.default.removeItem(at: outputRoot) }
@@ -919,6 +1069,545 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(call.notesMD.contains("00:03 live note"))
     }
 
+    func testSaveToRecordsUsesPlayableMediaDurationWhenAvailable() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSavePlayableDuration_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.mp4")
+        try Data("fake mp4".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: true, durationSec: 39.95)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            mediaAssetInspector: inspector
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 47.0
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save playable duration")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-playable-duration-test")
+
+        wait(for: [exp], timeout: 5.0)
+        let call = try XCTUnwrap(rpcClient.recordsSaveCalls.first)
+        XCTAssertEqual(call.sourcePath, recordingURL.path)
+        XCTAssertEqual(call.mediaType, "video")
+        XCTAssertEqual(call.durationSec, 39.95, accuracy: 0.001)
+    }
+
+    func testStopLiveSessionDrainsQueuedChunksBeforeSavingRecord() throws {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.outcome = LiveTranscriptPipelineOutcome(
+            chunkIndex: 1,
+            latencyMs: 10,
+            ingestedCount: 1,
+            transcriptSegments: [
+                TranscriptSegment(startMs: 1_000, endMs: 2_000, speaker: "SPEAKER_00", source: "mic", text: "queued audio")
+            ],
+            captureState: .capturing,
+            firstSegmentMs: 1_000,
+            lastTranscriptAt: Date(),
+            refresh: .none,
+            providerMetric: nil,
+            analysisRuntimeState: nil,
+            errorMessage: nil
+        )
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+        viewModel.asrWarmStatus = ASRWarmStatus(
+            ready: true,
+            state: .ready,
+            inProgress: false,
+            attempt: 1,
+            lastWarmMs: 1_000,
+            lastError: ""
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-stop-drain-test"
+            viewModel.activeMode = .microphone
+        }
+        viewModel.sessionHandle = SessionHandle(activeMeetingID: "live-stop-drain-test", lastMeetingID: nil)
+        viewModel.queuedChunks = [
+            makeLiveSessionTestChunk(index: 1),
+            makeLiveSessionTestChunk(index: 2),
+        ]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "record saved after queued chunks drain")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.stopLiveSession()
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(pipeline.processCalls.map { $0.chunk.index }, [1, 2])
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.meetingID, "live-stop-drain-test")
+    }
+
+    func testSaveToRecordsReplacesLiveChunkTranscriptWithFinalMediaTranscript() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveMediaTranscript_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        rpcClient.asrTranscribeMediaStub = [
+            RPCSegmentDelta(
+                startMs: 22_000,
+                endMs: 25_500,
+                speaker: "SPEAKER_00",
+                text: "final media aligned transcript",
+                confidence: 0.91,
+                source: "media"
+            )
+        ]
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "live", source: "mic", text: "stale live chunk transcript")
+        ]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save uses media transcript")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-media-transcript-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.asrTranscribeMediaCalls.map(\.mediaPath), [recordingURL.path])
+        let savedSegments = try XCTUnwrap(rpcClient.recordsSaveSegments.first)
+        XCTAssertEqual(savedSegments.count, 1)
+        XCTAssertEqual(savedSegments.first?["start_ms"] as? Int, 22_000)
+        XCTAssertEqual(savedSegments.first?["end_ms"] as? Int, 25_500)
+        XCTAssertEqual(savedSegments.first?["text"] as? String, "final media aligned transcript")
+        XCTAssertEqual(savedSegments.first?["source"] as? String, "media")
+    }
+
+    func testSaveToRecordsCanUseInjectedAppleSpeechFinalMediaTranscriber() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitAppleSpeechMediaTranscript_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let finalMediaTranscriber = FinalMediaTranscriberSpy(results: [
+            .success([
+                TranscriptSegment(
+                    startMs: 0,
+                    endMs: 840,
+                    speaker: "Apple Speech",
+                    source: "apple-speech",
+                    text: "Hello, world."
+                ),
+            ]),
+        ])
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            finalMediaTranscriber: finalMediaTranscriber
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "live", source: "mic", text: "stale live chunk transcript")
+        ]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save uses apple speech media transcript")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "apple-speech-media-transcript-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(finalMediaTranscriber.calls.map(\.mediaPath), [recordingURL.path])
+        XCTAssertTrue(rpcClient.asrTranscribeMediaCalls.isEmpty)
+        let savedSegments = try XCTUnwrap(rpcClient.recordsSaveSegments.first)
+        XCTAssertEqual(savedSegments.count, 1)
+        XCTAssertEqual(savedSegments.first?["start_ms"] as? Int, 0)
+        XCTAssertEqual(savedSegments.first?["end_ms"] as? Int, 840)
+        XCTAssertEqual(savedSegments.first?["speaker"] as? String, "Apple Speech")
+        XCTAssertEqual(savedSegments.first?["text"] as? String, "Hello, world.")
+        XCTAssertEqual(savedSegments.first?["source"] as? String, "apple-speech")
+    }
+
+    func testFinalMediaRouterKeepsVideoContainersOnExistingRPCTranscriber() throws {
+        let rpcClient = RPCClientMock()
+        rpcClient.asrTranscribeMediaStub = [
+            RPCSegmentDelta(
+                startMs: 1_000,
+                endMs: 2_000,
+                speaker: "SPEAKER_00",
+                text: "video media remains on existing transcriber",
+                confidence: 0.9,
+                source: "media"
+            ),
+        ]
+        let router = FinalMediaTranscriptionRouter(
+            rpcClient: rpcClient,
+            appleSpeechPrototypeEnabled: { true }
+        )
+
+        let segments = try router.transcribeFinalMedia(mediaPath: "/tmp/recording.mp4", source: "media")
+
+        XCTAssertEqual(rpcClient.asrTranscribeMediaCalls.map(\.mediaPath), ["/tmp/recording.mp4"])
+        XCTAssertEqual(segments.map(\.text), ["video media remains on existing transcriber"])
+        XCTAssertEqual(segments.map(\.source), ["media"])
+    }
+
+    func testSaveToRecordsDoesNotFallbackToLiveChunkTranscriptWhenFinalMediaTranscriptionFails() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveMediaTranscriptFailure_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        rpcClient.asrTranscribeMediaError = NSError(
+            domain: "InsightKitTest",
+            code: 42,
+            userInfo: [NSLocalizedDescriptionKey: "media transcription failed"]
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.finalMediaTranscriptRetryDelays = []
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "live", source: "mic", text: "stale live chunk transcript")
+        ]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save keeps media without stale transcript")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-media-transcript-failure-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.asrTranscribeMediaCalls.map(\.mediaPath), [recordingURL.path])
+        XCTAssertEqual(rpcClient.transcriptReplaceCalls.first?.segments.count, 0)
+        XCTAssertEqual(rpcClient.recordsSaveSegments.first?.count, 0)
+    }
+
+    func testSaveToRecordsRetriesFinalMediaTranscriptionBeforeSavingEmptyTranscript() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveMediaTranscriptRetry_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        rpcClient.asrTranscribeMediaQueue = [
+            .failure(NSError(
+                domain: "InsightKitTest",
+                code: 43,
+                userInfo: [NSLocalizedDescriptionKey: "media transcription still finalizing"]
+            )),
+            .success([
+                RPCSegmentDelta(
+                    startMs: 11_000,
+                    endMs: 14_500,
+                    speaker: "SPEAKER_00",
+                    text: "retry succeeded on final media timeline",
+                    confidence: 0.93,
+                    source: "media"
+                )
+            ]),
+        ]
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.finalMediaTranscriptRetryDelays = [0]
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "live", source: "mic", text: "stale live chunk transcript")
+        ]
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save retries media transcript")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-media-transcript-retry-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.asrTranscribeMediaCalls.count, 2)
+        let savedSegments = try XCTUnwrap(rpcClient.recordsSaveSegments.first)
+        XCTAssertEqual(savedSegments.count, 1)
+        XCTAssertEqual(savedSegments.first?["start_ms"] as? Int, 11_000)
+        XCTAssertEqual(savedSegments.first?["text"] as? String, "retry succeeded on final media timeline")
+        XCTAssertEqual(savedSegments.first?["source"] as? String, "media")
+    }
+
+    func testBuildFinalInsightReplacesRuntimeTranscriptWithFinalMediaTranscriptBeforeGeneratingMinutes() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveMediaFinalInsight_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("RIFF----WAVE".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        rpcClient.asrTranscribeMediaStub = [
+            RPCSegmentDelta(
+                startMs: 34_000,
+                endMs: 39_000,
+                speaker: "SPEAKER_00",
+                text: "media transcript used for final minutes",
+                confidence: 0.88,
+                source: "media"
+            )
+        ]
+        let socketPath = "/tmp/insightkit-live-final-\(UUID().uuidString).sock"
+        let sidecarSocket = ConnectableSidecarSocket(socketPath: socketPath)
+        try sidecarSocket.start()
+        defer { sidecarSocket.stop() }
+
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(socketPath: socketPath, startupTimeoutSec: 3),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "live", source: "mic", text: "stale live transcript")
+        ]
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = "live-final-media-timeline-test"
+        }
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "final insight saved")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.buildFinalInsight()
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(Array(rpcClient.methodCalls.prefix(3)), [
+            "asr.transcribe_media",
+            "transcript.replace",
+            "insight.build_final",
+        ])
+        let replace = try XCTUnwrap(rpcClient.transcriptReplaceCalls.first)
+        XCTAssertEqual(replace.meetingID, "live-final-media-timeline-test")
+        XCTAssertEqual(replace.segments.map(\.startMs), [34_000])
+        XCTAssertEqual(replace.segments.map(\.text), ["media transcript used for final minutes"])
+    }
+
+    func testLiveSmartMinutesSpeakerRenameUpdatesRuntimeMinutesPackageAndPersistedRecord() throws {
+        let root = RecordExportTestFixture.makeRoot(prefix: "InsightKitLiveSpeakerRename")
+        let recordID = "live-speaker-rename"
+        let recordPath = try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .live)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+        [
+          {"start_ms":1000,"end_ms":3000,"speaker":"SPEAKER_00","text":"Alice should appear everywhere."}
+        ]
+        """.write(to: recordPath.appendingPathComponent("transcript.json"), atomically: true, encoding: .utf8)
+
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = root
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.recordsService = recordsService
+        viewModel.sessionPhase = .reviewing
+        viewModel.transcriptSegments = [
+            TranscriptSegment(
+                startMs: 1_000,
+                endMs: 3_000,
+                speaker: "SPEAKER_00",
+                source: "media",
+                text: "Alice should appear everywhere."
+            )
+        ]
+        viewModel.smartMinutesData = SmartMinutes(
+            structuredSummary: "Speaker correction summary.",
+            speakerSummaries: [
+                SpeakerMinutesSummary(speakerName: "SPEAKER_00", summary: "Original speaker summary.")
+            ]
+        )
+        viewModel.lastInsightPackage = InsightPackageV1(
+            sessionOverview: .init(title: "Live", overview: "Speaker correction summary.", topics: []),
+            highlightInsights: [
+                .init(
+                    quote: "Important quote",
+                    reason: "Important reason",
+                    speaker: "SPEAKER_00",
+                    evidenceSpan: .init(startMs: 1_000, endMs: 3_000)
+                )
+            ],
+            speakerPerspectives: [
+                .init(
+                    speaker: "SPEAKER_00",
+                    viewpoints: ["Original speaker summary."],
+                    evidenceSpans: [.init(startMs: 1_000, endMs: 3_000)]
+                )
+            ],
+            decisionLedger: [],
+            actionTracks: [],
+            timelineBeats: [],
+            provenanceLinks: []
+        )
+        viewModel.finalizedMediaTranscriptCache = (
+            mediaPath: "/tmp/recording.wav",
+            segments: viewModel.transcriptSegments
+        )
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = recordID
+        }
+
+        XCTAssertEqual(viewModel.editableSpeakers, ["SPEAKER_00"])
+
+        viewModel.renameSpeaker(from: "SPEAKER_00", to: "Alice")
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.transcriptSegments.map(\.speaker), ["Alice"])
+        XCTAssertEqual(viewModel.smartMinutesData?.speakerSummaries.map(\.speakerName), ["Alice"])
+        XCTAssertEqual(viewModel.lastInsightPackage?.speakerPerspectives.map(\.speaker), ["Alice"])
+        XCTAssertEqual(viewModel.lastInsightPackage?.highlightInsights.map(\.speaker), ["Alice"])
+        XCTAssertEqual(viewModel.finalizedMediaTranscriptCache?.segments.map(\.speaker), ["Alice"])
+
+        let persistedTranscript = try String(contentsOf: recordPath.appendingPathComponent("transcript.json"), encoding: .utf8)
+        XCTAssertTrue(persistedTranscript.contains("Alice"))
+        XCTAssertFalse(persistedTranscript.contains("SPEAKER_00"))
+
+        let markdown = try RecordDocumentExporter.renderMarkdown(
+            metadata: recordsService.records.first ?? RecordMetadata(
+                id: recordID,
+                createdAt: Date(),
+                duration: 30,
+                mediaType: .audio,
+                source: .live,
+                userTags: [],
+                autoTags: [],
+                summaryPreview: "Speaker correction"
+            ),
+            recordPath: recordPath
+        )
+        XCTAssertTrue(markdown.contains("Alice"))
+
+        let replace = try XCTUnwrap(rpcClient.transcriptReplaceCalls.first)
+        XCTAssertEqual(replace.meetingID, recordID)
+        XCTAssertEqual(replace.segments.map(\.speaker), ["Alice"])
+    }
+
     func testSaveToRecordsPersistsGeneratedLiveInsightPackageForRecovery() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveFinalSave_\(UUID().uuidString)", isDirectory: true)
@@ -1034,16 +1723,173 @@ private final class LiveTranscriptProcessingMock: LiveTranscriptProcessing {
 }
 
 private final class ReviewMediaComposerSpy: ReviewMediaComposing {
-    private(set) var calls: [(videoURL: URL, audioURL: URL, outputURL: URL)] = []
+    private(set) var calls: [(
+        videoURL: URL,
+        audioURL: URL,
+        outputURL: URL,
+        timeline: ReviewMediaCompositionTimeline
+    )] = []
 
-    func composeVideoWithAudio(videoURL: URL, audioURL: URL, outputURL: URL) throws -> URL {
-        calls.append((videoURL: videoURL, audioURL: audioURL, outputURL: outputURL))
+    func composeVideoWithAudio(
+        videoURL: URL,
+        audioURL: URL,
+        outputURL: URL,
+        timeline: ReviewMediaCompositionTimeline
+    ) throws -> URL {
+        calls.append((videoURL: videoURL, audioURL: audioURL, outputURL: outputURL, timeline: timeline))
         try FileManager.default.createDirectory(
             at: outputURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try Data("merged mp4".utf8).write(to: outputURL)
         return outputURL
+    }
+}
+
+private struct LiveMediaCaptureTimelineSidecarFixture: Decodable {
+    let compositionTimeline: ReviewMediaCompositionTimeline
+}
+
+private final class MediaAssetInspectorSpy: MediaAssetInspecting {
+    private let result: Bool
+    private let durationResult: Double?
+    private(set) var checkedURLs: [URL] = []
+    private(set) var durationURLs: [URL] = []
+
+    init(hasAudioTrack: Bool, durationSec: Double? = nil) {
+        self.result = hasAudioTrack
+        self.durationResult = durationSec
+    }
+
+    func hasAudioTrack(url: URL) -> Bool {
+        checkedURLs.append(url)
+        return result
+    }
+
+    func durationSec(url: URL) -> Double? {
+        durationURLs.append(url)
+        return durationResult
+    }
+}
+
+private final class FinalMediaTranscriberSpy: FinalMediaTranscribing {
+    private var results: [Result<[TranscriptSegment], Error>]
+    private(set) var calls: [(mediaPath: String, source: String)] = []
+
+    init(results: [Result<[TranscriptSegment], Error>]) {
+        self.results = results
+    }
+
+    func transcribeFinalMedia(mediaPath: String, source: String) throws -> [TranscriptSegment] {
+        calls.append((mediaPath, source))
+        if results.isEmpty {
+            return []
+        }
+        return try results.removeFirst().get()
+    }
+}
+
+private final class ConnectableSidecarSocket {
+    private let socketPath: String
+    private var listenFD: Int32 = -1
+    private var serverThread: Thread?
+    private let finished = DispatchSemaphore(value: 0)
+
+    init(socketPath: String) {
+        self.socketPath = socketPath
+    }
+
+    func start() throws {
+        _ = Darwin.unlink(socketPath)
+        listenFD = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard listenFD >= 0 else { throw posixError("socket") }
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = socketPath.utf8CString
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        guard pathBytes.count <= capacity else {
+            Darwin.close(listenFD)
+            listenFD = -1
+            throw NSError(domain: "ConnectableSidecarSocket", code: Int(ENAMETOOLONG), userInfo: [
+                NSLocalizedDescriptionKey: "Socket path is too long.",
+            ])
+        }
+
+        withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
+            buffer.initializeMemory(as: CChar.self, repeating: 0)
+            _ = pathBytes.withUnsafeBytes { src in
+                memcpy(buffer.baseAddress, src.baseAddress, min(buffer.count, src.count))
+            }
+        }
+
+        let bindResult = withUnsafePointer(to: &addr) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockAddr in
+                Darwin.bind(listenFD, sockAddr, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            let error = posixError("bind")
+            Darwin.close(listenFD)
+            listenFD = -1
+            throw error
+        }
+
+        guard Darwin.listen(listenFD, 4) == 0 else {
+            let error = posixError("listen")
+            Darwin.close(listenFD)
+            listenFD = -1
+            throw error
+        }
+
+        serverThread = Thread { [weak self] in
+            self?.run()
+        }
+        serverThread?.start()
+    }
+
+    func stop() {
+        let fd = listenFD
+        if fd >= 0 {
+            listenFD = -1
+            _ = Darwin.shutdown(fd, SHUT_RDWR)
+            _ = Darwin.close(fd)
+        }
+        _ = Darwin.unlink(socketPath)
+        if serverThread != nil {
+            _ = finished.wait(timeout: .now() + 1.0)
+            serverThread = nil
+        }
+    }
+
+    deinit {
+        stop()
+    }
+
+    private func run() {
+        defer { finished.signal() }
+        while listenFD >= 0 {
+            let clientFD = Darwin.accept(listenFD, nil, nil)
+            guard clientFD >= 0 else { return }
+            var noSigPipe: Int32 = 1
+            _ = setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            let readN = Darwin.read(clientFD, &buffer, buffer.count)
+            if readN > 0 {
+                let response = #"{"jsonrpc":"2.0","result":{"ok":true}}"#
+                response.withCString { pointer in
+                    _ = Darwin.write(clientFD, pointer, strlen(pointer))
+                }
+                _ = Darwin.shutdown(clientFD, SHUT_RDWR)
+            }
+            Darwin.close(clientFD)
+        }
+    }
+
+    private func posixError(_ operation: String) -> NSError {
+        NSError(domain: "ConnectableSidecarSocket", code: Int(errno), userInfo: [
+            NSLocalizedDescriptionKey: "\(operation) failed: \(String(cString: strerror(errno)))",
+        ])
     }
 }
 

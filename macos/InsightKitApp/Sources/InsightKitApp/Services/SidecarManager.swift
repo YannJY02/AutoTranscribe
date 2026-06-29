@@ -64,6 +64,9 @@ final class SidecarManager {
         if canConnectToSocket() {
             do {
                 try waitForApplicationReady(ensureReady)
+                if try rebootstrapIfBuildMismatch(ensureReady: ensureReady) {
+                    return
+                }
                 return
             } catch {
                 // A running old sidecar can keep the socket alive but miss newly introduced RPCs.
@@ -352,6 +355,9 @@ final class SidecarManager {
             throw SidecarError.failedToStart("socket create failed")
         }
         defer { _ = close(fd) }
+
+        var noSigPipe: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
         var tv = timeval(tv_sec: timeoutSec, tv_usec: 0)
         withUnsafePointer(to: &tv) { ptr in

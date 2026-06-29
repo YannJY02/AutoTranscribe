@@ -112,6 +112,7 @@ info_plist="$APP_PATH/Contents/Info.plist"
 if [[ -f "$info_plist" ]]; then
   required_usage_keys=(
     "NSMicrophoneUsageDescription"
+    "NSSpeechRecognitionUsageDescription"
     "NSCameraUsageDescription"
     "NSScreenCaptureUsageDescription"
   )

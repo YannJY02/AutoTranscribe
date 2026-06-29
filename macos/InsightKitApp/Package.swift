@@ -8,13 +8,19 @@ let package = Package(
         .executable(name: "InsightKitApp", targets: ["InsightKitApp"]),
     ],
     targets: [
+        .target(
+            name: "InsightKitObjCShims",
+            path: "Sources/InsightKitObjCShims",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "InsightKitApp",
+            dependencies: ["InsightKitObjCShims"],
             path: "Sources/InsightKitApp"
         ),
         .testTarget(
             name: "InsightKitAppTests",
-            dependencies: ["InsightKitApp"],
+            dependencies: ["InsightKitApp", "InsightKitObjCShims"],
             path: "Tests/InsightKitAppTests"
         ),
     ]

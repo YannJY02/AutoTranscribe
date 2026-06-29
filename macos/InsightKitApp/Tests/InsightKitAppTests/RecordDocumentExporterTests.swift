@@ -39,6 +39,31 @@ final class RecordDocumentExporterTests: XCTestCase {
         XCTAssertTrue(markdown.contains("[00:03] export note"))
     }
 
+    func testMarkdownExportPrefersInsightPackageAsCanonicalSmartMinutesSource() throws {
+        let metadata = try seedRecord()
+        try """
+        {
+          "session_overview":{"title":"Canonical","overview":"Package export overview","topics":["export"]},
+          "highlight_insights":[{"quote":"Package quote","reason":"A stronger package detail","speaker":"Alice","evidence_span":{"start_ms":3000,"end_ms":5000}}],
+          "speaker_perspectives":[{"speaker":"Alice","viewpoints":["Package speaker viewpoint"],"evidence_spans":[{"start_ms":3000,"end_ms":5000}]}],
+          "decision_ledger":[{"problem":"Export source","options":["minutes","package"],"decision":"Use package in export","rationale":"It is canonical","owner":"Alice","needs_review":false,"evidence_span":{"start_ms":3000,"end_ms":5000}}],
+          "action_tracks":[{"task":"Export from canonical package","owner":"Alice","due_at":"","priority":"medium","status":"open","needs_review":false,"evidence_span":{"start_ms":3000,"end_ms":5000}}],
+          "timeline_beats":[{"timestamp":"00:03","title":"Package export chapter","summary":"Export reads the package."}],
+          "provenance_links":[]
+        }
+        """.write(to: tempRoot.appendingPathComponent("insight_package.json"), atomically: true, encoding: .utf8)
+
+        let markdown = try RecordDocumentExporter.renderMarkdown(metadata: metadata, recordPath: tempRoot)
+
+        XCTAssertTrue(markdown.contains("Package export overview"))
+        XCTAssertTrue(markdown.contains("Package quote"))
+        XCTAssertTrue(markdown.contains("Alice：Package speaker viewpoint"))
+        XCTAssertTrue(markdown.contains("Use package in export"))
+        XCTAssertTrue(markdown.contains("Export from canonical package"))
+        XCTAssertTrue(markdown.contains("[00:03] Package export chapter：Export reads the package."))
+        XCTAssertFalse(markdown.contains("The release export loop is ready."))
+    }
+
     func testExportsPDFWithPDFHeader() throws {
         let metadata = try seedRecord()
 

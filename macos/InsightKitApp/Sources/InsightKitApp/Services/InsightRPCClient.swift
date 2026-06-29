@@ -45,6 +45,8 @@ final class InsightRPCClient {
         var timeoutSec: Int
         /// 专用于 asr.transcribe_chunk 的超时（模型推理可能远超全局超时）
         var asrChunkTimeoutSec: Int
+        /// 专用于最终媒体转写的超时（录制完成后按媒体时间轴重建最终转写）
+        var asrMediaTimeoutSec: Int
         /// 专用于 provider 探测的超时（短超时 + 禁重试，避免阻塞主流程）
         var providerProbeTimeoutSec: Int
         /// 专用于 insight.build_final 的超时（最终洞察可能需要完整 provider 生成）
@@ -58,6 +60,7 @@ final class InsightRPCClient {
                 socketPath: InsightRuntimeDefaults.socketPath,
                 timeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_TIMEOUT_SEC"] ?? "8") ?? 8,
                 asrChunkTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_CHUNK_TIMEOUT_SEC"] ?? "120") ?? 120,
+                asrMediaTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_MEDIA_TIMEOUT_SEC"] ?? "900") ?? 900,
                 providerProbeTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_PROVIDER_PROBE_RPC_TIMEOUT_SEC"] ?? "6") ?? 6,
                 finalInsightTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_FINAL_INSIGHT_RPC_TIMEOUT_SEC"] ?? "60") ?? 60,
                 maxRetries: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_MAX_RETRIES"] ?? "1") ?? 1,
@@ -156,6 +159,22 @@ final class InsightRPCClient {
         return result["ingested"] as? Int ?? 0
     }
 
+    func transcriptReplace(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int {
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(segments)
+        let rawSegments = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+
+        let result = try callProductAction(
+            method: "runtime.transcript.replace",
+            legacyMethod: "transcript.replace",
+            params: [
+                "meeting_id": meetingID,
+                "segments": rawSegments,
+            ]
+        )
+        return result["replaced"] as? Int ?? 0
+    }
+
     func transcriptList(meetingID: String, limit: Int = 1000) throws -> [TranscriptSegment] {
         let result = try callWithRetry(method: "transcript.list", params: [
             "meeting_id": meetingID,
@@ -192,8 +211,9 @@ final class InsightRPCClient {
         for (key, value) in AppConfigStore.shared.activeProviderParams() {
             params[key] = value
         }
-        let result = try callWithRetry(
-            method: "insight.build_final",
+        let result = try callProductAction(
+            method: "smart_minutes.generate",
+            legacyMethod: "insight.build_final",
             params: params,
             overrideTimeoutSec: max(config.timeoutSec, config.finalInsightTimeoutSec)
         )
@@ -460,8 +480,24 @@ final class InsightRPCClient {
             ],
             overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec)
         )
-        let rows = (result["segments"] as? [[String: Any]]) ?? []
-        return rows.compactMap { row in
+        return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    func asrTranscribeMedia(mediaPath: String, source: String = "media") throws -> [RPCSegmentDelta] {
+        let result = try callProductAction(
+            method: "media.transcribe_final",
+            legacyMethod: "asr.transcribe_media",
+            params: [
+                "media_path": mediaPath,
+                "source": source,
+            ],
+            overrideTimeoutSec: max(config.timeoutSec, config.asrMediaTimeoutSec)
+        )
+        return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    private func decodeSegmentDeltas(from rows: [[String: Any]], fallbackSource: String) -> [RPCSegmentDelta] {
+        rows.compactMap { row in
             guard
                 let text = row["text"] as? String,
                 !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -472,7 +508,7 @@ final class InsightRPCClient {
             let endMs = (row["end_ms"] as? Int) ?? (startMs + 1000)
             let speaker = (row["speaker"] as? String) ?? ""
             let confidence = (row["confidence"] as? Double) ?? ((row["confidence"] as? NSNumber)?.doubleValue ?? 0.0)
-            let segSource = (row["source"] as? String) ?? source
+            let segSource = (row["source"] as? String) ?? fallbackSource
             return RPCSegmentDelta(
                 startMs: startMs,
                 endMs: endMs,
@@ -512,7 +548,7 @@ final class InsightRPCClient {
         if let analysisMeta {
             params["analysis_meta"] = analysisMeta
         }
-        let result = try callWithRetry(method: "records.save", params: params)
+        let result = try callProductAction(method: "record.save", legacyMethod: "records.save", params: params)
         return (result["record_path"] as? String) ?? ""
     }
 
@@ -618,6 +654,7 @@ final class InsightRPCClient {
         let diar = result["speaker_diarization"] as? [String: Any] ?? [:]
         let backend = result["backend"] as? [String: Any] ?? [:]
         let warm = result["warm"] as? [String: Any] ?? [:]
+        let profile = result["profile"] as? [String: Any] ?? [:]
         let readyRaw = result["ready_by_engine"] as? [String: Any] ?? [:]
         var readyByEngine: [String: Bool] = [:]
         for (key, value) in readyRaw {
@@ -644,7 +681,47 @@ final class InsightRPCClient {
             diarizationReason: (diar["reason"] as? String) ?? "",
             readyByEngine: readyByEngine,
             backend: decodeASRBackendStatus(backend),
-            warm: decodeASRWarmStatus(warm)
+            warm: decodeASRWarmStatus(warm),
+            profile: decodeASRRuntimeProfile(profile)
+        )
+    }
+
+    private func decodeASRRuntimeProfile(_ payload: [String: Any]) -> ASRRuntimeProfile {
+        guard !payload.isEmpty else { return .empty }
+        let engineProfiles = payload["engine_profiles"] as? [String: Any] ?? [:]
+        let appleSpeechPayload = engineProfiles["apple-speech"] as? [String: Any]
+        return ASRRuntimeProfile(
+            schemaVersion: (payload["schema_version"] as? Int) ?? 0,
+            configuredEngine: (payload["configured_engine"] as? String) ?? "",
+            activeEngine: (payload["active_engine"] as? String) ?? "",
+            technicalStatus: (payload["technical_status"] as? String) ?? "",
+            liveASR: decodeASRRuntimeReadiness(payload["live_asr"] as? [String: Any] ?? [:]),
+            finalMediaASR: decodeASRRuntimeReadiness(payload["final_media_asr"] as? [String: Any] ?? [:]),
+            userRecoveryHint: (payload["user_recovery_hint"] as? String) ?? "",
+            appleSpeech: appleSpeechPayload.map(decodeASREngineProfile)
+        )
+    }
+
+    private func decodeASRRuntimeReadiness(_ payload: [String: Any]) -> ASRRuntimeReadiness {
+        ASRRuntimeReadiness(
+            ready: (payload["ready"] as? Bool) ?? false,
+            reason: (payload["reason"] as? String) ?? ""
+        )
+    }
+
+    private func decodeASREngineProfile(_ payload: [String: Any]) -> ASREngineProfile {
+        let capabilities = payload["capabilities"] as? [String: Any] ?? [:]
+        return ASREngineProfile(
+            engine: (payload["engine"] as? String) ?? "",
+            displayName: (payload["display_name"] as? String) ?? "",
+            selectable: (payload["selectable"] as? Bool) ?? false,
+            ready: (payload["ready"] as? Bool) ?? false,
+            availabilityState: (payload["availability_state"] as? String) ?? "",
+            liveASR: (capabilities["live_asr"] as? Bool) ?? false,
+            finalMediaASR: (capabilities["final_media_asr"] as? Bool) ?? false,
+            diarization: (capabilities["diarization"] as? Bool) ?? false,
+            limitations: (payload["limitations"] as? [String]) ?? [],
+            userRecoveryHint: (payload["user_recovery_hint"] as? String) ?? ""
         )
     }
 
@@ -712,6 +789,29 @@ final class InsightRPCClient {
         }
 
         throw lastError ?? RPCError.timeout(method)
+    }
+
+    private func callProductAction(
+        method: String,
+        legacyMethod: String,
+        params: [String: Any],
+        overrideTimeoutSec: Int? = nil
+    ) throws -> [String: Any] {
+        do {
+            return try callWithRetry(
+                method: method,
+                params: params,
+                overrideTimeoutSec: overrideTimeoutSec,
+                maxRetriesOverride: 0
+            )
+        } catch RPCError.remoteError(let message)
+            where message.localizedCaseInsensitiveContains("method not found") {
+            return try callWithRetry(
+                method: legacyMethod,
+                params: params,
+                overrideTimeoutSec: overrideTimeoutSec
+            )
+        }
     }
 
     /// Async variant that runs blocking socket I/O on the dedicated `ioQueue`

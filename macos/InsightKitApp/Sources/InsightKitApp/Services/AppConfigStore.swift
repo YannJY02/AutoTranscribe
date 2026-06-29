@@ -106,6 +106,14 @@ final class AppConfigStore: ObservableObject {
         persist()
     }
 
+    func updateAppleSpeechPrototypeEnabled(_ enabled: Bool) {
+        if config.asr.appleSpeechPrototypeEnabled == enabled {
+            return
+        }
+        config.asr.appleSpeechPrototypeEnabled = enabled
+        persist()
+    }
+
     func updateASRProfileModel(engine: LocalASREngine, model: String) {
         let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
         switch engine {
@@ -230,6 +238,7 @@ final class AppConfigStore: ObservableObject {
         env["INSIGHTKIT_QWEN_ASR_MODEL"] = config.asr.qwenProfile.model
         env["INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL"] = "Qwen3-ForcedAligner-0.6B"
         env["INSIGHTKIT_QWEN_RETURN_TIMESTAMPS"] = "1"
+        env["INSIGHTKIT_APPLE_SPEECH_PROTOTYPE_ENABLED"] = config.asr.appleSpeechPrototypeEnabled ? "1" : "0"
         if let cli = processEnvironment["INSIGHTKIT_FLUIDAUDIO_CLI"], !cli.isEmpty {
             env["INSIGHTKIT_FLUIDAUDIO_CLI"] = cli
         }
@@ -637,7 +646,8 @@ final class AppConfigStore: ObservableObject {
                 diarizationEnabled: true,
                 whisperProfile: .init(model: "large-v3"),
                 funasrProfile: .init(model: "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"),
-                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit")
+                qwenProfile: .init(model: "Qwen3-ASR-1.7B-MLX-4bit"),
+                appleSpeechPrototypeEnabled: false
             ),
             analysis: RuntimeConfigV2.Analysis(
                 selectedVendor: .deepseek,

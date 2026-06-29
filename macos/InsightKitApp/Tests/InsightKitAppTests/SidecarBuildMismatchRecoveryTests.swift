@@ -23,12 +23,26 @@ final class SidecarBuildMismatchRecoveryTests: XCTestCase {
 
     func testPreparedPythonEnvironmentPreventsBundlePycacheWrites() {
         let env = PythonRuntimeEnvironment.prepared(
-            from: ["PYTHONPATH": "/existing"],
+            from: ["PYTHONPATH": "/existing", "PATH": "/custom/bin:/usr/bin"],
             runtimeRoot: "/Bundle/Contents/Resources/insightkit_runtime"
         )
 
         XCTAssertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
         XCTAssertEqual(env["INSIGHTKIT_RUNTIME_ROOT"], "/Bundle/Contents/Resources/insightkit_runtime")
         XCTAssertEqual(env["PYTHONPATH"], "/Bundle/Contents/Resources/insightkit_runtime:/existing")
+        let pathEntries = env["PATH"]?.split(separator: ":").map(String.init) ?? []
+        XCTAssertEqual(pathEntries.first, "/custom/bin")
+        XCTAssertTrue(pathEntries.contains("/opt/homebrew/bin"))
+        XCTAssertTrue(pathEntries.contains("/usr/local/bin"))
+        XCTAssertEqual(pathEntries.filter { $0 == "/usr/bin" }.count, 1)
+    }
+
+    func testPreparedPythonEnvironmentAddsExecutableSearchPathForGuiLaunches() {
+        let env = PythonRuntimeEnvironment.prepared(from: [:])
+        let pathEntries = env["PATH"]?.split(separator: ":").map(String.init) ?? []
+
+        XCTAssertTrue(pathEntries.contains("/opt/homebrew/bin"))
+        XCTAssertTrue(pathEntries.contains("/usr/local/bin"))
+        XCTAssertTrue(pathEntries.contains("/usr/bin"))
     }
 }

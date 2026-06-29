@@ -3,7 +3,7 @@ import XCTest
 @testable import InsightKitApp
 
 final class AudioMixBusTests: XCTestCase {
-    func testMixedModeClampsOutput() {
+    func testMixedModeUsesHeadroomInsteadOfClipping() {
         let bus = AudioMixBus()
         bus.setMode(.mixed)
 
@@ -21,7 +21,8 @@ final class AudioMixBusTests: XCTestCase {
 
         wait(for: [exp], timeout: 1.0)
         XCTAssertEqual(received.count, 2)
-        XCTAssertEqual(received[0], 1.0, accuracy: 0.0001)
+        XCTAssertLessThan(received[0], 0.95)
+        XCTAssertGreaterThan(received[0], 0.85)
         XCTAssertEqual(received[1], 0.0, accuracy: 0.0001)
     }
 

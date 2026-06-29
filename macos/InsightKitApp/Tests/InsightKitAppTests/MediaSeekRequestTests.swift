@@ -3,15 +3,88 @@ import AVKit
 @testable import InsightKitApp
 
 final class MediaSeekRequestTests: XCTestCase {
-    func testMediaPlayerUsesMinimalControlsForAudioAndInlineControlsForVideo() {
+    func testMediaPlayerDefaultPlaybackIntentLeavesUserInControl() {
+        XCTAssertEqual(
+            MediaPlayerView.playbackIntent(for: nil),
+            .userControlled
+        )
+    }
+
+    func testMediaPlayerExplicitPlaybackIntentCanStillDrivePlayback() {
+        XCTAssertEqual(
+            MediaPlayerView.playbackIntent(for: true),
+            .play
+        )
+        XCTAssertEqual(
+            MediaPlayerView.playbackIntent(for: false),
+            .pause
+        )
+    }
+
+    func testMediaPlayerUsesDefaultControlsForAudioAndVideoScrubbing() {
         XCTAssertEqual(
             MediaPlayerView.controlsStyle(forMediaURL: URL(fileURLWithPath: "/tmp/sample.m4a")),
-            .minimal
+            .default
         )
         XCTAssertEqual(
             MediaPlayerView.controlsStyle(forMediaURL: URL(fileURLWithPath: "/tmp/sample.mp4")),
-            .inline
+            .default
         )
+    }
+
+    func testMediaPlayerPreservesNaturalVideoAspectInsteadOfStretching() {
+        XCTAssertEqual(
+            MediaPlayerView.videoGravity(forMediaURL: URL(fileURLWithPath: "/tmp/sample.mp4")),
+            .resizeAspect
+        )
+    }
+
+    func testReviewMediaPlayerLayoutAvoidsVideoLongStrip() {
+        let size = ReviewMediaPlayerLayout.frameSize(
+            forMediaURL: URL(fileURLWithPath: "/tmp/sample.mp4"),
+            availableWidth: 1_000,
+            maximumVideoHeight: 360
+        )
+
+        XCTAssertEqual(size.width, 640, accuracy: 0.1)
+        XCTAssertEqual(size.height, 360, accuracy: 0.1)
+    }
+
+    func testReviewMediaPlayerLayoutUsesCompactAudioPanel() {
+        let size = ReviewMediaPlayerLayout.frameSize(
+            forMediaURL: URL(fileURLWithPath: "/tmp/sample.m4a"),
+            availableWidth: 1_000,
+            maximumVideoHeight: 360
+        )
+
+        XCTAssertEqual(size.width, 520, accuracy: 0.1)
+        XCTAssertEqual(size.height, 128, accuracy: 0.1)
+    }
+
+    func testReviewMediaPlayerLayoutCanUseRecordMetadataForAudioContainer() {
+        let size = ReviewMediaPlayerLayout.frameSize(
+            forMediaURL: URL(fileURLWithPath: "/tmp/recording.mp4"),
+            mediaKind: .audio,
+            availableWidth: 1_000,
+            maximumVideoHeight: 360
+        )
+
+        XCTAssertEqual(size.width, 520, accuracy: 0.1)
+        XCTAssertEqual(size.height, 128, accuracy: 0.1)
+        XCTAssertEqual(
+            ReviewMediaPlayerLayout.containerHeight(
+                forMediaURL: URL(fileURLWithPath: "/tmp/recording.mp4"),
+                mediaKind: .audio,
+                maximumVideoHeight: 360
+            ),
+            128,
+            accuracy: 0.1
+        )
+    }
+
+    func testReviewMediaKindMapsRecordMediaType() {
+        XCTAssertEqual(ReviewMediaKind(recordMediaType: .audio), .audio)
+        XCTAssertEqual(ReviewMediaKind(recordMediaType: .video), .video)
     }
 
     @MainActor
@@ -91,6 +164,19 @@ final class MediaSeekRequestTests: XCTestCase {
         vm.onChapterTapped(chapter)
 
         XCTAssertEqual(vm.mediaSeekRequest?.time, 12)
+        XCTAssertTrue(vm.reviewSourcePlaybackRequested)
+    }
+
+    func testLiveReviewPlaybackTimeUpdateTracksPlayerProgressWithoutNewSeek() {
+        let vm = LiveSessionViewModel(rpcClient: RPCClientMock())
+        vm.sessionPhase = .reviewing
+        vm.onSeek(to: 12)
+        let seekRequestID = vm.mediaSeekRequest?.id
+
+        vm.onPlaybackTimeUpdated(15.5)
+
+        XCTAssertEqual(vm.currentPlaybackTime, 15.5)
+        XCTAssertEqual(vm.mediaSeekRequest?.id, seekRequestID)
         XCTAssertTrue(vm.reviewSourcePlaybackRequested)
     }
 

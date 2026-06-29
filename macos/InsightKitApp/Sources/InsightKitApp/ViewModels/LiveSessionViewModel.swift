@@ -50,6 +50,9 @@ final class LiveSessionViewModel: ObservableObject {
     let asrService: LiveASRServiceProtocol
     let transcriptPipeline: LiveTranscriptProcessing
     let reviewMediaComposer: ReviewMediaComposing
+    let mediaAssetInspector: MediaAssetInspecting
+    let finalMediaTranscriber: FinalMediaTranscribing
+    let transcriptRecoveryService: TranscriptRecoveryServicing
 
     // Queues — internal so extensions can access them
     let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
@@ -61,6 +64,7 @@ final class LiveSessionViewModel: ObservableObject {
     // Session state — internal so extensions can access them
     var activeMode: AudioInputMode = .microphone
     var insightRefreshSuspended = false
+    var stopDrainingMeetingID: String?
     var captureMonitorTask: Task<Void, Never>?
     var lastCaptureHintAt: Date?
 
@@ -99,6 +103,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var reviewSourcePlaybackRequested = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var recordingStatusMessage: String?
+    @Published var transcriptRecoveryStatusMessage: String?
     @Published var isFinalizingLiveSession = false
     @Published var visualPreviewSource: LiveVisualPreviewSource = .none
     @Published var capturePreviewStatusMessage: String?
@@ -111,7 +116,10 @@ final class LiveSessionViewModel: ObservableObject {
     // Phase 5: Records persistence
     var recordsService: RecordsIndexService?
     var temporaryRecordingURL: URL?
+    var finalizedMediaTranscriptCache: (mediaPath: String, segments: [TranscriptSegment])?
+    var finalMediaTranscriptRetryDelays: [TimeInterval] = [1, 2, 4, 8, 15]
     var lastInsightPackage: InsightPackageV1?
+    var captureTimeline = LiveMediaCaptureTimeline()
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
@@ -122,7 +130,10 @@ final class LiveSessionViewModel: ObservableObject {
         chunkAssembler: ChunkAssembler = ChunkAssembler(),
         asrService: LiveASRServiceProtocol = LiveASRService(),
         transcriptPipeline: LiveTranscriptProcessing? = nil,
-        reviewMediaComposer: ReviewMediaComposing = AVFoundationReviewMediaComposer()
+        reviewMediaComposer: ReviewMediaComposing = AVFoundationReviewMediaComposer(),
+        mediaAssetInspector: MediaAssetInspecting = AVFoundationMediaAssetInspector(),
+        finalMediaTranscriber: FinalMediaTranscribing? = nil,
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
@@ -132,6 +143,9 @@ final class LiveSessionViewModel: ObservableObject {
         self.chunkAssembler = chunkAssembler
         self.asrService = asrService
         self.reviewMediaComposer = reviewMediaComposer
+        self.mediaAssetInspector = mediaAssetInspector
+        self.finalMediaTranscriber = finalMediaTranscriber ?? FinalMediaTranscriptionRouter(rpcClient: rpcClient)
+        self.transcriptRecoveryService = transcriptRecoveryService ?? TranscriptRecoveryService(rpcClient: rpcClient)
         self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
             runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
         )
@@ -149,17 +163,42 @@ final class LiveSessionViewModel: ObservableObject {
         self.mixBus.onMixedSamples = { [weak self] samples in
             self?.handleMixedSamples(samples)
         }
+        self.videoCaptureService.onRecordingFirstFrame = { [weak self] time in
+            self?.stateQueue.sync {
+                self?.captureTimeline.markVideoStart(at: time)
+            }
+        }
 
         configureForUITestingIfNeeded()
         refreshSidecarStatus()
     }
 
     deinit {
-        shutdown()
+        shutdownForDeinit()
     }
 
     func shutdown() {
         stopLiveSession()
+        sidecarManager.stop()
+    }
+
+    private func shutdownForDeinit() {
+        captureMonitorTask?.cancel()
+        cancelWarmupTasks()
+        stopRecordingDurationTimer()
+
+        micCapture.onBuffer = nil
+        systemAudioCapture.onBuffer = nil
+        mixBus.onMixedSamples = nil
+        videoCaptureService.onRecordingFirstFrame = nil
+
+        micCapture.stop()
+        Task { [systemAudioCapture] in
+            await systemAudioCapture.stop()
+        }
+        videoCaptureService.stopCapture()
+        chunkAssembler.reset()
+        transcriptPipeline.reset()
         sidecarManager.stop()
     }
 
@@ -321,13 +360,13 @@ final class LiveSessionViewModel: ObservableObject {
             _sessionState.lastMeetingID = nil
             activeMode = selectedMode
             insightRefreshSuspended = false
+            captureTimeline.reset()
         }
         transcriptPipeline.reset()
 
         updateMain {
             self.sessionHandle = SessionHandle(activeMeetingID: meetingID, lastMeetingID: nil)
         }
-        startVisualRecordingIfNeeded(meetingID: meetingID)
 
         mixBus.setMode(selectedMode)
         captureState = .preparingRuntime
@@ -356,9 +395,12 @@ final class LiveSessionViewModel: ObservableObject {
                     "session.start",
                     "session.stop",
                     "asr.transcribe_chunk",
+                    "asr.transcribe_media",
                     "asr.prewarm",
                     "transcript.delta",
+                    "transcript.replace",
                     "insight.refresh_live",
+                    "records.save",
                 ])
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
@@ -388,6 +430,7 @@ final class LiveSessionViewModel: ObservableObject {
                             }
                             try await self.systemAudioCapture.start(sourceID: sourceID)
                         }
+                        self.startVisualRecordingIfNeeded(meetingID: meetingID)
                         self.permissionState = .granted
                         self.startRecordingDurationTimer()
                         self.beginWarmupLifecycle(
@@ -423,6 +466,7 @@ final class LiveSessionViewModel: ObservableObject {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
+            stopDrainingMeetingID = _sessionState.activeMeetingID
             return _sessionState.activeMeetingID
         }
         captureMonitorTask?.cancel()
@@ -431,6 +475,7 @@ final class LiveSessionViewModel: ObservableObject {
         stopRecordingDurationTimer()
         updateMain {
             self.isFinalizingLiveSession = true
+            self.recordingStatusMessage = "录制已停止，正在处理剩余音频并生成最终转写，请保持应用打开。"
         }
 
         micCapture.stop()
@@ -438,27 +483,36 @@ final class LiveSessionViewModel: ObservableObject {
             await systemAudioCapture.stop()
         }
         let expectedVisualMedia = visualPreviewSource != .none
+        if expectedVisualMedia {
+            temporaryRecordingURL = self.videoCaptureService.finishRecording()
+        }
+        self.videoCaptureService.stopCapture()
 
         pipelineQueue.async { [weak self] in
             guard let self else { return }
             let shouldFlushTail = self.asrWarmStatus.ready
+            var drainedSegments: [TranscriptSegment] = []
             do {
+                let pendingChunks = self.queuedChunks
                 self.queuedChunks.removeAll(keepingCapacity: false)
                 self.chunkInFlight = false
+                if let meetingID = activeMeetingID {
+                    for chunk in pendingChunks {
+                        let outcome = try self.processChunk(chunk, meetingID: meetingID)
+                        drainedSegments.append(contentsOf: outcome.transcriptSegments)
+                    }
+                }
                 if shouldFlushTail {
                     let tail = try self.chunkAssembler.flush(minDurationSec: 1.0)
                     if let meetingID = activeMeetingID {
                         for chunk in tail {
-                            try self.processChunk(chunk, meetingID: meetingID)
+                            let outcome = try self.processChunk(chunk, meetingID: meetingID)
+                            drainedSegments.append(contentsOf: outcome.transcriptSegments)
                         }
                     }
                 }
                 if let meetingID = activeMeetingID {
                     try? self.rpcClient.sessionStop(meetingID: meetingID)
-                    if expectedVisualMedia, let videoURL = self.videoCaptureService.finishRecording() {
-                        self.temporaryRecordingURL = videoURL
-                    }
-                    self.videoCaptureService.stopCapture()
                     _ = self.prepareTemporaryRecordingForSave(
                         meetingID: meetingID,
                         expectedVisualMedia: expectedVisualMedia
@@ -472,6 +526,7 @@ final class LiveSessionViewModel: ObservableObject {
             self.stateQueue.sync {
                 self._sessionState.lastMeetingID = activeMeetingID ?? self._sessionState.lastMeetingID
                 self._sessionState.activeMeetingID = nil
+                self.stopDrainingMeetingID = nil
             }
             self.transcriptPipeline.reset()
             self.syncSessionHandleFromState()
@@ -483,7 +538,12 @@ final class LiveSessionViewModel: ObservableObject {
             }
             // Save record folder after session ends
             if let meetingID = activeMeetingID {
-                self.saveToRecords(meetingID: meetingID)
+                let transcriptOverride = (self.transcriptSegments + drainedSegments)
+                    .sorted { $0.startMs < $1.startMs }
+                self.saveToRecords(
+                    meetingID: meetingID,
+                    transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride
+                )
             }
         }
     }
@@ -510,6 +570,13 @@ final class LiveSessionViewModel: ObservableObject {
                 })
                 self.refreshSidecarStatus()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
+                if let mediaURL = self.temporaryRecordingURL {
+                    let mediaSegments = try self.finalTranscriptSegmentsForRecord(
+                        mediaURL: mediaURL,
+                        capturedSegments: self.transcriptSegments
+                    )
+                    try self.replaceRuntimeTranscript(meetingID: buildTargetID, segments: mediaSegments)
+                }
                 let result = try self.rpcClient.buildFinal(meetingID: buildTargetID)
                 self.updateWorkbench(result)
                 self.updateMain {
@@ -618,6 +685,9 @@ final class LiveSessionViewModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
             try videoCaptureService.startRecording(to: outputURL)
+            stateQueue.sync {
+                captureTimeline.markVideoStart()
+            }
             temporaryRecordingURL = outputURL
         } catch {
             temporaryRecordingURL = nil
@@ -837,6 +907,11 @@ final class LiveSessionViewModel: ObservableObject {
         reviewSourceMediaURL = nil
         reviewSourceStatusMessage = nil
         temporaryRecordingURL = nil
+        finalizedMediaTranscriptCache = nil
+        stopDrainingMeetingID = nil
+        stateQueue.sync {
+            captureTimeline.reset()
+        }
         stopRecordingDurationTimer()
     }
 

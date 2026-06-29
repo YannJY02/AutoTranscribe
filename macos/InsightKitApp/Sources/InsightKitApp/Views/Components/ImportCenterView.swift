@@ -56,15 +56,14 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
 
             // Media player (can play while processing)
             if let url = dataSource.mediaURL {
-                MediaPlayerView(
+                ReviewMediaPlayerView(
                     url: url,
-                    isPlaying: false,
+                    maximumVideoHeight: 320,
+                    accessibilityID: "import_processing_media_player",
                     onTimeUpdate: { time in
                         importViewModel.currentPlaybackTime = time
                     }
                 )
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 180, maxHeight: 260)
                 .padding(.horizontal, InsightSpacing.panelPadding)
                 .padding(.top, InsightSpacing.panelPadding)
             }
@@ -96,10 +95,12 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
 
             // Media player
             if let url = dataSource.mediaURL {
-                MediaPlayerView(
+                ReviewMediaPlayerView(
                     url: url,
                     isPlaying: true,
                     seekRequest: importViewModel.mediaSeekRequest,
+                    maximumVideoHeight: 320,
+                    accessibilityID: "import_review_media_player",
                     onSeek: { time in
                         dataSource.onSeek(to: time)
                     },
@@ -107,8 +108,6 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
                         importViewModel.currentPlaybackTime = time
                     }
                 )
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 180, maxHeight: 260)
                 .padding(.horizontal, InsightSpacing.panelPadding)
                 .padding(.top, InsightSpacing.panelPadding)
             }

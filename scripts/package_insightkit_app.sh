@@ -386,6 +386,8 @@ cat > "$contents_dir/Info.plist" <<EOF
   <string>14.0</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>InsightKit 需要麦克风权限用于会议录音和实时转写。</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>InsightKit 需要 Apple Speech 权限用于实验性的本地离线媒体转写。</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSScreenCaptureUsageDescription</key>

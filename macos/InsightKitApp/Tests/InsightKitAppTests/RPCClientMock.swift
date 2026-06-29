@@ -7,6 +7,12 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var watchStartCalls: [[String]] = []
     var watchStopCalls = 0
     var importCalls: [(path: String, title: String)] = []
+    var asrTranscribeMediaCalls: [(mediaPath: String, source: String)] = []
+    var asrTranscribeMediaStub: [RPCSegmentDelta] = []
+    var asrTranscribeMediaQueue: [Result<[RPCSegmentDelta], Error>] = []
+    var asrTranscribeMediaError: Error?
+    var transcriptReplaceCalls: [(meetingID: String, segments: [RPCSegmentDelta])] = []
+    var methodCalls: [String] = []
     var recordsSaveCalls: [(
         meetingID: String,
         title: String,
@@ -18,6 +24,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
         analysisMeta: [String: Any]?,
         notesMD: String
     )] = []
+    var recordsSaveSegments: [[[String: Any]]] = []
     var transcriptionStatusCalls = 0
     var transcriptionStatusDelaySec: TimeInterval = 0
     var transcriptionStatusError: Error?
@@ -32,6 +39,23 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var asrPrewarmCalls: [(model: String, engine: LocalASREngine?, timeoutSec: Int)] = []
     var asrRuntimeStatusQueue: [ASRRuntimeStatus] = []
     var asrPrewarmQueue: [ASRPrewarmResult] = []
+    var sidecarVersionStub: [String: Any] = [
+        "version": "0.1.0",
+        "build": "test",
+        "capabilities": [
+            "session.start",
+            "session.stop",
+            "asr.transcribe_chunk",
+            "asr.transcribe_media",
+            "transcript.replace",
+            "insight.refresh_live",
+            "insight.build_final",
+            "records.save",
+            "transcription.status",
+            "transcription.import_file",
+            "document.export",
+        ],
+    ]
 
     var transcriptionStatusStub = TranscriptionStatusResult(
         watcher: TranscriptionWatcherState(),
@@ -81,6 +105,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
     }
     func refreshLive(meetingID: String, windowSec: Int) throws -> InsightRefreshResult { fakeInsightResult() }
     func buildFinal(meetingID: String) throws -> InsightRefreshResult {
+        methodCalls.append("insight.build_final")
         buildFinalCalls += 1
         if buildFinalDelaySec > 0 {
             Thread.sleep(forTimeInterval: buildFinalDelaySec)
@@ -135,7 +160,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
     }
 
     func sidecarVersion() throws -> [String: Any] {
-        ["version": "0.1.0", "build": "test", "capabilities": ["transcription.status"]]
+        sidecarVersionStub
     }
 
     func sidecarShutdown() throws -> [String: Any] {
@@ -236,6 +261,29 @@ final class RPCClientMock: InsightRPCClientProtocol {
         []
     }
 
+    func asrTranscribeMedia(mediaPath: String, source: String) throws -> [RPCSegmentDelta] {
+        methodCalls.append("asr.transcribe_media")
+        asrTranscribeMediaCalls.append((mediaPath: mediaPath, source: source))
+        if !asrTranscribeMediaQueue.isEmpty {
+            switch asrTranscribeMediaQueue.removeFirst() {
+            case .success(let segments):
+                return segments
+            case .failure(let error):
+                throw error
+            }
+        }
+        if let asrTranscribeMediaError {
+            throw asrTranscribeMediaError
+        }
+        return asrTranscribeMediaStub
+    }
+
+    func transcriptReplace(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int {
+        methodCalls.append("transcript.replace")
+        transcriptReplaceCalls.append((meetingID: meetingID, segments: segments))
+        return segments.count
+    }
+
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus {
         _ = probeActive
         if let providersStatusError {
@@ -277,6 +325,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
         analysisMeta: [String: Any]?,
         notesMD: String
     ) throws -> String {
+        methodCalls.append("records.save")
+        recordsSaveSegments.append(segments)
         recordsSaveCalls.append((
             meetingID: meetingID,
             title: title,

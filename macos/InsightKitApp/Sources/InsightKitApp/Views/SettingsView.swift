@@ -31,6 +31,7 @@ struct SettingsView: View {
     @State private var vadEnabled: Bool = true
     @State private var diarizationEnabled: Bool = true
     @State private var strictMode: Bool = true
+    @State private var appleSpeechPrototypeEnabled: Bool = false
 
     @State private var useCustomWhisperModel: Bool = false
     @State private var useCustomFunasrModel: Bool = false
@@ -46,6 +47,13 @@ struct SettingsView: View {
     @State private var lastAppliedConfigRevision: Int = -1
     @State private var asrRuntimeSnapshot: ASRRuntimeStatus?
     @State private var asrRuntimeUpdatedAt: Date?
+    @State private var appleSpeechRuntimeStatus: AppleSpeechRuntimeStatus = .resolve(
+        sdkSupportsAppleSpeech: false,
+        localeIdentifier: "zh-Hans",
+        localeSupported: false,
+        assetState: nil
+    )
+    @State private var appleSpeechRuntimeUpdatedAt: Date?
 
     /// Fix 4: Reuse shared instances to avoid spawning Python subprocesses
     /// every time the settings sheet opens.
@@ -120,6 +128,7 @@ struct SettingsView: View {
             syncFromStore()
             Task {
                 try? await refreshASRRuntimeStatus()
+                await refreshAppleSpeechRuntimeStatus()
             }
         }
         .onDisappear {
@@ -440,6 +449,17 @@ struct SettingsView: View {
             if let runtime = asrRuntimeSnapshot {
                 VStack(alignment: .leading, spacing: 6) {
                     asrRuntimeReadinessStatus(runtime)
+                    if runtime.profile.schemaVersion > 0 {
+                        Text("实时转写：\(runtime.profile.liveASR.ready ? "ready" : "not ready") · 最终媒体转写：\(runtime.profile.finalMediaASR.ready ? "ready" : "not ready")")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(runtime.profile.finalMediaASR.ready ? InsightTheme.success : InsightTheme.warning)
+                        if !runtime.profile.userRecoveryHint.isEmpty {
+                            Text(runtime.profile.userRecoveryHint)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     Text("配置设备：\(runtime.backend.configuredDevice) · 配置计算类型：\(runtime.backend.configuredComputeType)")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -479,7 +499,63 @@ struct SettingsView: View {
                         .stroke(Color.blue.opacity(0.22), lineWidth: 1)
                 )
             }
+
+            appleSpeechExperimentalStatus
         }
+    }
+
+    @ViewBuilder
+    private var appleSpeechExperimentalStatus: some View {
+        let peerParityStatus = AppleSpeechPeerEngineParityStatus.evaluate(runtimeStatus: appleSpeechRuntimeStatus)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Apple Speech（实验）")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text(appleSpeechRuntimeStatus.state.rawValue)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(appleSpeechRuntimeStatus.isUsableForTranscription ? InsightTheme.success : InsightTheme.textSecondary)
+            }
+            Text(appleSpeechRuntimeStatus.userMessage)
+                .font(.system(size: 12))
+                .foregroundStyle(InsightTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("保存音频最终媒体时使用 Apple Speech 原型", isOn: $appleSpeechPrototypeEnabled)
+                .disabled(!appleSpeechRuntimeStatus.shouldExposeExperimentalFinalMediaOption && !appleSpeechPrototypeEnabled)
+                .onChange(of: appleSpeechPrototypeEnabled) { _, enabled in
+                    configStore.updateAppleSpeechPrototypeEnabled(enabled)
+                    showSavedFeedback()
+                }
+            Text(peerParityStatus.userMessage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(peerParityStatus.canExposeAsPeerLocalASREngine ? InsightTheme.success : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(peerParityStatus.blockingReasons, id: \.self) { reason in
+                Text("• \(reason)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("仅用于 macOS 26+ 离线音频媒体转写原型；视频最终媒体仍走当前本地转写路径，不会替换 Whisper / FunASR / Qwen3-ASR 默认引擎，也不会降低说话人分离要求。")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            if let appleSpeechRuntimeUpdatedAt {
+                Text("最近状态采样：\(appleSpeechRuntimeUpdatedAt.formatted(date: .abbreviated, time: .standard))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(NSColor.windowBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.blue.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityIdentifier("settings_apple_speech_experimental_status")
     }
 
     @ViewBuilder
@@ -703,6 +779,7 @@ struct SettingsView: View {
         vadEnabled = config.asr.vadEnabled
         diarizationEnabled = config.asr.diarizationEnabled
         strictMode = config.strict.strictMode
+        appleSpeechPrototypeEnabled = config.asr.appleSpeechPrototypeEnabled
         useCustomWhisperModel = !AppConfigStore.whisperPresets.contains(config.asr.whisperProfile.model)
         useCustomFunasrModel = !AppConfigStore.funasrPresets.contains(config.asr.funasrProfile.model)
         useCustomQwenModel = !AppConfigStore.qwenPresets.contains(config.asr.qwenProfile.model)
@@ -825,6 +902,14 @@ struct SettingsView: View {
         await MainActor.run {
             asrRuntimeSnapshot = status
             asrRuntimeUpdatedAt = Date()
+        }
+    }
+
+    private func refreshAppleSpeechRuntimeStatus() async {
+        let status = await AppleSpeechTranscriptionService().runtimeStatus()
+        await MainActor.run {
+            appleSpeechRuntimeStatus = status
+            appleSpeechRuntimeUpdatedAt = Date()
         }
     }
 }

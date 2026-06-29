@@ -15,101 +15,52 @@ final class RecordReviewDataSource: ObservableObject {
     @Published var mediaStatusMessage: String?
     @Published var seekStatusMessage: String?
     @Published var exportStatusMessage: String?
+    @Published var assetStatusMessage: String?
+    @Published var transcriptRecoveryStatusMessage: String?
+    @Published var assetHealth: MeetingAssetHealth = .empty
     @Published var lastExportURL: URL?
 
     let metadata: RecordMetadata
     let recordPath: URL
-    private let notesFileURL: URL
     private let rpcQueue = DispatchQueue(label: "InsightKit.RecordReview.RPC", qos: .userInitiated)
     private let rpcClient: InsightRPCClientProtocol?
+    private let transcriptRecoveryService: TranscriptRecoveryServicing?
 
-    init(metadata: RecordMetadata, rootDirectory: URL, rpcClient: InsightRPCClientProtocol? = nil) {
+    init(
+        metadata: RecordMetadata,
+        rootDirectory: URL,
+        recordPath: URL? = nil,
+        rpcClient: InsightRPCClientProtocol? = nil,
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
+    ) {
         self.metadata = metadata
         self.rpcClient = rpcClient
-        self.recordPath = rootDirectory.appendingPathComponent(metadata.id)
-        self.notesFileURL = recordPath.appendingPathComponent("notes.md")
+        self.transcriptRecoveryService = transcriptRecoveryService
+            ?? rpcClient.map { TranscriptRecoveryService(rpcClient: $0) }
+        self.recordPath = recordPath
+            ?? RecordsIndexService.recordFolderURL(for: metadata.id, rootDirectory: rootDirectory)
+            ?? rootDirectory.appendingPathComponent(metadata.id)
         self.recordingDuration = metadata.duration
-        loadMedia()
-        loadNotes()
-        loadTranscript()
-        loadMinutes()
+        loadMeetingAsset()
     }
 
     // MARK: - Loading
 
-    private func loadMedia() {
-        let extensions = ["mp4", "mov", "mkv", "m4a", "mp3", "wav"]
-        for ext in extensions {
-            let candidate = recordPath.appendingPathComponent("recording.\(ext)")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                mediaURL = candidate
-                mediaStatusMessage = nil
-                return
-            }
-        }
-        mediaURL = nil
-        mediaStatusMessage = "媒体文件缺失：无法回放原始记录。请在 Finder 检查 \(recordPath.lastPathComponent) 中的 recording.* 文件。"
-    }
-
-    private func loadNotes() {
-        notes = NotesFileIO.read(from: notesFileURL)
-    }
-
-    private func loadTranscript() {
-        let transcriptURL = recordPath.appendingPathComponent("transcript.json")
-        guard let data = try? Data(contentsOf: transcriptURL) else { return }
-        // Expect array of {start_ms, end_ms, speaker, text}
-        guard let segments = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
-        transcriptEntries = segments.compactMap { dict in
-            guard let text = dict["text"] as? String else { return nil }
-            let startMs = (dict["start_ms"] as? Int) ?? 0
-            let speaker = dict["speaker"] as? String
-            return TranscriptEntry(
-                timestamp: TimeInterval(startMs) / 1000.0,
-                speaker: speaker,
-                text: text
-            )
-        }
-    }
-
-    private func loadMinutes() {
-        let minutesURL = recordPath.appendingPathComponent("minutes.json")
-        guard let data = try? Data(contentsOf: minutesURL),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-
-        let summary = (dict["structured_summary"] as? String) ?? ""
-        let highlights = (dict["highlights"] as? [String]) ?? []
-        let keyDecisions = (dict["key_decisions"] as? [String]) ?? []
-        let actionItems = (dict["action_items"] as? [String]) ?? []
-        let timeline = (dict["timeline_beats"] as? [[String: Any]]) ?? []
-
-        if !summary.isEmpty {
-            let loadedChapters = timeline.compactMap { item -> ChapterSummary? in
-                let title = (item["title"] as? String) ?? ""
-                let body = (item["summary"] as? String) ?? ""
-                if title.isEmpty && body.isEmpty { return nil }
-                return ChapterSummary(
-                    timestamp: TimestampNormalizer.normalize((item["timestamp"] as? String) ?? "", duration: metadata.duration),
-                    title: title.isEmpty ? body : title,
-                    summary: body
-                )
-            }
-            chapters = loadedChapters
-            smartMinutesData = SmartMinutes(
-                structuredSummary: summary,
-                highlights: highlights,
-                speakerSummaries: Self.speakerSummaries(from: transcriptEntries),
-                keyDecisions: keyDecisions,
-                actionItems: actionItems,
-                chapters: loadedChapters
-            )
-        }
+    private func loadMeetingAsset() {
+        let snapshot = MeetingAssetSnapshot.load(recordPath: recordPath, duration: metadata.duration)
+        mediaURL = snapshot.mediaURL
+        mediaStatusMessage = snapshot.mediaStatusMessage
+        assetHealth = snapshot.health
+        notes = snapshot.notes
+        transcriptEntries = snapshot.transcriptEntries
+        smartMinutesData = snapshot.smartMinutes
+        chapters = snapshot.chapters
     }
 
     // MARK: - Save Notes
 
     func saveNotes() {
-        NotesFileIO.write(notes, to: notesFileURL)
+        _ = persistNotes(notes)
     }
 
     func revealInFinder() {
@@ -126,6 +77,52 @@ final class RecordReviewDataSource: ObservableObject {
         }
     }
 
+    var editableSpeakers: [String] {
+        let labels = transcriptEntries.map { entry in
+            Self.normalizedSpeakerLabel(entry.speaker)
+        }
+        return Array(Set(labels)).sorted()
+    }
+
+    func renameSpeaker(from oldLabel: String, to newLabel: String) {
+        do {
+            let changed = try MeetingAssetSnapshot.renameSpeaker(in: recordPath, from: oldLabel, to: newLabel)
+            guard changed else { return }
+            assetStatusMessage = nil
+            reloadTranscriptAndMinutes()
+        } catch {
+            assetStatusMessage = "说话人重命名失败：\(error.localizedDescription)"
+        }
+    }
+
+    var canRecoverTranscript: Bool {
+        assetHealth.canRecoverTranscript && transcriptRecoveryService != nil
+    }
+
+    func recoverTranscript() {
+        guard let transcriptRecoveryService else { return }
+        transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
+        rpcQueue.async { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try transcriptRecoveryService.recoverTranscript(
+                    recordPath: self.recordPath,
+                    duration: self.metadata.duration
+                )
+                DispatchQueue.main.async {
+                    self.loadMeetingAsset()
+                    self.transcriptRecoveryStatusMessage = result.smartMinutesMayNeedRegeneration
+                        ? "逐字稿已恢复；现有智能纪要仍保留，但可能需要重新生成以匹配新逐字稿。"
+                        : "逐字稿已恢复。"
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.transcriptRecoveryStatusMessage = "逐字稿恢复失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     func updatePlaybackTime(_ time: TimeInterval) {
         guard time.isFinite else { return }
         let normalized = max(0, time)
@@ -135,19 +132,25 @@ final class RecordReviewDataSource: ObservableObject {
         currentPlaybackTime = normalized
     }
 
-    private static func speakerSummaries(from entries: [TranscriptEntry]) -> [SpeakerMinutesSummary] {
-        let grouped = Dictionary(grouping: entries) { entry in
-            let speaker = entry.speaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return speaker.isEmpty ? "未标注" : speaker
+    private func reloadTranscriptAndMinutes() {
+        loadMeetingAsset()
+    }
+
+    private func persistNotes(_ nextNotes: [TimestampedNote]) -> Bool {
+        do {
+            try MeetingAssetSnapshot.writeNotes(nextNotes, to: recordPath)
+            assetStatusMessage = nil
+            assetHealth = MeetingAssetSnapshot.load(recordPath: recordPath, duration: metadata.duration).health
+            return true
+        } catch {
+            assetStatusMessage = "笔记保存失败：\(error.localizedDescription)"
+            return false
         }
-        return grouped.keys.sorted().map { speaker in
-            let speakerEntries = grouped[speaker] ?? []
-            let latest = speakerEntries.map(\.timestamp).max() ?? 0
-            return SpeakerMinutesSummary(
-                speakerName: speaker,
-                summary: "\(speakerEntries.count) 条发言，最晚发言时间 \(formatTimestamp(latest))。"
-            )
-        }
+    }
+
+    private static func normalizedSpeakerLabel(_ speaker: String?) -> String {
+        let trimmed = speaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "未标注" : trimmed
     }
 
     private static func formatTimestamp(_ seconds: TimeInterval) -> String {
@@ -168,7 +171,7 @@ extension RecordReviewDataSource: ChapterSidebarDataSource {
     var smartMinutes: SmartMinutes? { smartMinutesData }
 
     var canGenerateMinutes: Bool {
-        smartMinutesData == nil
+        assetHealth.canGenerateSmartMinutes
     }
 
     func onChapterTapped(_ chapter: ChapterSummary) {
@@ -178,42 +181,24 @@ extension RecordReviewDataSource: ChapterSidebarDataSource {
     func onGenerateMinutes() {
         guard let client = rpcClient else { return }
         let meetingID = metadata.id
-        let minutesURL = recordPath.appendingPathComponent("minutes.json")
         rpcQueue.async { [weak self] in
             guard let self else { return }
             guard let result = try? client.buildFinal(meetingID: meetingID) else { return }
             let pkg = result.package
-            let highlights = pkg.highlightInsights.map { $0.quote }
-            let keyDecisions = pkg.decisionLedger.map { $0.decision }
-            let actionItems = pkg.actionTracks.map { $0.task }
-            let minutesDict: [String: Any] = [
-                "structured_summary": pkg.sessionOverview.overview,
-                "highlights": highlights,
-                "key_decisions": keyDecisions,
-                "action_items": actionItems,
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: minutesDict, options: .prettyPrinted) {
-                try? data.write(to: minutesURL)
+            do {
+                try MeetingAssetSnapshot.writeInsightPackage(pkg, to: self.recordPath)
+            } catch {
+                DispatchQueue.main.async {
+                    self.assetStatusMessage = "Smart Minutes 保存失败：\(error.localizedDescription)"
+                }
+                return
             }
-            let chapters: [ChapterSummary] = pkg.timelineBeats.map {
-                ChapterSummary(timestamp: 0, title: $0.title, summary: $0.summary)
-            }
-            let smartMinutes = SmartMinutes(
-                structuredSummary: pkg.sessionOverview.overview,
-                highlights: highlights,
-                speakerSummaries: pkg.speakerPerspectives.map {
-                    SpeakerMinutesSummary(
-                        speakerName: $0.speaker,
-                        summary: $0.viewpoints.joined(separator: "；")
-                    )
-                },
-                keyDecisions: keyDecisions,
-                actionItems: actionItems,
-                chapters: chapters
-            )
+            let snapshot = MeetingAssetSnapshot.load(recordPath: self.recordPath, duration: self.metadata.duration)
             DispatchQueue.main.async {
-                self.smartMinutesData = smartMinutes
-                self.chapters = chapters
+                self.smartMinutesData = snapshot.smartMinutes
+                self.chapters = snapshot.chapters
+                self.assetHealth = snapshot.health
+                self.assetStatusMessage = nil
             }
         }
     }
@@ -250,14 +235,20 @@ extension RecordReviewDataSource: NotesEditorDataSource {
 
     func onNoteCreated(_ text: String, at time: TimeInterval) {
         let note = TimestampedNote(text: text, timestamp: time)
+        let previous = notes
         notes.append(note)
-        saveNotes()
+        if !persistNotes(notes) {
+            notes = previous
+        }
     }
 
     func onNoteUpdated(_ note: TimestampedNote) {
         guard let idx = notes.firstIndex(where: { $0.id == note.id }) else { return }
+        let previous = notes
         notes[idx] = note
-        saveNotes()
+        if !persistNotes(notes) {
+            notes = previous
+        }
     }
 
     func onNoteTapped(_ note: TimestampedNote) {

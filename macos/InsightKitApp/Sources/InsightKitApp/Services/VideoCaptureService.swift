@@ -61,6 +61,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     @Published var availableCameras: [VideoDeviceItem] = []
     @Published var availableScreens: [VideoDeviceItem] = []
     @Published var screenPreviewImage: CGImage?
+    var onRecordingFirstFrame: ((TimeInterval) -> Void)?
 
     // MARK: - Private State
 
@@ -85,7 +86,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var assetWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
     private var isWriting = false
-    private var recordingStartTime: CMTime?
+    private var recordingTimeline: VideoRecordingTimeline?
 
     private var activeMode: CaptureMode?
 
@@ -362,7 +363,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
                 self.assetWriter = writer
                 self.videoWriterInput = input
-                self.recordingStartTime = nil
+                self.recordingTimeline = nil
                 self.isWriting = true
             } catch {
                 self.isWriting = false
@@ -395,7 +396,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
         writerQueue.sync {
             guard isWriting, let writer = assetWriter else { return }
-            hasVideoFrames = recordingStartTime != nil
+            hasVideoFrames = recordingTimeline != nil
             isWriting = false
             writerToFinish = writer
             outputURL = writer.outputURL
@@ -441,7 +442,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         guard assetWriter === writer else { return }
         assetWriter = nil
         videoWriterInput = nil
-        recordingStartTime = nil
+        recordingTimeline = nil
     }
 
     // MARK: - Frame Handling
@@ -450,17 +451,51 @@ final class VideoCaptureService: NSObject, ObservableObject {
         publishScreenPreviewIfNeeded(sampleBuffer)
 
         guard isWriting else { return }
+        let capturedAt = ProcessInfo.processInfo.systemUptime
         writerQueue.async { [weak self] in
             guard let self, self.isWriting else { return }
             guard let input = self.videoWriterInput, input.isReadyForMoreMediaData else { return }
 
-            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            if self.recordingStartTime == nil {
-                self.recordingStartTime = timestamp
-                self.assetWriter?.startSession(atSourceTime: timestamp)
+            let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            if self.recordingTimeline == nil {
+                self.recordingTimeline = VideoRecordingTimeline()
+                self.assetWriter?.startSession(atSourceTime: .zero)
+                self.onRecordingFirstFrame?(capturedAt)
             }
-            input.append(sampleBuffer)
+            guard var timeline = self.recordingTimeline else { return }
+            let presentationTime = timeline.presentationTime(
+                sourcePresentationTime: sourceTimestamp,
+                capturedAt: capturedAt
+            )
+            self.recordingTimeline = timeline
+
+            if let retimedSampleBuffer = Self.copySampleBuffer(sampleBuffer, presentationTime: presentationTime) {
+                input.append(retimedSampleBuffer)
+            } else {
+                input.append(sampleBuffer)
+            }
         }
+    }
+
+    private static func copySampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        presentationTime: CMTime
+    ) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: presentationTime,
+            decodeTimeStamp: .invalid
+        )
+        var retimedSampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &retimedSampleBuffer
+        )
+        guard status == noErr else { return nil }
+        return retimedSampleBuffer
     }
 
     private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer) {
@@ -484,6 +519,40 @@ final class VideoCaptureService: NSObject, ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.screenPreviewImage = previewImage
         }
+    }
+}
+
+struct VideoRecordingTimeline: Equatable {
+    private let timescale: CMTimeScale
+    private let minimumFrameStep: CMTime
+    private(set) var firstHostTimeSec: TimeInterval?
+    private(set) var firstSourcePresentationTime: CMTime?
+    private(set) var lastSourcePresentationTime: CMTime?
+    private(set) var lastPresentationTime: CMTime?
+
+    init(timescale: CMTimeScale = 600) {
+        self.timescale = timescale
+        self.minimumFrameStep = CMTime(value: 1, timescale: timescale)
+    }
+
+    mutating func presentationTime(
+        sourcePresentationTime: CMTime,
+        capturedAt: TimeInterval
+    ) -> CMTime {
+        if firstHostTimeSec == nil {
+            firstHostTimeSec = capturedAt
+            firstSourcePresentationTime = sourcePresentationTime
+        }
+        lastSourcePresentationTime = sourcePresentationTime
+
+        let elapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        var presentationTime = CMTime(seconds: elapsed, preferredTimescale: timescale)
+        if let lastPresentationTime,
+           CMTimeCompare(presentationTime, lastPresentationTime) <= 0 {
+            presentationTime = lastPresentationTime + minimumFrameStep
+        }
+        lastPresentationTime = presentationTime
+        return presentationTime
     }
 }
 

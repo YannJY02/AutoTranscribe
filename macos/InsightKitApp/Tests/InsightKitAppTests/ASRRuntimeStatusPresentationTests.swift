@@ -45,6 +45,37 @@ final class ASRRuntimeStatusPresentationTests: XCTestCase {
         XCTAssertEqual(status.userVisibleReadinessAccessibilityIdentifier, "settings_asr_runtime_warning_status")
     }
 
+    func testRuntimeProfileSeparatesLiveAndFinalMediaReadiness() {
+        let profile = ASRRuntimeProfile(
+            schemaVersion: 1,
+            configuredEngine: "qwen-mlx",
+            activeEngine: "qwen-mlx",
+            technicalStatus: "ready",
+            liveASR: ASRRuntimeReadiness(ready: false, reason: "ASR Runtime Warmup has not completed."),
+            finalMediaASR: ASRRuntimeReadiness(ready: true, reason: ""),
+            userRecoveryHint: "",
+            appleSpeech: ASREngineProfile(
+                engine: "apple-speech",
+                displayName: "Apple Speech",
+                selectable: false,
+                ready: false,
+                availabilityState: "degraded",
+                liveASR: false,
+                finalMediaASR: true,
+                diarization: false,
+                limitations: ["Live Workspace realtime transcription 尚未接入 Apple Speech。"],
+                userRecoveryHint: "Apple Speech 目前只能作为音频最终媒体的实验转写原型。"
+            )
+        )
+        let status = makeStatus(ready: true, modelExists: true, profile: profile)
+
+        XCTAssertEqual(status.profile.schemaVersion, 1)
+        XCTAssertFalse(status.profile.liveASR.ready)
+        XCTAssertTrue(status.profile.finalMediaASR.ready)
+        XCTAssertEqual(status.profile.appleSpeech?.engine, "apple-speech")
+        XCTAssertFalse(status.profile.appleSpeech?.selectable ?? true)
+    }
+
     private func makeStatus(
         ready: Bool,
         modelExists: Bool,
@@ -57,7 +88,8 @@ final class ASRRuntimeStatusPresentationTests: XCTestCase {
             attempt: 0,
             lastWarmMs: 0,
             lastError: ""
-        )
+        ),
+        profile: ASRRuntimeProfile = .empty
     ) -> ASRRuntimeStatus {
         ASRRuntimeStatus(
             ready: ready,
@@ -82,7 +114,8 @@ final class ASRRuntimeStatusPresentationTests: XCTestCase {
                 resolved: "cpu",
                 supportedComputeTypes: ["int8"]
             ),
-            warm: warm
+            warm: warm,
+            profile: profile
         )
     }
 }

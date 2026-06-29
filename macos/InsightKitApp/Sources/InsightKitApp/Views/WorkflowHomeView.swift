@@ -5,6 +5,7 @@ struct WorkflowHomeView: View {
     let onOpenTranscription: () -> Void
     let onOpenImport: () -> Void
     let onOpenRecords: () -> Void
+    let onOpenSettings: () -> Void
     let statusSummary: String
     let recentRecords: [RecordMetadata]
 
@@ -13,15 +14,29 @@ struct WorkflowHomeView: View {
             InsightTheme.canvas.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: InsightSpacing.xl) {
-                VStack(alignment: .leading, spacing: InsightSpacing.sm) {
-                    Text("InsightKit")
-                        .font(InsightTypography.title)
-                        .foregroundStyle(InsightTheme.textPrimary)
-                        .accessibilityIdentifier("home_title")
-                    Text("选择你的工作流")
-                        .font(InsightTypography.body)
-                        .foregroundStyle(InsightTheme.textSecondary)
-                        .accessibilityIdentifier("home_subtitle")
+                HStack(alignment: .top, spacing: InsightSpacing.md) {
+                    VStack(alignment: .leading, spacing: InsightSpacing.sm) {
+                        Text("InsightKit")
+                            .font(InsightTypography.title)
+                            .foregroundStyle(InsightTheme.textPrimary)
+                            .accessibilityIdentifier("home_title")
+                        Text("选择你的工作流")
+                            .font(InsightTypography.body)
+                            .foregroundStyle(InsightTheme.textSecondary)
+                            .accessibilityIdentifier("home_subtitle")
+                    }
+
+                    Spacer()
+
+                    Button {
+                        onOpenSettings()
+                    } label: {
+                        Label("设置", systemImage: "gearshape")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .help("打开 Settings Workspace")
+                    .accessibilityIdentifier("home_open_settings")
                 }
 
                 HStack(spacing: InsightSpacing.lg) {
@@ -69,7 +84,7 @@ struct WorkflowHomeView: View {
                                             .foregroundStyle(InsightTheme.accent)
                                             .frame(width: 28)
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(record.summaryPreview?.isEmpty == false ? record.summaryPreview! : record.id)
+                                            Text(record.displayTitle)
                                                 .font(InsightTypography.bodyMedium)
                                                 .foregroundStyle(InsightTheme.textPrimary)
                                                 .lineLimit(1)

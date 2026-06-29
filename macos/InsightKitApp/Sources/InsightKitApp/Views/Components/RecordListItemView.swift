@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordListItemView: View {
     let record: RecordMetadata
     var onSelect: (() -> Void)?
+    var onRename: (() -> Void)?
     var onRevealInFinder: (() -> Void)?
     var onDelete: (() -> Void)?
 
@@ -17,7 +18,7 @@ struct RecordListItemView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: InsightSpacing.xs) {
-                    Text(record.id)
+                    Text(record.displayTitle)
                         .font(InsightTypography.bodyMedium)
                         .foregroundStyle(InsightTheme.textPrimary)
                         .lineLimit(1)
@@ -62,6 +63,7 @@ struct RecordListItemView: View {
         .accessibilityIdentifier("record_list_item_\(record.id)")
         .contextMenu {
             Button("打开") { onSelect?() }
+            Button("重命名") { onRename?() }
             Button("在访达中显示") { onRevealInFinder?() }
             Divider()
             Button("删除", role: .destructive) { onDelete?() }
