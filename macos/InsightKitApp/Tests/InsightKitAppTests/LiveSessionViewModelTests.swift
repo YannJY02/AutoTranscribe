@@ -123,6 +123,32 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(plan.statusMessage?.contains("屏幕") == true)
     }
 
+    func testVisualPreviewPlanRoutesCameraAndScreenToPresenterOverlay() {
+        let plan = LiveVisualPreviewPlan.resolve(cameraEnabled: true, screenEnabled: true)
+
+        XCTAssertEqual(plan.source, .presenterOverlay)
+        XCTAssertTrue(plan.statusMessage?.contains("Presenter Overlay") == true)
+    }
+
+    func testPresentationCaptureStatusDistinguishesOverlayFromFallback() {
+        XCTAssertEqual(
+            LivePresentationCaptureStatus.resolve(
+                cameraEnabled: true,
+                screenEnabled: true,
+                presenterOverlayObserved: true
+            ),
+            .presenterOverlayCaptured
+        )
+        XCTAssertEqual(
+            LivePresentationCaptureStatus.resolve(
+                cameraEnabled: true,
+                screenEnabled: true,
+                presenterOverlayObserved: false
+            ),
+            .screenOnlyFallback
+        )
+    }
+
     func testCameraPreviewLayerUsesAspectFitToAvoidCropping() {
         let coordinator = VideoPreviewView.Coordinator()
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 540))

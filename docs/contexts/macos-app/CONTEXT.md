@@ -52,6 +52,10 @@ _Avoid_: Device mode
 The user-visible state of a live capture, such as waiting, preparing runtime, warming model, capturing, transcribing, refreshing, or recovering permission.
 _Avoid_: Status string
 
+**Simultaneous Visual Presentation**:
+The Live Workspace presentation mode where screen content and camera presence coexist as one visual surface. Record Review should treat the result as one media surface, not as two competing visual sources.
+_Avoid_: Separate camera and screen recordings, source toggle conflict, custom layout editor
+
 **Permission Recovery**:
 The app state where capture is blocked until the user restores a required macOS permission.
 _Avoid_: Error handling

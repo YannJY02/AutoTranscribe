@@ -725,6 +725,8 @@ final class LiveSessionViewModel: ObservableObject {
             startCameraPreview()
         case .screen:
             startScreenPreview()
+        case .presenterOverlay:
+            startPresenterOverlayPreview()
         }
     }
 
@@ -788,8 +790,26 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    func startPresenterOverlayPreview() {
+        if isUITestingMode {
+            return
+        }
+        capturePreviewStatusMessage = "屏幕录制 + Presenter Overlay。请在 macOS 视频效果菜单中确认演示者叠加；如果未开启，本次 Record 将仅包含屏幕。"
+        Task { [weak self] in
+            guard let self else { return }
+            await self.videoCaptureService.enumerateScreens()
+            await MainActor.run {
+                self.startFirstAvailableScreenPreview(
+                    receivingMessage: "正在接收屏幕画面。请确认 macOS Presenter Overlay 已开启；否则本次 Record 将仅包含屏幕。"
+                )
+            }
+        }
+    }
+
     @MainActor
-    private func startFirstAvailableScreenPreview() {
+    private func startFirstAvailableScreenPreview(
+        receivingMessage: String = "正在接收屏幕画面；若一直黑屏，请确认系统设置已允许 InsightKit 录制屏幕。"
+    ) {
         guard let firstScreen = videoCaptureService.availableScreens.first(where: { $0.kind == .screen }) else {
             capturePreviewStatusMessage = "没有找到可预览的显示器。请检查屏幕录制权限或重新打开 Live Workspace。"
             return
@@ -803,7 +823,7 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
 
-        capturePreviewStatusMessage = "正在接收屏幕画面；若一直黑屏，请确认系统设置已允许 InsightKit 录制屏幕。"
+        capturePreviewStatusMessage = receivingMessage
         Task { [weak self] in
             guard let self else { return }
             do {

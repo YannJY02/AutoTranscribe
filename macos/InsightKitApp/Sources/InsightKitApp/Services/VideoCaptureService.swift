@@ -61,6 +61,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     @Published var availableCameras: [VideoDeviceItem] = []
     @Published var availableScreens: [VideoDeviceItem] = []
     @Published var screenPreviewImage: CGImage?
+    @Published private(set) var presenterOverlayObserved = false
     var onRecordingFirstFrame: ((TimeInterval) -> Void)?
 
     // MARK: - Private State
@@ -243,6 +244,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         guard let display = scDisplays.first(where: { $0.displayID == displayID }) else {
             throw CaptureError.deviceNotFound
         }
+        resetPresenterOverlayObservation()
 
         let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         let config = SCStreamConfiguration()
@@ -253,7 +255,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
 
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let stream = SCStream(filter: filter, configuration: config, delegate: self)
         let output = SCVideoStreamOutput(owner: self)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoOutputQueue)
         try await stream.startCapture()
@@ -273,6 +275,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         guard let window = scWindows.first(where: { $0.windowID == windowID }) else {
             throw CaptureError.deviceNotFound
         }
+        resetPresenterOverlayObservation()
 
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
@@ -283,7 +286,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
 
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let stream = SCStream(filter: filter, configuration: config, delegate: self)
         let output = SCVideoStreamOutput(owner: self)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoOutputQueue)
         try await stream.startCapture()
@@ -327,6 +330,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
             self.activeMode = nil
 
             DispatchQueue.main.async {
+                self.presenterOverlayObserved = false
                 self.screenPreviewImage = nil
                 self.isCapturing = false
             }
@@ -499,6 +503,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer) {
+        if Self.sampleBufferShowsPresenterOverlay(sampleBuffer) {
+            markPresenterOverlayObserved()
+        }
+
         switch activeMode {
         case .screen, .window:
             break
@@ -519,6 +527,35 @@ final class VideoCaptureService: NSObject, ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.screenPreviewImage = previewImage
         }
+    }
+
+    private func markPresenterOverlayObserved() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.presenterOverlayObserved else { return }
+            self.presenterOverlayObserved = true
+        }
+    }
+
+    private func resetPresenterOverlayObservation() {
+        if Thread.isMainThread {
+            presenterOverlayObserved = false
+        } else {
+            DispatchQueue.main.sync {
+                presenterOverlayObserved = false
+            }
+        }
+    }
+
+    static func sampleBufferShowsPresenterOverlay(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard #available(macOS 14.2, *) else { return false }
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sampleBuffer,
+            createIfNecessary: false
+        ) as? [[AnyHashable: Any]] else {
+            return false
+        }
+        let key = AnyHashable(SCStreamFrameInfo.presenterOverlayContentRect)
+        return attachments.contains { $0[key] != nil }
     }
 }
 
@@ -600,5 +637,11 @@ private final class SCVideoStreamOutput: NSObject, SCStreamOutput {
     ) {
         guard outputType == .screen else { return }
         owner?.handleVideoSampleBuffer(sampleBuffer)
+    }
+}
+
+extension VideoCaptureService: SCStreamDelegate {
+    func outputVideoEffectDidStart(for stream: SCStream) {
+        markPresenterOverlayObserved()
     }
 }
