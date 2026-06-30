@@ -120,6 +120,7 @@ final class LiveSessionViewModel: ObservableObject {
     var finalMediaTranscriptRetryDelays: [TimeInterval] = [1, 2, 4, 8, 15]
     var lastInsightPackage: InsightPackageV1?
     var captureTimeline = LiveMediaCaptureTimeline()
+    var pendingPresentationCaptureStatus: LivePresentationCaptureStatus?
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
@@ -482,7 +483,9 @@ final class LiveSessionViewModel: ObservableObject {
         Task {
             await systemAudioCapture.stop()
         }
-        let expectedVisualMedia = visualPreviewSource != .none
+        let presentationCaptureStatus = currentPresentationCaptureStatus()
+        pendingPresentationCaptureStatus = presentationCaptureStatus
+        let expectedVisualMedia = presentationCaptureStatus != nil
         if expectedVisualMedia {
             temporaryRecordingURL = self.videoCaptureService.finishRecording()
         }
@@ -712,7 +715,7 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         if visualPreviewSource != .none {
-            videoCaptureService.stopCapture()
+            videoCaptureService.stopCapture(waitUntilStopped: true)
         }
 
         visualPreviewSource = plan.source
@@ -727,6 +730,23 @@ final class LiveSessionViewModel: ObservableObject {
             startScreenPreview()
         case .presenterOverlay:
             startPresenterOverlayPreview()
+        }
+    }
+
+    func currentPresentationCaptureStatus() -> LivePresentationCaptureStatus? {
+        switch visualPreviewSource {
+        case .none:
+            return nil
+        case .camera:
+            return .cameraOnly
+        case .screen:
+            return .screenOnly
+        case .presenterOverlay:
+            return LivePresentationCaptureStatus.resolve(
+                cameraEnabled: true,
+                screenEnabled: true,
+                presenterOverlayObserved: videoCaptureService.presenterOverlayObserved
+            )
         }
     }
 
@@ -928,6 +948,7 @@ final class LiveSessionViewModel: ObservableObject {
         reviewSourceStatusMessage = nil
         temporaryRecordingURL = nil
         finalizedMediaTranscriptCache = nil
+        pendingPresentationCaptureStatus = nil
         stopDrainingMeetingID = nil
         stateQueue.sync {
             captureTimeline.reset()

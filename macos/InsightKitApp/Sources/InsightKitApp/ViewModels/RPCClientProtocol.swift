@@ -38,7 +38,8 @@ protocol InsightRPCClientProtocol {
         recordSource: String,
         durationSec: Double,
         analysisMeta: [String: Any]?,
-        notesMD: String
+        notesMD: String,
+        presentationStatus: LivePresentationCaptureStatus?
     ) throws -> String  // returns record_path
 }
 

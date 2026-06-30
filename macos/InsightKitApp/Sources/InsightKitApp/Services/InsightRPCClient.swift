@@ -530,7 +530,8 @@ final class InsightRPCClient {
         recordSource: String,
         durationSec: Double,
         analysisMeta: [String: Any]? = nil,
-        notesMD: String
+        notesMD: String,
+        presentationStatus: LivePresentationCaptureStatus? = nil
     ) throws -> String {
         var params: [String: Any] = [
             "meeting_id": meetingID,
@@ -547,6 +548,9 @@ final class InsightRPCClient {
         }
         if let analysisMeta {
             params["analysis_meta"] = analysisMeta
+        }
+        if let presentationStatus {
+            params["presentation_status"] = presentationStatus.rawValue
         }
         let result = try callProductAction(method: "record.save", legacyMethod: "records.save", params: params)
         return (result["record_path"] as? String) ?? ""

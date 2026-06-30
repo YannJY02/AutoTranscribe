@@ -1,6 +1,6 @@
 # Simultaneous Visual Presentation PRD
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Problem Statement
 

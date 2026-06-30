@@ -313,6 +313,28 @@ private struct RecordReviewCenterView: View {
                 )
                 .padding(.horizontal, InsightSpacing.panelPadding)
 
+                if let presentationStatus = dataSource.presentationStatusMessage {
+                    HStack(alignment: .top, spacing: InsightSpacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(InsightTheme.warning)
+                        Text(presentationStatus)
+                            .font(InsightTypography.caption)
+                            .foregroundStyle(InsightTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(InsightSpacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(InsightTheme.warningSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: InsightTheme.cornerRadius)
+                            .stroke(InsightTheme.warningBorder, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
+                    .padding(.horizontal, InsightSpacing.panelPadding)
+                    .accessibilityIdentifier("record_presentation_status")
+                }
+
                 if let seekStatus = dataSource.seekStatusMessage {
                     Text(seekStatus)
                         .font(InsightTypography.small)

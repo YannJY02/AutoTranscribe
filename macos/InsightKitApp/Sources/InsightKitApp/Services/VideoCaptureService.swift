@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import CoreGraphics
 import CoreImage
 import CoreMedia
@@ -302,8 +303,8 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
-    func stopCapture() {
-        captureSessionQueue.async { [weak self] in
+    func stopCapture(waitUntilStopped: Bool = false) {
+        let stopWork = { [weak self] in
             guard let self else { return }
 
             // Stop camera
@@ -334,6 +335,12 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 self.screenPreviewImage = nil
                 self.isCapturing = false
             }
+        }
+
+        if waitUntilStopped {
+            captureSessionQueue.sync(execute: stopWork)
+        } else {
+            captureSessionQueue.async(execute: stopWork)
         }
     }
 
@@ -454,7 +461,6 @@ final class VideoCaptureService: NSObject, ObservableObject {
     fileprivate func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         publishScreenPreviewIfNeeded(sampleBuffer)
 
-        guard isWriting else { return }
         let capturedAt = ProcessInfo.processInfo.systemUptime
         writerQueue.async { [weak self] in
             guard let self, self.isWriting else { return }
@@ -555,7 +561,17 @@ final class VideoCaptureService: NSObject, ObservableObject {
             return false
         }
         let key = AnyHashable(SCStreamFrameInfo.presenterOverlayContentRect)
-        return attachments.contains { $0[key] != nil }
+        return attachments.contains { attachment in
+            guard let value = attachment[key] else { return false }
+            if let rect = value as? CGRect {
+                return !rect.isNull && !rect.isEmpty && rect.width > 0 && rect.height > 0
+            }
+            if let value = value as? NSValue {
+                let rect = value.rectValue
+                return !rect.isNull && !rect.isEmpty && rect.width > 0 && rect.height > 0
+            }
+            return true
+        }
     }
 }
 

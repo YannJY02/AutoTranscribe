@@ -144,6 +144,25 @@ class TestRecordWriter:
         }
         assert "must-not-be-written" not in json.dumps(metadata)
 
+    def test_metadata_includes_presentation_status_when_provided(self, tmp_root, sample_audio):
+        writer = RecordWriter()
+        record_path = writer.write_record(
+            root_dir=tmp_root,
+            meeting_id="test-meeting-presentation-status",
+            title="Test",
+            source_path=str(sample_audio),
+            segments=SAMPLE_SEGMENTS,
+            insight_package=SAMPLE_INSIGHT,
+            media_type="audio",
+            record_source="live",
+            duration_sec=6.0,
+            presentation_status="screenOnlyFallback",
+        )
+
+        metadata = json.loads((record_path / "metadata.json").read_text())
+
+        assert metadata["presentationStatus"] == "screenOnlyFallback"
+
     def test_transcript_json_format(self, tmp_root, sample_audio):
         writer = RecordWriter()
         record_path = writer.write_record(
@@ -355,6 +374,37 @@ class TestRecordWriter:
 
         assert second_path == first_path
         assert first_path.name != "live-11112222-3333-4444-5555-abcdef123456"
+
+    def test_existing_record_lookup_skips_unrelated_metadata(self, tmp_root, sample_audio):
+        unrelated = tmp_root / "20260630-1200-live-old-record-deadbeef"
+        unrelated.mkdir(parents=True)
+        (unrelated / "metadata.json").write_text(
+            json.dumps({"id": "old-record"}),
+            encoding="utf-8",
+        )
+        original_metadata = RecordWriter._metadata
+
+        def fail_if_unrelated_metadata_is_read(path: Path):
+            if path == unrelated / "metadata.json":
+                raise AssertionError("unrelated record metadata should not be read")
+            return original_metadata(path)
+
+        writer = RecordWriter()
+        with patch.object(RecordWriter, "_metadata", side_effect=fail_if_unrelated_metadata_is_read):
+            record_path = writer.write_record(
+                root_dir=tmp_root,
+                meeting_id="live-11112222-3333-4444-5555-abcdef123456",
+                title="Live",
+                source_path=str(sample_audio),
+                segments=SAMPLE_SEGMENTS,
+                insight_package=None,
+                media_type="audio",
+                record_source="live",
+                duration_sec=6.0,
+            )
+
+        assert record_path.exists()
+        assert record_path.name.endswith("ef123456")
 
     def test_repeated_write_preserves_original_created_at(self, tmp_root, sample_audio):
         writer = RecordWriter()

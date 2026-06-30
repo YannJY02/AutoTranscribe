@@ -22,7 +22,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
         recordSource: String,
         durationSec: Double,
         analysisMeta: [String: Any]?,
-        notesMD: String
+        notesMD: String,
+        presentationStatus: LivePresentationCaptureStatus?
     )] = []
     var recordsSaveSegments: [[[String: Any]]] = []
     var transcriptionStatusCalls = 0
@@ -323,7 +324,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
         recordSource: String,
         durationSec: Double,
         analysisMeta: [String: Any]?,
-        notesMD: String
+        notesMD: String,
+        presentationStatus: LivePresentationCaptureStatus?
     ) throws -> String {
         methodCalls.append("records.save")
         recordsSaveSegments.append(segments)
@@ -336,7 +338,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
             recordSource: recordSource,
             durationSec: durationSec,
             analysisMeta: analysisMeta,
-            notesMD: notesMD
+            notesMD: notesMD,
+            presentationStatus: presentationStatus
         ))
         return "/tmp/mock-records/\(meetingID)"
     }

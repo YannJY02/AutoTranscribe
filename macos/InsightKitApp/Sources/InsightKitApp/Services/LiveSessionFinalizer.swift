@@ -220,6 +220,29 @@ struct LiveSessionFinalizationSnapshot {
     let notes: [TimestampedNote]
     let analysisMeta: [String: Any]?
     let cachedFinalTranscript: [TranscriptSegment]?
+    let presentationStatus: LivePresentationCaptureStatus?
+
+    init(
+        meetingID: String,
+        capturedSegments: [TranscriptSegment],
+        insightPackage: InsightPackageV1?,
+        recordingURL: URL?,
+        durationSec: Double,
+        notes: [TimestampedNote],
+        analysisMeta: [String: Any]?,
+        cachedFinalTranscript: [TranscriptSegment]?,
+        presentationStatus: LivePresentationCaptureStatus? = nil
+    ) {
+        self.meetingID = meetingID
+        self.capturedSegments = capturedSegments
+        self.insightPackage = insightPackage
+        self.recordingURL = recordingURL
+        self.durationSec = durationSec
+        self.notes = notes
+        self.analysisMeta = analysisMeta
+        self.cachedFinalTranscript = cachedFinalTranscript
+        self.presentationStatus = presentationStatus
+    }
 }
 
 enum LiveSessionFinalizationTranscriptState: Equatable {
@@ -270,7 +293,8 @@ final class LiveSessionFinalizer {
             recordSource: "live",
             durationSec: snapshot.durationSec,
             analysisMeta: snapshot.analysisMeta,
-            notesMD: NotesFileIO.serialize(snapshot.notes)
+            notesMD: NotesFileIO.serialize(snapshot.notes),
+            presentationStatus: snapshot.presentationStatus
         )).get().recordPath
 
         return LiveSessionFinalizationOutcome(

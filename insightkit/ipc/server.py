@@ -549,6 +549,7 @@ class InsightRPCServer:
         record_source = str(params.get("record_source", "") or "live")
         duration_sec = float(params.get("duration_sec") or detect_duration(segs=segments))
         notes_md = str(params.get("notes_md", "") or "")
+        presentation_status = str(params.get("presentation_status", "") or "")
         records_root = os.getenv("INSIGHTKIT_RECORDS_ROOT", str(
             __import__("pathlib").Path.home() / "Documents" / "InsightKit" / "Records"
         ))
@@ -564,6 +565,7 @@ class InsightRPCServer:
             duration_sec=duration_sec,
             analysis_meta=analysis_meta if isinstance(analysis_meta, dict) else None,
             notes_md=notes_md,
+            presentation_status=presentation_status,
         )
         return {"ok": True, "record_path": str(record_path)}
 

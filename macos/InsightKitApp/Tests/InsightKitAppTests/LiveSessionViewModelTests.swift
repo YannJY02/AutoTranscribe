@@ -1095,6 +1095,46 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(call.notesMD.contains("00:03 live note"))
     }
 
+    func testSaveToRecordsPersistsPresentationCaptureStatus() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSavePresentation_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.mp4")
+        try Data("fake mp4".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 12.5
+        viewModel.pendingPresentationCaptureStatus = .screenOnlyFallback
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save presentation status")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-presentation-status-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.presentationStatus, .screenOnlyFallback)
+    }
+
     func testSaveToRecordsUsesPlayableMediaDurationWhenAvailable() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveSavePlayableDuration_\(UUID().uuidString)", isDirectory: true)

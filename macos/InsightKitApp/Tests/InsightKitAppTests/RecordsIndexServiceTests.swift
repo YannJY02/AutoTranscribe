@@ -124,6 +124,88 @@ final class RecordsIndexServiceTests: XCTestCase {
         XCTAssertEqual(service.searchRecords(query: "cached-search-token").map(\.id), ["record-indexed"])
     }
 
+    func testRefreshIndexReadsOptionalPresentationStatusAndKeepsLegacyRecordsCompatible() throws {
+        let fallbackDir = tempRoot.appendingPathComponent("fallback-record")
+        let legacyDir = tempRoot.appendingPathComponent("legacy-record")
+        try FileManager.default.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: legacyDir, withIntermediateDirectories: true)
+        try """
+        {
+          "id": "fallback-record",
+          "createdAt": "2026-05-22T00:00:00Z",
+          "duration": 7.6,
+          "mediaType": "video",
+          "source": "live",
+          "userTags": [],
+          "autoTags": [],
+          "summaryPreview": "fallback summary",
+          "presentationStatus": "screenOnlyFallback"
+        }
+        """.write(to: fallbackDir.appendingPathComponent("metadata.json"), atomically: true, encoding: .utf8)
+        try """
+        {
+          "id": "legacy-record",
+          "createdAt": "2026-05-23T00:00:00Z",
+          "duration": 7.6,
+          "mediaType": "video",
+          "source": "live",
+          "userTags": [],
+          "autoTags": [],
+          "summaryPreview": "legacy summary"
+        }
+        """.write(to: legacyDir.appendingPathComponent("metadata.json"), atomically: true, encoding: .utf8)
+
+        let service = RecordsIndexService()
+        service.rootDirectory = tempRoot
+        service.refreshIndex()
+
+        XCTAssertEqual(service.records.first(where: { $0.id == "fallback-record" })?.presentationStatus, .screenOnlyFallback)
+        XCTAssertNil(service.records.first(where: { $0.id == "legacy-record" })?.presentationStatus)
+    }
+
+    func testRecordReviewShowsPresentationFallbackOnlyWhenCameraWasNotSaved() throws {
+        let fallback = RecordMetadata(
+            id: "fallback-record",
+            createdAt: Date(),
+            duration: 10,
+            mediaType: .video,
+            source: .live,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: nil,
+            presentationStatus: .screenOnlyFallback
+        )
+        let captured = RecordMetadata(
+            id: "captured-record",
+            createdAt: Date(),
+            duration: 10,
+            mediaType: .video,
+            source: .live,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: nil,
+            presentationStatus: .presenterOverlayCaptured
+        )
+        let legacy = RecordMetadata(
+            id: "legacy-record",
+            createdAt: Date(),
+            duration: 10,
+            mediaType: .video,
+            source: .live,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: nil
+        )
+
+        let fallbackDataSource = RecordReviewDataSource(metadata: fallback, rootDirectory: tempRoot)
+        let capturedDataSource = RecordReviewDataSource(metadata: captured, rootDirectory: tempRoot)
+        let legacyDataSource = RecordReviewDataSource(metadata: legacy, rootDirectory: tempRoot)
+
+        XCTAssertTrue(fallbackDataSource.presentationStatusMessage?.contains("摄像头没有写入 Record") == true)
+        XCTAssertNil(capturedDataSource.presentationStatusMessage)
+        XCTAssertNil(legacyDataSource.presentationStatusMessage)
+    }
+
     func testRecordDisplayTitlePrefersManualTitleThenSummaryThenReadableFallback() throws {
         let createdAt = ISO8601DateFormatter().date(from: "2026-05-22T10:30:00Z")!
         let manuallyRenamed = RecordMetadata(

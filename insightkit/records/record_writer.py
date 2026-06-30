@@ -44,6 +44,7 @@ class RecordWriter:
         duration_sec: float,
         analysis_meta: dict[str, Any] | None = None,
         notes_md: str = "",
+        presentation_status: str | None = None,
     ) -> Path:
         """Write record folder and return its Path."""
         root = Path(root_dir).expanduser()
@@ -83,6 +84,9 @@ class RecordWriter:
         analysis = self._analysis_metadata(analysis_meta)
         if analysis:
             metadata["analysis"] = analysis
+        presentation = str(presentation_status or "").strip()
+        if presentation:
+            metadata["presentationStatus"] = presentation
         self._write_json(record_dir / "metadata.json", metadata)
 
         # ── transcript.json ───────────────────────────────────────────────
@@ -158,8 +162,11 @@ class RecordWriter:
             return direct
         if direct.exists() and direct.is_dir() and not (direct / "metadata.json").exists():
             return direct
+        short_id = cls._short_id(meeting_id)
         for child in root.iterdir():
             if not child.is_dir() or child == direct:
+                continue
+            if short_id == "record" or short_id not in child.name.lower():
                 continue
             if cls._metadata_id(child / "metadata.json") == meeting_id:
                 return child

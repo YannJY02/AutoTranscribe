@@ -223,7 +223,8 @@ final class InsightRuntimeActionRPCAdapter: RuntimeActionRPCAdapting {
             recordSource: request.recordSource,
             durationSec: request.durationSec,
             analysisMeta: request.analysisMeta,
-            notesMD: request.notesMD
+            notesMD: request.notesMD,
+            presentationStatus: request.presentationStatus
         )
     }
 
@@ -251,6 +252,33 @@ struct RecordSaveActionRequest {
     let durationSec: Double
     let analysisMeta: [String: Any]?
     let notesMD: String
+    let presentationStatus: LivePresentationCaptureStatus?
+
+    init(
+        meetingID: String,
+        title: String,
+        sourcePath: String,
+        segments: [[String: Any]],
+        insightPackage: [String: Any]?,
+        mediaType: String,
+        recordSource: String,
+        durationSec: Double,
+        analysisMeta: [String: Any]?,
+        notesMD: String,
+        presentationStatus: LivePresentationCaptureStatus? = nil
+    ) {
+        self.meetingID = meetingID
+        self.title = title
+        self.sourcePath = sourcePath
+        self.segments = segments
+        self.insightPackage = insightPackage
+        self.mediaType = mediaType
+        self.recordSource = recordSource
+        self.durationSec = durationSec
+        self.analysisMeta = analysisMeta
+        self.notesMD = notesMD
+        self.presentationStatus = presentationStatus
+    }
 }
 
 struct RecordSaveActionResult: Equatable {

@@ -13,6 +13,7 @@ final class RecordReviewDataSource: ObservableObject {
     @Published var recordingDuration: TimeInterval = 0
     @Published var mediaURL: URL?
     @Published var mediaStatusMessage: String?
+    @Published var presentationStatusMessage: String?
     @Published var seekStatusMessage: String?
     @Published var exportStatusMessage: String?
     @Published var assetStatusMessage: String?
@@ -50,6 +51,7 @@ final class RecordReviewDataSource: ObservableObject {
         let snapshot = MeetingAssetSnapshot.load(recordPath: recordPath, duration: metadata.duration)
         mediaURL = snapshot.mediaURL
         mediaStatusMessage = snapshot.mediaStatusMessage
+        presentationStatusMessage = metadata.presentationStatus?.recordReviewStatusMessage
         assetHealth = snapshot.health
         notes = snapshot.notes
         transcriptEntries = snapshot.transcriptEntries

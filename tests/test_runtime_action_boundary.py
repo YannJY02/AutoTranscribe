@@ -107,11 +107,13 @@ def test_record_save_contract_success_invalid_input_and_write_failure(tmp_path, 
             "media_type": "audio",
             "record_source": "imported",
             "duration_sec": 1.0,
+            "presentation_status": "presenterOverlayCaptured",
         })
         record_path = Path(response["result"]["record_path"])
         assert response["result"]["ok"] is True
         assert record_path.exists()
         assert json.loads((record_path / "transcript.json").read_text())[0]["text"] == "saved"
+        assert json.loads((record_path / "metadata.json").read_text())["presentationStatus"] == "presenterOverlayCaptured"
 
         assert_error(dispatch(server, "record.save", {}), "meeting_id is required")
     finally:

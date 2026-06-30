@@ -233,8 +233,8 @@ else
 fi
 
 mkdir -p "$runtime_root"
-cp -R "$ROOT_DIR/scripts" "$runtime_root/"
-cp -R "$ROOT_DIR/insightkit" "$runtime_root/"
+rsync -a "$ROOT_DIR/scripts/" "$runtime_root/scripts/"
+rsync -a "$ROOT_DIR/insightkit/" "$runtime_root/insightkit/"
 find "$runtime_root" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "$runtime_root" -name "*.pyc" -type f -delete
 find "$runtime_root" -name ".DS_Store" -type f -delete

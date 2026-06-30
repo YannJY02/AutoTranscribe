@@ -30,3 +30,24 @@ Use this checklist to decide whether Apple's Presenter Overlay is feasible as In
 - `feasibility blocker`: Presenter Overlay was visible in system UI but did not appear in the saved Record media.
 
 If the result is `feasibility blocker`, do not start custom compositor work automatically. Record the finding on issue 01 and make a separate product decision.
+
+## 2026-07-01 Codex Validation Result
+
+Validated with `/Users/yann.jy/Applications/InsightKit.app` synced from local dirty workspace.
+
+Evidence:
+- Sync proof: `logs/diagnostics/2026-06-30/presenter-overlay-validation-video-writer/latest_sync.json`
+- Preview screenshot: `logs/diagnostics/2026-06-30/presenter-overlay-validation-video-writer/live-preview-camera-screen.png`
+- Running recording screenshot: `logs/diagnostics/2026-06-30/presenter-overlay-validation-video-writer/live-recording-running.png`
+- Review screenshot: `logs/diagnostics/2026-06-30/presenter-overlay-validation-video-writer/live-review-video-record.png`
+- ScreenCaptureKit log: `logs/diagnostics/2026-06-30/presenter-overlay-validation-video-writer/screencapturekit-recording.log`
+- Saved Record: `~/Documents/InsightKit/Records/20260701-0021-live-record-f2567901`
+
+Observed:
+- Camera and screen toggles can be on together.
+- Screen preview remains live in the both-enabled state.
+- The saved Record contains `recording.mp4`, `capture_timeline.json`, transcript, notes, minutes, and metadata.
+- `ffprobe` reports one audio stream and one video stream, both 34.000s.
+- `metadata.json` has `"mediaType": "video"` and `"presentationStatus": "presenterOverlayCaptured"`.
+
+Classification: `presenter overlay captured`.
