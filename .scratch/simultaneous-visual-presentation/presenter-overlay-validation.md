@@ -201,3 +201,23 @@ Validation boundary:
 - Computer Use could not directly coordinate-drag the non-activating overlay panel because it targets the key window surface.
 - System Events confirmed the independent `InsightKit Camera Overlay` window could move to `{520, 650}`.
 - After toggling screen off/on, the overlay restored at the moved position and the camera image remained visible.
+
+## 2026-07-02 Camera Overlay Video Finalization Fix
+
+Validated `/Users/yann.jy/Applications/InsightKit.app` after hardening the camera-overlay video writer and final review-media gate.
+
+Evidence:
+- Saved Record: `/Users/yann.jy/Documents/InsightKit/Records/20260702-2109-live-record-74ee0db8`
+- Metadata snapshot: `logs/diagnostics/2026-07-02/camera-overlay-video-finalization/20260702-2109-live-record-74ee0db8-metadata.json`
+- Media probe: `logs/diagnostics/2026-07-02/camera-overlay-video-finalization/20260702-2109-live-record-74ee0db8-ffprobe.json`
+- Extracted saved-video frame: `logs/diagnostics/2026-07-02/camera-overlay-video-finalization/20260702-2109-live-record-74ee0db8-frame-005s.png`
+- In-app playback screenshot: `logs/diagnostics/2026-07-02/camera-overlay-video-finalization/20260702-2109-live-record-74ee0db8-review-playback.png`
+
+Observed:
+- The saved Record contains one playable `recording.mp4`.
+- Metadata reports `"mediaType": "video"` and `"presentationStatus": "screenPlusCameraCaptured"`.
+- `ffprobe` reports one AAC audio stream and one H.264 video stream, both 10.000s; video is 1728x1116.
+- The extracted saved-video frame visibly contains both screen content and the local camera overlay.
+- Record Review displays the saved video playback surface in the app.
+
+Classification: camera-overlay video finalization passed. This fixes the playback symptom by ensuring successful camera-plus-screen runs save a playable video asset, and invalid non-empty MP4 files are rejected before Record Review treats them as video.

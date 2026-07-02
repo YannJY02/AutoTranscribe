@@ -180,7 +180,7 @@ final class LiveSessionFinalizationRecoveryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: outputRoot) }
 
         let audioPreparer = LiveReviewAudioPreparingStub(audioURL: audioURL)
-        let inspector = MediaAssetInspectorStub(hasAudioTrack: false)
+        let inspector = MediaAssetInspectorStub(hasAudioTrack: false, durationSec: 2.0)
         let composer = ReviewMediaComposerSuccessStub()
         let preparer = LiveSessionReviewMediaPreparer(
             audioPreparer: audioPreparer,
@@ -346,10 +346,12 @@ private final class LiveReviewAudioPreparingStub: LiveReviewAudioPreparing {
 
 private final class MediaAssetInspectorStub: MediaAssetInspecting {
     private let hasAudioTrackResult: Bool
+    private let durationResult: Double?
     private(set) var checkedURLs: [URL] = []
 
-    init(hasAudioTrack: Bool) {
+    init(hasAudioTrack: Bool, durationSec: Double? = nil) {
         self.hasAudioTrackResult = hasAudioTrack
+        self.durationResult = durationSec
     }
 
     func hasAudioTrack(url: URL) -> Bool {
@@ -358,7 +360,7 @@ private final class MediaAssetInspectorStub: MediaAssetInspecting {
     }
 
     func durationSec(url: URL) -> Double? {
-        nil
+        durationResult
     }
 }
 

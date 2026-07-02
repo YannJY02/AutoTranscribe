@@ -40,6 +40,8 @@ The accepted product behavior is therefore saved-output camera overlay when came
 
 On 2026-07-02, a follow-up QuickRecorder-style placement pass made the camera overlay draggable, resizable, and position-stable while keeping it as one captured local overlay. This is basic overlay placement, not a layout editor or multi-track visual workflow.
 
+Later on 2026-07-02, a playback bug exposed that some camera-plus-screen runs could save only audio because the temporary MP4 existed but was not finalized into playable media. The video finalization path was hardened and revalidated with saved Record `/Users/yann.jy/Documents/InsightKit/Records/20260702-2109-live-record-74ee0db8`: metadata reports `mediaType: video` and `presentationStatus: screenPlusCameraCaptured`, `ffprobe` reads a playable 10.000s audio/video MP4, the extracted frame shows screen plus camera overlay, and the in-app Record Review playback surface displays video.
+
 ## User Stories
 
 1. As a Live Workspace user, I want to enable camera and screen at the same time, so that I can present content while still appearing on camera.

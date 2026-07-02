@@ -608,7 +608,8 @@ final class LiveSessionViewModelTests: XCTestCase {
             systemAudioCapture: SystemAudioCaptureService(),
             mixBus: AudioMixBus(),
             chunkAssembler: ChunkAssembler(),
-            asrService: LiveASRService()
+            asrService: LiveASRService(),
+            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: 2.0)
         )
         defer { try? FileManager.default.removeItem(at: tmp) }
 
@@ -620,6 +621,42 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.temporaryRecordingURL, videoURL)
         XCTAssertEqual(viewModel.mediaURL, videoURL)
         XCTAssertNil(viewModel.recordingStatusMessage)
+    }
+
+    func testPrepareTemporaryRecordingRejectsUnplayableNonEmptyVideoRecording() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitInvalidVideoLiveRecording_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data("ftyp-but-no-moov".utf8).write(to: videoURL)
+        let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService(),
+            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: nil)
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        viewModel.temporaryRecordingURL = videoURL
+
+        let recordingURL = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: "invalid-video-live-recording-test",
+                expectedVisualMedia: true
+            )
+        )
+
+        XCTAssertEqual(recordingURL.pathExtension, "wav")
+        XCTAssertEqual(viewModel.temporaryRecordingURL, recordingURL)
+        XCTAssertEqual(viewModel.mediaURL, recordingURL)
+        XCTAssertTrue(viewModel.recordingStatusMessage?.contains("未保存到视频画面") == true)
     }
 
     func testPrepareTemporaryRecordingComposesSinglePlayableVideoWhenVideoAndAudioAreCaptured() throws {
@@ -635,7 +672,7 @@ final class LiveSessionViewModelTests: XCTestCase {
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
         let composer = ReviewMediaComposerSpy()
-        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false)
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: 2.0)
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
             sidecarManager: SidecarManager(),
@@ -687,7 +724,7 @@ final class LiveSessionViewModelTests: XCTestCase {
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
         let composer = ReviewMediaComposerSpy()
-        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false)
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: 2.0)
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
             sidecarManager: SidecarManager(),
@@ -737,7 +774,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
         let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
         let composer = ReviewMediaComposerSpy()
-        let inspector = MediaAssetInspectorSpy(hasAudioTrack: true)
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: true, durationSec: 2.0)
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
             sidecarManager: SidecarManager(),
@@ -789,7 +826,7 @@ final class LiveSessionViewModelTests: XCTestCase {
             mixBus: AudioMixBus(),
             chunkAssembler: ChunkAssembler(),
             asrService: LiveASRService(),
-            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false)
+            mediaAssetInspector: MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: 2.0)
         )
         defer { try? FileManager.default.removeItem(at: tmp) }
         defer { try? FileManager.default.removeItem(at: outputRoot) }

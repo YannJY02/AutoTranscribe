@@ -155,6 +155,9 @@ final class LiveSessionReviewMediaPreparer {
               (values.fileSize ?? 0) > 0 else {
             return nil
         }
+        guard mediaAssetInspector.durationSec(url: url) != nil else {
+            return nil
+        }
         return url
     }
 

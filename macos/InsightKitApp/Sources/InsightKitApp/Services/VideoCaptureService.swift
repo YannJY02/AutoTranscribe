@@ -92,6 +92,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
     // Recording
     private var assetWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
+    private var videoPixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var recordingOutputURL: URL?
+    private var recordingFallbackSize: CGSize?
+    private var recordingFailureMessage: String?
     private var isWriting = false
     private var recordingTimeline: VideoRecordingTimeline?
     private var activeRecordingSize: CGSize?
@@ -496,48 +500,43 @@ final class VideoCaptureService: NSObject, ObservableObject {
     // MARK: - Recording (AVAssetWriter)
 
     func startRecording(to outputURL: URL, width: Int = 1920, height: Int = 1080) throws {
+        var startError: Error?
         writerQueue.sync {
             do {
                 if FileManager.default.fileExists(atPath: outputURL.path) {
                     try FileManager.default.removeItem(at: outputURL)
                 }
 
-                let outputWidth = Int(activeRecordingSize?.width ?? CGFloat(width))
-                let outputHeight = Int(activeRecordingSize?.height ?? CGFloat(height))
-                let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-                let videoSettings: [String: Any] = [
-                    AVVideoCodecKey: AVVideoCodecType.h264,
-                    AVVideoWidthKey: outputWidth,
-                    AVVideoHeightKey: outputHeight,
-                    AVVideoCompressionPropertiesKey: [
-                        AVVideoAverageBitRateKey: 5_000_000,
-                        AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                    ],
-                ]
-                let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-                input.expectsMediaDataInRealTime = true
-
-                guard writer.canAdd(input) else {
-                    return
-                }
-                writer.add(input)
-                writer.startWriting()
-
-                self.assetWriter = writer
-                self.videoWriterInput = input
+                self.assetWriter = nil
+                self.videoWriterInput = nil
+                self.recordingOutputURL = outputURL
+                self.recordingFallbackSize = self.activeRecordingSize ?? CGSize(
+                    width: CGFloat(width),
+                    height: CGFloat(height)
+                )
+                self.recordingFailureMessage = nil
                 self.recordingTimeline = nil
                 self.isWriting = true
             } catch {
+                startError = error
                 self.isWriting = false
+                self.recordingFailureMessage = error.localizedDescription
             }
+        }
+        if let startError {
+            throw startError
         }
     }
 
     func stopRecording() {
         var writerToFinish: AVAssetWriter?
         writerQueue.sync {
-            guard isWriting, let writer = assetWriter else { return }
+            guard isWriting else { return }
             isWriting = false
+            guard let writer = assetWriter else {
+                clearWriterState()
+                return
+            }
             videoWriterInput?.markAsFinished()
             writerToFinish = writer
         }
@@ -551,15 +550,20 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     @discardableResult
-    func finishRecording(timeoutSec: TimeInterval = 5) -> URL? {
+    func finishRecording(timeoutSec: TimeInterval = 20) -> URL? {
         var writerToFinish: AVAssetWriter?
         var outputURL: URL?
         var hasVideoFrames = false
 
         writerQueue.sync {
-            guard isWriting, let writer = assetWriter else { return }
-            hasVideoFrames = recordingTimeline != nil
+            guard isWriting else { return }
             isWriting = false
+            outputURL = recordingOutputURL
+            guard let writer = assetWriter else {
+                clearWriterState()
+                return
+            }
+            hasVideoFrames = recordingTimeline != nil
             writerToFinish = writer
             outputURL = writer.outputURL
             if hasVideoFrames {
@@ -591,6 +595,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
             return nil
         }
         guard writerToFinish.status == .completed else {
+            recordingFailureMessage = writerToFinish.error?.localizedDescription
             return nil
         }
         guard let values = try? outputURL.resourceValues(forKeys: [.fileSizeKey]),
@@ -602,8 +607,15 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     private func clearWriterState(matching writer: AVAssetWriter) {
         guard assetWriter === writer else { return }
+        clearWriterState()
+    }
+
+    private func clearWriterState() {
         assetWriter = nil
         videoWriterInput = nil
+        videoPixelBufferAdaptor = nil
+        recordingOutputURL = nil
+        recordingFallbackSize = nil
         recordingTimeline = nil
     }
 
@@ -618,7 +630,9 @@ final class VideoCaptureService: NSObject, ObservableObject {
         let capturedAt = ProcessInfo.processInfo.systemUptime
         writerQueue.async { [weak self] in
             guard let self, self.isWriting else { return }
-            guard let input = self.videoWriterInput, input.isReadyForMoreMediaData else { return }
+            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+            guard let input = self.ensureWriterStarted(for: sampleBuffer),
+                  input.isReadyForMoreMediaData else { return }
 
             let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
             if self.recordingTimeline == nil {
@@ -633,33 +647,86 @@ final class VideoCaptureService: NSObject, ObservableObject {
             )
             self.recordingTimeline = timeline
 
-            if let retimedSampleBuffer = Self.copySampleBuffer(sampleBuffer, presentationTime: presentationTime) {
-                input.append(retimedSampleBuffer)
-            } else {
-                input.append(sampleBuffer)
+            let didAppend = self.videoPixelBufferAdaptor?.append(
+                imageBuffer,
+                withPresentationTime: presentationTime
+            ) ?? false
+            if !didAppend, let error = self.assetWriter?.error {
+                self.recordingFailureMessage = error.localizedDescription
             }
         }
     }
 
-    private static func copySampleBuffer(
-        _ sampleBuffer: CMSampleBuffer,
-        presentationTime: CMTime
-    ) -> CMSampleBuffer? {
-        var timing = CMSampleTimingInfo(
-            duration: .invalid,
-            presentationTimeStamp: presentationTime,
-            decodeTimeStamp: .invalid
+    private func ensureWriterStarted(for sampleBuffer: CMSampleBuffer) -> AVAssetWriterInput? {
+        if let input = videoWriterInput {
+            return input
+        }
+        guard let outputURL = recordingOutputURL else {
+            return nil
+        }
+        let fallback = recordingFallbackSize ?? CGSize(width: 1920, height: 1080)
+        let size = Self.recordingDimensions(for: sampleBuffer, fallback: fallback)
+        do {
+            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            let videoSettings: [String: Any] = [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: Int(size.width),
+                AVVideoHeightKey: Int(size.height),
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: 5_000_000,
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                ],
+            ]
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+            input.expectsMediaDataInRealTime = true
+            let attributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: Int(size.width),
+                kCVPixelBufferHeightKey as String: Int(size.height),
+            ]
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: input,
+                sourcePixelBufferAttributes: attributes
+            )
+            guard writer.canAdd(input) else {
+                recordingFailureMessage = "Video writer could not add input."
+                isWriting = false
+                return nil
+            }
+            writer.add(input)
+            guard writer.startWriting() else {
+                recordingFailureMessage = writer.error?.localizedDescription
+                isWriting = false
+                return nil
+            }
+            assetWriter = writer
+            videoWriterInput = input
+            videoPixelBufferAdaptor = adaptor
+            return input
+        } catch {
+            recordingFailureMessage = error.localizedDescription
+            isWriting = false
+            return nil
+        }
+    }
+
+    static func recordingDimensions(for sampleBuffer: CMSampleBuffer, fallback: CGSize) -> CGSize {
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return sanitizedRecordingSize(fallback)
+        }
+        return sanitizedRecordingSize(CGSize(
+            width: CVPixelBufferGetWidth(imageBuffer),
+            height: CVPixelBufferGetHeight(imageBuffer)
+        ))
+    }
+
+    private static func sanitizedRecordingSize(_ size: CGSize) -> CGSize {
+        let width = max(2, Int(size.width))
+        let height = max(2, Int(size.height))
+        return CGSize(
+            width: width.isMultiple(of: 2) ? width : width - 1,
+            height: height.isMultiple(of: 2) ? height : height - 1
         )
-        var retimedSampleBuffer: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(
-            allocator: kCFAllocatorDefault,
-            sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleBufferOut: &retimedSampleBuffer
-        )
-        guard status == noErr else { return nil }
-        return retimedSampleBuffer
     }
 
     private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer) {
