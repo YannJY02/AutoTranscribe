@@ -112,6 +112,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var reviewSourceStatusMessage: String?
     let videoCaptureService = VideoCaptureService()
     var recordingDurationTimer: Timer?
+    var visualSelectionUsesScreenOnlyFallback = false
 
     // Phase 5: Records persistence
     var recordsService: RecordsIndexService?
@@ -699,6 +700,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func applyVisualPreviewSelection(cameraEnabled: Bool, screenEnabled: Bool) {
+        visualSelectionUsesScreenOnlyFallback = false
         let plan = LiveVisualPreviewPlan.resolve(
             cameraEnabled: cameraEnabled,
             screenEnabled: screenEnabled
@@ -727,13 +729,19 @@ final class LiveSessionViewModel: ObservableObject {
         case .camera:
             startCameraPreview()
         case .screen:
-            startScreenPreview()
+            startScreenPreview(receivingMessage: plan.statusMessage)
         case .presenterOverlay:
             startPresenterOverlayPreview()
+        case .screenWithCameraOverlay:
+            startCameraOverlayScreenPreview()
         }
     }
 
     func currentPresentationCaptureStatus() -> LivePresentationCaptureStatus? {
+        if visualSelectionUsesScreenOnlyFallback, visualPreviewSource != .none {
+            return .screenOnlyFallback
+        }
+
         switch visualPreviewSource {
         case .none:
             return nil
@@ -747,6 +755,8 @@ final class LiveSessionViewModel: ObservableObject {
                 screenEnabled: true,
                 presenterOverlayObserved: videoCaptureService.presenterOverlayObserved
             )
+        case .screenWithCameraOverlay:
+            return .screenPlusCameraCaptured
         }
     }
 
@@ -795,17 +805,19 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
-    func startScreenPreview() {
+    func startScreenPreview(receivingMessage: String? = nil) {
         if isUITestingMode {
             return
         }
-        capturePreviewStatusMessage = "正在准备屏幕预览；若一直没有画面，请确认系统设置已允许 InsightKit 录制屏幕。"
+        let message = receivingMessage
+            ?? "正在准备屏幕预览；若一直没有画面，请确认系统设置已允许 InsightKit 录制屏幕。"
+        capturePreviewStatusMessage = message
 
         Task { [weak self] in
             guard let self else { return }
             await self.videoCaptureService.enumerateScreens()
             await MainActor.run {
-                self.startFirstAvailableScreenPreview()
+                self.startFirstAvailableScreenPreview(receivingMessage: message)
             }
         }
     }
@@ -815,20 +827,86 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
         capturePreviewStatusMessage = "屏幕录制 + Presenter Overlay。请在 macOS 视频效果菜单中确认演示者叠加；如果未开启，本次 Record 将仅包含屏幕。"
+        videoCaptureService.checkCameraPermission()
+        switch videoCaptureService.cameraPermission {
+        case .denied:
+            capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头，Presenter Overlay 才能由 macOS 合入画面。"
+            videoCaptureService.openCameraSettings()
+            return
+        case .unknown:
+            Task { @MainActor in
+                let granted = await videoCaptureService.requestCameraPermission()
+                if granted {
+                    startPresenterOverlayScreenPreview()
+                } else {
+                    capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头，Presenter Overlay 才能由 macOS 合入画面。"
+                }
+            }
+        case .granted:
+            startPresenterOverlayScreenPreview()
+        }
+    }
+
+    private func startPresenterOverlayScreenPreview() {
         Task { [weak self] in
             guard let self else { return }
             await self.videoCaptureService.enumerateScreens()
             await MainActor.run {
                 self.startFirstAvailableScreenPreview(
-                    receivingMessage: "正在接收屏幕画面。请确认 macOS Presenter Overlay 已开启；否则本次 Record 将仅包含屏幕。"
+                    receivingMessage: "正在接收屏幕画面。请在 Apple 的系统共享界面中确认 Presenter Overlay；否则本次 Record 将仅包含屏幕。",
+                    usesPresenterOverlayPicker: true
                 )
             }
         }
     }
 
+    func startCameraOverlayScreenPreview() {
+        if isUITestingMode {
+            return
+        }
+        capturePreviewStatusMessage = "屏幕录制 + 摄像头叠加。正在准备摄像头画面..."
+        videoCaptureService.checkCameraPermission()
+        switch videoCaptureService.cameraPermission {
+        case .denied:
+            startScreenOnlyFallbackPreview(reason: "摄像头权限未开启。当前仅保存屏幕；摄像头不会写入本次 Record。")
+        case .unknown:
+            Task { @MainActor in
+                let granted = await videoCaptureService.requestCameraPermission()
+                if granted {
+                    startCameraOverlayScreenCapture()
+                } else {
+                    startScreenOnlyFallbackPreview(reason: "摄像头权限未开启。当前仅保存屏幕；摄像头不会写入本次 Record。")
+                }
+            }
+        case .granted:
+            startCameraOverlayScreenCapture()
+        }
+    }
+
+    private func startCameraOverlayScreenCapture() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.videoCaptureService.enumerateScreens()
+            await MainActor.run {
+                self.startFirstAvailableScreenPreview(
+                    receivingMessage: "屏幕录制 + 摄像头叠加。保存的 Record 应包含屏幕与摄像头画面。",
+                    usesCameraOverlay: true
+                )
+            }
+        }
+    }
+
+    private func startScreenOnlyFallbackPreview(reason: String) {
+        visualSelectionUsesScreenOnlyFallback = true
+        visualPreviewSource = .screen
+        startScreenPreview(receivingMessage: reason)
+    }
+
     @MainActor
     private func startFirstAvailableScreenPreview(
-        receivingMessage: String = "正在接收屏幕画面；若一直黑屏，请确认系统设置已允许 InsightKit 录制屏幕。"
+        receivingMessage: String = "正在接收屏幕画面；若一直黑屏，请确认系统设置已允许 InsightKit 录制屏幕。",
+        usesPresenterOverlayPicker: Bool = false,
+        usesCameraOverlay: Bool = false
     ) {
         guard let firstScreen = videoCaptureService.availableScreens.first(where: { $0.kind == .screen }) else {
             capturePreviewStatusMessage = "没有找到可预览的显示器。请检查屏幕录制权限或重新打开 Live Workspace。"
@@ -847,10 +925,31 @@ final class LiveSessionViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.videoCaptureService.startScreenCapture(displayID: displayID)
+                if usesCameraOverlay {
+                    try await self.videoCaptureService.startScreenCaptureWithCameraOverlay(displayID: displayID)
+                } else if usesPresenterOverlayPicker {
+                    try await self.videoCaptureService.startPresenterOverlayCapture(displayID: displayID)
+                } else {
+                    try await self.videoCaptureService.startScreenCapture(displayID: displayID)
+                }
             } catch {
                 await MainActor.run {
-                    self.capturePreviewStatusMessage = "\(error.localizedDescription) 请在系统设置中允许 InsightKit 录制屏幕。"
+                    if usesCameraOverlay {
+                        self.visualSelectionUsesScreenOnlyFallback = true
+                        self.visualPreviewSource = .screen
+                        self.capturePreviewStatusMessage = "摄像头叠加未能启动，当前仅保存屏幕；摄像头不会写入本次 Record。\(error.localizedDescription)"
+                    } else {
+                        self.capturePreviewStatusMessage = "\(error.localizedDescription) 请在系统设置中允许 InsightKit 录制屏幕。"
+                    }
+                }
+                if usesCameraOverlay {
+                    do {
+                        try await self.videoCaptureService.startScreenCapture(displayID: displayID)
+                    } catch {
+                        await MainActor.run {
+                            self.capturePreviewStatusMessage = "\(error.localizedDescription) 请在系统设置中允许 InsightKit 录制屏幕。"
+                        }
+                    }
                 }
             }
         }

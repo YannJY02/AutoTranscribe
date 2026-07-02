@@ -52,6 +52,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         case camera(deviceID: String)
         case screen(displayID: UInt32)
         case window(windowID: UInt32)
+        case screenWithCameraOverlay(displayID: UInt32)
     }
 
     // MARK: - Published State
@@ -63,6 +64,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     @Published var availableScreens: [VideoDeviceItem] = []
     @Published var screenPreviewImage: CGImage?
     @Published private(set) var presenterOverlayObserved = false
+    @Published private(set) var cameraOverlayVisible = false
     var onRecordingFirstFrame: ((TimeInterval) -> Void)?
 
     // MARK: - Private State
@@ -73,12 +75,15 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     private var captureSession: AVCaptureSession?
     private(set) var cameraPreviewLayer: AVCaptureVideoPreviewLayer?
+    private var cameraOverlayWindow: NSWindow?
+    private var cameraOverlayPreviewLayer: AVCaptureVideoPreviewLayer?
     private var videoDataOutput: AVCaptureVideoDataOutput?
     private var videoOutputDelegate: VideoOutputDelegate?
 
     // ScreenCaptureKit
     private var scStream: SCStream?
     private var scStreamOutput: SCVideoStreamOutput?
+    private var contentSharingPickerObserver: ContentSharingPickerCoordinator?
     private var scDisplays: [SCDisplay] = []
     private var scWindows: [SCWindow] = []
     private let screenPreviewRenderContext = CIContext()
@@ -89,6 +94,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var videoWriterInput: AVAssetWriterInput?
     private var isWriting = false
     private var recordingTimeline: VideoRecordingTimeline?
+    private var activeRecordingSize: CGSize?
 
     private var activeMode: CaptureMode?
 
@@ -228,6 +234,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         videoDataOutput = output
         videoOutputDelegate = delegate
         activeMode = .camera(deviceID: deviceID)
+        activeRecordingSize = nil
 
         DispatchQueue.main.async {
             self.screenPreviewImage = nil
@@ -242,6 +249,31 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     func startScreenCapture(displayID: UInt32) async throws {
+        try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: false)
+    }
+
+    func startPresenterOverlayCapture(displayID: UInt32) async throws {
+        try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: true)
+        do {
+            try startPresenterOverlayCameraSession()
+        } catch {
+            stopCapture(waitUntilStopped: true)
+            throw error
+        }
+    }
+
+    func startScreenCaptureWithCameraOverlay(displayID: UInt32) async throws {
+        do {
+            try startCameraOverlaySession(displayID: displayID)
+            try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: false)
+            activeMode = .screenWithCameraOverlay(displayID: displayID)
+        } catch {
+            stopCapture(waitUntilStopped: true)
+            throw error
+        }
+    }
+
+    private func startScreenCapture(displayID: UInt32, usesPresenterOverlayPicker: Bool) async throws {
         guard let display = scDisplays.first(where: { $0.displayID == displayID }) else {
             throw CaptureError.deviceNotFound
         }
@@ -255,6 +287,9 @@ final class VideoCaptureService: NSObject, ObservableObject {
         config.queueDepth = 5
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
+        if usesPresenterOverlayPicker {
+            config.presenterOverlayPrivacyAlertSetting = .always
+        }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         let output = SCVideoStreamOutput(owner: self)
@@ -264,6 +299,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
         scStream = stream
         scStreamOutput = output
         activeMode = .screen(displayID: displayID)
+        activeRecordingSize = CGSize(width: CGFloat(display.width), height: CGFloat(display.height))
+        if usesPresenterOverlayPicker {
+            configureContentSharingPicker(for: stream)
+        }
 
         DispatchQueue.main.async {
             self.cameraPreviewLayer = nil
@@ -295,6 +334,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         scStream = stream
         scStreamOutput = output
         activeMode = .window(windowID: windowID)
+        activeRecordingSize = CGSize(width: CGFloat(config.width), height: CGFloat(config.height))
 
         DispatchQueue.main.async {
             self.cameraPreviewLayer = nil
@@ -303,7 +343,105 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
+    private func startPresenterOverlayCameraSession() throws {
+        guard cameraPermission == .granted else {
+            throw CaptureError.cameraPermissionDenied
+        }
+
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .external],
+            mediaType: .video,
+            position: .unspecified
+        )
+        guard let device = discoverySession.devices.first else {
+            throw CaptureError.deviceNotFound
+        }
+
+        let session = AVCaptureSession()
+        session.beginConfiguration()
+        session.sessionPreset = .high
+
+        guard let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            throw CaptureError.sessionConfigFailed("无法添加摄像头输入")
+        }
+        session.addInput(input)
+
+        let output = AVCaptureVideoDataOutput()
+        output.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        let delegate = VideoOutputDelegate(owner: self)
+        output.setSampleBufferDelegate(delegate, queue: videoOutputQueue)
+        output.alwaysDiscardsLateVideoFrames = true
+
+        guard session.canAddOutput(output) else {
+            throw CaptureError.sessionConfigFailed("无法添加视频输出")
+        }
+        session.addOutput(output)
+        session.commitConfiguration()
+
+        captureSession = session
+        cameraPreviewLayer = nil
+        videoDataOutput = output
+        videoOutputDelegate = delegate
+
+        captureSessionQueue.async {
+            session.startRunning()
+            DispatchQueue.main.async {
+                self.isCapturing = true
+            }
+        }
+    }
+
+    private func startCameraOverlaySession(displayID: UInt32) throws {
+        guard cameraPermission == .granted else {
+            throw CaptureError.cameraPermissionDenied
+        }
+
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .external],
+            mediaType: .video,
+            position: .unspecified
+        )
+        guard let device = discoverySession.devices.first else {
+            throw CaptureError.deviceNotFound
+        }
+
+        let session = AVCaptureSession()
+        session.beginConfiguration()
+        session.sessionPreset = .high
+
+        guard let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            throw CaptureError.sessionConfigFailed("无法添加摄像头输入")
+        }
+        session.addInput(input)
+        session.commitConfiguration()
+
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+
+        showCameraOverlayWindow(previewLayer: previewLayer, displayID: displayID)
+
+        captureSession = session
+        cameraPreviewLayer = nil
+        cameraOverlayPreviewLayer = previewLayer
+        videoDataOutput = nil
+        videoOutputDelegate = nil
+
+        captureSessionQueue.async {
+            session.startRunning()
+            DispatchQueue.main.async {
+                self.cameraOverlayVisible = true
+                self.isCapturing = true
+            }
+        }
+    }
+
     func stopCapture(waitUntilStopped: Bool = false) {
+        closeCameraOverlayWindow()
+
         let stopWork = { [weak self] in
             guard let self else { return }
 
@@ -326,12 +464,15 @@ final class VideoCaptureService: NSObject, ObservableObject {
             }
             self.scStream = nil
             self.scStreamOutput = nil
+            self.resetContentSharingPicker()
 
             self.stopRecording()
             self.activeMode = nil
+            self.activeRecordingSize = nil
 
             DispatchQueue.main.async {
                 self.presenterOverlayObserved = false
+                self.cameraOverlayVisible = false
                 self.screenPreviewImage = nil
                 self.isCapturing = false
             }
@@ -353,11 +494,13 @@ final class VideoCaptureService: NSObject, ObservableObject {
                     try FileManager.default.removeItem(at: outputURL)
                 }
 
+                let outputWidth = Int(activeRecordingSize?.width ?? CGFloat(width))
+                let outputHeight = Int(activeRecordingSize?.height ?? CGFloat(height))
                 let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
                 let videoSettings: [String: Any] = [
                     AVVideoCodecKey: AVVideoCodecType.h264,
-                    AVVideoWidthKey: width,
-                    AVVideoHeightKey: height,
+                    AVVideoWidthKey: outputWidth,
+                    AVVideoHeightKey: outputHeight,
                     AVVideoCompressionPropertiesKey: [
                         AVVideoAverageBitRateKey: 5_000_000,
                         AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
@@ -458,7 +601,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     // MARK: - Frame Handling
 
-    fileprivate func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+    fileprivate func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer, source: VideoSampleSource) {
+        if source == .camera {
+            guard case .camera = activeMode else { return }
+        }
         publishScreenPreviewIfNeeded(sampleBuffer)
 
         let capturedAt = ProcessInfo.processInfo.systemUptime
@@ -514,7 +660,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
 
         switch activeMode {
-        case .screen, .window:
+        case .screen, .window, .screenWithCameraOverlay:
             break
         case .camera, .none:
             return
@@ -542,7 +688,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
-    private func resetPresenterOverlayObservation() {
+    fileprivate func resetPresenterOverlayObservation() {
         if Thread.isMainThread {
             presenterOverlayObserved = false
         } else {
@@ -550,6 +696,115 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 presenterOverlayObserved = false
             }
         }
+    }
+
+    private func configureContentSharingPicker(for stream: SCStream) {
+        let observer = ContentSharingPickerCoordinator(owner: self)
+        contentSharingPickerObserver = observer
+
+        DispatchQueue.main.async {
+            var configuration = SCContentSharingPickerConfiguration()
+            configuration.allowedPickerModes = [.singleDisplay]
+            configuration.allowsChangingSelectedContent = true
+
+            let picker = SCContentSharingPicker.shared
+            picker.add(observer)
+            picker.defaultConfiguration = configuration
+            picker.setConfiguration(configuration, for: stream)
+            picker.isActive = true
+            picker.present(for: stream)
+        }
+    }
+
+    private func resetContentSharingPicker() {
+        guard let observer = contentSharingPickerObserver else { return }
+        contentSharingPickerObserver = nil
+
+        DispatchQueue.main.async {
+            let picker = SCContentSharingPicker.shared
+            picker.remove(observer)
+            picker.isActive = false
+        }
+    }
+
+    private func showCameraOverlayWindow(previewLayer: AVCaptureVideoPreviewLayer, displayID: UInt32) {
+        let work = { [weak self] in
+            guard let self else { return }
+            self.closeCameraOverlayWindow()
+
+            let frame = Self.cameraOverlayFrame(displayID: displayID)
+            let contentView = NSView(frame: NSRect(origin: .zero, size: frame.size))
+            contentView.wantsLayer = true
+            contentView.layer?.backgroundColor = NSColor.black.cgColor
+            contentView.layer?.cornerRadius = 8
+            contentView.layer?.masksToBounds = true
+
+            previewLayer.frame = contentView.bounds
+            contentView.layer?.addSublayer(previewLayer)
+
+            let window = NSPanel(
+                contentRect: frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "InsightKit Camera Overlay"
+            window.level = .floating
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.hasShadow = true
+            window.hidesOnDeactivate = false
+            window.isReleasedWhenClosed = false
+            window.contentView = contentView
+            window.orderFrontRegardless()
+
+            self.cameraOverlayWindow = window
+            self.cameraOverlayVisible = true
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync(execute: work)
+        }
+    }
+
+    private func closeCameraOverlayWindow() {
+        let work = { [weak self] in
+            guard let self else { return }
+            self.cameraOverlayPreviewLayer?.removeFromSuperlayer()
+            self.cameraOverlayPreviewLayer = nil
+            self.cameraOverlayWindow?.close()
+            self.cameraOverlayWindow = nil
+            self.cameraOverlayVisible = false
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync(execute: work)
+        }
+    }
+
+    private static func cameraOverlayFrame(displayID: UInt32) -> NSRect {
+        let screen = NSScreen.screens.first { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return false
+            }
+            return number.uint32Value == displayID
+        } ?? NSScreen.main
+
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 80, y: 80, width: 1440, height: 900)
+        let width = min(max(visibleFrame.width * 0.16, 240), 360)
+        let height = width * 0.75
+        let margin: CGFloat = 32
+        return NSRect(
+            x: visibleFrame.minX + margin,
+            y: visibleFrame.minY + margin,
+            width: width,
+            height: height
+        )
     }
 
     static func sampleBufferShowsPresenterOverlay(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -609,6 +864,11 @@ struct VideoRecordingTimeline: Equatable {
     }
 }
 
+fileprivate enum VideoSampleSource {
+    case camera
+    case screen
+}
+
 // MARK: - CapturePreviewProvider Conformance
 
 extension VideoCaptureService: CapturePreviewProvider {
@@ -632,7 +892,7 @@ private final class VideoOutputDelegate: NSObject, AVCaptureVideoDataOutputSampl
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        owner?.handleVideoSampleBuffer(sampleBuffer)
+        owner?.handleVideoSampleBuffer(sampleBuffer, source: .camera)
     }
 }
 
@@ -652,7 +912,35 @@ private final class SCVideoStreamOutput: NSObject, SCStreamOutput {
         of outputType: SCStreamOutputType
     ) {
         guard outputType == .screen else { return }
-        owner?.handleVideoSampleBuffer(sampleBuffer)
+        owner?.handleVideoSampleBuffer(sampleBuffer, source: .screen)
+    }
+}
+
+private final class ContentSharingPickerCoordinator: NSObject, SCContentSharingPickerObserver {
+    private weak var owner: VideoCaptureService?
+
+    init(owner: VideoCaptureService) {
+        self.owner = owner
+        super.init()
+    }
+
+    func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
+        owner?.resetPresenterOverlayObservation()
+    }
+
+    func contentSharingPicker(
+        _ picker: SCContentSharingPicker,
+        didUpdateWith filter: SCContentFilter,
+        for stream: SCStream?
+    ) {
+        guard let stream else { return }
+        Task {
+            try? await stream.updateContentFilter(filter)
+        }
+    }
+
+    func contentSharingPickerStartDidFailWithError(_ error: any Error) {
+        owner?.resetPresenterOverlayObservation()
     }
 }
 

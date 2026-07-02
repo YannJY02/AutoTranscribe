@@ -123,11 +123,11 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(plan.statusMessage?.contains("屏幕") == true)
     }
 
-    func testVisualPreviewPlanRoutesCameraAndScreenToPresenterOverlay() {
+    func testVisualPreviewPlanRoutesCameraAndScreenToCameraOverlay() {
         let plan = LiveVisualPreviewPlan.resolve(cameraEnabled: true, screenEnabled: true)
 
-        XCTAssertEqual(plan.source, .presenterOverlay)
-        XCTAssertTrue(plan.statusMessage?.contains("Presenter Overlay") == true)
+        XCTAssertEqual(plan.source, .screenWithCameraOverlay)
+        XCTAssertTrue(plan.statusMessage?.contains("摄像头叠加") == true)
     }
 
     func testPresentationCaptureStatusDistinguishesOverlayFromFallback() {
@@ -147,6 +147,52 @@ final class LiveSessionViewModelTests: XCTestCase {
             ),
             .screenOnlyFallback
         )
+    }
+
+    func testPresentationCaptureStatusIncludesScreenPlusCameraOverlay() {
+        XCTAssertEqual(
+            LivePresentationCaptureStatus.resolve(
+                cameraEnabled: true,
+                screenEnabled: true,
+                presenterOverlayObserved: false,
+                cameraOverlayCaptured: true
+            ),
+            .screenPlusCameraCaptured
+        )
+    }
+
+    func testCurrentPresentationStatusMarksCameraOverlayPathAsCaptured() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+
+        viewModel.visualPreviewSource = .screenWithCameraOverlay
+
+        XCTAssertEqual(viewModel.currentPresentationCaptureStatus(), .screenPlusCameraCaptured)
+    }
+
+    func testSessionUIResetPreservesVisualFallbackSelection() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+
+        viewModel.visualPreviewSource = .screen
+        viewModel.visualSelectionUsesScreenOnlyFallback = true
+        viewModel.resetSessionUI()
+
+        XCTAssertEqual(viewModel.currentPresentationCaptureStatus(), .screenOnlyFallback)
     }
 
     func testCameraPreviewLayerUsesAspectFitToAvoidCropping() {
@@ -1133,6 +1179,128 @@ final class LiveSessionViewModelTests: XCTestCase {
 
         wait(for: [exp], timeout: 5.0)
         XCTAssertEqual(rpcClient.recordsSaveCalls.first?.presentationStatus, .screenOnlyFallback)
+    }
+
+    func testSaveToRecordsPersistsScreenPlusCameraCaptureStatus() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSaveCameraOverlay_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.mp4")
+        try Data("fake mp4".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 12.5
+        viewModel.pendingPresentationCaptureStatus = .screenPlusCameraCaptured
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save screen plus camera presentation status")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-screen-plus-camera-status-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.presentationStatus, .screenPlusCameraCaptured)
+    }
+
+    func testSaveToRecordsDowngradesPresenterOverlayWhenFinalMediaIsAudioOnly() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSavePresentationAudioOnly_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("fake wav".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 12.5
+        viewModel.pendingPresentationCaptureStatus = .presenterOverlayCaptured
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save downgraded presentation status")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-presentation-audio-only-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.presentationStatus, .visualMediaUnavailable)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.mediaType, "audio")
+    }
+
+    func testSaveToRecordsDowngradesScreenPlusCameraWhenFinalMediaIsAudioOnly() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitLiveSaveCameraOverlayAudioOnly_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let recordingURL = tmp.appendingPathComponent("recording.wav")
+        try Data("fake wav".utf8).write(to: recordingURL)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.temporaryRecordingURL = recordingURL
+        viewModel.recordingDuration = 12.5
+        viewModel.pendingPresentationCaptureStatus = .screenPlusCameraCaptured
+
+        var cancellables = Set<AnyCancellable>()
+        let exp = expectation(description: "live records.save downgraded screen plus camera status")
+        exp.assertForOverFulfill = false
+        viewModel.$lastExportPath
+            .dropFirst()
+            .sink { path in
+                if !path.isEmpty {
+                    exp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.saveToRecords(meetingID: "live-save-screen-plus-camera-audio-only-test")
+
+        wait(for: [exp], timeout: 5.0)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.presentationStatus, .visualMediaUnavailable)
+        XCTAssertEqual(rpcClient.recordsSaveCalls.first?.mediaType, "audio")
     }
 
     func testSaveToRecordsUsesPlayableMediaDurationWhenAvailable() throws {

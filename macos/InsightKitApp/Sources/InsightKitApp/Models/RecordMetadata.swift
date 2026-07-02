@@ -73,7 +73,9 @@ extension LivePresentationCaptureStatus {
         switch self {
         case .screenOnlyFallback:
             return "本次录制保存为屏幕画面；摄像头没有写入 Record。若需要 FaceTime 式演示者画面，请在 macOS 视频效果中开启 Presenter Overlay 后重新录制。"
-        case .none, .cameraOnly, .screenOnly, .presenterOverlayCaptured:
+        case .visualMediaUnavailable:
+            return "本次没有保存到视频画面；回看仅包含音频、转写与笔记。若需要 FaceTime 式演示者画面，请确认 macOS Presenter Overlay 后重新录制。"
+        case .none, .cameraOnly, .screenOnly, .presenterOverlayCaptured, .screenPlusCameraCaptured:
             return nil
         }
     }

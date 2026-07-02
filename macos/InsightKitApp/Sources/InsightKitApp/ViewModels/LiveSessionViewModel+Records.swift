@@ -22,7 +22,8 @@ extension LiveSessionViewModel {
         let capturedNotes = self.notes
         let capturedAnalysisMeta = Self.analysisMetadata(provider: self.metrics.provider, state: self.analysisRuntimeState)
         let capturedTimelineSidecarURL = self.captureTimelineSidecarURL(meetingID: meetingID)
-        let capturedPresentationStatus = self.pendingPresentationCaptureStatus
+        let capturedPresentationStatus = self.pendingPresentationCaptureStatus?
+            .finalized(for: capturedRecordingURL)
         let capturedCachedFinalTranscript: [TranscriptSegment]? = {
             guard let mediaPath = capturedRecordingURL?.path,
                   let cache = self.finalizedMediaTranscriptCache,

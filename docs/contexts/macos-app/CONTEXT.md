@@ -53,8 +53,16 @@ The user-visible state of a live capture, such as waiting, preparing runtime, wa
 _Avoid_: Status string
 
 **Simultaneous Visual Presentation**:
-The Live Workspace presentation mode where screen content and camera presence coexist as one visual surface. Record Review should treat the result as one media surface, not as two competing visual sources.
-_Avoid_: Separate camera and screen recordings, source toggle conflict, custom layout editor
+The Live Workspace presentation mode where the saved Record video visibly contains screen content and camera presence as one visual surface. Record Review should treat the result as one media surface, not as two competing visual sources.
+_Avoid_: Metadata-only presenter status, separate camera and screen recordings, source toggle conflict, custom layout editor
+
+**Saved Visual Presentation Result**:
+The acceptance standard for simultaneous visual presentation: the saved Record video itself visibly contains both screen content and camera presence. The mechanism can be Apple Presenter Overlay or a local camera overlay that is captured into the same saved video, but the user-visible result must be one reviewable media surface.
+_Avoid_: Metadata-only success, callback-only success, raw source availability, separate camera sidecar
+
+**Presentation Capture Mechanism**:
+The capture strategy used to produce a Saved Visual Presentation Result. Apple Presenter Overlay is preferred when it satisfies the saved-video standard, but a simple local camera overlay is acceptable when it produces one saved Record video with visible screen and camera presence.
+_Avoid_: Layout editor, separate camera and screen review tracks, AGPL code reuse, claiming Presenter Overlay when the mechanism is a captured camera overlay
 
 **Permission Recovery**:
 The app state where capture is blocked until the user restores a required macOS permission.

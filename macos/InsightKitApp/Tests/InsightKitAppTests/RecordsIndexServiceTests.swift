@@ -186,6 +186,28 @@ final class RecordsIndexServiceTests: XCTestCase {
             summaryPreview: nil,
             presentationStatus: .presenterOverlayCaptured
         )
+        let cameraOverlayCaptured = RecordMetadata(
+            id: "camera-overlay-captured-record",
+            createdAt: Date(),
+            duration: 10,
+            mediaType: .video,
+            source: .live,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: nil,
+            presentationStatus: .screenPlusCameraCaptured
+        )
+        let unavailable = RecordMetadata(
+            id: "visual-unavailable-record",
+            createdAt: Date(),
+            duration: 10,
+            mediaType: .audio,
+            source: .live,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: nil,
+            presentationStatus: .visualMediaUnavailable
+        )
         let legacy = RecordMetadata(
             id: "legacy-record",
             createdAt: Date(),
@@ -199,10 +221,14 @@ final class RecordsIndexServiceTests: XCTestCase {
 
         let fallbackDataSource = RecordReviewDataSource(metadata: fallback, rootDirectory: tempRoot)
         let capturedDataSource = RecordReviewDataSource(metadata: captured, rootDirectory: tempRoot)
+        let cameraOverlayCapturedDataSource = RecordReviewDataSource(metadata: cameraOverlayCaptured, rootDirectory: tempRoot)
+        let unavailableDataSource = RecordReviewDataSource(metadata: unavailable, rootDirectory: tempRoot)
         let legacyDataSource = RecordReviewDataSource(metadata: legacy, rootDirectory: tempRoot)
 
         XCTAssertTrue(fallbackDataSource.presentationStatusMessage?.contains("摄像头没有写入 Record") == true)
         XCTAssertNil(capturedDataSource.presentationStatusMessage)
+        XCTAssertNil(cameraOverlayCapturedDataSource.presentationStatusMessage)
+        XCTAssertTrue(unavailableDataSource.presentationStatusMessage?.contains("没有保存到视频画面") == true)
         XCTAssertNil(legacyDataSource.presentationStatusMessage)
     }
 
