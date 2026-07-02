@@ -468,10 +468,14 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
 
+        let stopTime = ProcessInfo.processInfo.systemUptime
         let activeMeetingID = stateQueue.sync {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
+            if recordingPaused {
+                captureTimeline.markPauseEnd(at: stopTime)
+            }
             recordingPaused = false
             stopDrainingMeetingID = _sessionState.activeMeetingID
             return _sessionState.activeMeetingID
@@ -1065,13 +1069,15 @@ final class LiveSessionViewModel: ObservableObject {
 
     func pauseLiveSession() {
         guard isRunning else { return }
+        let pauseTime = ProcessInfo.processInfo.systemUptime
         let didPause = stateQueue.sync {
             guard !recordingPaused else { return false }
             recordingPaused = true
+            captureTimeline.markPauseStart(at: pauseTime)
             return true
         }
         guard didPause else { return }
-        videoCaptureService.pauseRecording()
+        videoCaptureService.pauseRecording(at: pauseTime)
         stopRecordingDurationTimer()
         updateMain {
             self.isRecordingPaused = true
@@ -1081,13 +1087,15 @@ final class LiveSessionViewModel: ObservableObject {
 
     func resumeLiveSession() {
         guard isRunning else { return }
+        let resumeTime = ProcessInfo.processInfo.systemUptime
         let didResume = stateQueue.sync {
             guard recordingPaused else { return false }
             recordingPaused = false
+            captureTimeline.markPauseEnd(at: resumeTime)
             return true
         }
         guard didResume else { return }
-        videoCaptureService.resumeRecording()
+        videoCaptureService.resumeRecording(at: resumeTime)
         startRecordingDurationTimer()
         updateMain {
             self.isRecordingPaused = false

@@ -211,30 +211,8 @@ def inspect_capture_sources(
         source_report["audio_duration_sec"] = audio_duration
         source_report["audio_format_duration_sec"] = to_float(audio_probe.get("format", {}).get("duration"))
 
-    if video_duration is not None and audio_duration is not None:
-        source_delta = video_duration - audio_duration
-        source_report["source_duration_delta_sec"] = source_delta
-        if abs(source_delta) > max_source_stream_delta_sec:
-            failures.append(
-                "capture source audio/video duration delta "
-                f"{source_delta:.3f}s exceeds {max_source_stream_delta_sec:.3f}s; "
-                "final duration equality cannot prove visible AV sync"
-            )
-
-    if playable_duration is not None:
-        if video_duration is not None:
-            video_final_delta = video_duration - playable_duration
-            source_report["video_source_final_delta_sec"] = video_final_delta
-            if abs(video_final_delta) > max_source_final_delta_sec:
-                failures.append(
-                    "capture source video duration differs from final media by "
-                    f"{video_final_delta:.3f}s, exceeding {max_source_final_delta_sec:.3f}s"
-                )
-        if audio_duration is not None:
-            audio_final_delta = audio_duration - playable_duration
-            source_report["audio_source_final_delta_sec"] = audio_final_delta
-
     source_window = summarize_composition_window(capture_timeline, video_duration, audio_duration)
+    composition_window_matches_final = False
     if source_window is not None:
         source_report["composition_window"] = source_window
         if playable_duration is not None:
@@ -242,12 +220,44 @@ def inspect_capture_sources(
             if isinstance(predicted_duration, float):
                 prediction_delta = abs(predicted_duration - playable_duration)
                 source_report["composition_window_final_delta_sec"] = prediction_delta
-                if prediction_delta > max_source_final_delta_sec:
+                composition_window_matches_final = prediction_delta <= max_source_final_delta_sec
+                if not composition_window_matches_final:
                     failures.append(
                         "capture timeline predicts composition duration "
                         f"{predicted_duration:.3f}s, which differs from final media by "
                         f"{prediction_delta:.3f}s"
                     )
+
+    if video_duration is not None and audio_duration is not None:
+        source_delta = video_duration - audio_duration
+        source_report["source_duration_delta_sec"] = source_delta
+        if abs(source_delta) > max_source_stream_delta_sec:
+            message = (
+                "capture source audio/video duration delta "
+                f"{source_delta:.3f}s exceeds {max_source_stream_delta_sec:.3f}s; "
+                "final duration equality cannot prove visible AV sync"
+            )
+            if composition_window_matches_final:
+                warnings.append(message)
+            else:
+                failures.append(message)
+
+    if playable_duration is not None:
+        if video_duration is not None:
+            video_final_delta = video_duration - playable_duration
+            source_report["video_source_final_delta_sec"] = video_final_delta
+            if abs(video_final_delta) > max_source_final_delta_sec:
+                message = (
+                    "capture source video duration differs from final media by "
+                    f"{video_final_delta:.3f}s, exceeding {max_source_final_delta_sec:.3f}s"
+                )
+                if composition_window_matches_final:
+                    warnings.append(message)
+                else:
+                    failures.append(message)
+        if audio_duration is not None:
+            audio_final_delta = audio_duration - playable_duration
+            source_report["audio_source_final_delta_sec"] = audio_final_delta
 
     return source_report, warnings, failures
 
@@ -426,9 +436,32 @@ def summarize_capture_timeline(value: Any) -> dict[str, Any] | None:
     composition = value.get("compositionTimeline")
     if not isinstance(composition, dict):
         composition = {}
+    pause_intervals = value.get("pauseIntervals")
+    if not isinstance(pause_intervals, list):
+        pause_intervals = []
+    normalized_pause_intervals: list[dict[str, float | None]] = []
+    total_pause_duration = 0.0
+    for interval in pause_intervals:
+        if not isinstance(interval, dict):
+            continue
+        start = to_float(interval.get("startSec"))
+        end = to_float(interval.get("endSec"))
+        duration = None
+        if start is not None and end is not None:
+            duration = max(0.0, end - start)
+            total_pause_duration += duration
+        normalized_pause_intervals.append({
+            "start_sec": start,
+            "end_sec": end,
+            "duration_sec": duration,
+        })
     return {
         "video_start_sec": to_float(value.get("videoStartSec")),
         "audio_start_sec": to_float(value.get("audioStartSec")),
+        "pause_interval_count": len(normalized_pause_intervals),
+        "pause_duration_sec": total_pause_duration,
+        "pause_intervals": normalized_pause_intervals,
+        "current_pause_start_sec": to_float(value.get("currentPauseStartSec")),
         "composition_video_start_sec": to_float(composition.get("videoStartSec")),
         "composition_audio_start_sec": to_float(composition.get("audioStartSec")),
         "video_path": value.get("videoPath"),

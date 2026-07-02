@@ -193,3 +193,22 @@ Verification:
 - `python3 scripts/verify_project_normalization.py` -> `status: passed`
 - Installed app build `20260702213020` verified `暂停 -> 继续 -> 停止录制`: pause kept the phase at `录制中`, the timer remained stable while paused, resume restored the pause control, finalizing disabled both controls, and stop saved Record `/Users/yann.jy/Documents/InsightKit/Records/20260702-2132-live-record-c0b1128d`.
 - Final installed sync after the full test pass: `logs/workflow/latest_sync.json`, build `20260702213807`, installed at `/Users/yann.jy/Applications/InsightKit.app`.
+
+### 2026-07-02 - Codex
+
+Issue `06-preserve-av-sync-through-recording-pause.md` completed to `ready-for-human`.
+
+Changed:
+- Added pause intervals to the Live Workspace capture timeline.
+- Changed audio/video composition offsets to use active recording time, excluding paused wall-clock time.
+- Wired pause/resume/stop paths so the UI pause state, video writer pause state, and capture timeline pause state move together.
+- Persisted pause metadata into `capture_timeline.json`.
+- Updated the issue 24 media diagnostic so it reports pause intervals and checks the saved composition source window instead of treating source duration differences alone as failure.
+
+Verification:
+- `swift test --package-path macos/InsightKitApp --jobs 1 --filter LiveMediaCaptureTimelineTests --filter LiveSessionViewModelTests/testPauseRecordingDoesNotStopLiveSession --filter LiveSessionViewModelTests/testPausedLiveSessionIgnoresMixedSamples --filter LiveSessionViewModelTests/testPausedLiveSessionSuppressesCaptureHealthWarnings --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingPassesCaptureTimelineToReviewMediaComposer --filter LiveSessionViewModelTests/testPrepareTemporaryRecordingPassesPauseAdjustedTimelineToReviewMediaComposer --filter VideoRecordingTimelineTests/testPresentationTimeExcludesPausedDuration --filter ReviewMediaComposerTests/testComposeVideoWithAudioUsesTimelineOffsetToSelectMatchingSourceWindow` -> `8 tests, 0 failures`
+- `swift test --package-path macos/InsightKitApp --jobs 1 --filter LiveMediaCaptureTimelineTests --filter LiveSessionViewModelTests --filter VideoRecordingTimelineTests --filter ReviewMediaComposerTests --filter LiveSessionFinalizationRecoveryTests --filter LiveReviewSourcePresentationTests --filter CameraOverlayPlacementTests` -> `81 tests, 0 failures`
+- `swift test --package-path macos/InsightKitApp --jobs 1` -> `262 tests, 0 failures`
+- Direct Python invocation of `tests/test_live_review_media_sync.py` test functions -> all five passed; `python3 -m pytest ...` remains blocked because this local Python environment has no `pytest`.
+- `python3 scripts/diagnose_issue24_media_timeline.py /Users/yann.jy/Documents/InsightKit/Records/20260702-2109-live-record-74ee0db8` -> `failures: []`
+- `python3 scripts/verify_project_normalization.py` -> `status: passed`; proof `logs/diagnostics/2026-07-02/project-normalization-20260702-215915/proof.json`

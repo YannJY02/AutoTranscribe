@@ -186,6 +186,8 @@ final class LiveSessionReviewMediaPreparer {
         let sidecar = LiveMediaCaptureTimelineSidecar(
             videoStartSec: captureTimeline.videoStartSec,
             audioStartSec: captureTimeline.audioStartSec,
+            pauseIntervals: captureTimeline.pauseIntervals,
+            currentPauseStartSec: captureTimeline.currentPauseStartSec,
             compositionTimeline: compositionTimeline,
             videoPath: videoURL.path,
             audioPath: audioURL.path,
@@ -208,6 +210,8 @@ final class LiveSessionReviewMediaPreparer {
 struct LiveMediaCaptureTimelineSidecar: Codable {
     let videoStartSec: TimeInterval?
     let audioStartSec: TimeInterval?
+    let pauseIntervals: [LiveMediaCapturePauseInterval]
+    let currentPauseStartSec: TimeInterval?
     let compositionTimeline: ReviewMediaCompositionTimeline
     let videoPath: String
     let audioPath: String

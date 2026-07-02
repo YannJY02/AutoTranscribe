@@ -201,12 +201,20 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isLiveRecordingPaused())
         XCTAssertEqual(viewModel.sessionPhase, .running)
         XCTAssertNil(viewModel.stopDrainingMeetingID)
+        let pausedTimeline = viewModel.stateQueue.sync { viewModel.captureTimeline }
+        XCTAssertNotNil(pausedTimeline.currentPauseStartSec)
+        XCTAssertTrue(pausedTimeline.pauseIntervals.isEmpty)
 
+        Thread.sleep(forTimeInterval: 0.01)
         viewModel.onPauseRecording()
 
         XCTAssertTrue(viewModel.isRunning)
         XCTAssertFalse(viewModel.isLiveRecordingPaused())
         XCTAssertEqual(viewModel.sessionPhase, .running)
+        let resumedTimeline = viewModel.stateQueue.sync { viewModel.captureTimeline }
+        XCTAssertNil(resumedTimeline.currentPauseStartSec)
+        XCTAssertEqual(resumedTimeline.pauseIntervals.count, 1)
+        XCTAssertGreaterThan(resumedTimeline.pauseIntervals[0].durationSec, 0)
     }
 
     func testPausedLiveSessionIgnoresMixedSamples() {
@@ -851,6 +859,63 @@ final class LiveSessionViewModelTests: XCTestCase {
         )
         XCTAssertEqual(sidecar.compositionTimeline.videoStartSec, 0, accuracy: 0.001)
         XCTAssertEqual(sidecar.compositionTimeline.audioStartSec, 1.25, accuracy: 0.001)
+    }
+
+    func testPrepareTemporaryRecordingPassesPauseAdjustedTimelineToReviewMediaComposer() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitVideoAudioPauseTimeline_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let videoURL = tmp.appendingPathComponent("recording.mp4")
+        try Data([0, 0, 0, 16, 102, 116, 121, 112]).write(to: videoURL)
+        let audioChunks = tmp.appendingPathComponent("chunks", isDirectory: true)
+        let assembler = ChunkAssembler(chunkDurationSec: 2, sampleRate: 16_000, chunkDir: audioChunks)
+        let meetingID = "video-audio-pause-timeline-test-\(UUID().uuidString)"
+        let outputRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKit")
+            .appendingPathComponent(meetingID)
+        let composer = ReviewMediaComposerSpy()
+        let inspector = MediaAssetInspectorSpy(hasAudioTrack: false, durationSec: 2.0)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: assembler,
+            asrService: LiveASRService(),
+            reviewMediaComposer: composer,
+            mediaAssetInspector: inspector
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        defer { try? FileManager.default.removeItem(at: outputRoot) }
+
+        _ = try assembler.append(samples: Array(repeating: Float(0.15), count: 8_000))
+        viewModel.temporaryRecordingURL = videoURL
+        viewModel.captureTimeline.markVideoStart(at: 100)
+        viewModel.captureTimeline.markPauseStart(at: 102)
+        viewModel.captureTimeline.markPauseEnd(at: 112)
+        viewModel.captureTimeline.markAudioStartIfNeeded(at: 115)
+
+        _ = try XCTUnwrap(
+            viewModel.prepareTemporaryRecordingForSave(
+                meetingID: meetingID,
+                expectedVisualMedia: true
+            )
+        )
+
+        let call = try XCTUnwrap(composer.calls.first)
+        XCTAssertEqual(call.timeline.videoStartSec, 0, accuracy: 0.001)
+        XCTAssertEqual(call.timeline.audioStartSec, 5, accuracy: 0.001)
+
+        let sidecarURL = viewModel.captureTimelineSidecarURL(meetingID: meetingID)
+        let sidecar = try JSONDecoder().decode(
+            LiveMediaCaptureTimelineSidecarFixture.self,
+            from: Data(contentsOf: sidecarURL)
+        )
+        XCTAssertEqual(sidecar.compositionTimeline.videoStartSec, 0, accuracy: 0.001)
+        XCTAssertEqual(sidecar.compositionTimeline.audioStartSec, 5, accuracy: 0.001)
+        XCTAssertEqual(sidecar.pauseIntervals.count, 1)
+        XCTAssertEqual(sidecar.pauseIntervals.first?.durationSec ?? 0, 10, accuracy: 0.001)
     }
 
 
@@ -2107,6 +2172,7 @@ private final class ReviewMediaComposerSpy: ReviewMediaComposing {
 }
 
 private struct LiveMediaCaptureTimelineSidecarFixture: Decodable {
+    let pauseIntervals: [LiveMediaCapturePauseInterval]
     let compositionTimeline: ReviewMediaCompositionTimeline
 }
 

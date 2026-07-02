@@ -66,6 +66,8 @@ def test_issue24_diagnostic_checks_capture_source_timeline_not_only_final_media(
     assert "--max-source-stream-delta-sec" in source
     assert "videoPath" in source
     assert "audioPath" in source
+    assert "pauseIntervals" in source
+    assert "pause_interval_count" in source
     assert "capture source audio/video duration delta" in source
     assert "final duration equality cannot prove visible AV sync" in source
 
@@ -73,7 +75,7 @@ def test_issue24_diagnostic_checks_capture_source_timeline_not_only_final_media(
 def test_video_recording_retimes_frames_from_capture_callback_clock():
     source = VIDEO_CAPTURE_SERVICE.read_text(encoding="utf-8")
     start = source.index("fileprivate func handleVideoSampleBuffer")
-    end = source.index("private static func copySampleBuffer", start)
+    end = source.index("private func ensureWriterStarted", start)
     body = source[start:end]
 
     captured_at_index = body.index("let capturedAt = ProcessInfo.processInfo.systemUptime")
@@ -84,4 +86,5 @@ def test_video_recording_retimes_frames_from_capture_callback_clock():
     assert "startSession(atSourceTime: .zero)" in body
     assert "CMSampleBufferGetPresentationTimeStamp(sampleBuffer)" in body
     assert "presentationTime(" in body
-    assert "Self.copySampleBuffer(sampleBuffer, presentationTime: presentationTime)" in body
+    assert "videoPixelBufferAdaptor?.append(" in body
+    assert "withPresentationTime: presentationTime" in body

@@ -609,18 +609,18 @@ final class VideoCaptureService: NSObject, ObservableObject {
         return outputURL
     }
 
-    func pauseRecording() {
+    func pauseRecording(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         writerQueue.sync {
             guard isWriting, !recordingPaused else { return }
             recordingPaused = true
-            recordingTimeline?.pause(at: ProcessInfo.processInfo.systemUptime)
+            recordingTimeline?.pause(at: time)
         }
     }
 
-    func resumeRecording() {
+    func resumeRecording(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         writerQueue.sync {
             guard isWriting, recordingPaused else { return }
-            recordingTimeline?.resume(at: ProcessInfo.processInfo.systemUptime)
+            recordingTimeline?.resume(at: time)
             recordingPaused = false
         }
     }
