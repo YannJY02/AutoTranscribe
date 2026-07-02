@@ -51,6 +51,8 @@ Useful reference patterns if reimplementing from Apple docs:
 
 - keep an active `AVCaptureSession` to feed the local camera overlay;
 - let the camera overlay remain visible to the selected screen capture filter;
+- use a floating, non-activating, resizable overlayer that can be moved by its background;
+- keep the overlay visible across Spaces, clip the preview to a rounded frame, and preserve a usable minimum size;
 - use `SCStreamDelegate` callbacks as signals, not final proof;
 - inspect `presenterOverlayContentRect` as diagnostic metadata;
 - require saved-video frame inspection before marking success.
@@ -160,7 +162,7 @@ The QuickRecorder black-box validation on 2026-07-02 passed the saved-output tes
 
 Use QuickRecorder only as feasibility evidence and behavior reference. Because the project is AGPL-3.0, reimplement any accepted path from Apple ScreenCaptureKit documentation and our existing `VideoCaptureService` seam instead of copying QuickRecorder code.
 
-The mechanism question is now resolved enough for implementation planning: QuickRecorder's useful path appears to be a visible Camera Overlayer captured into the screen recording. Implement the same product shape with InsightKit-owned code and mechanism-accurate copy.
+The mechanism question is now resolved enough for implementation planning: QuickRecorder's useful path appears to be a visible Camera Overlayer captured into the screen recording. Implement the same product shape with InsightKit-owned code and mechanism-accurate product wording. QuickRecorder's draggable/resizable floating overlayer behavior is a product reference for InsightKit's one local overlay, not permission to copy source code.
 
 Do not borrow EasyDemo, OpenCapture, openscreen, or ariso-ai modules for the active feature unless the owner explicitly changes the product decision to allow custom composition.
 

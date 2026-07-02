@@ -176,3 +176,28 @@ Observed:
 - The extracted saved-video frame visibly contains both screen content and the local camera overlay.
 
 Classification: InsightKit saved-output camera overlay passed. This validates the accepted local-overlay mechanism, not strict Apple Presenter Overlay.
+
+## 2026-07-02 QuickRecorder-Style Overlay Placement Follow-Up
+
+Implemented a follow-up placement pass for the local camera overlay after the owner reported that the portrait module could not be dragged.
+
+Design reference:
+- QuickRecorder uses a floating Camera Overlayer that can remain visible to screen capture.
+- QuickRecorder's source is AGPL-3.0, so this pass copied behavior only, not implementation code.
+
+InsightKit behavior added:
+- The local camera overlay can be dragged by its background.
+- The overlay can be resized with a stable aspect ratio and minimum size.
+- The overlay frame is remembered per display and restored into the current visible screen area.
+- The overlay remains non-activating, floating, cross-Space, and visible to ScreenCaptureKit.
+
+Verification:
+- `swift test --package-path macos/InsightKitApp --jobs 1 --filter CameraOverlayPlacementTests`.
+- `swift test --package-path macos/InsightKitApp --jobs 1 --filter LiveSessionViewModelTests/testVisualPreviewPlanRoutesCameraAndScreenToCameraOverlay --filter LiveSessionViewModelTests/testCurrentPresentationStatusMarksCameraOverlayPathAsCaptured`.
+- Installed-app screenshot: `logs/diagnostics/2026-07-02/camera-overlay-placement/overlay-restored-position.png`.
+- Installed-app notes: `logs/diagnostics/2026-07-02/camera-overlay-placement/manual-validation.txt`.
+
+Validation boundary:
+- Computer Use could not directly coordinate-drag the non-activating overlay panel because it targets the key window surface.
+- System Events confirmed the independent `InsightKit Camera Overlay` window could move to `{520, 650}`.
+- After toggling screen off/on, the overlay restored at the moved position and the camera image remained visible.

@@ -38,6 +38,8 @@ Fallback hardening has been validated separately from simultaneous presentation 
 
 The accepted product behavior is therefore saved-output camera overlay when camera and screen are both enabled, with screen-only fallback if overlay startup fails or final media cannot preserve valid video. The app must describe the accepted local-overlay path as camera overlay, not Apple Presenter Overlay.
 
+On 2026-07-02, a follow-up QuickRecorder-style placement pass made the camera overlay draggable, resizable, and position-stable while keeping it as one captured local overlay. This is basic overlay placement, not a layout editor or multi-track visual workflow.
+
 ## User Stories
 
 1. As a Live Workspace user, I want to enable camera and screen at the same time, so that I can present content while still appearing on camera.
@@ -64,6 +66,7 @@ The accepted product behavior is therefore saved-output camera overlay when came
 - Keep the existing camera and screen toggles. Do not add a separate presentation-mode button for the first implementation.
 - When camera and screen are both enabled, show a clear Live Workspace state such as `屏幕录制 + 摄像头叠加`.
 - If the implementation is Presenter Overlay, InsightKit may guide the user toward macOS system confirmation. If the implementation is a local camera overlay, InsightKit should describe it as camera overlay, not Presenter Overlay.
+- For the local camera overlay path, allow practical placement behavior: drag by background, resize with a stable aspect ratio, restore the last frame per display, and clamp restored frames into the visible display area.
 - Do not raise InsightKit's minimum macOS version for this feature. Use system availability checks and fall back to screen-only recording when Presenter Overlay is not available.
 - Preserve the existing camera-only and screen-only behavior as first-class cases.
 - If the simultaneous presentation path is unavailable or not enabled, keep screen capture usable and clearly tell the user that camera presence will not be included in this Record.
@@ -89,6 +92,7 @@ The accepted product behavior is therefore saved-output camera overlay when came
 - Add coverage that combined visual presentation can be prepared as one review media asset for Record Review.
 - Add coverage that saved Record metadata can represent screen plus camera capture, Presenter Overlay capture, screen-only fallback, and visual-media unavailable states.
 - Add coverage that Record Review surfaces fallback status without adding persistent status UI for successful simultaneous presentation records.
+- Add coverage for overlay placement behavior that does not require real camera or screen permissions: default frame, per-display persistence, and visible-frame clamping.
 - Existing prior art includes the Live Workspace visual preview plan tests, Live Session ViewModel capture-preview behavior tests, and review-media composition tests.
 - Automated tests should cover app-owned state, guidance, fallback, metadata, and Record Review presentation-status behavior.
 - Installed-app owner validation is required before accepting simultaneous visual presentation because the final proof is saved media, not app-owned state.
@@ -96,7 +100,7 @@ The accepted product behavior is therefore saved-output camera overlay when came
 
 ## Out of Scope
 
-- Custom layout editing, crop controls, multiple camera layouts, or multi-track visual composition.
+- Custom layout editing, crop controls, multiple camera layouts, or multi-track visual composition. Basic drag/resize placement for the one local overlay is allowed.
 - Copying QuickRecorder code or depending on QuickRecorder as a runtime component.
 - Live broadcasting, external call integration, or actual FaceTime integration.
 - Redesigning microphone, system audio, mixed audio, ASR, Insight Refresh, Smart Minutes generation, or provider behavior.

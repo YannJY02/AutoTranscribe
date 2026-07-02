@@ -97,6 +97,13 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var activeRecordingSize: CGSize?
 
     private var activeMode: CaptureMode?
+    private let cameraOverlayPlacementStore: CameraOverlayPlacementStore
+    private var cameraOverlayDisplayID: UInt32?
+
+    init(cameraOverlayPlacementStore: CameraOverlayPlacementStore = CameraOverlayPlacementStore()) {
+        self.cameraOverlayPlacementStore = cameraOverlayPlacementStore
+        super.init()
+    }
 
     // MARK: - Device Enumeration
 
@@ -421,6 +428,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.setAffineTransform(CGAffineTransform(scaleX: -1, y: 1))
 
         showCameraOverlayWindow(previewLayer: previewLayer, displayID: displayID)
 
@@ -732,34 +740,44 @@ final class VideoCaptureService: NSObject, ObservableObject {
             guard let self else { return }
             self.closeCameraOverlayWindow()
 
-            let frame = Self.cameraOverlayFrame(displayID: displayID)
-            let contentView = NSView(frame: NSRect(origin: .zero, size: frame.size))
-            contentView.wantsLayer = true
-            contentView.layer?.backgroundColor = NSColor.black.cgColor
-            contentView.layer?.cornerRadius = 8
-            contentView.layer?.masksToBounds = true
-
-            previewLayer.frame = contentView.bounds
-            contentView.layer?.addSublayer(previewLayer)
+            let visibleFrame = Self.cameraOverlayVisibleFrame(displayID: displayID)
+            let frame = self.cameraOverlayPlacementStore.frame(
+                for: displayID,
+                visibleFrame: visibleFrame
+            )
+            let contentView = CameraOverlayContainerView(
+                frame: NSRect(origin: .zero, size: frame.size),
+                previewLayer: previewLayer
+            )
 
             let window = NSPanel(
                 contentRect: frame,
-                styleMask: [.borderless, .nonactivatingPanel],
+                styleMask: [.fullSizeContentView, .resizable, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
             )
             window.title = "InsightKit Camera Overlay"
             window.level = .floating
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
             window.backgroundColor = .clear
             window.isOpaque = false
             window.hasShadow = true
             window.hidesOnDeactivate = false
             window.isReleasedWhenClosed = false
             window.contentView = contentView
+            window.isMovableByWindowBackground = true
+            window.minSize = CameraOverlayPlacement.minSize
+            window.contentAspectRatio = NSSize(
+                width: CameraOverlayPlacement.aspectRatio,
+                height: 1
+            )
+            window.delegate = self
             window.orderFrontRegardless()
 
             self.cameraOverlayWindow = window
+            self.cameraOverlayDisplayID = displayID
             self.cameraOverlayVisible = true
         }
 
@@ -775,8 +793,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
             guard let self else { return }
             self.cameraOverlayPreviewLayer?.removeFromSuperlayer()
             self.cameraOverlayPreviewLayer = nil
+            self.cameraOverlayWindow?.delegate = nil
             self.cameraOverlayWindow?.close()
             self.cameraOverlayWindow = nil
+            self.cameraOverlayDisplayID = nil
             self.cameraOverlayVisible = false
         }
 
@@ -787,7 +807,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
-    private static func cameraOverlayFrame(displayID: UInt32) -> NSRect {
+    private static func cameraOverlayVisibleFrame(displayID: UInt32) -> NSRect {
         let screen = NSScreen.screens.first { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 return false
@@ -795,16 +815,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
             return number.uint32Value == displayID
         } ?? NSScreen.main
 
-        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 80, y: 80, width: 1440, height: 900)
-        let width = min(max(visibleFrame.width * 0.16, 240), 360)
-        let height = width * 0.75
-        let margin: CGFloat = 32
-        return NSRect(
-            x: visibleFrame.minX + margin,
-            y: visibleFrame.minY + margin,
-            width: width,
-            height: height
-        )
+        return screen?.visibleFrame ?? NSRect(x: 80, y: 80, width: 1440, height: 900)
     }
 
     static func sampleBufferShowsPresenterOverlay(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -827,6 +838,59 @@ final class VideoCaptureService: NSObject, ObservableObject {
             }
             return true
         }
+    }
+}
+
+extension VideoCaptureService: NSWindowDelegate {
+    func windowDidMove(_ notification: Notification) {
+        persistCameraOverlayFrame(from: notification)
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistCameraOverlayFrame(from: notification)
+    }
+
+    private func persistCameraOverlayFrame(from notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === cameraOverlayWindow,
+              let displayID = cameraOverlayDisplayID else {
+            return
+        }
+        let visibleFrame = Self.cameraOverlayVisibleFrame(displayID: displayID)
+        cameraOverlayPlacementStore.save(
+            frame: window.frame,
+            displayID: displayID,
+            visibleFrame: visibleFrame
+        )
+    }
+}
+
+private final class CameraOverlayContainerView: NSView {
+    private let previewLayer: AVCaptureVideoPreviewLayer
+
+    init(frame frameRect: NSRect, previewLayer: AVCaptureVideoPreviewLayer) {
+        self.previewLayer = previewLayer
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+        previewLayer.frame = bounds
+        layer?.addSublayer(previewLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        return nil
+    }
+
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
+
+    override func layout() {
+        super.layout()
+        previewLayer.frame = bounds
     }
 }
 
