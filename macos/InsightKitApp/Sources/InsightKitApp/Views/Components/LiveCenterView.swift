@@ -133,10 +133,11 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 Button {
                     dataSource.onPauseRecording()
                 } label: {
-                    Text("暂停")
+                    Text(dataSource.isRecordingPaused ? "继续" : "暂停")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .disabled(dataSource.isFinalizingRecording)
                 .accessibilityIdentifier("live_pause_recording_button")
 
                 Button {
@@ -148,6 +149,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                 .tint(InsightTheme.recording)
                 .controlSize(.large)
                 .keyboardShortcut(".", modifiers: [.command])
+                .disabled(dataSource.isFinalizingRecording)
                 .accessibilityIdentifier("live_stop_recording_button")
             }
             .padding(.horizontal, InsightSpacing.panelPadding)

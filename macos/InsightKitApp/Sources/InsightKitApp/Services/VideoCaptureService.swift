@@ -96,6 +96,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var recordingOutputURL: URL?
     private var recordingFallbackSize: CGSize?
     private var recordingFailureMessage: String?
+    private var recordingPaused = false
     private var isWriting = false
     private var recordingTimeline: VideoRecordingTimeline?
     private var activeRecordingSize: CGSize?
@@ -515,6 +516,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
                     height: CGFloat(height)
                 )
                 self.recordingFailureMessage = nil
+                self.recordingPaused = false
                 self.recordingTimeline = nil
                 self.isWriting = true
             } catch {
@@ -533,6 +535,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         writerQueue.sync {
             guard isWriting else { return }
             isWriting = false
+            recordingPaused = false
             guard let writer = assetWriter else {
                 clearWriterState()
                 return
@@ -558,6 +561,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         writerQueue.sync {
             guard isWriting else { return }
             isWriting = false
+            recordingPaused = false
             outputURL = recordingOutputURL
             guard let writer = assetWriter else {
                 clearWriterState()
@@ -605,6 +609,22 @@ final class VideoCaptureService: NSObject, ObservableObject {
         return outputURL
     }
 
+    func pauseRecording() {
+        writerQueue.sync {
+            guard isWriting, !recordingPaused else { return }
+            recordingPaused = true
+            recordingTimeline?.pause(at: ProcessInfo.processInfo.systemUptime)
+        }
+    }
+
+    func resumeRecording() {
+        writerQueue.sync {
+            guard isWriting, recordingPaused else { return }
+            recordingTimeline?.resume(at: ProcessInfo.processInfo.systemUptime)
+            recordingPaused = false
+        }
+    }
+
     private func clearWriterState(matching writer: AVAssetWriter) {
         guard assetWriter === writer else { return }
         clearWriterState()
@@ -616,6 +636,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         videoPixelBufferAdaptor = nil
         recordingOutputURL = nil
         recordingFallbackSize = nil
+        recordingPaused = false
         recordingTimeline = nil
     }
 
@@ -629,7 +650,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
         let capturedAt = ProcessInfo.processInfo.systemUptime
         writerQueue.async { [weak self] in
-            guard let self, self.isWriting else { return }
+            guard let self, self.isWriting, !self.recordingPaused else { return }
             guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             guard let input = self.ensureWriterStarted(for: sampleBuffer),
                   input.isReadyForMoreMediaData else { return }
@@ -968,6 +989,8 @@ struct VideoRecordingTimeline: Equatable {
     private(set) var firstSourcePresentationTime: CMTime?
     private(set) var lastSourcePresentationTime: CMTime?
     private(set) var lastPresentationTime: CMTime?
+    private(set) var pausedAtSec: TimeInterval?
+    private(set) var accumulatedPausedSec: TimeInterval = 0
 
     init(timescale: CMTimeScale = 600) {
         self.timescale = timescale
@@ -984,7 +1007,7 @@ struct VideoRecordingTimeline: Equatable {
         }
         lastSourcePresentationTime = sourcePresentationTime
 
-        let elapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        let elapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt) - accumulatedPausedSec)
         var presentationTime = CMTime(seconds: elapsed, preferredTimescale: timescale)
         if let lastPresentationTime,
            CMTimeCompare(presentationTime, lastPresentationTime) <= 0 {
@@ -992,6 +1015,17 @@ struct VideoRecordingTimeline: Equatable {
         }
         lastPresentationTime = presentationTime
         return presentationTime
+    }
+
+    mutating func pause(at time: TimeInterval) {
+        guard firstHostTimeSec != nil, pausedAtSec == nil else { return }
+        pausedAtSec = time
+    }
+
+    mutating func resume(at time: TimeInterval) {
+        guard let pausedAtSec else { return }
+        accumulatedPausedSec += max(0, time - pausedAtSec)
+        self.pausedAtSec = nil
     }
 }
 

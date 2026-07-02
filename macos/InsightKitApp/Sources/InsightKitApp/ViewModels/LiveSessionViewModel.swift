@@ -67,6 +67,7 @@ final class LiveSessionViewModel: ObservableObject {
     var stopDrainingMeetingID: String?
     var captureMonitorTask: Task<Void, Never>?
     var lastCaptureHintAt: Date?
+    var recordingPaused = false
 
     var _isRunning = false
     var _sessionState = SessionHandle()
@@ -102,6 +103,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var mediaSeekRequest: MediaSeekRequest?
     @Published var reviewSourcePlaybackRequested = false
     @Published var recordingDuration: TimeInterval = 0
+    @Published var isRecordingPaused = false
     @Published var recordingStatusMessage: String?
     @Published var transcriptRecoveryStatusMessage: String?
     @Published var isFinalizingLiveSession = false
@@ -222,6 +224,7 @@ final class LiveSessionViewModel: ObservableObject {
         RecordDocumentExporter.hasPersistedRecord(meetingID: currentBuildTargetID(), recordsService: recordsService)
     }
     var canChangeInputMode: Bool { !isRunning }
+    var isFinalizingRecording: Bool { isFinalizingLiveSession }
 
     var shouldHoldChunksForWarmup: Bool { !asrWarmStatus.ready }
 
@@ -362,6 +365,7 @@ final class LiveSessionViewModel: ObservableObject {
             _sessionState.lastMeetingID = nil
             activeMode = selectedMode
             insightRefreshSuspended = false
+            recordingPaused = false
             captureTimeline.reset()
         }
         transcriptPipeline.reset()
@@ -468,6 +472,7 @@ final class LiveSessionViewModel: ObservableObject {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
+            recordingPaused = false
             stopDrainingMeetingID = _sessionState.activeMeetingID
             return _sessionState.activeMeetingID
         }
@@ -477,6 +482,7 @@ final class LiveSessionViewModel: ObservableObject {
         stopRecordingDurationTimer()
         updateMain {
             self.isFinalizingLiveSession = true
+            self.isRecordingPaused = false
             self.recordingStatusMessage = "录制已停止，正在处理剩余音频并生成最终转写，请保持应用打开。"
         }
 
@@ -1049,10 +1055,50 @@ final class LiveSessionViewModel: ObservableObject {
         finalizedMediaTranscriptCache = nil
         pendingPresentationCaptureStatus = nil
         stopDrainingMeetingID = nil
+        recordingPaused = false
         stateQueue.sync {
             captureTimeline.reset()
         }
         stopRecordingDurationTimer()
+        isRecordingPaused = false
+    }
+
+    func pauseLiveSession() {
+        guard isRunning else { return }
+        let didPause = stateQueue.sync {
+            guard !recordingPaused else { return false }
+            recordingPaused = true
+            return true
+        }
+        guard didPause else { return }
+        videoCaptureService.pauseRecording()
+        stopRecordingDurationTimer()
+        updateMain {
+            self.isRecordingPaused = true
+            self.recordingStatusMessage = "录制已暂停。点击继续后会恢复写入音频和视频。"
+        }
+    }
+
+    func resumeLiveSession() {
+        guard isRunning else { return }
+        let didResume = stateQueue.sync {
+            guard recordingPaused else { return false }
+            recordingPaused = false
+            return true
+        }
+        guard didResume else { return }
+        videoCaptureService.resumeRecording()
+        startRecordingDurationTimer()
+        updateMain {
+            self.isRecordingPaused = false
+            if self.recordingStatusMessage == "录制已暂停。点击继续后会恢复写入音频和视频。" {
+                self.recordingStatusMessage = nil
+            }
+        }
+    }
+
+    func isLiveRecordingPaused() -> Bool {
+        stateQueue.sync { recordingPaused }
     }
 
     func syncSessionHandleFromState() {
@@ -1082,7 +1128,7 @@ final class LiveSessionViewModel: ObservableObject {
 
     func startRecordingDurationTimer() {
         stopRecordingDurationTimer()
-        let startTime = Date()
+        let startTime = Date().addingTimeInterval(-recordingDuration)
         recordingDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.recordingDuration = Date().timeIntervalSince(startTime)

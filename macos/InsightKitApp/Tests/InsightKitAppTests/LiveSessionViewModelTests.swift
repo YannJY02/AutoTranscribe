@@ -177,6 +177,95 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.currentPresentationCaptureStatus(), .screenPlusCameraCaptured)
     }
 
+    func testPauseRecordingDoesNotStopLiveSession() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .running
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-pause-test"
+        }
+
+        viewModel.onPauseRecording()
+
+        XCTAssertTrue(viewModel.isRunning)
+        XCTAssertTrue(viewModel.isLiveRecordingPaused())
+        XCTAssertEqual(viewModel.sessionPhase, .running)
+        XCTAssertNil(viewModel.stopDrainingMeetingID)
+
+        viewModel.onPauseRecording()
+
+        XCTAssertTrue(viewModel.isRunning)
+        XCTAssertFalse(viewModel.isLiveRecordingPaused())
+        XCTAssertEqual(viewModel.sessionPhase, .running)
+    }
+
+    func testPausedLiveSessionIgnoresMixedSamples() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .running
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-paused-audio-test"
+        }
+        viewModel.pauseLiveSession()
+
+        viewModel.handleMixedSamples(Array(repeating: Float(0.25), count: 8_000))
+
+        let timeline = viewModel.stateQueue.sync { viewModel.captureTimeline }
+        XCTAssertNil(timeline.audioStartSec)
+    }
+
+    @MainActor
+    func testPausedLiveSessionSuppressesCaptureHealthWarnings() {
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.captureState = .capturing
+        viewModel.captureHealth = CaptureHealthSnapshot(
+            sessionStartedAt: Date(timeIntervalSinceNow: -30),
+            lastChunkAt: nil,
+            lastTranscriptAt: nil,
+            inputLevelMic: 0,
+            inputLevelSystem: 0
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-paused-health-test"
+        }
+        viewModel.pauseLiveSession()
+
+        viewModel.evaluateCaptureHealthHint()
+
+        XCTAssertEqual(viewModel.recordingStatusMessage, "录制已暂停。点击继续后会恢复写入音频和视频。")
+    }
+
     func testSessionUIResetPreservesVisualFallbackSelection() {
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),

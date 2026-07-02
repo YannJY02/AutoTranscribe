@@ -80,6 +80,7 @@ Published local issues:
 - `.scratch/live-workspace-session/issues/02-route-live-transcript-delta-through-pipeline.md`
 - `.scratch/live-workspace-session/issues/03-route-insight-refresh-degradation-through-pipeline.md`
 - `.scratch/live-workspace-session/issues/04-shrink-live-session-adapter-surface.md`
+- `.scratch/live-workspace-session/issues/05-separate-pause-and-stop-recording-controls.md`
 
 Verification after publishing:
 - `PYTHONPATH=. /Users/yann.jy/miniconda3/bin/python3.11 -m pytest tests/test_verify_project_normalization.py -q` -> `11 passed`
@@ -175,3 +176,20 @@ Verification:
 
 Release boundary:
 - Local release readiness was not claimed for this internal adapter-surface slice, so the release Closure Gate was not rerun.
+
+### 2026-07-02 - Codex
+
+Issue `05-separate-pause-and-stop-recording-controls.md` completed to `ready-for-human`.
+
+Changed:
+- Replaced the pause stub that stopped the live session with a real pause/resume state.
+- Gated audio sample ingestion and video writer appends while paused.
+- Adjusted video presentation timing so paused wall-clock time is not counted after resume.
+- Disabled pause and stop controls while stop finalization is already saving.
+
+Verification:
+- `swift test --package-path macos/InsightKitApp --jobs 1 --filter LiveSessionViewModelTests/testPauseRecordingDoesNotStopLiveSession --filter LiveSessionViewModelTests/testPausedLiveSessionIgnoresMixedSamples --filter LiveSessionViewModelTests/testPausedLiveSessionSuppressesCaptureHealthWarnings --filter VideoRecordingTimelineTests/testPresentationTimeExcludesPausedDuration` -> `4 tests, 0 failures`
+- `swift test --package-path macos/InsightKitApp --jobs 1` -> `260 tests, 0 failures`
+- `python3 scripts/verify_project_normalization.py` -> `status: passed`
+- Installed app build `20260702213020` verified `暂停 -> 继续 -> 停止录制`: pause kept the phase at `录制中`, the timer remained stable while paused, resume restored the pause control, finalizing disabled both controls, and stop saved Record `/Users/yann.jy/Documents/InsightKit/Records/20260702-2132-live-record-c0b1128d`.
+- Final installed sync after the full test pass: `logs/workflow/latest_sync.json`, build `20260702213807`, installed at `/Users/yann.jy/Applications/InsightKit.app`.

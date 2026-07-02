@@ -47,8 +47,11 @@ extension LiveSessionViewModel: CenterStageDataSource {
     }
 
     func onPauseRecording() {
-        // Pause not yet supported — stop instead
-        stopLiveSession()
+        if isLiveRecordingPaused() {
+            resumeLiveSession()
+        } else {
+            pauseLiveSession()
+        }
     }
 
     func onTranscriptEntryTapped(_ entry: TranscriptEntry) {

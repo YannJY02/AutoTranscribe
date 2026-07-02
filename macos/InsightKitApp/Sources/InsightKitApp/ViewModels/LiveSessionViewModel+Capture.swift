@@ -26,7 +26,7 @@ private func isTransientLiveStatus(_ message: String?) -> Bool {
 
 extension LiveSessionViewModel {
     func handleMixedSamples(_ samples: [Float]) {
-        if samples.isEmpty || !isRunning {
+        if samples.isEmpty || !isRunning || isLiveRecordingPaused() {
             return
         }
 
@@ -36,7 +36,7 @@ extension LiveSessionViewModel {
 
         pipelineQueue.async { [weak self] in
             guard let self else { return }
-            guard self.isRunning else { return }
+            guard self.isRunning, !self.isLiveRecordingPaused() else { return }
             do {
                 let chunks = try self.chunkAssembler.append(samples: samples)
                 guard let meetingID = self.currentActiveMeetingID() else { return }
@@ -281,6 +281,7 @@ extension LiveSessionViewModel {
     @MainActor
     func evaluateCaptureHealthHint() {
         guard isRunning else { return }
+        guard !isLiveRecordingPaused() else { return }
         switch captureState {
         case .preparingRuntime, .warmingModel:
             return
