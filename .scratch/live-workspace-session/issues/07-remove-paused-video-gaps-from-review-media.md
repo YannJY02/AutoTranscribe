@@ -50,4 +50,4 @@ Verification:
 - `python3 scripts/diagnose_issue24_media_timeline.py /Users/yann.jy/Documents/InsightKit/Records/20260702-2237-live-record-1335ee42` -> `failures: []`, `warnings: []`, with `source_duration_delta_explained_by_pause: true`.
 - Direct import of `tests/test_live_review_media_sync.py` test functions -> `passed=5` because local Python lacks `pytest`.
 - `python3 scripts/verify_project_normalization.py` -> `status: passed`; proof `logs/diagnostics/2026-07-03/project-normalization-20260703-000205/proof.json`.
-- Installed app synced to `/Users/yann.jy/Applications/InsightKit.app` after commit with build `20260703000747`; `latest_sync.json` reports `local_git_revision: d1b30a4`, `local_git_dirty: false`, and `git_revision_match: true`.
+- Installed app synced to `/Users/yann.jy/Applications/InsightKit.app` after commit; `latest_sync.json` reports a clean local revision and `git_revision_match: true`.
