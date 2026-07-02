@@ -906,6 +906,9 @@ final class LiveSessionViewModelTests: XCTestCase {
         let call = try XCTUnwrap(composer.calls.first)
         XCTAssertEqual(call.timeline.videoStartSec, 0, accuracy: 0.001)
         XCTAssertEqual(call.timeline.audioStartSec, 5, accuracy: 0.001)
+        XCTAssertEqual(call.timeline.videoPauseIntervals.count, 1)
+        XCTAssertEqual(call.timeline.videoPauseIntervals.first?.startSec ?? 0, 2, accuracy: 0.001)
+        XCTAssertEqual(call.timeline.videoPauseIntervals.first?.endSec ?? 0, 12, accuracy: 0.001)
 
         let sidecarURL = viewModel.captureTimelineSidecarURL(meetingID: meetingID)
         let sidecar = try JSONDecoder().decode(
@@ -914,6 +917,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         )
         XCTAssertEqual(sidecar.compositionTimeline.videoStartSec, 0, accuracy: 0.001)
         XCTAssertEqual(sidecar.compositionTimeline.audioStartSec, 5, accuracy: 0.001)
+        XCTAssertEqual(sidecar.compositionTimeline.videoPauseIntervals.count, 1)
         XCTAssertEqual(sidecar.pauseIntervals.count, 1)
         XCTAssertEqual(sidecar.pauseIntervals.first?.durationSec ?? 0, 10, accuracy: 0.001)
     }

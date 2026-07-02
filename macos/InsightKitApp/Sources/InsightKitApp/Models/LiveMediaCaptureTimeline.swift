@@ -35,6 +35,18 @@ struct LiveMediaCaptureTimeline: Codable, Equatable {
         updateCompositionTimeline()
     }
 
+    mutating func markAudioBufferStartIfNeeded(
+        receivedAt time: TimeInterval = ProcessInfo.processInfo.systemUptime,
+        sampleCount: Int,
+        sampleRate: Int
+    ) {
+        guard audioStartSec == nil else { return }
+        let bufferDurationSec = sampleCount > 0 && sampleRate > 0
+            ? Double(sampleCount) / Double(sampleRate)
+            : 0
+        markAudioStartIfNeeded(at: max(0, time - bufferDurationSec))
+    }
+
     mutating func markPauseStart(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         guard currentPauseStartSec == nil else { return }
         currentPauseStartSec = time
@@ -61,8 +73,20 @@ struct LiveMediaCaptureTimeline: Codable, Equatable {
         let origin = min(videoActiveStartSec, audioActiveStartSec)
         compositionTimeline = ReviewMediaCompositionTimeline(
             videoStartSec: max(0, videoActiveStartSec - origin),
-            audioStartSec: max(0, audioActiveStartSec - origin)
+            audioStartSec: max(0, audioActiveStartSec - origin),
+            videoPauseIntervals: videoPauseIntervalsRelativeToVideoStart(videoStartSec: videoStartSec)
         )
+    }
+
+    private func videoPauseIntervalsRelativeToVideoStart(
+        videoStartSec: TimeInterval
+    ) -> [ReviewMediaCompositionPauseInterval] {
+        pauseIntervals.compactMap { interval in
+            let start = max(0, interval.startSec - videoStartSec)
+            let end = max(start, interval.endSec - videoStartSec)
+            guard end > start else { return nil }
+            return ReviewMediaCompositionPauseInterval(startSec: start, endSec: end)
+        }
     }
 
     private func activeTime(at time: TimeInterval) -> TimeInterval {

@@ -30,8 +30,15 @@ extension LiveSessionViewModel {
             return
         }
 
+        let receivedAt = ProcessInfo.processInfo.systemUptime
+        let sampleCount = samples.count
+        let sampleRate = chunkAssembler.sampleRate
         stateQueue.sync {
-            captureTimeline.markAudioStartIfNeeded()
+            captureTimeline.markAudioBufferStartIfNeeded(
+                receivedAt: receivedAt,
+                sampleCount: sampleCount,
+                sampleRate: sampleRate
+            )
         }
 
         pipelineQueue.async { [weak self] in

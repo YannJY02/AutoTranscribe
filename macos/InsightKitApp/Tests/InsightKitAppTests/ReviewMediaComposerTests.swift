@@ -69,6 +69,49 @@ final class ReviewMediaComposerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(durations.audio), 1.0, accuracy: 0.35)
     }
 
+    func testComposeVideoWithAudioSkipsPausedVideoSourceRange() throws {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("InsightKitReviewComposerPause_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let videoURL = tmp.appendingPathComponent("video.mp4")
+        let audioURL = tmp.appendingPathComponent("audio.wav")
+        let outputURL = tmp.appendingPathComponent("composed.mp4")
+
+        try writeSegmentedColorVideo(
+            to: videoURL,
+            segments: [
+                (durationSec: 1.0, color: .red),
+                (durationSec: 1.0, color: .black),
+                (durationSec: 1.0, color: .green),
+            ]
+        )
+        try writeToneAudio(to: audioURL, durationSec: 2.0)
+
+        let composedURL = try AVFoundationReviewMediaComposer().composeVideoWithAudio(
+            videoURL: videoURL,
+            audioURL: audioURL,
+            outputURL: outputURL,
+            timeline: ReviewMediaCompositionTimeline(
+                videoStartSec: 0,
+                audioStartSec: 0,
+                videoPauseIntervals: [
+                    ReviewMediaCompositionPauseInterval(startSec: 1.0, endSec: 2.0),
+                ]
+            )
+        )
+
+        let firstColor = try sampleAverageRGB(from: composedURL, at: 0.5)
+        let secondColor = try sampleAverageRGB(from: composedURL, at: 1.5)
+        XCTAssertGreaterThan(Int(firstColor.red), Int(firstColor.green) + 40)
+        XCTAssertGreaterThan(Int(secondColor.green), Int(secondColor.red) + 40)
+
+        let durations = try loadTrackDurations(composedURL)
+        XCTAssertEqual(try XCTUnwrap(durations.video), 2.0, accuracy: 0.35)
+        XCTAssertEqual(try XCTUnwrap(durations.audio), 2.0, accuracy: 0.35)
+    }
+
     private func writeSilentVideo(to url: URL, durationSec: Double) throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let settings: [String: Any] = [

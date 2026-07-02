@@ -231,13 +231,24 @@ def inspect_capture_sources(
     if video_duration is not None and audio_duration is not None:
         source_delta = video_duration - audio_duration
         source_report["source_duration_delta_sec"] = source_delta
+        pause_adjusted_video_duration = pause_adjusted_video_duration_sec(capture_timeline, video_duration)
+        if pause_adjusted_video_duration is not None:
+            source_report["pause_adjusted_video_duration_sec"] = pause_adjusted_video_duration
+            source_report["pause_adjusted_source_duration_delta_sec"] = (
+                pause_adjusted_video_duration - audio_duration
+            )
         if abs(source_delta) > max_source_stream_delta_sec:
             message = (
                 "capture source audio/video duration delta "
                 f"{source_delta:.3f}s exceeds {max_source_stream_delta_sec:.3f}s; "
                 "final duration equality cannot prove visible AV sync"
             )
-            if composition_window_matches_final:
+            if (
+                pause_adjusted_video_duration is not None
+                and abs(pause_adjusted_video_duration - audio_duration) <= max_source_stream_delta_sec
+            ):
+                source_report["source_duration_delta_explained_by_pause"] = True
+            elif composition_window_matches_final:
                 warnings.append(message)
             else:
                 failures.append(message)
@@ -246,12 +257,22 @@ def inspect_capture_sources(
         if video_duration is not None:
             video_final_delta = video_duration - playable_duration
             source_report["video_source_final_delta_sec"] = video_final_delta
+            pause_adjusted_video_duration = pause_adjusted_video_duration_sec(capture_timeline, video_duration)
+            pause_adjusted_video_final_delta = None
+            if pause_adjusted_video_duration is not None:
+                pause_adjusted_video_final_delta = pause_adjusted_video_duration - playable_duration
+                source_report["pause_adjusted_video_final_delta_sec"] = pause_adjusted_video_final_delta
             if abs(video_final_delta) > max_source_final_delta_sec:
                 message = (
                     "capture source video duration differs from final media by "
                     f"{video_final_delta:.3f}s, exceeding {max_source_final_delta_sec:.3f}s"
                 )
-                if composition_window_matches_final:
+                if (
+                    pause_adjusted_video_final_delta is not None
+                    and abs(pause_adjusted_video_final_delta) <= max_source_final_delta_sec
+                ):
+                    source_report["video_source_final_delta_explained_by_pause"] = True
+                elif composition_window_matches_final:
                     warnings.append(message)
                 else:
                     failures.append(message)
@@ -277,7 +298,9 @@ def summarize_composition_window(
     if video_start is None or audio_start is None:
         return None
 
-    video_timeline_end = video_start + video_duration
+    pause_adjusted = pause_adjusted_video_duration_sec(capture_timeline, video_duration)
+    effective_video_duration = pause_adjusted if pause_adjusted is not None else video_duration
+    video_timeline_end = video_start + effective_video_duration
     audio_timeline_end = audio_start + audio_duration
     intersection_start = max(video_start, audio_start)
     intersection_end = min(video_timeline_end, audio_timeline_end)
@@ -286,10 +309,61 @@ def summarize_composition_window(
         "timeline_video_start_sec": video_start,
         "timeline_audio_start_sec": audio_start,
         "initial_offset_sec": video_start - audio_start,
-        "video_source_start_sec": max(0.0, intersection_start - video_start),
+        "video_active_source_start_sec": max(0.0, intersection_start - video_start),
         "audio_source_start_sec": max(0.0, intersection_start - audio_start),
         "duration_sec": duration,
     }
+
+
+def pause_adjusted_video_duration_sec(
+    capture_timeline: dict[str, Any],
+    video_duration: float | None,
+) -> float | None:
+    if video_duration is None:
+        return None
+    intervals = video_pause_intervals_relative_to_video(capture_timeline)
+    if not intervals:
+        return None
+    total = 0.0
+    for start, end in intervals:
+        clipped_start = min(max(0.0, start), video_duration)
+        clipped_end = min(max(clipped_start, end), video_duration)
+        total += max(0.0, clipped_end - clipped_start)
+    return max(0.0, video_duration - total)
+
+
+def video_pause_intervals_relative_to_video(capture_timeline: dict[str, Any]) -> list[tuple[float, float]]:
+    composition = capture_timeline.get("compositionTimeline")
+    intervals: list[tuple[float, float]] = []
+    if isinstance(composition, dict):
+        composition_intervals = composition.get("videoPauseIntervals")
+        if isinstance(composition_intervals, list):
+            for interval in composition_intervals:
+                if not isinstance(interval, dict):
+                    continue
+                start = to_float(interval.get("startSec"))
+                end = to_float(interval.get("endSec"))
+                if start is not None and end is not None and end > start:
+                    intervals.append((start, end))
+    if intervals:
+        return intervals
+
+    video_start = to_float(capture_timeline.get("videoStartSec"))
+    pause_intervals = capture_timeline.get("pauseIntervals")
+    if video_start is None or not isinstance(pause_intervals, list):
+        return []
+    for interval in pause_intervals:
+        if not isinstance(interval, dict):
+            continue
+        start = to_float(interval.get("startSec"))
+        end = to_float(interval.get("endSec"))
+        if start is None or end is None:
+            continue
+        relative_start = max(0.0, start - video_start)
+        relative_end = max(relative_start, end - video_start)
+        if relative_end > relative_start:
+            intervals.append((relative_start, relative_end))
+    return intervals
 
 
 def main() -> int:

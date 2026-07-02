@@ -53,9 +53,10 @@ def test_live_visual_review_recording_stops_before_tail_processing():
 def test_review_media_composer_uses_offset_aware_timeline_intersection():
     source = REVIEW_MEDIA_COMPOSER.read_text(encoding="utf-8")
     assert "ReviewMediaCompositionTimeline" in source
-    assert "let intersectionStart = CMTimeMaximum(videoTimelineStart, audioTimelineStart)" in source
-    assert "let intersectionEnd = CMTimeMinimum(videoTimelineEnd, audioTimelineEnd)" in source
-    assert "CMTimeRange(start: sourceWindow.videoStart, duration: sourceWindow.duration)" in source
+    assert "videoPauseIntervals" in source
+    assert "activeVideoSourceRanges" in source
+    assert "videoSegments(" in source
+    assert "insertTimeRange(segment.sourceRange" in source
     assert "CMTimeRange(start: sourceWindow.audioStart, duration: sourceWindow.duration)" in source
     assert "CMTimeRange(start: .zero, duration: timelineDuration)" not in source
     assert "insertEmptyTimeRange" not in source
@@ -68,6 +69,7 @@ def test_issue24_diagnostic_checks_capture_source_timeline_not_only_final_media(
     assert "audioPath" in source
     assert "pauseIntervals" in source
     assert "pause_interval_count" in source
+    assert "pause_adjusted_video_duration_sec" in source
     assert "capture source audio/video duration delta" in source
     assert "final duration equality cannot prove visible AV sync" in source
 

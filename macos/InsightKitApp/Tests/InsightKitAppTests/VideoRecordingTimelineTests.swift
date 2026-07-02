@@ -39,7 +39,7 @@ final class VideoRecordingTimelineTests: XCTestCase {
         XCTAssertEqual(CMTimeGetSeconds(second), 1.0 / 600.0, accuracy: 0.0005)
     }
 
-    func testPresentationTimeExcludesPausedDuration() {
+    func testPresentationTimePreservesPausedGapForFinalComposition() {
         var timeline = VideoRecordingTimeline(timescale: 600)
 
         let first = timeline.presentationTime(
@@ -54,7 +54,7 @@ final class VideoRecordingTimelineTests: XCTestCase {
         )
 
         XCTAssertEqual(CMTimeGetSeconds(first), 0, accuracy: 0.001)
-        XCTAssertEqual(CMTimeGetSeconds(second), 2, accuracy: 0.001)
+        XCTAssertEqual(CMTimeGetSeconds(second), 12, accuracy: 0.001)
     }
 
     func testRecordingDimensionsPreferFirstSampleBufferPixelSize() throws {
