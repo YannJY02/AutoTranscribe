@@ -21,7 +21,7 @@
 
 ## InsightPackageV1
 Schema file:
-- `/Users/yann.jy/Desktop/AI/transcription/insightkit/schemas/insight_package_v1.json`
+- `/Users/yann.jy/Developer/Projects/transcription/insightkit/schemas/insight_package_v1.json`
 
 Required top-level keys:
 - `session_overview`
@@ -34,7 +34,7 @@ Required top-level keys:
 
 ## Compliance Safeguard
 Banned term scanner:
-- `/Users/yann.jy/Desktop/AI/transcription/insightkit/compliance/scan_terms.py`
+- `/Users/yann.jy/Developer/Projects/transcription/insightkit/compliance/scan_terms.py`
 
 Usage:
 ```bash

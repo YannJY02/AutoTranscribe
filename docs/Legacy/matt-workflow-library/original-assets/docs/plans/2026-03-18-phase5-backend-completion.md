@@ -127,7 +127,7 @@ Step 7 依赖所有前置步骤。
 ### 验证
 
 ```bash
-cd /Users/yann.jy/Desktop/AI/transcription
+cd /Users/yann.jy/Developer/Projects/transcription
 python -m pytest tests/test_record_writer.py -v
 ```
 

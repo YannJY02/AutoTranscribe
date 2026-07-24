@@ -29,9 +29,9 @@
 
 关键证据：
 
-- [events.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/events.json)
-- [t3_sidecar.sample.txt](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t3_sidecar.sample.txt)
-- [t60_sidecar.sample.txt](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t60_sidecar.sample.txt)
+- [events.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/events.json)
+- [t3_sidecar.sample.txt](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t3_sidecar.sample.txt)
+- [t60_sidecar.sample.txt](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t60_sidecar.sample.txt)
 - [sidecar.log](/Users/yann.jy/Library/Logs/InsightKit/sidecar.log)
 
 ### Run 2: Hot + Packaged + Current Provider
@@ -44,10 +44,10 @@
 
 关键证据：
 
-- [events.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/events.json)
-- [00_prestart_rpc.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/00_prestart_rpc.json)
-- [99_post_rpc.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/99_post_rpc.json)
-- [t60_sidecar.sample.txt](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/t60_sidecar.sample.txt)
+- [events.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/events.json)
+- [00_prestart_rpc.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/00_prestart_rpc.json)
+- [99_post_rpc.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/99_post_rpc.json)
+- [t60_sidecar.sample.txt](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run2_packaged_hot/t60_sidecar.sample.txt)
 
 ### Run 3: Cold + Packaged + Invalid Provider Key
 
@@ -59,8 +59,8 @@
 
 关键证据：
 
-- [events.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run3_packaged_provider_authfail/events.json)
-- [99_post_rpc.json](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run3_packaged_provider_authfail/99_post_rpc.json)
+- [events.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run3_packaged_provider_authfail/events.json)
+- [99_post_rpc.json](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run3_packaged_provider_authfail/99_post_rpc.json)
 
 说明：
 
@@ -78,8 +78,8 @@
 
 相关产物：
 
-- [run4_source_cold/app_stdout.log](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run4_source_cold/app_stdout.log)
-- [run4_source_cold_retry/app_stdout.log](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run4_source_cold_retry/app_stdout.log)
+- [run4_source_cold/app_stdout.log](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run4_source_cold/app_stdout.log)
+- [run4_source_cold_retry/app_stdout.log](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run4_source_cold_retry/app_stdout.log)
 
 ## Process Evidence
 
@@ -94,7 +94,7 @@
 ### Sidecar
 
 - run1 `t3` 采样显示 sidecar 线程在 `libtorch_cpu` / `uniform_` / `normal_` 路径里，说明此时正在做重型 PyTorch/FunASR 初始化或 warmup
-  - [t3_sidecar.sample.txt](/Users/yann.jy/Desktop/AI/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t3_sidecar.sample.txt)
+  - [t3_sidecar.sample.txt](/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/live-lag/20260306-003204/run1_packaged_cold_retry/t3_sidecar.sample.txt)
 - run2 `t3/t60/final` 采样显示：
   - main thread 仍能 `accept()` socket
   - 大量线程阻塞在 Python lock / `_pthread_cond_wait`
@@ -118,8 +118,8 @@
 
 ### 1. `prewarm_asr` 忽略 `timeout_sec`
 
-- [scripts/transcriber.py:560](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:560)
-- [scripts/transcriber.py:566](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:566)
+- [scripts/transcriber.py:560](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:560)
+- [scripts/transcriber.py:566](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:566)
 
 关键事实：
 
@@ -129,9 +129,9 @@
 
 ### 2. prewarm 对 FunASR 执行真实 warmup 推理
 
-- [scripts/transcriber.py:531](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:531)
-- [scripts/transcriber.py:537](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:537)
-- [scripts/transcriber.py:573](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:573)
+- [scripts/transcriber.py:531](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:531)
+- [scripts/transcriber.py:537](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:537)
+- [scripts/transcriber.py:573](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:573)
 
 关键事实：
 
@@ -141,15 +141,15 @@
 
 ### 3. `_load_funasr_model()` 在全局 `_models_lock` 内构造 `AutoModel`
 
-- [scripts/transcriber.py:317](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:317)
-- [scripts/transcriber.py:329](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:329)
+- [scripts/transcriber.py:317](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:317)
+- [scripts/transcriber.py:329](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:329)
 
 关键事实：
 
 - `AutoModel(...)` 整段都在 `_models_lock` 保护范围内
 - 同时 `runtime_backend_status()` / `runtime_warm_status()` 也读取同一把锁
-  - [scripts/transcriber.py:106](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:106)
-  - [scripts/transcriber.py:125](/Users/yann.jy/Desktop/AI/transcription/scripts/transcriber.py:125)
+  - [scripts/transcriber.py:106](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:106)
+  - [scripts/transcriber.py:125](/Users/yann.jy/Developer/Projects/transcription/scripts/transcriber.py:125)
 
 推断：
 
@@ -158,9 +158,9 @@
 
 ### 4. App 启动链路确实把 `ensureRuntimeReady + asrPrewarm(20s)` 放在采集开始之前
 
-- [LiveSessionViewModel.swift:306](/Users/yann.jy/Desktop/AI/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:306)
-- [LiveSessionViewModel.swift:310](/Users/yann.jy/Desktop/AI/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:310)
-- [LiveSessionViewModel.swift:323](/Users/yann.jy/Desktop/AI/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:323)
+- [LiveSessionViewModel.swift:306](/Users/yann.jy/Developer/Projects/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:306)
+- [LiveSessionViewModel.swift:310](/Users/yann.jy/Developer/Projects/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:310)
+- [LiveSessionViewModel.swift:323](/Users/yann.jy/Developer/Projects/transcription/macos/InsightKitApp/Sources/InsightKitApp/ViewModels/LiveSessionViewModel.swift:323)
 
 这解释了为什么用户会先看到一个长时间的“已经开始但还没有文本”的阶段。
 
