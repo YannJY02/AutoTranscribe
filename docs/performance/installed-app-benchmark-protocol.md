@@ -21,7 +21,10 @@ to implement a suspected optimization.
 - App: `/Users/yann.jy/Applications/InsightKit.app`, packaged in Release mode
   from a clean source revision.
 - Record the source revision, `CFBundleVersion`, code-directory hash, executable
-  SHA-256, macOS build, Xcode build, and tool versions for every cohort.
+  SHA-256, macOS build, Xcode build, and tool versions for every cohort. Also
+  record a deterministic installed-bundle inventory SHA-256 over the sorted
+  relative path, type, byte size, and SHA-256 (or symlink target) of every
+  bundle entry, including nested helpers, resources, and the Python sidecar.
 - Plug into power, disable Low Power Mode, and keep display connections and
   brightness fixed.
 - Close unrelated apps. Before a run, require system CPU below 5% for 60
@@ -65,9 +68,12 @@ permission and functionality smoke checks only; they are not cross-run
 performance samples. Do not add a virtual-audio dependency.
 
 Records Workspace uses deterministic, sanitized collections of 100 and 1,000
-Record metadata folders. The 100-record collection represents the current
-personal scale; the 1,000-record collection is the growth case. Media
-interaction uses the mixed MP4 companions.
+complete, parseable Record Folders. The 100-record collection represents the
+current personal scale; the 1,000-record collection is the growth case. Their
+fixture manifest records the generator source revision and version, seed, and
+a deterministic collection SHA-256 over the sorted relative path, type, byte
+size, and content SHA-256 of every entry. Media interaction uses the mixed MP4
+companions.
 
 ## Cold and warm runs
 
@@ -100,6 +106,13 @@ individual values, median, minimum, maximum, median absolute deviation, success
 rate, and failure count. Do not silently exclude a sample. This protocol does
 not assign pass/fail budgets or promise a p95 from samples of three or ten;
 those decisions follow completed baselines.
+
+Before the first measured run, freeze a `scenario_parameters` block in the
+cohort manifest. It contains hashes for replayable keyboard, pointer, scroll,
+and resize input traces; workspace navigation order; the generated-record
+search query; playback window (60 seconds); seek target (60% of media
+duration); and post-workload recovery window (five minutes). Every repeated run
+uses that block unchanged. A missing or changed parameter starts a new cohort.
 
 ## Scenario matrix
 
@@ -143,7 +156,7 @@ a monotonic clock. RTF is processing seconds divided by media seconds.
 | `export.markdown_ms` | Markdown export action accepted | Export Document is durably written | lower | signpost + filesystem evidence |
 | `export.pdf_ms` | PDF export action accepted | Export Document is durably written | lower | signpost + filesystem evidence |
 | `smart_minutes.provider_ready_ms` | Provider readiness request begins | Selected provider/model is usable or definitively fails | lower | RPC timestamps |
-| `smart_minutes.first_useful_ms` | Generation request is sent | First non-empty schema-valid Smart Minutes are visible | lower | signpost + RPC events |
+| `smart_minutes.first_useful_ms` | Generation request is sent | First visible schema-valid result has every required section non-empty and at least one evidence link that resolves on the frozen final Media Timeline | lower | signpost + RPC events |
 | `smart_minutes.refresh_ms` | Insight Refresh request | Updated schema-valid Smart Minutes are visible | lower | signpost + RPC events |
 | `smart_minutes.final_complete_ms` | Final generation request is sent | Complete schema-valid Insight Package is visible and saved | lower | signpost + RPC events |
 | `records.index_refresh_ms` | Record Index refresh begins | Stable final result set is published | lower | signpost + filesystem trace |
@@ -166,7 +179,7 @@ Resource rows use `component=app|sidecar|combined` and
 | `resource.cpu_pct` | CPU utilization time series for the selected component and phase | lower |
 | `resource.peak_rss_bytes` | Highest resident set size in the phase | lower |
 | `resource.retained_rss_bytes` | Post-workload RSS minus pre-workload idle RSS after the fixed recovery window | lower |
-| `resource.energy_impact` | Activity Monitor/Instruments energy-impact series with tool version recorded | lower |
+| `resource.energy_impact` | Dimensionless Activity Monitor Energy Impact score sampled once per second; retain the raw series and report median and maximum | lower |
 | `resource.max_thermal_state` | Highest observed nominal/fair/serious/critical state | lower |
 | `resource.disk_read_bytes` | Bytes read in the phase | lower |
 | `resource.disk_write_bytes` | Bytes written in the phase | lower |
