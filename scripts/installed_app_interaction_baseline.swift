@@ -208,6 +208,11 @@ final class InstalledAppBaseline {
             "-ApplePersistenceIgnoreState", "YES",
             "-RecordsRootDirectory", config.recordsRoot,
         ]
+        configuration.environment = Dictionary(uniqueKeysWithValues: [
+            "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAWVISOR_AGENT_TOKEN",
+            "GITHUB_PERSONAL_ACCESS_TOKEN", "GITHUB_TOKEN", "OPENAI_API_KEY",
+            "OPENALEX_API_KEY", "S2_API_KEY", "YUNSI_API_KEY",
+        ].map { ($0, "") })
         configuration.activates = true
         configuration.createsNewApplicationInstance = true
 
