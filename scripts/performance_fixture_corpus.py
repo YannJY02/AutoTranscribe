@@ -347,6 +347,15 @@ def audio_packet_sha256(path: Path) -> str:
     return output.rsplit("=", 1)[-1].strip().lower()
 
 
+def tempo_filter(speech_seconds: float, slot_seconds: float) -> str:
+    if speech_seconds <= slot_seconds:
+        return ""
+    ratio = speech_seconds / slot_seconds
+    if ratio > 2:
+        raise ValueError("speech is more than twice its transcript span")
+    return f"atempo={ratio:.6f},"
+
+
 def _synthesize_cycle(fixture: dict[str, Any], path: Path, work: Path) -> None:
     inputs: list[str] = []
     filters: list[str] = []
@@ -355,13 +364,12 @@ def _synthesize_cycle(fixture: dict[str, Any], path: Path, work: Path) -> None:
         voice_path = work / f"voice-{index:02d}.aiff"
         run(["say", "-v", segment["voice"], "-r", "190", "-o", str(voice_path), segment["text"]])
         slot_seconds = (int(segment["end_ms"]) - int(segment["start_ms"])) / 1000
-        if probe_media(voice_path)["duration_seconds"] > slot_seconds:
-            raise ValueError(f"speech exceeds transcript span in {fixture['fixture_id']}: {segment['text']}")
+        fit = tempo_filter(probe_media(voice_path)["duration_seconds"], slot_seconds)
         inputs.extend(["-i", str(voice_path)])
         label = f"s{index}"
         labels.append(f"[{label}]")
         filters.append(
-            f"[{index}:a]aresample=16000,atrim=0:{slot_seconds},asetpts=PTS-STARTPTS,"
+            f"[{index}:a]aresample=16000,{fit}atrim=0:{slot_seconds},asetpts=PTS-STARTPTS,"
             f"adelay={int(segment['start_ms'])}:all=1[{label}]"
         )
     duration = float(fixture["cycle_duration_seconds"])
