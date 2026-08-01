@@ -196,9 +196,9 @@
   "generator": {
     "record_seed": 20260801,
     "revision": "6dff2524c06433de01e78821e641596481145a46",
-    "source": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/scripts/performance_fixture_corpus.py",
+    "source": "scripts/performance_fixture_corpus.py",
     "source_sha256": "e7a3264bed4078343f665ec054c169ca73a2a6bd520216bd8d6a858362700695",
-    "spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json",
+    "spec": "docs/performance/fixture-corpus-spec.json",
     "spec_sha256": "bab1655b694eec54f14eadaadeb2306593c2c0882852110fc26372f0c34b19ea",
     "version": "1"
   },

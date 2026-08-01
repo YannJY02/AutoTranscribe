@@ -47,6 +47,15 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_file_pin(path: Path, pin: dict[str, Any], label: str) -> None:
+    if not path.is_file():
+        raise ValueError(f"{label} is missing: {path}")
+    if path.stat().st_size != int(pin["byte_size"]):
+        raise ValueError(f"{label} byte-size drift: {path}")
+    if sha256_file(path) != pin["sha256"]:
+        raise ValueError(f"{label} hash drift: {path}")
+
+
 def run(command: list[str]) -> str:
     result = subprocess.run(command, check=False, capture_output=True, text=True)
     if result.returncode:
@@ -218,6 +227,83 @@ def _insight_package(record_id: str, reference: dict[str, Any], query_hit: bool)
     }
 
 
+def _require_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or not keys <= value.keys():
+        raise ValueError(f"invalid insight package {label}")
+    return value
+
+
+def _require_strings(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"invalid insight package {label}")
+    return value
+
+
+def _validate_evidence_span(value: Any, label: str) -> None:
+    span = _require_keys(value, {"start_ms", "end_ms"}, label)
+    if type(span["start_ms"]) is not int or type(span["end_ms"]) is not int:
+        raise ValueError(f"invalid insight package {label}")
+    if span["start_ms"] < 0 or span["end_ms"] < span["start_ms"]:
+        raise ValueError(f"invalid insight package {label}")
+
+
+def validate_insight_package(package: Any) -> None:
+    value = _require_keys(package, {
+        "session_overview",
+        "highlight_insights",
+        "speaker_perspectives",
+        "decision_ledger",
+        "action_tracks",
+        "timeline_beats",
+        "provenance_links",
+    }, "root")
+    overview = _require_keys(value["session_overview"], {"title", "overview", "topics"}, "session_overview")
+    if not isinstance(overview["title"], str) or not isinstance(overview["overview"], str):
+        raise ValueError("invalid insight package session_overview")
+    _require_strings(overview["topics"], "session_overview.topics")
+
+    list_fields = ("highlight_insights", "speaker_perspectives", "decision_ledger", "action_tracks", "timeline_beats", "provenance_links")
+    if any(not isinstance(value[field], list) for field in list_fields):
+        raise ValueError("invalid insight package arrays")
+    for item in value["highlight_insights"]:
+        row = _require_keys(item, {"quote", "reason", "speaker", "evidence_span"}, "highlight")
+        if any(not isinstance(row[key], str) for key in ("quote", "reason", "speaker")):
+            raise ValueError("invalid insight package highlight")
+        _validate_evidence_span(row["evidence_span"], "highlight.evidence_span")
+    for item in value["speaker_perspectives"]:
+        row = _require_keys(item, {"speaker", "viewpoints", "evidence_spans"}, "speaker_perspective")
+        if not isinstance(row["speaker"], str):
+            raise ValueError("invalid insight package speaker_perspective")
+        _require_strings(row["viewpoints"], "speaker_perspective.viewpoints")
+        if not isinstance(row["evidence_spans"], list):
+            raise ValueError("invalid insight package speaker_perspective.evidence_spans")
+        for span in row["evidence_spans"]:
+            _validate_evidence_span(span, "speaker_perspective.evidence_span")
+    for item in value["decision_ledger"]:
+        row = _require_keys(item, {"problem", "options", "decision", "rationale", "owner", "evidence_span"}, "decision")
+        if any(not isinstance(row[key], str) for key in ("problem", "decision", "rationale", "owner")):
+            raise ValueError("invalid insight package decision")
+        _require_strings(row["options"], "decision.options")
+        if "needs_review" in row and not isinstance(row["needs_review"], bool):
+            raise ValueError("invalid insight package decision.needs_review")
+        _validate_evidence_span(row["evidence_span"], "decision.evidence_span")
+    for item in value["action_tracks"]:
+        row = _require_keys(item, {"task", "owner", "due_at", "priority", "status", "evidence_span"}, "action")
+        if any(not isinstance(row[key], str) for key in ("task", "owner", "due_at", "priority", "status")):
+            raise ValueError("invalid insight package action")
+        if "needs_review" in row and not isinstance(row["needs_review"], bool):
+            raise ValueError("invalid insight package action.needs_review")
+        _validate_evidence_span(row["evidence_span"], "action.evidence_span")
+    for item in value["timeline_beats"]:
+        row = _require_keys(item, {"timestamp", "title", "summary"}, "timeline")
+        if any(not isinstance(row[key], str) for key in ("timestamp", "title", "summary")):
+            raise ValueError("invalid insight package timeline")
+    for item in value["provenance_links"]:
+        row = _require_keys(item, {"label", "url"}, "provenance")
+        if not isinstance(row["label"], str) or not isinstance(row["url"], str):
+            raise ValueError("invalid insight package provenance")
+
+
 def validate_record_folder(folder: Path) -> None:
     names = {path.name for path in folder.iterdir()}
     if names != REQUIRED_RECORD_FILES:
@@ -233,17 +319,10 @@ def validate_record_folder(folder: Path) -> None:
     if not transcript or any(not {"start_ms", "end_ms", "speaker", "text"} <= row.keys() for row in transcript):
         raise ValueError(f"invalid transcript: {folder}")
     package = json.loads((folder / "insight_package.json").read_text(encoding="utf-8"))
-    required_package = {
-        "session_overview",
-        "highlight_insights",
-        "speaker_perspectives",
-        "decision_ledger",
-        "action_tracks",
-        "timeline_beats",
-        "provenance_links",
-    }
-    if not required_package <= package.keys():
-        raise ValueError(f"invalid insight package: {folder}")
+    try:
+        validate_insight_package(package)
+    except ValueError as exc:
+        raise ValueError(f"invalid insight package: {folder}: {exc}") from exc
     json.loads((folder / "minutes.json").read_text(encoding="utf-8"))
     (folder / "notes.md").read_text(encoding="utf-8")
     if not (folder / "recording.mp4").is_file():
@@ -417,10 +496,25 @@ def _git_revision() -> str:
     return run(["git", "rev-parse", "HEAD"])
 
 
+def validate_output_root(output_root: Path) -> None:
+    resolved = output_root.resolve()
+    home = Path.home().resolve()
+    repo = ROOT_DIR.resolve()
+    private_roots = (
+        home / "Documents/InsightKit/Records",
+        home / "Library/Application Support/InsightKit/Records",
+    )
+    if any(resolved == private or private in resolved.parents for private in private_roots):
+        raise ValueError("benchmark corpus must not use a private Record Folder root")
+    if resolved == repo or repo in resolved.parents:
+        raise ValueError("benchmark corpus media must stay outside the source tree")
+    protected = {Path("/"), home, repo, *home.parents, *repo.parents}
+    if resolved in protected or len(resolved.parts) < 4:
+        raise ValueError(f"refusing broad generated output root: {resolved}")
+
+
 def materialize(*, spec_path: Path, output_root: Path, manifest_path: Path, generator_revision: str, force: bool) -> dict[str, Any]:
-    records_root = Path.home() / "Documents/InsightKit/Records"
-    if output_root.resolve().is_relative_to(records_root.resolve()):
-        raise ValueError("benchmark corpus must not use the private Record Folder root")
+    validate_output_root(output_root)
     if output_root.exists():
         if not force:
             raise ValueError(f"output exists; pass --force to replace generated fixtures: {output_root}")
@@ -511,9 +605,9 @@ def materialize(*, spec_path: Path, output_root: Path, manifest_path: Path, gene
         "generator": {
             "revision": generator_revision,
             "version": GENERATOR_VERSION,
-            "source": str(Path(__file__).resolve()),
+            "source": str(Path(__file__).resolve().relative_to(ROOT_DIR)),
             "source_sha256": sha256_file(Path(__file__)),
-            "spec": str(spec_path.resolve()),
+            "spec": str(spec_path.resolve().relative_to(ROOT_DIR)) if spec_path.resolve().is_relative_to(ROOT_DIR) else str(spec_path.resolve()),
             "spec_sha256": sha256_file(spec_path),
             "record_seed": int(spec["record_collections"]["seed"]),
         },
@@ -545,12 +639,30 @@ def verify_manifest(manifest_path: Path) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("status") != "frozen" or manifest.get("safety", {}).get("synthetic_only") is not True:
         raise ValueError("manifest is not frozen and synthetic")
+    generator = manifest["generator"]
+    for key in ("source", "spec"):
+        source = str(generator[key])
+        if Path(source).is_absolute():
+            content = Path(source).read_bytes()
+        else:
+            result = subprocess.run(
+                ["git", "show", f"{generator['revision']}:{source}"],
+                check=False,
+                capture_output=True,
+            )
+            if result.returncode:
+                raise ValueError(f"generator {key} revision is unavailable: {source}")
+            content = result.stdout
+        if hashlib.sha256(content).hexdigest() != generator[f"{key}_sha256"]:
+            raise ValueError(f"generator {key} hash drift: {source}")
+    voice_catalog_hash = hashlib.sha256(run(["say", "-v", "?"]).encode()).hexdigest()
+    if voice_catalog_hash != manifest["tools"]["say_voice_catalog_sha256"]:
+        raise ValueError("say voice catalog hash drift")
     verified_assets = 0
     for fixture in manifest["fixtures"]:
         reference_pin = fixture["reference_transcript"]
         reference_path = Path(reference_pin["absolute_path"])
-        if sha256_file(reference_path) != reference_pin["sha256"] or reference_path.stat().st_size != reference_pin["byte_size"]:
-            raise ValueError(f"reference hash drift: {fixture['fixture_id']}")
+        verify_file_pin(reference_path, reference_pin, f"reference {fixture['fixture_id']}")
         reference = _load_reference(reference_path)
         expectations = reference["smart_minutes_expectations"]
         expected_counts = fixture["smart_minutes_expectations"]
@@ -561,14 +673,18 @@ def verify_manifest(manifest_path: Path) -> dict[str, Any]:
         audio_hashes = set()
         for asset in fixture["media"]:
             path = Path(asset["absolute_path"])
-            if sha256_file(path) != asset["sha256"] or path.stat().st_size != asset["byte_size"]:
-                raise ValueError(f"media hash drift: {path}")
+            verify_file_pin(path, asset, "media")
             probe = probe_media(path)
+            if abs(probe["duration_seconds"] - float(asset["duration_seconds"])) > 0.001:
+                raise ValueError(f"pinned media duration drift: {path}")
             if abs(probe["duration_seconds"] - float(fixture["target_duration_seconds"])) > 0.05:
                 raise ValueError(f"media duration drift: {path}")
             if probe["container"] != asset["container"] or probe["codecs"] != asset["codecs"]:
                 raise ValueError(f"media format drift: {path}")
-            audio_hashes.add(audio_packet_sha256(path))
+            actual_audio_hash = audio_packet_sha256(path)
+            if actual_audio_hash != asset["audio_packet_sha256"]:
+                raise ValueError(f"audio packet hash drift: {path}")
+            audio_hashes.add(actual_audio_hash)
             verified_assets += 1
         if len(audio_hashes) != 1:
             raise ValueError(f"companion audio mismatch: {fixture['fixture_id']}")
@@ -584,13 +700,15 @@ def verify_manifest(manifest_path: Path) -> dict[str, Any]:
         inventory = build_inventory(root)
         if inventory["collection_sha256"] != collection["collection_sha256"]:
             raise ValueError(f"collection hash drift: {root}")
+        for key in ("directory_count", "file_count", "logical_byte_size"):
+            if inventory[key] != collection[key]:
+                raise ValueError(f"collection {key} drift: {root}")
         inventory_path = Path(collection["inventory_path"])
         if sha256_file(inventory_path) != collection["inventory_sha256"]:
             raise ValueError(f"inventory hash drift: {root}")
     for trace in manifest["scenario_parameters"]["input_traces"].values():
         path = Path(trace["absolute_path"])
-        if sha256_file(path) != trace["sha256"] or path.stat().st_size != trace["byte_size"]:
-            raise ValueError(f"scenario trace drift: {path}")
+        verify_file_pin(path, trace, "scenario trace")
     return {"fixture_assets_verified": verified_assets, "record_folders_verified": verified_records, "status": "passed"}
 
 
