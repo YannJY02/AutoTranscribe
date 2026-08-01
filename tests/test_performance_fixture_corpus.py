@@ -6,9 +6,12 @@ import pytest
 from scripts.performance_fixture_corpus import (
     build_inventory,
     expand_segments,
+    sha256_file,
     tempo_filter,
+    validate_output_root,
     validate_reference,
     validate_record_folder,
+    verify_file_pin,
     write_record_collection,
     write_scenario_parameters,
 )
@@ -69,6 +72,30 @@ def test_inventory_is_root_independent_and_detects_drift(tmp_path: Path):
 
     (second / "nested" / "a.txt").write_text("changed", encoding="utf-8")
     assert build_inventory(second)["collection_sha256"] != first_inventory["collection_sha256"]
+
+
+def test_file_pin_verification_checks_size_and_hash(tmp_path: Path):
+    path = tmp_path / "asset.bin"
+    path.write_bytes(b"frozen")
+    pin = {"byte_size": path.stat().st_size, "sha256": sha256_file(path)}
+    verify_file_pin(path, pin, "asset")
+
+    pin["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="asset hash drift"):
+        verify_file_pin(path, pin, "asset")
+
+
+def test_output_root_rejects_private_records_and_broad_targets(tmp_path: Path):
+    validate_output_root(tmp_path / "generated" / "fixture" / "v1")
+
+    with pytest.raises(ValueError, match="broad"):
+        validate_output_root(Path.home())
+    for records_root in (
+        Path.home() / "Documents/InsightKit/Records/candidate",
+        Path.home() / "Library/Application Support/InsightKit/Records/candidate",
+    ):
+        with pytest.raises(ValueError, match="private Record Folder"):
+            validate_output_root(records_root)
 
 
 def test_record_collections_are_deterministic_complete_and_parseable(tmp_path: Path):
@@ -143,6 +170,14 @@ def test_record_collections_are_deterministic_complete_and_parseable(tmp_path: P
             "recording.mp4",
             "transcript.json",
         }
+
+    broken = folders[0]
+    package_path = broken / "insight_package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["decision_ledger"][0]["evidence_span"]["start_ms"] = "not-an-integer"
+    package_path.write_text(json.dumps(package), encoding="utf-8")
+    with pytest.raises(ValueError, match="insight package"):
+        validate_record_folder(broken)
 
 
 def test_scenario_parameters_pin_every_replay_input(tmp_path: Path):
