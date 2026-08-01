@@ -79,7 +79,13 @@ def test_record_collections_are_deterministic_complete_and_parseable(tmp_path: P
                     "language": "Chinese/English",
                     "speaker_count": 2 if fixture_id == "short-mixed" else 3,
                     "segments": [
-                        {"start_ms": 1000, "end_ms": 4000, "speaker": "A", "text": "Benchmark focus token"}
+                        {
+                            "start_ms": 1000 + index * 4000,
+                            "end_ms": 4000 + index * 4000,
+                            "speaker": chr(ord("A") + index),
+                            "text": "Benchmark focus token",
+                        }
+                        for index in range(2 if fixture_id == "short-mixed" else 3)
                     ],
                     "smart_minutes_expectations": {
                         "decisions": [

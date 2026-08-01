@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "record_collections": {
+    "seed": 20260801
+  },
+  "scenario_parameters": {
+    "generated_record_search_query": "benchmark-focus-token"
+  },
+  "fixtures": [
+    {
+      "fixture_id": "short-zh",
+      "duration_seconds": 300,
+      "cycle_duration_seconds": 60,
+      "repeat": 5,
+      "language": "Chinese",
+      "speaker_count": 2,
+      "video_companion": false,
+      "segments": [
+        {"start_ms": 2000, "end_ms": 8000, "speaker": "林", "voice": "Tingting", "text": "我们先确认今天的目标，是冻结一套可重复使用的测试输入。"},
+        {"start_ms": 11000, "end_ms": 17000, "speaker": "周", "voice": "Eddy (Chinese (China mainland))", "text": "我建议所有测试都使用同一份文件和同一组操作步骤。"},
+        {"start_ms": 20000, "end_ms": 26000, "speaker": "林", "voice": "Tingting", "text": "决定采用固定方案，后续运行不得临时更换内容。"},
+        {"start_ms": 29000, "end_ms": 36000, "speaker": "周", "voice": "Eddy (Chinese (China mainland))", "text": "我负责在下一轮开始前检查文件哈希和音频时长。"},
+        {"start_ms": 35000, "end_ms": 41000, "speaker": "林", "voice": "Tingting", "text": "好的，同时保留这段简短的交叉发言作为测试。"},
+        {"start_ms": 44000, "end_ms": 50000, "speaker": "周", "voice": "Eddy (Chinese (China mainland))", "text": "如果校验失败，我们只修复输入，不记录性能结果。"},
+        {"start_ms": 53000, "end_ms": 58000, "speaker": "林", "voice": "Tingting", "text": "最后确认，测试材料全部是合成内容，不包含私人会议。"}
+      ],
+      "smart_minutes_expectations": {
+        "decisions": [{"text": "采用固定方案，后续运行不得临时更换内容。", "evidence_span": {"start_ms": 20000, "end_ms": 26000}}],
+        "actions": [{"text": "检查文件哈希和音频时长。", "evidence_span": {"start_ms": 29000, "end_ms": 36000}}],
+        "evidence_spans": [{"start_ms": 20000, "end_ms": 26000}, {"start_ms": 29000, "end_ms": 36000}, {"start_ms": 53000, "end_ms": 58000}]
+      }
+    },
+    {
+      "fixture_id": "short-en",
+      "duration_seconds": 300,
+      "cycle_duration_seconds": 60,
+      "repeat": 5,
+      "language": "English",
+      "speaker_count": 2,
+      "video_companion": false,
+      "segments": [
+        {"start_ms": 2000, "end_ms": 8000, "speaker": "Alex", "voice": "Samantha", "text": "Let us confirm the goal and freeze one replayable benchmark input."},
+        {"start_ms": 11000, "end_ms": 17000, "speaker": "Morgan", "voice": "Daniel", "text": "Every run should use the same files and the same interaction sequence."},
+        {"start_ms": 20000, "end_ms": 26000, "speaker": "Alex", "voice": "Samantha", "text": "We decide to keep the frozen plan unchanged for later measurements."},
+        {"start_ms": 29000, "end_ms": 36000, "speaker": "Morgan", "voice": "Daniel", "text": "I will verify the file hashes and audio durations before the next run."},
+        {"start_ms": 35000, "end_ms": 41000, "speaker": "Alex", "voice": "Samantha", "text": "Good, this brief overlap remains part of the fixture."},
+        {"start_ms": 44000, "end_ms": 50000, "speaker": "Morgan", "voice": "Daniel", "text": "If validation fails, we repair the input and collect no baseline."},
+        {"start_ms": 53000, "end_ms": 58000, "speaker": "Alex", "voice": "Samantha", "text": "The material is fully synthetic and contains no private meeting data."}
+      ],
+      "smart_minutes_expectations": {
+        "decisions": [{"text": "Keep the frozen plan unchanged for later measurements.", "evidence_span": {"start_ms": 20000, "end_ms": 26000}}],
+        "actions": [{"text": "Verify the file hashes and audio durations.", "evidence_span": {"start_ms": 29000, "end_ms": 36000}}],
+        "evidence_spans": [{"start_ms": 20000, "end_ms": 26000}, {"start_ms": 29000, "end_ms": 36000}, {"start_ms": 53000, "end_ms": 58000}]
+      }
+    },
+    {
+      "fixture_id": "short-mixed",
+      "duration_seconds": 300,
+      "cycle_duration_seconds": 60,
+      "repeat": 5,
+      "language": "Chinese/English",
+      "speaker_count": 2,
+      "video_companion": true,
+      "segments": [
+        {"start_ms": 2000, "end_ms": 8000, "speaker": "林", "voice": "Tingting", "text": "我们先固定今天的测试文件和操作顺序。"},
+        {"start_ms": 11000, "end_ms": 17000, "speaker": "Alex", "voice": "Samantha", "text": "The same input will be replayed for every measured run."},
+        {"start_ms": 20000, "end_ms": 26000, "speaker": "林", "voice": "Tingting", "text": "决定使用冻结方案，不在运行中修改内容。"},
+        {"start_ms": 29000, "end_ms": 36000, "speaker": "Alex", "voice": "Samantha", "text": "I will check the hashes and durations before the next run."},
+        {"start_ms": 35000, "end_ms": 41000, "speaker": "林", "voice": "Tingting", "text": "这段短暂交叉发言也保留在测试里。"},
+        {"start_ms": 44000, "end_ms": 50000, "speaker": "Alex", "voice": "Samantha", "text": "A failed validation produces no benchmark result."},
+        {"start_ms": 53000, "end_ms": 58000, "speaker": "林", "voice": "Tingting", "text": "所有内容都是合成的，不来自私人会议。"}
+      ],
+      "smart_minutes_expectations": {
+        "decisions": [{"text": "使用冻结方案，不在运行中修改内容。", "evidence_span": {"start_ms": 20000, "end_ms": 26000}}],
+        "actions": [{"text": "Check the hashes and durations before the next run.", "evidence_span": {"start_ms": 29000, "end_ms": 36000}}],
+        "evidence_spans": [{"start_ms": 20000, "end_ms": 26000}, {"start_ms": 29000, "end_ms": 36000}, {"start_ms": 35000, "end_ms": 41000}]
+      }
+    },
+    {
+      "fixture_id": "long-mixed",
+      "duration_seconds": 3600,
+      "cycle_duration_seconds": 60,
+      "repeat": 60,
+      "language": "Chinese/English",
+      "speaker_count": 3,
+      "video_companion": true,
+      "segments": [
+        {"start_ms": 2000, "end_ms": 8000, "speaker": "林", "voice": "Tingting", "text": "长时测试继续使用同一套合成材料。"},
+        {"start_ms": 11000, "end_ms": 17000, "speaker": "Alex", "voice": "Samantha", "text": "We keep the workload stable across the full session."},
+        {"start_ms": 20000, "end_ms": 26000, "speaker": "Morgan", "voice": "Daniel", "text": "The decision is to preserve every fixed benchmark parameter."},
+        {"start_ms": 29000, "end_ms": 36000, "speaker": "林", "voice": "Tingting", "text": "我负责下一轮前核对文件哈希和清单。"},
+        {"start_ms": 35000, "end_ms": 41000, "speaker": "Alex", "voice": "Samantha", "text": "This limited overlap stays in the replay."},
+        {"start_ms": 44000, "end_ms": 50000, "speaker": "Morgan", "voice": "Daniel", "text": "No performance sample is accepted after input drift."},
+        {"start_ms": 53000, "end_ms": 58000, "speaker": "林", "voice": "Tingting", "text": "材料保持脱敏，并且不读取私人记录目录。"}
+      ],
+      "smart_minutes_expectations": {
+        "decisions": [{"text": "Preserve every fixed benchmark parameter.", "evidence_span": {"start_ms": 20000, "end_ms": 26000}}],
+        "actions": [{"text": "核对文件哈希和清单。", "evidence_span": {"start_ms": 29000, "end_ms": 36000}}],
+        "evidence_spans": [{"start_ms": 20000, "end_ms": 26000}, {"start_ms": 29000, "end_ms": 36000}, {"start_ms": 35000, "end_ms": 41000}]
+      }
+    }
+  ]
+}
