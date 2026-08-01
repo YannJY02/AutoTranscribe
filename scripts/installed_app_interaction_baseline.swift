@@ -499,13 +499,17 @@ final class InstalledAppBaseline {
     }
 
     private func emitWindow(name: String, start: TimeInterval) throws {
+        let stop = ProcessInfo.processInfo.systemUptime
+        let stopWall = Date().timeIntervalSince1970
         try emit(prefix: "INSIGHTKIT_BENCHMARK_WINDOW", row: [
             "run_id": config.runID,
             "run_kind": config.runKind,
             "record_count": config.recordCount,
             "name": name,
             "start_uptime_seconds": start,
-            "stop_uptime_seconds": ProcessInfo.processInfo.systemUptime,
+            "stop_uptime_seconds": stop,
+            "start_wall_seconds": stopWall - (stop - start),
+            "stop_wall_seconds": stopWall,
         ])
     }
 
