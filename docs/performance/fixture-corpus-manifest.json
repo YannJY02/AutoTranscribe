@@ -1,0 +1,295 @@
+{
+  "absolute_root": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1",
+  "corpus_id": "insightkit-installed-app-benchmark-v1",
+  "fixtures": [
+    {
+      "fixture_id": "short-zh",
+      "language": "Chinese",
+      "media": [
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-zh.m4a",
+          "audio_packet_sha256": "b17312ec409181cd07fe4246db40dace062edb892ba2f36e2e2f45c530ee2b8f",
+          "byte_size": 1461550,
+          "codecs": [
+            "audio:aac"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 300.0,
+          "role": "canonical_audio",
+          "sha256": "6667c134f3af4c8f8920cd3e367e341f8d220667c79014e63b3bdf20aa936d9d"
+        }
+      ],
+      "provenance": {
+        "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+        "generator_version": "1",
+        "kind": "synthetic_apple_speech",
+        "source_spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json"
+      },
+      "reference_transcript": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/reference-transcripts/short-zh.json",
+        "byte_size": 10157,
+        "sha256": "9f527ca45dbe65168b0656822f824917ec2c8a67f2ef2335d49f36d6bfaaf0d2"
+      },
+      "safety": {
+        "approved_for_local_benchmark": true,
+        "private_record_folder": false,
+        "synthetic": true
+      },
+      "smart_minutes_expectations": {
+        "action_count": 5,
+        "decision_count": 5,
+        "evidence_span_count": 15
+      },
+      "speaker_count": 2,
+      "target_duration_seconds": 300
+    },
+    {
+      "fixture_id": "short-en",
+      "language": "English",
+      "media": [
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-en.m4a",
+          "audio_packet_sha256": "8647cfb177f956b9db37bb4f2f2e95042e907b2b661cc7116befd4d0ebc102ca",
+          "byte_size": 1227982,
+          "codecs": [
+            "audio:aac"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 300.0,
+          "role": "canonical_audio",
+          "sha256": "c9779e12f56f449b74ec460d9c77fa1b1498d961f67492faac9710949681e632"
+        }
+      ],
+      "provenance": {
+        "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+        "generator_version": "1",
+        "kind": "synthetic_apple_speech",
+        "source_spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json"
+      },
+      "reference_transcript": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/reference-transcripts/short-en.json",
+        "byte_size": 10067,
+        "sha256": "607f473e7cae9a856fee0060922d281af9c30e2eb638a69194e562b53016186f"
+      },
+      "safety": {
+        "approved_for_local_benchmark": true,
+        "private_record_folder": false,
+        "synthetic": true
+      },
+      "smart_minutes_expectations": {
+        "action_count": 5,
+        "decision_count": 5,
+        "evidence_span_count": 15
+      },
+      "speaker_count": 2,
+      "target_duration_seconds": 300
+    },
+    {
+      "fixture_id": "short-mixed",
+      "language": "Chinese/English",
+      "media": [
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-mixed.m4a",
+          "audio_packet_sha256": "d359d8ff7b5d8b05fe8c30b775aad8046f13a85e527c8e1e50d4a6f17aa6f2f9",
+          "byte_size": 1085018,
+          "codecs": [
+            "audio:aac"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 300.0,
+          "role": "canonical_audio",
+          "sha256": "8edd1a97b3f77ce17d3e71958ca45f05663b24aed439f781cf45e1b9f5bbc351"
+        },
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-mixed.mp4",
+          "audio_packet_sha256": "d359d8ff7b5d8b05fe8c30b775aad8046f13a85e527c8e1e50d4a6f17aa6f2f9",
+          "byte_size": 1098340,
+          "codecs": [
+            "audio:aac",
+            "video:h264"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 300.0,
+          "role": "video_companion",
+          "sha256": "f2e87d485aef8b78b0330bf40eba3d416d1ab75c3c972b953993620564f9a1ff"
+        }
+      ],
+      "provenance": {
+        "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+        "generator_version": "1",
+        "kind": "synthetic_apple_speech",
+        "source_spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json"
+      },
+      "reference_transcript": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/reference-transcripts/short-mixed.json",
+        "byte_size": 9627,
+        "sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516"
+      },
+      "safety": {
+        "approved_for_local_benchmark": true,
+        "private_record_folder": false,
+        "synthetic": true
+      },
+      "smart_minutes_expectations": {
+        "action_count": 5,
+        "decision_count": 5,
+        "evidence_span_count": 15
+      },
+      "speaker_count": 2,
+      "target_duration_seconds": 300
+    },
+    {
+      "fixture_id": "long-mixed",
+      "language": "Chinese/English",
+      "media": [
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/long-mixed.m4a",
+          "audio_packet_sha256": "a96adecc710031bc8740e71700b259ebac4e5521950533ad1f41c26c0500f6b9",
+          "byte_size": 12699636,
+          "codecs": [
+            "audio:aac"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 3600.0,
+          "role": "canonical_audio",
+          "sha256": "f8b23970c960b967487ec1f15b2600703c23725bf3a80152c83b8712e4f53fe2"
+        },
+        {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/long-mixed.mp4",
+          "audio_packet_sha256": "a96adecc710031bc8740e71700b259ebac4e5521950533ad1f41c26c0500f6b9",
+          "byte_size": 12827440,
+          "codecs": [
+            "audio:aac",
+            "video:h264"
+          ],
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration_seconds": 3600.0,
+          "role": "video_companion",
+          "sha256": "4e8ded7416042fe40270550c4aa6ddbce4bda964282083c32153439dc9b462a3"
+        }
+      ],
+      "provenance": {
+        "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+        "generator_version": "1",
+        "kind": "synthetic_apple_speech",
+        "source_spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json"
+      },
+      "reference_transcript": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/reference-transcripts/long-mixed.json",
+        "byte_size": 107795,
+        "sha256": "299a41dddea0050ba2981477509658fc6e794c5c296f68d8b9d5693041561089"
+      },
+      "safety": {
+        "approved_for_local_benchmark": true,
+        "private_record_folder": false,
+        "synthetic": true
+      },
+      "smart_minutes_expectations": {
+        "action_count": 60,
+        "decision_count": 60,
+        "evidence_span_count": 180
+      },
+      "speaker_count": 3,
+      "target_duration_seconds": 3600
+    }
+  ],
+  "generator": {
+    "record_seed": 20260801,
+    "revision": "6dff2524c06433de01e78821e641596481145a46",
+    "source": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/scripts/performance_fixture_corpus.py",
+    "source_sha256": "e7a3264bed4078343f665ec054c169ca73a2a6bd520216bd8d6a858362700695",
+    "spec": "/Users/yann.jy/.codex/worktrees/f6ac/transcription/docs/performance/fixture-corpus-spec.json",
+    "spec_sha256": "bab1655b694eec54f14eadaadeb2306593c2c0882852110fc26372f0c34b19ea",
+    "version": "1"
+  },
+  "record_collections": [
+    {
+      "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/records-100",
+      "collection_sha256": "ad8ea6005ca7cd79dfb0cc6215963a5838c6977e50d277dd6682310546407064",
+      "directory_count": 100,
+      "file_count": 601,
+      "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+      "generator_version": "1",
+      "inventory_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/inventories/records-100.jsonl",
+      "inventory_sha256": "ad8ea6005ca7cd79dfb0cc6215963a5838c6977e50d277dd6682310546407064",
+      "logical_byte_size": 228469552,
+      "record_count": 100,
+      "search_query_hit_count": 10,
+      "seed": 20260801
+    },
+    {
+      "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/records-1000",
+      "collection_sha256": "78181e4fbaa71aebfd17ca7ac89e2fafb812ac8248631a1566da4aff4e1305a7",
+      "directory_count": 1000,
+      "file_count": 6001,
+      "generator_revision": "6dff2524c06433de01e78821e641596481145a46",
+      "generator_version": "1",
+      "inventory_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/inventories/records-1000.jsonl",
+      "inventory_sha256": "78181e4fbaa71aebfd17ca7ac89e2fafb812ac8248631a1566da4aff4e1305a7",
+      "logical_byte_size": 2284695233,
+      "record_count": 1000,
+      "search_query_hit_count": 100,
+      "seed": 20260801
+    }
+  ],
+  "safety": {
+    "credentials_present": false,
+    "media_committed_to_git": false,
+    "private_record_folders_used": false,
+    "synthetic_only": true
+  },
+  "scenario_parameters": {
+    "expected_search_results": {
+      "100": 10,
+      "1000": 100
+    },
+    "generated_record_search_query": "benchmark-focus-token",
+    "input_traces": {
+      "keyboard": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/keyboard.json",
+        "byte_size": 1092,
+        "sha256": "4c9fe189f338a358189e613e347a78c8f9e762cdbdee9493420222773699dacd"
+      },
+      "pointer": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/pointer.json",
+        "byte_size": 155,
+        "sha256": "3d3691531de781c909ce5874e785e1f0731c91235b1bad139e707b235035a4ba"
+      },
+      "resize": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/resize.json",
+        "byte_size": 184,
+        "sha256": "d80273cdd030fc8a3e9c4911f12f08a8911e5a2fb1912bf4cace11530cd4af36"
+      },
+      "scroll": {
+        "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/scroll.json",
+        "byte_size": 6566,
+        "sha256": "59df75717436d432482a1fdcef11de5370936ea23878914da0b197a7d0e61fa0"
+      }
+    },
+    "playback_window_seconds": 60,
+    "post_workload_recovery_seconds": 300,
+    "seek_target_fraction": 0.6,
+    "workspace_navigation_order": [
+      "home",
+      "live",
+      "import",
+      "records",
+      "settings"
+    ]
+  },
+  "schema_version": 1,
+  "status": "frozen",
+  "tools": {
+    "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffprobe": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+    "macos": "ProductName:\t\tmacOS; ProductVersion:\t\t27.0; BuildVersion:\t\t26A5388g",
+    "python": "3.11.10",
+    "say_voice_catalog_sha256": "53eac9b3b08bf6c7d1b0ff813fb1e4dd1711b2ef0aa5e354fd6863077f70780f",
+    "say_voices": [
+      "Daniel",
+      "Eddy (Chinese (China mainland))",
+      "Samantha",
+      "Tingting"
+    ]
+  }
+}

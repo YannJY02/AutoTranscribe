@@ -75,6 +75,11 @@ a deterministic collection SHA-256 over the sorted relative path, type, byte
 size, and content SHA-256 of every entry. Media interaction uses the mixed MP4
 companions.
 
+The frozen v1 inputs are pinned in the
+[fixture corpus manifest](./fixture-corpus-manifest.json). Use the
+[generation and verification instructions](./fixture-corpus.md) before any
+baseline ticket runs.
+
 ## Cold and warm runs
 
 **Cold run**:
