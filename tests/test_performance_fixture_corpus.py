@@ -6,6 +6,7 @@ import pytest
 from scripts.performance_fixture_corpus import (
     build_inventory,
     expand_segments,
+    tempo_filter,
     validate_reference,
     validate_record_folder,
     write_record_collection,
@@ -28,6 +29,13 @@ def test_expand_segments_repeats_with_stable_offsets():
 
     assert [row["start_ms"] for row in expanded] == [1000, 6000, 11000, 16000, 21000, 26000]
     assert expanded[-1]["end_ms"] == 28000
+
+
+def test_tempo_filter_fits_speech_without_truncating_words():
+    assert tempo_filter(4.0, 5.0) == ""
+    assert tempo_filter(5.5, 5.0) == "atempo=1.100000,"
+    with pytest.raises(ValueError, match="twice"):
+        tempo_filter(10.1, 5.0)
 
 
 def test_validate_reference_rejects_private_or_unbounded_content():
