@@ -16,6 +16,7 @@ and the canonical installed-app benchmark protocol.
 | Corpus generator contract | `ab79259`; targeted pytest failed because `scripts.performance_fixture_corpus` did not exist | `1d5e19a`; 5 targeted tests passed |
 | TTS span fitting | `437d6eb`; targeted pytest failed because `tempo_filter` did not exist after a real overrun | `8b1163d`; 6 targeted tests passed |
 | Tool provenance | Not a logic branch; environment pins added after real materialization | `6dff252`; generator revision frozen in the manifest |
+| Review findings | `7000fd8`; targeted pytest failed because strict pin/root validation did not exist | `fe9beba`; 8 targeted tests and full corpus verification passed |
 
 ## Test specification
 
@@ -27,11 +28,13 @@ and the canonical installed-app benchmark protocol.
 | Generated Record Folders are deterministic, complete, and parseable | `test_record_collections_are_deterministic_complete_and_parseable` | integration | PASS |
 | Every replay trace receives an absolute path, byte size, and SHA-256 | `test_scenario_parameters_pin_every_replay_input` | unit | PASS |
 | Overlong TTS is fitted without truncating words | `test_tempo_filter_fits_speech_without_truncating_words` | unit | PASS |
+| Broad and private Record Folder output roots are rejected before replacement | `test_output_root_rejects_private_records_and_broad_targets` | unit | PASS |
+| File pins enforce both byte size and SHA-256 | `test_file_pin_verification_checks_size_and_hash` | unit | PASS |
 | All frozen media, references, traces, inventories, and 1,100 Record Folders still match | `scripts/performance_fixture_corpus.py verify` | corpus integration | PASS |
 
 ## Coverage and scope
 
 Real materialization under coverage reported 90% line coverage for
-`scripts/performance_fixture_corpus.py`. The targeted suite passed 6/6. No
+`scripts/performance_fixture_corpus.py`. The targeted suite passed 8/8. No
 installed-app baseline or optimization was run; those are deliberately outside
 issue #11.
