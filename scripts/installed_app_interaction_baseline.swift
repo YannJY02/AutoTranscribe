@@ -17,6 +17,7 @@ struct Configuration {
     let searchHitID: String
     let runID: String
     let runKind: String
+    let startGate: String?
 
     init(arguments: [String]) throws {
         guard arguments.count.isMultiple(of: 2) else {
@@ -34,6 +35,11 @@ struct Configuration {
             "--records-root", "--record-count", "--search-hit-count",
             "--search-hit-id", "--run-id", "--run-kind",
         ]
+        let allowed = Set(required + ["--start-gate"])
+        let unexpected = values.keys.filter { !allowed.contains($0) }
+        guard unexpected.isEmpty else {
+            throw BaselineFailure(message: "unknown argument: \(unexpected.sorted().joined(separator: ", "))")
+        }
         for key in required where values[key]?.isEmpty != false {
             throw BaselineFailure(message: "missing argument: \(key)")
         }
@@ -55,6 +61,15 @@ struct Configuration {
         searchHitID = values["--search-hit-id"]!
         runID = values["--run-id"]!
         runKind = values["--run-kind"]!
+        if let gate = values["--start-gate"] {
+            let path = URL(fileURLWithPath: gate).standardizedFileURL.path
+            guard path.hasPrefix("/tmp/insightkit-benchmark-gate-") else {
+                throw BaselineFailure(message: "start gate must use the dedicated /tmp prefix")
+            }
+            startGate = path
+        } else {
+            startGate = nil
+        }
     }
 }
 
@@ -74,6 +89,17 @@ final class InstalledAppBaseline {
     }
 
     func run() throws {
+        let sensitiveEnvironmentKeys = ProcessInfo.processInfo.environment.keys.filter {
+            let key = $0.uppercased()
+            return key.contains("TOKEN") || key.contains("SECRET") || key.contains("PASSWORD")
+                || key.hasSuffix("_KEY")
+        }
+        guard sensitiveEnvironmentKeys.isEmpty else {
+            throw BaselineFailure(
+                message: "refusing to launch from an environment with sensitive keys: "
+                    + sensitiveEnvironmentKeys.sorted().joined(separator: ", ")
+            )
+        }
         guard AXIsProcessTrusted(), CGPreflightPostEventAccess() else {
             throw BaselineFailure(message: "Accessibility and post-event access are required")
         }
@@ -93,6 +119,7 @@ final class InstalledAppBaseline {
             stopEvent: "Home Workspace rendered and Records action enabled",
             source: "host monotonic clock; corroborate with Instruments App Launch"
         )
+        try waitForStartGate()
 
         try navigate(phase: "live", sourceIdentifier: "home_card_live")
         try returnHome()
@@ -127,7 +154,14 @@ final class InstalledAppBaseline {
             source: "host monotonic clock; corroborate with Instruments System Trace"
         )
 
-        try resetRecordListToTop()
+        try returnHome()
+        try click(waitFor(identifier: "home_card_records", timeout: 15, requireEnabled: true))
+        _ = try waitFor(identifier: "workflow_back_home", timeout: 30, requireEnabled: true)
+        let setupSearch = try waitFor(identifier: "records_search_field", timeout: 15, requireEnabled: true)
+        try click(setupSearch)
+        _ = try replayText(query, interval: 0.08)
+        _ = try waitForValue(query, in: setupSearch, timeout: 10)
+        _ = try waitForText("全部记录 (\(searchHitCount))", timeout: 30)
         let longRecord = try waitForElement(description: "filtered long Record", timeout: 30) {
             self.find(identifierPrefix: "record_list_item_")
         }
@@ -195,6 +229,16 @@ final class InstalledAppBaseline {
         application = AXUIElementCreateApplication(runningApp.processIdentifier)
     }
 
+    private func waitForStartGate() throws {
+        guard let gate = config.startGate else { return }
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: gate) { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        throw BaselineFailure(message: "timed out waiting for the trace start gate")
+    }
+
     private func navigate(phase: String, sourceIdentifier: String) throws {
         let source = try waitFor(identifier: sourceIdentifier, timeout: 15, requireEnabled: true)
         let signpostID = OSSignpostID(log: signpostLog)
@@ -240,28 +284,6 @@ final class InstalledAppBaseline {
         }
         os_signpost(.end, log: signpostLog, name: name, signpostID: signpostID)
         try emitWindow(name: String(describing: name), start: start)
-    }
-
-    private func resetRecordListToTop() throws {
-        guard let window = windows().first else { throw BaselineFailure(message: "main window is unavailable") }
-        let windowFrame = try frame(of: window)
-        let point = CGPoint(x: windowFrame.midX + windowFrame.width * 0.15, y: windowFrame.midY)
-        activate()
-        CGWarpMouseCursorPosition(point)
-        let start = ProcessInfo.processInfo.systemUptime
-        for index in 0..<120 {
-            wait(until: start + Double(index) * 0.016)
-            guard let event = CGEvent(
-                scrollWheelEvent2Source: nil,
-                units: .pixel,
-                wheelCount: 1,
-                wheel1: 24,
-                wheel2: 0,
-                wheel3: 0
-            ) else { throw BaselineFailure(message: "could not create scroll reset event") }
-            event.post(tap: .cghidEventTap)
-        }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     private func replayResizeTrace() throws {
