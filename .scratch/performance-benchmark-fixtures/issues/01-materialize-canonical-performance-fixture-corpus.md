@@ -70,7 +70,7 @@ Implemented and verified.
 - Corpus verification passes 6/6 media assets and 1,100/1,100 Record Folders.
 - Swift Foundation independently parses 1,100/1,100 Record Folders.
 - Full Swift suite passes 264/264; normalization reports 0 findings.
-- Full Python suite reports 232 passed and the same 18 pre-existing failures
+- Full Python suite reports 234 passed and the same 18 pre-existing failures
   recorded on the preceding benchmark-protocol baseline.
 - All implementation and Spec review findings were fixed before closure.
 - Process caveat: the external issue was claimed before its local `.scratch`
