@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -519,7 +520,10 @@ def materialize(*, spec_path: Path, output_root: Path, manifest_path: Path, gene
         "tools": {
             "ffmpeg": _tool_version(["ffmpeg", "-version"]),
             "ffprobe": _tool_version(["ffprobe", "-version"]),
+            "macos": run(["sw_vers"]).replace("\n", "; "),
+            "python": sys.version.split()[0],
             "say_voices": sorted({segment["voice"] for fixture in spec["fixtures"] for segment in fixture["segments"]}),
+            "say_voice_catalog_sha256": hashlib.sha256(run(["say", "-v", "?"]).encode()).hexdigest(),
         },
         "fixtures": fixtures,
         "record_collections": collections,
