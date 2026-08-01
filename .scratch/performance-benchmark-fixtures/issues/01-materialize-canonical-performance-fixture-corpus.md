@@ -66,12 +66,15 @@ Implemented and verified.
   `/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1`.
 - Durable proof:
   `logs/diagnostics/2026-08-01/performance-fixture-corpus/proof.json`.
-- Focused tests pass 8/8; generator coverage is 90%.
+- Focused tests pass 8/8; generator coverage is 88%.
 - Corpus verification passes 6/6 media assets and 1,100/1,100 Record Folders.
 - Swift Foundation independently parses 1,100/1,100 Record Folders.
 - Full Swift suite passes 264/264; normalization reports 0 findings.
 - Full Python suite reports 232 passed and the same 18 pre-existing failures
   recorded on the preceding benchmark-protocol baseline.
-- Standards and Spec review findings were fixed before closure.
+- All implementation and Spec review findings were fixed before closure.
+- Process caveat: the external issue was claimed before its local `.scratch`
+  mirror existed. The mirror and proof were added during review; future tickets
+  must be promoted locally before implementation starts.
 
 No baseline measurement or optimization was performed.

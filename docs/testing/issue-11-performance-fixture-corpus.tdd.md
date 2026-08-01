@@ -34,7 +34,7 @@ and the canonical installed-app benchmark protocol.
 
 ## Coverage and scope
 
-Real materialization under coverage reported 90% line coverage for
+Real materialization under coverage reported 88% line coverage for
 `scripts/performance_fixture_corpus.py`. The targeted suite passed 8/8. No
 installed-app baseline or optimization was run; those are deliberately outside
 issue #11.
