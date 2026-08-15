@@ -27,8 +27,12 @@ to implement a suspected optimization.
   bundle entry, including nested helpers, resources, and the Python sidecar.
 - Plug into power, disable Low Power Mode, and keep display connections and
   brightness fixed.
-- Close unrelated apps. Before a run, require system CPU below 5% for 60
-  continuous seconds and thermal state `nominal`.
+- For a real-world cohort, keep the normal daily background workload running,
+  inventory its processes, and retain a 60-second pre-run CPU sample. CPU load
+  is descriptive evidence rather than a validity threshold; thermal state must
+  still be `nominal`. A separately declared quiescent cohort may close unrelated
+  apps and set its own fixed CPU threshold, but must not be merged with the
+  real-world cohort.
 - Keep fixture hashes, InsightKit configuration, provider/model, and network
   type fixed. A change to any fixed field starts a new cohort.
 - Keep cold and warm results separate. Do not compare different cohorts as one

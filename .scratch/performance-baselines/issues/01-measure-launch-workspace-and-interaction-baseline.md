@@ -47,3 +47,10 @@ scrolling, and window resizing.
 
 Promoted from GitHub issue #4 as the next dependency-clean ticket. No baseline
 work has started in this task.
+
+### 2026-08-15 - Owner decision
+
+Measure the installed app under the normal daily background workload. Retain
+the observed CPU series and process inventory instead of requiring an
+unrealistic 5% system-CPU gate; do not combine this real-world cohort with a
+future quiescent cohort.
