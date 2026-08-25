@@ -44,6 +44,8 @@ Every handoff names the issue, commit, changed files, gate commands and results,
 
 ## GitHub Agentic Workflows
 
+The execution boundary is deliberate: Symphony-started Codex uses the operator's existing local Codex authentication, while GitHub-hosted Agentic Workflows use Copilot with the repository-pinned `gpt-4.1` model. Do not copy Codex's local authentication cache into GitHub secrets. A hosted workflow can instead run the Codex engine with `CODEX_API_KEY` or `OPENAI_API_KEY`, or with GitHub-hosted inference through a `copilot/...` model and `copilot-requests: write`; neither path consumes a personal ChatGPT subscription.
+
 - Issue triage may apply `needs-triage` or `needs-info`, but never `ready-for-agent`.
 - `/agent-review` performs an independent PR review and comments through a sanitized safe output.
 - Doc gardening and CI failure investigation create at most one deduplicated issue per run.

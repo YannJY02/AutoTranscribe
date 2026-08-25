@@ -9,6 +9,7 @@ permissions:
   issues: read
   copilot-requests: write
 engine: copilot
+model: gpt-4.1
 strict: true
 network: defaults
 tools:
