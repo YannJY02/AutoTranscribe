@@ -215,6 +215,25 @@ def test_app_proof_doctor_checks_full_xcode_and_native_capture_tools():
     assert "file:/usr/bin/log" in checks
 
 
+def test_app_proof_doctor_reports_missing_xcode_without_crashing(monkeypatch):
+    original_run = subprocess.run
+
+    def missing_xcode(command, *args, **kwargs):
+        if command[0] in {"xcodebuild", "xcrun"}:
+            raise FileNotFoundError(command[0])
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", missing_xcode)
+
+    runtime = next(item for item in doctor(profile="app-proof")["checks"] if item["check"] == "xcode-runtime")
+    assert runtime["ok"] is False
+    assert runtime["detail"]["failed"] == [
+        "xcodebuild -version",
+        "xcrun --find xcresulttool",
+        "xcrun --find xctrace",
+    ]
+
+
 def test_lock_subcommand_runs_command_and_writes_no_secret(tmp_path):
     marker = tmp_path / "ran.json"
     command = [

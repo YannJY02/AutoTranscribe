@@ -459,7 +459,11 @@ def doctor(*, profile: str) -> dict[str, Any]:
         )
         failures: list[str] = []
         for probe in probes:
-            completed = subprocess.run(probe, text=True, capture_output=True, check=False)
+            try:
+                completed = subprocess.run(probe, text=True, capture_output=True, check=False)
+            except OSError:
+                failures.append(" ".join(probe))
+                continue
             if completed.returncode != 0:
                 failures.append(" ".join(probe))
         checks.append(
