@@ -61,11 +61,11 @@ No description was provided.
 Work only inside this repository copy. This is unattended: do not ask the user questions and do not touch paths outside the workspace.
 
 1. Run `python3.11 scripts/agent_harness.py issue-preflight --issue "{{ issue.identifier }}"{% if attempt %} --resume{% endif %}`. Stop without writes if it fails.
-2. Read `AGENTS.md`, `docs/agents/harness.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, and every issue comment.
+2. Read `AGENTS.md`, `docs/agents/harness.md`, `docs/agents/tool-boundaries.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, repository skills that match the task, and every issue comment.
 3. Claim the issue by assigning it to yourself. Reconfirm it is open and still labelled `ready-for-agent` immediately before the first code or GitHub write.
 4. Inspect existing branches and pull requests for the issue. Continue valid work; otherwise create `codex/gh-{{ issue.id }}` from the current default branch.
-5. Reproduce the problem or establish the requested baseline. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
-6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`.
+5. Reproduce the problem or establish the requested baseline. For visible macOS bugs, use the `native-app-proof` skill and preserve before evidence before editing. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
+6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`; visible behavior requires after evidence and `proof.json`.
 7. Review the diff for correctness, secrets, unrelated changes, architecture conflicts, and missing evidence. If code changed, request one independent agent review and resolve every blocking finding.
 8. If changes are needed, commit only this issue's files, push, and create or update a PR against `main`. Include the issue, manifest path, commands, results, and any human-only acceptance step. Wait for required PR checks and repair failures caused by this work.
 9. If the issue is an investigation or canary and no repository change is needed, do not manufacture a commit or PR; comment with the exact evidence instead.

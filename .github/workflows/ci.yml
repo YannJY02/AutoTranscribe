@@ -32,11 +32,6 @@ jobs:
       - name: Install repository environment
         run: ./scripts/agent_bootstrap.sh
 
-      - name: Install Agentic Workflows compiler
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh extension install github/gh-aw --pin v0.86.2
-
       - name: Lint repository automation
         run: |
           .venv/bin/python -m compileall -q insightkit scripts
@@ -171,6 +166,8 @@ jobs:
           INSIGHTKIT_UITEST_TIMEOUT_SEC: "900"
           INSIGHTKIT_UITEST_LOG_PATH: ${{ runner.temp }}/insightkit-uitest.log
           INSIGHTKIT_UITEST_RESULT_BUNDLE: ${{ runner.temp }}/InsightKitUITests.xcresult
+          INSIGHTKIT_UITEST_PROOF_ROOT: ${{ runner.temp }}/InsightKitUITests-proof
+          INSIGHTKIT_UITEST_RECORD_VIDEO: "1"
         run: ./scripts/run_uitests.sh
 
       - name: Upload XCUITest results
@@ -181,4 +178,5 @@ jobs:
           path: |
             ${{ runner.temp }}/InsightKitUITests.xcresult
             ${{ runner.temp }}/insightkit-uitest.log
+            ${{ runner.temp }}/InsightKitUITests-proof
           if-no-files-found: error

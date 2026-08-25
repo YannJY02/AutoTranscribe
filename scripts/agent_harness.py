@@ -193,8 +193,12 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
         or path.startswith(".codex/")
         or path == "scripts/agent_harness.py"
         or path == "scripts/agent_bootstrap.sh"
+        or path == "scripts/harness_maintenance.py"
+        or path == "scripts/native_app_proof.py"
         or path == "scripts/run_symphony.sh"
         or path == "tests/test_agent_harness.py"
+        or path == "tests/test_harness_maintenance.py"
+        or path == "tests/test_native_app_proof.py"
         for path in files
     )
     shell_scripts = tuple(path for path in files if path.endswith(".sh"))
@@ -317,25 +321,6 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
                 ),
             )
         )
-    agentic_changed = any(
-        (
-            path.startswith(".github/workflows/")
-            and (path.endswith(".md") or path.endswith(".lock.yml"))
-        )
-        or path in {
-            ".github/workflows/agentic_commands.yml",
-            ".github/workflows/agentics-maintenance.yml",
-            ".github/aw/actions-lock.json",
-        }
-        for path in files
-    )
-    if agentic_changed:
-        gates.append(
-            GateSpec(
-                "agentic-workflows",
-                ((python_executable, "scripts/agent_harness.py", "agentic-lock-check"),),
-            )
-        )
     return gates
 
 
@@ -366,43 +351,6 @@ def _run_command(command: Sequence[str], *, output_root: Path) -> CommandResult:
         exit_code=completed.returncode,
         duration_seconds=round(time.monotonic() - started, 3),
     )
-
-
-def _agentic_generated_snapshot() -> dict[str, bytes]:
-    paths = {
-        *ROOT.glob(".github/workflows/*.lock.yml"),
-        ROOT / ".github/workflows/agentic_commands.yml",
-        ROOT / ".github/workflows/agentics-maintenance.yml",
-        ROOT / ".github/aw/actions-lock.json",
-    }
-    return {
-        str(path.relative_to(ROOT)): path.read_bytes()
-        for path in sorted(paths)
-        if path.is_file()
-    }
-
-
-def check_agentic_locks() -> int:
-    before = _agentic_generated_snapshot()
-    completed = subprocess.run(
-        ["gh", "aw", "compile", "--strict", "--validate", "--actionlint", "--purge"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        print((completed.stderr or completed.stdout).strip(), file=sys.stderr)
-        return completed.returncode
-
-    after = _agentic_generated_snapshot()
-    changed = sorted(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
-    if changed:
-        print("generated Agentic Workflow files were stale; commit the compiled changes:", file=sys.stderr)
-        for path in changed:
-            print(f"- {path}", file=sys.stderr)
-        return 1
-    return 0
 
 
 def _git_value(*args: str) -> str:
@@ -473,13 +421,20 @@ def doctor(*, profile: str) -> dict[str, Any]:
         "docs/agents/harness.md",
         "docs/agents/issue-tracker.md",
         "docs/agents/loop-engineering.md",
+        "docs/agents/tool-boundaries.md",
+        ".agents/skills/native-app-proof/SKILL.md",
+        ".agents/skills/promote-feedback/SKILL.md",
         ".github/ISSUE_TEMPLATE/agent-task.yml",
         ".github/workflows/ci.yml",
         "scripts/agent_bootstrap.sh",
+        "scripts/harness_maintenance.py",
+        "scripts/native_app_proof.py",
     )
     required_commands = ["git", "python3.11"]
     if profile in {"local", "symphony"}:
         required_commands.extend(["gh", "codex", "symphony", "swift", "xcodegen"])
+    if profile == "app-proof":
+        required_commands.extend(["xcodebuild", "xcrun", "xcodegen"])
 
     checks: list[dict[str, Any]] = []
     for relative in required_files:
@@ -488,6 +443,36 @@ def doctor(*, profile: str) -> dict[str, Any]:
     for command in required_commands:
         resolved = shutil.which(command)
         checks.append({"check": f"command:{command}", "ok": bool(resolved), "detail": resolved or "not found"})
+    for path in (Path("/usr/sbin/screencapture"), Path("/usr/bin/log")) if profile == "app-proof" else ():
+        checks.append(
+            {
+                "check": f"file:{path}",
+                "ok": path.is_file(),
+                "detail": "present" if path.is_file() else "missing",
+            }
+        )
+    if profile == "app-proof":
+        probes = (
+            ("xcodebuild", "-version"),
+            ("xcrun", "--find", "xcresulttool"),
+            ("xcrun", "--find", "xctrace"),
+        )
+        failures: list[str] = []
+        for probe in probes:
+            try:
+                completed = subprocess.run(probe, text=True, capture_output=True, check=False)
+            except OSError:
+                failures.append(" ".join(probe))
+                continue
+            if completed.returncode != 0:
+                failures.append(" ".join(probe))
+        checks.append(
+            {
+                "check": "xcode-runtime",
+                "ok": not failures,
+                "detail": "full Xcode tools available" if not failures else {"failed": failures},
+            }
+        )
 
     text_checks = (
         ("AGENTS.md", "GitHub Issues", True),
@@ -559,7 +544,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor_parser = subparsers.add_parser("doctor", help="Check the local harness contract and required tools.")
-    doctor_parser.add_argument("--profile", choices=("local", "ci", "symphony"), default="local")
+    doctor_parser.add_argument("--profile", choices=("local", "ci", "symphony", "app-proof"), default="local")
     doctor_parser.add_argument("--json", action="store_true")
 
     issue_parser = subparsers.add_parser("issue-preflight", help="Validate a GitHub issue before unattended execution.")
@@ -579,7 +564,6 @@ def build_parser() -> argparse.ArgumentParser:
     lock_parser.add_argument("--timeout", type=float, default=1800)
     lock_parser.add_argument("remainder", nargs=argparse.REMAINDER)
 
-    subparsers.add_parser("agentic-lock-check", help="Compile Agentic Workflows and fail if generated files change.")
     return parser
 
 
@@ -625,8 +609,6 @@ def main() -> int:
             if command and command[0] == "--":
                 command = command[1:]
             return run_with_lock(resource=args.resource, timeout=args.timeout, command=command)
-        if args.command == "agentic-lock-check":
-            return check_agentic_locks()
     except (RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

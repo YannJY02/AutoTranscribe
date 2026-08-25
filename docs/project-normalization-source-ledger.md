@@ -90,7 +90,8 @@ This ledger tells future agents which existing assets to trust for project-norma
 - `docs/agents/triage-labels.md`: allowed status vocabulary.
 - `docs/agents/domain.md`: domain-doc maintenance convention.
 - `docs/agents/loop-engineering.md`: Matt workflow loop packet, routes, verification ladder, feedback packet, stop rules, and record-keeping rules.
-- `docs/agents/harness.md`: Codex, Symphony, deterministic CI, resource lock, evidence, and Agentic Workflow contract.
+- `docs/agents/harness.md`: Codex, Symphony, deterministic CI, resource lock, native application proof, and local recurring-maintenance contract.
+- `docs/agents/tool-boundaries.md`: Linear portfolio, GitHub execution truth, local Codex/Symphony, native observability, and human acceptance boundaries.
 
 ## Use Rules
 

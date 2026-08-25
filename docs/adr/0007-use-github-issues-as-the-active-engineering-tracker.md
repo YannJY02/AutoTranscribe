@@ -17,4 +17,5 @@ This decision supersedes only the `.scratch/public-distribution-readiness/` trac
 - Active priority, blockers, assignment, and triage state live on GitHub.
 - Unattended work must pass the repository's Agent Task contract before receiving `ready-for-agent`.
 - Successful agent work stops at `ready-for-human`; human acceptance and merge remain separate.
-- Huly, Plane, and GitHub Projects may provide views or portfolio planning later, but they must not become competing task state stores.
+- Linear is the human portfolio view for objectives, priority, and review attention. It links to GitHub execution records and must not become a competing task state store.
+- A future migration to Symphony's native Linear tracker must replace this ADR and migrate open state once; a permanent two-way active queue is not allowed.

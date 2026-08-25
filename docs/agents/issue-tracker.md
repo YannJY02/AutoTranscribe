@@ -2,6 +2,8 @@
 
 GitHub Issues are the only active task and PRD source. Use `gh`; infer the repository from the current checkout.
 
+Linear may link portfolio objectives to these issues, but it does not copy their acceptance criteria, blockers, assignment, or triage state. See `docs/agents/tool-boundaries.md`.
+
 ## Agent task contract
 
 Create unattended tasks with `.github/ISSUE_TEMPLATE/agent-task.yml`. Before applying `ready-for-agent`, require non-empty Goal, Context, Boundary, Acceptance, Verification, Resource class, Blockers, and Human gates sections.

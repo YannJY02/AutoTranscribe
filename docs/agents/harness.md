@@ -1,14 +1,18 @@
 # InsightKit Agent Harness
 
-The repository supplies missing capabilities around Codex's built-in thread persistence, sandbox, tools, and skills. GitHub is the control plane; Symphony dispatches; deterministic Actions verify; Agentic Workflows advise and write only through safe outputs.
+The repository supplies missing capabilities around Codex's built-in thread persistence, sandbox, tools, and skills. Linear is the human portfolio view; GitHub Issues are the execution control plane; local Symphony dispatches; Codex executes through the operator's ChatGPT subscription; ordinary Actions verify deterministically.
 
 ## Entry points
 
 ```bash
 ./scripts/agent_bootstrap.sh
 python3.11 scripts/agent_harness.py doctor
+python3.11 scripts/agent_harness.py doctor --profile app-proof
 python3.11 scripts/agent_harness.py issue-preflight --issue <number>
 python3.11 scripts/agent_harness.py verify --issue <number> --mode full
+python3.11 scripts/harness_maintenance.py plan --task due
+python3.11 scripts/harness_maintenance.py enqueue --task due
+python3.11 scripts/harness_maintenance.py install-launch-agent --repo-root <canonical-main-checkout>
 ./scripts/run_symphony.sh
 ```
 
@@ -18,13 +22,14 @@ Before starting Symphony, create a dedicated fine-grained token limited to this 
 
 ## Control and feedback flow
 
-1. A human or triage workflow records intent in a GitHub Issue.
+1. A human prioritizes an objective in Linear and links the authoritative GitHub execution issue when work is ready to specify.
 2. Deterministic preflight authorizes only complete, unblocked `ready-for-agent` work.
 3. Symphony creates an isolated clone and resumes the Codex App Server thread on retry.
 4. Codex implements or investigates using repository Context, ADRs, skills, and tools.
-5. Harness verification records commands and results in `logs/harness/<run>/manifest.json`.
-6. GitHub Actions reruns deterministic checks; an on-demand Agentic Workflow supplies independent review.
-7. The issue moves to `ready-for-human`; a human accepts and merges.
+5. Visible macOS work records XCUITest screenshots, optional video, unified logs, JSON metrics, optional Instruments trace, and `proof.json`.
+6. Harness verification records commands and results in `logs/harness/<run>/manifest.json`; an independent local Codex review examines code changes.
+7. GitHub Actions reruns deterministic build, test, UI, package, and release checks only.
+8. The issue moves to `ready-for-human`; a human accepts and merges.
 
 ## Resource isolation
 
@@ -42,23 +47,31 @@ The standard-library file lock is released automatically if the process exits.
 
 Every handoff names the issue, commit, changed files, gate commands and results, CI checks, PR or no-change conclusion, and unresolved human-only acceptance. Manifests never include environment variables, credentials, or full process environments.
 
-## GitHub Agentic Workflows
+## Native application legibility
 
-The execution boundary is deliberate: Symphony-started Codex uses the operator's existing local Codex authentication, while GitHub-hosted Agentic Workflows use Copilot with the repository-pinned `gpt-4.1` model. Do not copy Codex's local authentication cache into GitHub secrets. A hosted workflow can instead run the Codex engine with `CODEX_API_KEY` or `OPENAI_API_KEY`, or with GitHub-hosted inference through a `copilot/...` model and `copilot-requests: write`; neither path consumes a personal ChatGPT subscription.
+`scripts/run_uitests.sh` creates a per-run proof directory next to its `.xcresult`. It contains kept XCTest screenshots, bounded macOS Unified Logging output, test-duration metrics, and `proof.json`. CI also opts into a main-display journey video because the runner is isolated. Local video recording is opt-in because it can capture unrelated screen content. Instruments capture is opt-in for evidenced performance work.
 
-- Issue triage may apply `needs-triage` or `needs-info`, but never `ready-for-agent`.
-- `/agent-review` performs an independent PR review and comments through a sanitized safe output.
-- Doc gardening and CI failure investigation create at most one deduplicated issue per run.
-- Agent jobs remain read-only; GitHub writes happen in separate safe-output jobs.
+For this native macOS app, these are the application-legibility equivalents:
 
-Ordinary CI provides Python and shell syntax lint, generated-workflow actionlint, Python and Swift unit tests, XCUITest, local release packaging, and release preflight. Developer ID, notarization, App Store signing, and deployment remain explicit human gates because they require owner credentials and channel decisions.
+- CDP and DOM snapshots → XCUITest, Accessibility identifiers, XCTest screenshots, optional journey video.
+- LogQL → bounded Unified Logging NDJSON queried with `rg` or `jq`.
+- PromQL → per-run `metrics.json` queried with `jq` and enforced by test thresholds.
+- OpenTelemetry traces → Instruments `.trace` recorded with `xctrace` for an explicit performance question.
 
-Compile after editing workflow markdown, then run the lock check so CI executes exactly the reviewed source:
+Use the `native-app-proof` skill for the exact before/after workflow. Xcode is required for XCUITest, `xcresulttool`, and `xctrace`; a Mac without full Xcode cannot claim local app proof.
+
+## Local recurring agents
+
+`scripts/harness_maintenance.py` replaces hosted Agentic Workflows. A macOS LaunchAgent runs it daily at 09:00; it catches up every current-week task due by that weekday, and a period marker prevents duplicates. Monday gardens documentation, Tuesday promotes one repeated feedback invariant, and Friday repairs one golden-principle deviation. Each generated GitHub Issue passes the standard task contract and is executed by local Symphony/Codex.
+
+Preview or enqueue manually:
 
 ```bash
-gh aw compile --strict --validate
-python3.11 scripts/agent_harness.py agentic-lock-check
+python3.11 scripts/harness_maintenance.py plan --task due
+python3.11 scripts/harness_maintenance.py enqueue --task due
 ```
+
+Ordinary CI remains intentionally non-agentic. It provides Python and shell syntax lint, Python and Swift unit tests, XCUITest proof, local release packaging, and release preflight. Developer ID, notarization, App Store signing, deployment, Linear/GitHub integration changes, and product acceptance remain explicit human gates when credentials or judgment are required.
 
 ## Autonomy ceiling
 
