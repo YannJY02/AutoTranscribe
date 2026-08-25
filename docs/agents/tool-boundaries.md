@@ -35,6 +35,7 @@ python3.11 scripts/agent_harness.py issue-preflight --issue <number>
 python3.11 scripts/agent_harness.py verify --issue <number> --mode full
 python3.11 scripts/harness_maintenance.py plan --task due
 python3.11 scripts/harness_maintenance.py enqueue --task due
+python3.11 scripts/harness_maintenance.py install-symphony-launch-agent --repo-root <canonical-main-checkout>
 ./scripts/run_symphony.sh
 ```
 

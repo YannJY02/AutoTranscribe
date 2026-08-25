@@ -2,6 +2,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+unset OPENAI_API_KEY
 
 for required_command in symphony codex gh python3.11; do
   if ! command -v "$required_command" >/dev/null 2>&1; then

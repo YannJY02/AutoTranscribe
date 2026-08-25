@@ -11,6 +11,7 @@ from scripts.harness_maintenance import (
     enqueue,
     existing_issue_url,
     install_launch_agent,
+    install_symphony_launch_agent,
     issue_body,
     marker_for,
 )
@@ -65,6 +66,28 @@ def test_launch_agent_uses_canonical_repo_and_daily_schedule(tmp_path, monkeypat
     ]
     assert payload["WorkingDirectory"] == str(repo)
     assert payload["StartCalendarInterval"] == {"Hour": 9, "Minute": 0}
+
+
+def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path):
+    repo = tmp_path / "repo"
+    launcher = repo / "scripts" / "run_symphony.sh"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    (repo / "WORKFLOW.md").write_text("# test\n", encoding="utf-8")
+
+    destination = install_symphony_launch_agent(
+        repo,
+        load=False,
+        launch_agents_dir=tmp_path / "LaunchAgents",
+    )
+    payload = plistlib.loads(destination.read_bytes())
+
+    assert payload["ProgramArguments"] == ["/bin/sh", str(launcher)]
+    assert payload["WorkingDirectory"] == str(repo)
+    assert payload["EnvironmentVariables"]["SYMPHONY_REPO_SOURCE"] == str(repo)
+    assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
+    assert payload["KeepAlive"] is True
+    assert payload["RunAtLoad"] is True
 
 
 def test_enqueue_reuses_existing_period_issue_without_creating(monkeypatch):

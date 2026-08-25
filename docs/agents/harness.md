@@ -13,18 +13,19 @@ python3.11 scripts/agent_harness.py verify --issue <number> --mode full
 python3.11 scripts/harness_maintenance.py plan --task due
 python3.11 scripts/harness_maintenance.py enqueue --task due
 python3.11 scripts/harness_maintenance.py install-launch-agent --repo-root <canonical-main-checkout>
+python3.11 scripts/harness_maintenance.py install-symphony-launch-agent --repo-root <canonical-main-checkout>
 ./scripts/run_symphony.sh
 ```
 
 `agent_harness.py` is the single Interface for local harness checks. Its implementation reuses existing tests and verifiers rather than duplicating release logic.
 
-Before starting Symphony, create a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. Supply it as `SYMPHONY_GITHUB_TOKEN` or store it in macOS Keychain under service `com.autotranscribe.symphony.github-token` and account `symphony`. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. Codex's own GitHub writes use its separately authenticated `gh` session.
+Before starting Symphony, create a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. Supply it as `SYMPHONY_GITHUB_TOKEN` or store it in macOS Keychain under service `com.autotranscribe.symphony.github-token` and account `symphony`. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. It explicitly removes `OPENAI_API_KEY`, so Codex uses the operator's ChatGPT login. Codex's own GitHub writes use its separately authenticated `gh` session.
 
 ## Control and feedback flow
 
 1. A human prioritizes an objective in Linear and links the authoritative GitHub execution issue when work is ready to specify.
 2. Deterministic preflight authorizes only complete, unblocked `ready-for-agent` work.
-3. Symphony creates an isolated clone and resumes the Codex App Server thread on retry.
+3. Symphony creates an isolated clone from the locally synchronized canonical `main`, resets `origin` to GitHub, and resumes the Codex App Server thread on retry.
 4. Codex implements or investigates using repository Context, ADRs, skills, and tools.
 5. Visible macOS work records XCUITest screenshots, optional video, unified logs, JSON metrics, optional Instruments trace, and `proof.json`.
 6. Harness verification records commands and results in `logs/harness/<run>/manifest.json`; an independent local Codex review examines code changes.
@@ -62,7 +63,7 @@ Use the `native-app-proof` skill for the exact before/after workflow. Xcode is r
 
 ## Local recurring agents
 
-`scripts/harness_maintenance.py` replaces hosted Agentic Workflows. A macOS LaunchAgent runs it daily at 09:00; it catches up every current-week task due by that weekday, and a period marker prevents duplicates. Monday gardens documentation, Tuesday promotes one repeated feedback invariant, and Friday repairs one golden-principle deviation. Each generated GitHub Issue passes the standard task contract and is executed by local Symphony/Codex.
+`scripts/harness_maintenance.py` replaces hosted Agentic Workflows. One macOS LaunchAgent runs it daily at 09:00; another keeps Symphony running across login and process failure. The maintenance schedule catches up every current-week task due by that weekday, and a period marker prevents duplicates. Monday gardens documentation, Tuesday promotes one repeated feedback invariant, and Friday repairs one golden-principle deviation. Each generated GitHub Issue passes the standard task contract and is executed by local Symphony/Codex.
 
 Preview or enqueue manually:
 
