@@ -17,7 +17,9 @@ workspace:
 hooks:
   timeout_ms: 300000
   after_create: |
-    git clone --depth 1 https://github.com/YannJY02/AutoTranscribe.git .
+    repo_source="${SYMPHONY_REPO_SOURCE:-https://github.com/YannJY02/AutoTranscribe.git}"
+    git clone --depth 1 --no-local "$repo_source" .
+    git remote set-url origin https://github.com/YannJY02/AutoTranscribe.git
     if [ -n "${SYMPHONY_BOOTSTRAP_REF:-}" ]; then
       git fetch --depth 1 origin "$SYMPHONY_BOOTSTRAP_REF"
       git checkout --detach FETCH_HEAD
@@ -29,7 +31,7 @@ agent:
   max_turns: 30
 codex:
   # The tracker token stays in Symphony; Codex receives only its native core environment.
-  command: env -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN codex --config shell_environment_policy.inherit=core app-server
+  command: env -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN -u OPENAI_API_KEY codex --config shell_environment_policy.inherit=core app-server
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:

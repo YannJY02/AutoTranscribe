@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "YannJY02/AutoTranscribe"
 LAUNCH_AGENT_LABEL = "com.insightkit.harness-maintenance"
+SYMPHONY_LAUNCH_AGENT_LABEL = "com.insightkit.symphony"
 
 
 @dataclass(frozen=True)
@@ -205,6 +206,48 @@ def install_launch_agent(repo_root: Path, *, load: bool, launch_agents_dir: Path
     return destination
 
 
+def install_symphony_launch_agent(
+    repo_root: Path,
+    *,
+    load: bool,
+    launch_agents_dir: Path | None = None,
+) -> Path:
+    repo_root = repo_root.expanduser().resolve()
+    launcher = repo_root / "scripts" / "run_symphony.sh"
+    workflow = repo_root / "WORKFLOW.md"
+    if not launcher.is_file() or not workflow.is_file():
+        raise ValueError(f"Symphony launcher or workflow not found under repository: {repo_root}")
+    log_root = repo_root / "logs" / "symphony"
+    log_root.mkdir(parents=True, exist_ok=True)
+    launch_agents = launch_agents_dir or Path.home() / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True, exist_ok=True)
+    destination = launch_agents / f"{SYMPHONY_LAUNCH_AGENT_LABEL}.plist"
+    payload = {
+        "Label": SYMPHONY_LAUNCH_AGENT_LABEL,
+        "ProgramArguments": ["/bin/sh", str(launcher)],
+        "WorkingDirectory": str(repo_root),
+        "EnvironmentVariables": {
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "SYMPHONY_REPO_SOURCE": str(repo_root),
+        },
+        "KeepAlive": True,
+        "RunAtLoad": True,
+        "ProcessType": "Background",
+        "StandardOutPath": str(log_root / "launchd.stdout.log"),
+        "StandardErrorPath": str(log_root / "launchd.stderr.log"),
+    }
+    destination.write_bytes(plistlib.dumps(payload, sort_keys=True))
+    if load:
+        domain = f"gui/{os.getuid()}"
+        subprocess.run(
+            ["launchctl", "bootout", f"{domain}/{SYMPHONY_LAUNCH_AGENT_LABEL}"],
+            capture_output=True,
+            check=False,
+        )
+        _run(["launchctl", "bootstrap", domain, str(destination)])
+    return destination
+
+
 def _selected_tasks(selector: str, day: date) -> list[MaintenanceTask]:
     names = due_task_names(day) if selector == "due" else list(TASKS) if selector == "all" else [selector]
     return [TASKS[name] for name in names]
@@ -220,6 +263,9 @@ def build_parser() -> argparse.ArgumentParser:
     install = subparsers.add_parser("install-launch-agent")
     install.add_argument("--repo-root", type=Path, default=ROOT)
     install.add_argument("--no-load", action="store_true")
+    install_symphony = subparsers.add_parser("install-symphony-launch-agent")
+    install_symphony.add_argument("--repo-root", type=Path, default=ROOT)
+    install_symphony.add_argument("--no-load", action="store_true")
     return parser
 
 
@@ -228,6 +274,9 @@ def main() -> int:
     try:
         if args.command == "install-launch-agent":
             print(install_launch_agent(args.repo_root, load=not args.no_load))
+            return 0
+        if args.command == "install-symphony-launch-agent":
+            print(install_symphony_launch_agent(args.repo_root, load=not args.no_load))
             return 0
         day = date.fromisoformat(args.date)
         tasks = _selected_tasks(args.task, day)

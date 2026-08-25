@@ -199,9 +199,13 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "shell_environment_policy.inherit=core" in workflow
     assert "shell_environment_policy.inherit=all" not in workflow
     assert "env -u SYMPHONY_GITHUB_TOKEN" in workflow
+    assert "-u OPENAI_API_KEY" in workflow
+    assert "SYMPHONY_REPO_SOURCE" in workflow
+    assert "git remote set-url origin" in workflow
     assert "gh auth token" not in launcher
     assert "SYMPHONY_GITHUB_TOKEN" in launcher
     assert "security find-generic-password" in launcher
+    assert "unset OPENAI_API_KEY" in launcher
 
 
 def test_app_proof_doctor_checks_full_xcode_and_native_capture_tools():
