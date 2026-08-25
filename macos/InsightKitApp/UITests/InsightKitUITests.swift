@@ -1,4 +1,3 @@
-import AppKit
 import XCTest
 
 /// Base class for InsightKit UI tests.
@@ -120,25 +119,10 @@ class InsightKitUITests: XCTestCase {
     }
 
     func enterText(_ text: String, into element: XCUIElement) {
-        let pasteboard = NSPasteboard.general
-        let previousString = pasteboard.string(forType: .string)
-
         app.activate()
         element.click()
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
         element.typeKey("a", modifierFlags: .command)
-        element.typeKey("v", modifierFlags: .command)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        restorePasteboard(previousString)
-    }
-
-    private func restorePasteboard(_ string: String?) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard let string else { return }
-        pasteboard.setString(string, forType: .string)
+        element.typeText(text)
     }
 }

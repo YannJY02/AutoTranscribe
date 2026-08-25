@@ -12,6 +12,10 @@ final class RecordsPersistenceUITests: InsightKitUITests {
         ]
     }
 
+    override var launchArgumentOverrides: [String] {
+        ["--ui-test-seed-record=\(seedRecordID)"]
+    }
+
     override func setUpWithError() throws {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("InsightKitRecordsUITests-\(UUID().uuidString)")

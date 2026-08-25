@@ -138,15 +138,17 @@ final class RecordsIndexService: ObservableObject {
         return Array(records.prefix(limit))
     }
 
-    func prepareUITestSeedIfRequested() {
+    func prepareUITestSeedIfRequested(arguments: [String] = ProcessInfo.processInfo.arguments) {
         guard environment["INSIGHTKIT_UI_TEST_MODE"] == "1",
-              let recordID = environment["INSIGHTKIT_UI_TEST_SEED_RECORD_ID"],
+              let recordID = environment["INSIGHTKIT_UI_TEST_SEED_RECORD_ID"]
+                ?? arguments.first(where: { $0.hasPrefix("--ui-test-seed-record=") })?
+                    .replacingOccurrences(of: "--ui-test-seed-record=", with: ""),
               Self.isSafeRecordID(recordID)
         else { return }
 
         let metadata = RecordMetadata(
             id: recordID,
-            createdAt: Date(timeIntervalSince1970: 1_782_720_000),
+            createdAt: Date(),
             duration: 30,
             mediaType: .audio,
             source: .imported,

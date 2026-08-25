@@ -89,10 +89,9 @@ final class RecordsIndexServiceTests: XCTestCase {
         let service = RecordsIndexService(environment: [
             "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
             "INSIGHTKIT_UI_TEST_MODE": "1",
-            "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": "record-restart-proof",
         ])
 
-        service.prepareUITestSeedIfRequested()
+        service.prepareUITestSeedIfRequested(arguments: ["InsightKitApp", "--ui-test-seed-record=record-restart-proof"])
 
         XCTAssertEqual(service.records.map(\.id), ["record-restart-proof"])
         XCTAssertEqual(service.records.first?.summaryPreview, "restart persistence evidence")
