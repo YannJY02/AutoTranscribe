@@ -7,6 +7,7 @@ on:
     types: [completed]
     branches: [main, "codex/**"]
   workflow_dispatch:
+if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'success'
 permissions:
   actions: read
   checks: read
