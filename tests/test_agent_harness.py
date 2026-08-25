@@ -207,6 +207,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "gh auth token" not in launcher
     assert "SYMPHONY_GITHUB_TOKEN" in launcher
     assert "security find-generic-password" in launcher
+    assert "proxy-environment" in launcher
     assert "unset OPENAI_API_KEY" in launcher
 
 

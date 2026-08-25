@@ -11,6 +11,8 @@ for required_command in symphony codex gh python3.11; do
   fi
 done
 
+eval "$(python3.11 "$repo_root/scripts/harness_maintenance.py" proxy-environment)"
+
 if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ] && command -v security >/dev/null 2>&1; then
   SYMPHONY_GITHUB_TOKEN=$(security find-generic-password \
     -a symphony \

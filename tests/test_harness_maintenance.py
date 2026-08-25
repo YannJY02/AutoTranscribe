@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date
 import json
 import plistlib
+import shlex
 import subprocess
 
 from scripts.harness_maintenance import (
     TASKS,
     _macos_proxy_environment,
+    _shell_proxy_exports,
     due_task_names,
     enqueue,
     existing_issue_url,
@@ -77,11 +79,17 @@ def test_macos_proxy_environment_reads_enabled_system_proxies(monkeypatch):
   HTTPSEnable : 1
   HTTPSProxy : 127.0.0.1
   HTTPSPort : 7897
+  ExceptionsList : <array> {
+    0 : *.local
+    1 : 169.254/16
+  }
+  ExcludeSimpleHostnames : 1
   __SCOPED__ : <dictionary> {
     HTTPProxy : ignored.example
     HTTPPort : 9999
   }
 """
+    monkeypatch.setattr("scripts.harness_maintenance.sys.platform", "darwin")
     monkeypatch.setattr(
         "scripts.harness_maintenance.subprocess.run",
         lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, output, ""),
@@ -90,8 +98,14 @@ def test_macos_proxy_environment_reads_enabled_system_proxies(monkeypatch):
     assert _macos_proxy_environment() == {
         "HTTP_PROXY": "http://127.0.0.1:7897",
         "HTTPS_PROXY": "http://127.0.0.1:7897",
-        "NO_PROXY": "127.0.0.1,localhost",
+        "NO_PROXY": "127.0.0.1,localhost,*.local,169.254/16,<local>",
     }
+
+
+def test_shell_proxy_exports_quote_untrusted_system_values():
+    exports = _shell_proxy_exports({"HTTPS_PROXY": "http://proxy/'$(unsafe)"})
+
+    assert shlex.split(exports.removeprefix("export ")) == ["HTTPS_PROXY=http://proxy/'$(unsafe)"]
 
 
 def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, monkeypatch):
@@ -108,14 +122,6 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     }
     monkeypatch.setenv("PATH", "/first:/tools:/last:/unrelated")
     monkeypatch.setattr("scripts.harness_maintenance.shutil.which", resolved.get)
-    monkeypatch.setattr(
-        "scripts.harness_maintenance._macos_proxy_environment",
-        lambda: {
-            "HTTP_PROXY": "http://127.0.0.1:7897",
-            "HTTPS_PROXY": "http://127.0.0.1:7897",
-            "NO_PROXY": "127.0.0.1,localhost",
-        },
-    )
 
     destination = install_symphony_launch_agent(
         repo,
@@ -128,8 +134,7 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     assert payload["WorkingDirectory"] == str(repo)
     assert payload["EnvironmentVariables"]["SYMPHONY_REPO_SOURCE"] == str(repo)
     assert payload["EnvironmentVariables"]["PATH"].split(":")[:3] == ["/first", "/tools", "/last"]
-    assert payload["EnvironmentVariables"]["HTTPS_PROXY"] == "http://127.0.0.1:7897"
-    assert payload["EnvironmentVariables"]["NO_PROXY"] == "127.0.0.1,localhost"
+    assert "HTTPS_PROXY" not in payload["EnvironmentVariables"]
     assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
     assert payload["KeepAlive"] is True
     assert payload["RunAtLoad"] is True
