@@ -35,7 +35,7 @@ jobs:
       - name: Install Agentic Workflows compiler
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh extension install github/gh-aw@v0.86.2
+        run: gh extension install github/gh-aw --pin v0.86.2
 
       - name: Lint repository automation
         run: |
