@@ -158,8 +158,7 @@ def _macos_proxy_environment() -> dict[str, str]:
     }
     if environment:
         bypass = ["127.0.0.1", "localhost", *exceptions]
-        if settings.get("ExcludeSimpleHostnames") == "1":
-            bypass.append("<local>")
+        # ponytail: NO_PROXY has no dotless-host wildcard; add per-client adapters if intranet hosts enter scope.
         environment["NO_PROXY"] = ",".join(dict.fromkeys(bypass))
     return environment
 
