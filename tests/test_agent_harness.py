@@ -200,7 +200,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "shell_environment_policy.inherit=all" not in workflow
     assert "env -u SYMPHONY_GITHUB_TOKEN" in workflow
     assert "-u OPENAI_API_KEY" in workflow
-    assert "read_timeout_ms: 30000" in workflow
+    assert "read_timeout_ms: 120000" in workflow
     assert "dashboard_enabled: false" in workflow
     assert "SYMPHONY_REPO_SOURCE" in workflow
     assert "git remote set-url origin" in workflow
