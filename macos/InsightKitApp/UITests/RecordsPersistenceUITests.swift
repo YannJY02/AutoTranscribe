@@ -8,12 +8,7 @@ final class RecordsPersistenceUITests: InsightKitUITests {
         guard let tempRoot else { return [:] }
         return [
             "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
-            "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": seedRecordID,
         ]
-    }
-
-    override var launchArgumentOverrides: [String] {
-        ["--ui-test-seed-record=\(seedRecordID)"]
     }
 
     override func setUpWithError() throws {

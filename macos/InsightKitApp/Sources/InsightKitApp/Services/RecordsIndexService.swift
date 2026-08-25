@@ -138,13 +138,8 @@ final class RecordsIndexService: ObservableObject {
         return Array(records.prefix(limit))
     }
 
-    func prepareUITestSeedIfRequested(arguments: [String] = ProcessInfo.processInfo.arguments) {
-        guard (environment["INSIGHTKIT_UI_TEST_MODE"] == "1" || arguments.contains("--ui-test-mode")),
-              let recordID = environment["INSIGHTKIT_UI_TEST_SEED_RECORD_ID"]
-                ?? arguments.first(where: { $0.hasPrefix("--ui-test-seed-record=") })?
-                    .replacingOccurrences(of: "--ui-test-seed-record=", with: ""),
-              Self.isSafeRecordID(recordID)
-        else { return }
+    func prepareUITestSeed(recordID: String) {
+        guard Self.isSafeRecordID(recordID) else { return }
 
         let metadata = RecordMetadata(
             id: recordID,

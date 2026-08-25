@@ -90,11 +90,7 @@ final class RecordsIndexServiceTests: XCTestCase {
             "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
         ])
 
-        service.prepareUITestSeedIfRequested(arguments: [
-            "InsightKitApp",
-            "--ui-test-mode",
-            "--ui-test-seed-record=record-restart-proof",
-        ])
+        service.prepareUITestSeed(recordID: "record-restart-proof")
 
         XCTAssertEqual(service.records.map(\.id), ["record-restart-proof"])
         XCTAssertEqual(service.records.first?.summaryPreview, "restart persistence evidence")
@@ -107,7 +103,7 @@ final class RecordsIndexServiceTests: XCTestCase {
             "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": "../escape",
         ])
 
-        service.prepareUITestSeedIfRequested()
+        service.prepareUITestSeed(recordID: "../escape")
 
         XCTAssertTrue(service.records.isEmpty)
         XCTAssertFalse(

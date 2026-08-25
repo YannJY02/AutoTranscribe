@@ -40,7 +40,9 @@ final class WorkflowCoordinator: ObservableObject {
         self.recordsNavigation = recordsNavigation
         self.capabilityClient = capabilityClient
         self.settingsOpener = settingsOpener
-        recordsService.prepareUITestSeedIfRequested()
+        if UITestLaunchOptions.isEnabled {
+            recordsService.prepareUITestSeed(recordID: "record-restart-proof")
+        }
         // Phase 5: inject recordsService into child ViewModels
         liveViewModel.recordsService = recordsService
         transcriptionViewModel.recordsService = recordsService
