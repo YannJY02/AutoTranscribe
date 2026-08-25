@@ -222,8 +222,22 @@ def install_symphony_launch_agent(
     if missing:
         raise RuntimeError(f"required Symphony commands not found: {', '.join(missing)}")
     command_dirs = [str(Path(resolved).parent) for resolved in command_paths.values() if resolved]
+    resolved_dirs = set(command_dirs)
+    original_dirs = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if entry]
+    ordered_command_dirs = [entry for entry in original_dirs if entry in resolved_dirs]
     runtime_path = os.pathsep.join(
-        dict.fromkeys((*command_dirs, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"))
+        dict.fromkeys(
+            (
+                *ordered_command_dirs,
+                *command_dirs,
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            )
+        )
     )
     log_root = repo_root / "logs" / "symphony"
     log_root.mkdir(parents=True, exist_ok=True)
