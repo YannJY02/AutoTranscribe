@@ -71,7 +71,7 @@ def test_launch_agent_uses_canonical_repo_and_daily_schedule(tmp_path, monkeypat
     assert payload["StartCalendarInterval"] == {"Hour": 9, "Minute": 0}
 
 
-def test_macos_proxy_environment_reads_enabled_system_proxies(monkeypatch):
+def test_macos_proxy_environment_uses_portable_bypass_entries(monkeypatch):
     output = """
   HTTPEnable : 1
   HTTPProxy : 127.0.0.1
@@ -98,7 +98,7 @@ def test_macos_proxy_environment_reads_enabled_system_proxies(monkeypatch):
     assert _macos_proxy_environment() == {
         "HTTP_PROXY": "http://127.0.0.1:7897",
         "HTTPS_PROXY": "http://127.0.0.1:7897",
-        "NO_PROXY": "127.0.0.1,localhost,*.local,169.254/16,<local>",
+        "NO_PROXY": "127.0.0.1,localhost,*.local,169.254/16",
     }
 
 
