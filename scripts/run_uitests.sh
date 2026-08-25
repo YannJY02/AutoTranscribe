@@ -76,7 +76,7 @@ while kill -0 "$XCODEBUILD_PID" 2>/dev/null; do
         kill -KILL "$XCODEBUILD_PID" 2>/dev/null
         wait "$XCODEBUILD_PID" 2>/dev/null
         error "XCUITests timed out. Log: $LOG_PATH Result bundle: $RESULT_BUNDLE"
-        tail -n 120 "$LOG_PATH" || true
+        tail -n 400 "$LOG_PATH" || true
         exit 124
     fi
     sleep 2
@@ -94,6 +94,6 @@ if [[ "$TEST_STATUS" -eq 0 ]] && grep -q "passed" "$LOG_PATH" && ! grep -q "TEST
     exit 0
 else
     error "Some UI tests failed. Log: $LOG_PATH Result bundle: $RESULT_BUNDLE"
-    tail -n 120 "$LOG_PATH" || true
+    tail -n 400 "$LOG_PATH" || true
     exit 1
 fi
