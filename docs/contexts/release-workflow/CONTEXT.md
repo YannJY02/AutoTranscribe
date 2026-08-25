@@ -17,7 +17,7 @@ Ready for the chosen public distribution channel with signing, notarization or A
 _Avoid_: Local release ready
 
 **Public Distribution Readiness**:
-The current `.scratch` lane for owner-controlled release-channel, privacy policy, App Store privacy-answer, Developer ID, and App Store sandbox work.
+The GitHub Issue lane for owner-controlled release-channel, privacy policy, App Store privacy-answer, Developer ID, and App Store sandbox work. Retained `.scratch` files are migration history.
 _Avoid_: Legacy privacy draft, local release closure
 
 **External Blocker**:

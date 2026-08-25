@@ -15,6 +15,7 @@ class TestInsightCoordinator(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.store = InsightStore(Path(self.tmp) / "test.db")
+        self.store.init_schema()
         self.service = InsightService(provider=RuleBasedProvider(), strict_mode=False)
         self.coord = InsightCoordinator(store=self.store, insight_service=self.service)
 

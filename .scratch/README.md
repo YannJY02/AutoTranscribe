@@ -1,9 +1,9 @@
-# Scratch Work Index
+# Historical Scratch Migration Index
 
-Status: current
-Last reviewed: 2026-08-01
+Status: historical
+Last reviewed: 2026-08-25
 
-This folder is the current local PRD and issue queue for InsightKit. It is not an archive, and it is not the Legacy workflow library.
+This folder preserves the former local PRD and issue queue for migration and audit. It is not an active tracker. GitHub Issues is the only current task and status source; do not start work from a status or next-action sentence below unless it has been promoted into a current GitHub Issue.
 
 ## How To Read Status
 
@@ -14,7 +14,7 @@ This folder is the current local PRD and issue queue for InsightKit. It is not a
 - Do not redo completed `ready-for-human` issues just because their status is not `ready-for-agent`.
 - Do not start owner-controlled public-distribution issues without the project owner choosing the needed release or privacy input.
 
-## Current Work Lanes
+## Historical Work-Lane Snapshot
 
 | Lane | Role | Current state | Next action |
 | --- | --- | --- | --- |
@@ -31,7 +31,9 @@ This folder is the current local PRD and issue queue for InsightKit. It is not a
 | `performance-benchmark-fixtures/` | Materializes the canonical synthetic inputs required before installed-app performance baselines. | Issue 01 completed and awaiting human review; the frozen manifest verifies 6 media assets and 1,100 Record Folders. | Continue through `.scratch/performance-baselines/issues/01-measure-launch-workspace-and-interaction-baseline.md`. |
 | `performance-baselines/` | Collects canonical installed-app baseline evidence before budgets or optimizations are chosen. | Issue 01 mirrors GitHub #4 and is `ready-for-agent`; later GitHub baseline tickets will be promoted one at a time. | Start `.scratch/performance-baselines/issues/01-measure-launch-workspace-and-interaction-baseline.md` in a fresh task. |
 
-## Default Next Step
+## Former Default Next Step
+
+The text below is retained as a point-in-time migration snapshot, not an executable queue. Resolve current work from GitHub Issues.
 
 For the performance benchmark lane, the fixture prerequisite is complete.
 Start `.scratch/performance-baselines/issues/01-measure-launch-workspace-and-interaction-baseline.md`

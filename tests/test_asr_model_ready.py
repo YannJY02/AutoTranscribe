@@ -14,7 +14,12 @@ import os
 import unittest
 from pathlib import Path
 
+import pytest
+
 from scripts.asr_runtime_bootstrap import runtime_status
+
+
+pytestmark = pytest.mark.requires_model
 
 
 def _model_exists() -> bool:

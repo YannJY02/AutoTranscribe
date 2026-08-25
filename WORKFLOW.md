@@ -1,0 +1,74 @@
+---
+tracker:
+  kind: github
+  provider:
+    repo: YannJY02/AutoTranscribe
+    token: $GITHUB_TOKEN
+  required_labels:
+    - ready-for-agent
+  active_states:
+    - open
+  terminal_states:
+    - closed
+polling:
+  interval_ms: 10000
+workspace:
+  root: ~/Developer/Workspaces/AutoTranscribe
+hooks:
+  after_create: |
+    git clone --depth 1 https://github.com/YannJY02/AutoTranscribe.git .
+    if [ -n "${SYMPHONY_BOOTSTRAP_REF:-}" ]; then
+      git fetch --depth 1 origin "$SYMPHONY_BOOTSTRAP_REF"
+      git checkout --detach FETCH_HEAD
+    fi
+    ./scripts/agent_bootstrap.sh
+agent:
+  # ponytail: two isolated workspaces; exclusive native commands still serialize through the resource lock.
+  max_concurrent_agents: 2
+  max_turns: 30
+codex:
+  # The tracker token stays in Symphony; Codex receives only its native core environment.
+  command: env -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN codex --config shell_environment_policy.inherit=core app-server
+  approval_policy: never
+  thread_sandbox: workspace-write
+  turn_sandbox_policy:
+    type: workspaceWrite
+    networkAccess: true
+---
+
+You are working autonomously on GitHub issue `{{ issue.identifier }}`.
+
+{% if attempt %}
+This is continuation attempt {{ attempt }}. Resume from the existing workspace and issue comments. Do not repeat verified work.
+{% endif %}
+
+Issue:
+
+- Title: {{ issue.title }}
+- State: {{ issue.state }}
+- Labels: {{ issue.labels }}
+- URL: {{ issue.url }}
+
+Description:
+
+{% if issue.description %}
+{{ issue.description }}
+{% else %}
+No description was provided.
+{% endif %}
+
+Work only inside this repository copy. This is unattended: do not ask the user questions and do not touch paths outside the workspace.
+
+1. Run `python3.11 scripts/agent_harness.py issue-preflight --issue "{{ issue.identifier }}"{% if attempt %} --resume{% endif %}`. Stop without writes if it fails.
+2. Read `AGENTS.md`, `docs/agents/harness.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, and every issue comment.
+3. Claim the issue by assigning it to yourself. Reconfirm it is open and still labelled `ready-for-agent` immediately before the first code or GitHub write.
+4. Inspect existing branches and pull requests for the issue. Continue valid work; otherwise create `codex/gh-{{ issue.id }}` from the current default branch.
+5. Reproduce the problem or establish the requested baseline. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
+6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`.
+7. Review the diff for correctness, secrets, unrelated changes, architecture conflicts, and missing evidence. If code changed, request one independent agent review and resolve every blocking finding.
+8. If changes are needed, commit only this issue's files, push, and create or update a PR against `main`. Include the issue, manifest path, commands, results, and any human-only acceptance step. Wait for required PR checks and repair failures caused by this work.
+9. If the issue is an investigation or canary and no repository change is needed, do not manufacture a commit or PR; comment with the exact evidence instead.
+10. On success, post one concise issue comment with the PR or no-change result and verification evidence, remove `ready-for-agent`, and add `ready-for-human`. Never merge the PR or close the issue.
+11. If a true external blocker remains after safe fallbacks, comment with evidence, remove `ready-for-agent`, and add `needs-info`. Never present incomplete work as complete.
+
+Your final response must contain completed actions, verification results, and blockers only.

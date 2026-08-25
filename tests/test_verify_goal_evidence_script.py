@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from scripts.verify_goal_evidence import (
     build_engineering_requirements,
@@ -111,7 +112,8 @@ def sample_ui():
 
 class TestVerifyGoalEvidenceScript(unittest.TestCase):
     def test_product_requirements_cover_overview_capabilities(self):
-        requirements = build_product_requirements(sample_runtime(), sample_visual())
+        with mock.patch("scripts.verify_goal_evidence.Path.exists", return_value=True):
+            requirements = build_product_requirements(sample_runtime(), sample_visual())
         statuses = {item["id"]: item["status"] for item in requirements}
 
         self.assertEqual(statuses["ai.summary"], "verified")

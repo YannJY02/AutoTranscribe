@@ -10,6 +10,7 @@ class TestSessionHandler(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.store = InsightStore(Path(self.tmp) / "test.db")
+        self.store.init_schema()
         self.handler = SessionHandler(store=self.store)
 
     def test_session_start_returns_meeting_id(self):
