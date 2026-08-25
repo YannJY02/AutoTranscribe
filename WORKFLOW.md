@@ -15,6 +15,7 @@ polling:
 workspace:
   root: ~/Developer/Workspaces/AutoTranscribe
 hooks:
+  timeout_ms: 300000
   after_create: |
     git clone --depth 1 https://github.com/YannJY02/AutoTranscribe.git .
     if [ -n "${SYMPHONY_BOOTSTRAP_REF:-}" ]; then
