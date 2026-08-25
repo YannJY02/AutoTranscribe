@@ -32,6 +32,7 @@ agent:
 codex:
   # The tracker token stays in Symphony; Codex receives only its native core environment.
   command: env -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN -u OPENAI_API_KEY codex --config shell_environment_policy.inherit=core app-server
+  read_timeout_ms: 30000
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
