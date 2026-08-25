@@ -50,6 +50,41 @@ final class RecordsIndexServiceTests: XCTestCase {
         )
     }
 
+    func testRecordsRootEnvironmentOverrideWinsForAppAndSidecarAlignment() throws {
+        let suiteName = "RecordsIndexServiceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(tempRoot.appendingPathComponent("Ignored").path, forKey: RecordsIndexService.rootDirectoryDefaultsKey)
+        let configuredRoot = tempRoot.appendingPathComponent("EnvironmentRecords", isDirectory: true)
+        let environment = ["INSIGHTKIT_RECORDS_ROOT": configuredRoot.path]
+
+        let service = RecordsIndexService(defaults: defaults, environment: environment)
+
+        XCTAssertEqual(service.rootDirectory.standardizedFileURL, configuredRoot.standardizedFileURL)
+        XCTAssertEqual(
+            RecordsIndexService.currentRootDirectory(defaults: defaults, environment: environment).standardizedFileURL,
+            configuredRoot.standardizedFileURL
+        )
+    }
+
+    func testRecordsRootEnvironmentOverrideRejectsUnsafePaths() throws {
+        let suiteName = "RecordsIndexServiceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let fallbackRoot = tempRoot.appendingPathComponent("Fallback", isDirectory: true)
+        defaults.set(fallbackRoot.path, forKey: RecordsIndexService.rootDirectoryDefaultsKey)
+
+        for configuredPath in ["relative/path", "/"] {
+            XCTAssertEqual(
+                RecordsIndexService.currentRootDirectory(
+                    defaults: defaults,
+                    environment: ["INSIGHTKIT_RECORDS_ROOT": configuredPath]
+                ).standardizedFileURL,
+                fallbackRoot.standardizedFileURL
+            )
+        }
+    }
+
     func testSearchRecordsIncludesTranscriptMinutesAndNotesContent() throws {
         let recordDir = tempRoot.appendingPathComponent("record-1")
         try FileManager.default.createDirectory(at: recordDir, withIntermediateDirectories: true)

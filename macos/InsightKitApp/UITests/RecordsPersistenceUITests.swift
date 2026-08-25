@@ -4,11 +4,9 @@ final class RecordsPersistenceUITests: InsightKitUITests {
     private var tempRoot: URL!
     private let seedRecordID = "record-restart-proof"
 
-    override var launchArgumentOverrides: [String] {
-        guard let tempRoot else { return [] }
-        return [
-            "-RecordsRootDirectory", tempRoot.path,
-        ]
+    override var launchEnvironmentOverrides: [String: String] {
+        guard let tempRoot else { return [:] }
+        return ["INSIGHTKIT_RECORDS_ROOT": tempRoot.path]
     }
 
     override func setUpWithError() throws {

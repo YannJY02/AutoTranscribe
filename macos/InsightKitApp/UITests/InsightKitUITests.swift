@@ -137,8 +137,7 @@ class InsightKitUITests: XCTestCase {
                 keystroke "\(escapeAppleScript(text))"
             end tell
             """
-        ) {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        ), waitForStringValue(text, in: element, timeout: 1) {
             return
         }
 

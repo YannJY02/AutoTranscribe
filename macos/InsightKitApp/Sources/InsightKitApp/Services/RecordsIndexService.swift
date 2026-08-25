@@ -58,6 +58,9 @@ final class RecordsIndexService: ObservableObject {
         defaults: UserDefaults = .standard,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
+        if let url = configuredRootDirectory(environment: environment) {
+            return url
+        }
         let bookmarkStore = SecurityScopedBookmarkStore(defaults: defaults, environment: environment)
         if let url = bookmarkStore.resolveBookmark() {
             return url
@@ -70,6 +73,9 @@ final class RecordsIndexService: ObservableObject {
 
     var rootDirectory: URL {
         get {
+            if let url = Self.configuredRootDirectory(environment: environment) {
+                return url
+            }
             if let url = bookmarkStore.resolveBookmark() {
                 return url
             }
@@ -82,6 +88,14 @@ final class RecordsIndexService: ObservableObject {
             defaults.set(newValue.path, forKey: Self.rootDirectoryDefaultsKey)
             bookmarkStore.saveBookmark(for: newValue)
         }
+    }
+
+    private static func configuredRootDirectory(environment: [String: String]) -> URL? {
+        guard let path = environment["INSIGHTKIT_RECORDS_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              path.hasPrefix("/"),
+              path != "/"
+        else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
     }
 
     // MARK: - Scanning
