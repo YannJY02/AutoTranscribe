@@ -179,7 +179,12 @@ def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str,
 
 def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: str) -> list[GateSpec]:
     files = tuple(sorted(set(changed_files)))
-    gates = [GateSpec("diff-check", (("git", "diff", "--check"),))]
+    gates = [
+        GateSpec(
+            "diff-check",
+            (("git", "diff", "--check"), ("git", "diff", "--cached", "--check")),
+        )
+    ]
     governance = any(
         path == "AGENTS.md"
         or path == "WORKFLOW.md"
@@ -192,11 +197,22 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
         or path == "tests/test_agent_harness.py"
         for path in files
     )
-    shell_scripts = tuple(
-        path for path in files if path in {"scripts/agent_bootstrap.sh", "scripts/run_symphony.sh"}
+    shell_scripts = tuple(path for path in files if path.endswith(".sh"))
+    python_project_changed = "pyproject.toml" in files
+    python_changed = python_project_changed or any(
+        path.endswith(".py") and not path.startswith("tests/test_agent_harness.py") for path in files
     )
-    python_changed = any(path.endswith(".py") and not path.startswith("tests/test_agent_harness.py") for path in files)
-    swift_changed = any(path.endswith(".swift") or path == "macos/InsightKitApp/Package.swift" for path in files)
+    swift_changed = any(
+        (path.endswith(".swift") and not path.startswith("macos/InsightKitApp/UITests/"))
+        or path in {"macos/InsightKitApp/Package.swift", "macos/InsightKitApp/Package.resolved"}
+        for path in files
+    )
+    xcuitests_changed = any(
+        path.startswith("macos/InsightKitApp/UITests/")
+        or path == "macos/InsightKitApp/project.yml"
+        or path == "scripts/run_uitests.sh"
+        for path in files
+    )
     architecture_changed = any(
         path.startswith("insightkit/ipc/")
         or path.startswith("insightkit/integration/")
@@ -206,7 +222,15 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
     )
 
     if shell_scripts:
-        gates.append(GateSpec("automation-syntax", tuple(("sh", "-n", path) for path in shell_scripts)))
+        gates.append(
+            GateSpec(
+                "automation-syntax",
+                tuple(
+                    ("sh" if path == "scripts/run_symphony.sh" else "bash", "-n", path)
+                    for path in shell_scripts
+                ),
+            )
+        )
     if governance:
         gates.append(
             GateSpec(
@@ -215,25 +239,48 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
             )
         )
     if mode == "full" and python_changed:
+        commands: list[tuple[str, ...]] = []
+        if python_project_changed:
+            commands.append(("./scripts/agent_bootstrap.sh",))
+        commands.append(
+            (
+                python_executable,
+                "-m",
+                "pytest",
+                "tests",
+                "-q",
+                "--tb=short",
+                "-m",
+                "not integration and not requires_model and not slow",
+            )
+        )
         gates.append(
             GateSpec(
                 "python-tests",
-                (
-                    (
-                        python_executable,
-                        "-m",
-                        "pytest",
-                        "tests",
-                        "-q",
-                        "--tb=short",
-                        "-m",
-                        "not integration and not requires_model and not slow",
-                    ),
-                ),
+                tuple(commands),
             )
         )
     if mode == "full" and swift_changed:
         gates.append(GateSpec("swift-tests", (("swift", "test", "--package-path", "macos/InsightKitApp"),)))
+    if mode == "full" and xcuitests_changed:
+        gates.append(
+            GateSpec(
+                "xcuitests",
+                (
+                    (
+                        python_executable,
+                        "scripts/agent_harness.py",
+                        "lock",
+                        "--resource",
+                        "installed-app",
+                        "--timeout",
+                        "1800",
+                        "--",
+                        "./scripts/run_uitests.sh",
+                    ),
+                ),
+            )
+        )
     if governance:
         gates.append(
             GateSpec(
@@ -296,6 +343,7 @@ def changed_files(base: str) -> list[str]:
     commands = (
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         ["git", "diff", "--name-only"],
+        ["git", "diff", "--cached", "--name-only"],
         ["git", "ls-files", "--others", "--exclude-standard"],
     )
     paths: set[str] = set()
@@ -371,6 +419,7 @@ def verify_changes(*, base: str, mode: str, issue: str | None, output_root: Path
             "diff-check",
             (
                 ("git", "diff", "--check"),
+                ("git", "diff", "--cached", "--check"),
                 ("git", "diff", "--check", f"{base}...HEAD"),
             ),
         )

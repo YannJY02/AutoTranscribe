@@ -14,7 +14,7 @@ python3.11 scripts/agent_harness.py verify --issue <number> --mode full
 
 `agent_harness.py` is the single Interface for local harness checks. Its implementation reuses existing tests and verifiers rather than duplicating release logic.
 
-Before starting Symphony, set `SYMPHONY_GITHUB_TOKEN` to a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. Codex's own GitHub writes use its separately authenticated `gh` session.
+Before starting Symphony, create a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. Supply it as `SYMPHONY_GITHUB_TOKEN` or store it in macOS Keychain under service `com.autotranscribe.symphony.github-token` and account `symphony`. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. Codex's own GitHub writes use its separately authenticated `gh` session.
 
 ## Control and feedback flow
 

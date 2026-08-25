@@ -10,8 +10,15 @@ for required_command in symphony codex gh python3.11; do
   fi
 done
 
+if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ] && command -v security >/dev/null 2>&1; then
+  SYMPHONY_GITHUB_TOKEN=$(security find-generic-password \
+    -a symphony \
+    -s com.autotranscribe.symphony.github-token \
+    -w 2>/dev/null || true)
+fi
+
 if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ]; then
-  echo "SYMPHONY_GITHUB_TOKEN is required; use a dedicated fine-grained token with read-only Issues and metadata access." >&2
+  echo "SYMPHONY_GITHUB_TOKEN is required in the environment or macOS Keychain; use a dedicated fine-grained token with read-only Issues and metadata access." >&2
   exit 1
 fi
 

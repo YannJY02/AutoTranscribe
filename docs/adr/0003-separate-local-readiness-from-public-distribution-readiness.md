@@ -10,12 +10,12 @@ Historical release ledgers mixed real local product evidence with public distrib
 
 Release claims distinguish local/internal QA readiness from Developer ID or App Store distribution readiness. Local Release Ready is a repo-verifiable claim about the installed app and its app-owned runtime on the current Mac. Distribution Ready is a channel-specific public release claim that depends on Developer ID or App Store requirements.
 
-Current public-distribution work is tracked under `.scratch/public-distribution-readiness/`. The moved privacy and App Store drafts under `docs/Legacy/matt-workflow-library/original-assets/docs/release/` remain provenance and review inputs, not the active work queue.
+ADR 0007 supersedes the former `.scratch/public-distribution-readiness/` tracking location: current public-distribution work is tracked in GitHub Issues. Retained `.scratch` files and the moved privacy and App Store drafts under `docs/Legacy/matt-workflow-library/original-assets/docs/release/` remain provenance and review inputs, not the active work queue.
 
 ## Consequences
 
 - A passing Local Preflight, Packaged-App Smoke, Visual GUI Proof, Secret Hygiene Gate, or UI Hygiene Gate can support Local Release Ready without implying public distribution readiness.
 - Developer ID Preflight and App Store Preflight failures are External Blockers when they require owner-controlled Apple credentials, certificates, notarization setup, App Store metadata, sandbox distribution identity, or privacy URL work.
 - Privacy drafts and App Store privacy answers are Privacy Review Inputs until reviewed and published by the owner.
-- Public-distribution tasks should reference the current `.scratch/public-distribution-readiness/` issues rather than treating Legacy drafts as live instructions.
+- Public-distribution tasks should reference their current GitHub Issues rather than treating retained `.scratch` files or Legacy drafts as live instructions.
 - Architecture work may improve evidence quality or packaging reliability, but it should not relabel Apple-owned release requirements as code bugs.

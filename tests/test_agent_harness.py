@@ -9,6 +9,7 @@ from pathlib import Path
 from scripts.agent_harness import (
     _run_command,
     check_agentic_locks,
+    changed_files,
     gate_specs,
     parse_issue_number,
     validate_issue,
@@ -119,6 +120,43 @@ def test_gate_specs_route_python_and_swift_changes():
     assert names == ["diff-check", "python-tests", "swift-tests", "architecture-contracts"]
 
 
+def test_gate_specs_route_project_configuration_and_ui_tests():
+    python_gates = gate_specs(["pyproject.toml"], mode="full", python_executable="python3.11")
+    native_names = [
+        spec.name
+        for spec in gate_specs(
+            [
+                "macos/InsightKitApp/project.yml",
+                "macos/InsightKitApp/UITests/RecordsPersistenceUITests.swift",
+                "scripts/run_uitests.sh",
+            ],
+            mode="full",
+            python_executable="python3.11",
+        )
+    ]
+
+    assert [spec.name for spec in python_gates] == ["diff-check", "python-tests"]
+    assert ("git", "diff", "--cached", "--check") in python_gates[0].commands
+    assert python_gates[1].commands[0] == ("./scripts/agent_bootstrap.sh",)
+    assert native_names == ["diff-check", "automation-syntax", "xcuitests"]
+
+
+def test_changed_files_includes_staged_paths(monkeypatch):
+    outputs = {
+        ("git", "diff", "--name-only", "origin/main...HEAD"): "committed.py\n",
+        ("git", "diff", "--name-only"): "unstaged.swift\n",
+        ("git", "diff", "--cached", "--name-only"): "staged.py\n",
+        ("git", "ls-files", "--others", "--exclude-standard"): "untracked.sh\n",
+    }
+
+    def completed(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 0, outputs[tuple(command)], "")
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", completed)
+
+    assert changed_files("origin/main") == ["committed.py", "staged.py", "unstaged.swift", "untracked.sh"]
+
+
 def test_gate_specs_route_harness_tests_and_symphony_shell():
     test_names = [
         spec.name
@@ -187,6 +225,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "env -u SYMPHONY_GITHUB_TOKEN" in workflow
     assert "gh auth token" not in launcher
     assert "SYMPHONY_GITHUB_TOKEN" in launcher
+    assert "security find-generic-password" in launcher
 
 
 def test_lock_subcommand_runs_command_and_writes_no_secret(tmp_path):
