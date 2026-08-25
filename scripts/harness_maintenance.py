@@ -133,9 +133,9 @@ def _macos_proxy_environment() -> dict[str, str]:
     if completed.returncode != 0:
         return {}
     settings = dict(
-        line.strip().split(" : ", 1)
+        line[2:].split(" : ", 1)
         for line in completed.stdout.splitlines()
-        if " : " in line
+        if line.startswith("  ") and not line.startswith("    ") and " : " in line
     )
     environment = {
         f"{scheme}_PROXY": f"http://{settings[f'{scheme}Proxy']}:{settings[f'{scheme}Port']}"

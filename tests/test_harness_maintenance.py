@@ -77,6 +77,10 @@ def test_macos_proxy_environment_reads_enabled_system_proxies(monkeypatch):
   HTTPSEnable : 1
   HTTPSProxy : 127.0.0.1
   HTTPSPort : 7897
+  __SCOPED__ : <dictionary> {
+    HTTPProxy : ignored.example
+    HTTPPort : 9999
+  }
 """
     monkeypatch.setattr(
         "scripts.harness_maintenance.subprocess.run",
