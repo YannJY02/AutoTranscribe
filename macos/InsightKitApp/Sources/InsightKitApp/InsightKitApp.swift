@@ -19,6 +19,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        coordinator.recordsService.prepareUITestSeedIfRequested()
         showMainWindow()
         NSApp.activate(ignoringOtherApps: true)
     }

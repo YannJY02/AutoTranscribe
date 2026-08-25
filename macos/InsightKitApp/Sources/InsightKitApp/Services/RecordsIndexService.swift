@@ -98,6 +98,15 @@ final class RecordsIndexService: ObservableObject {
         return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
     }
 
+    private static func isSafeRecordID(_ recordID: String) -> Bool {
+        guard let first = recordID.unicodeScalars.first,
+              recordID.count <= 128,
+              CharacterSet.alphanumerics.contains(first)
+        else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        return recordID.unicodeScalars.allSatisfy(allowed.contains)
+    }
+
     // MARK: - Scanning
 
     func refreshIndex() {
@@ -127,6 +136,25 @@ final class RecordsIndexService: ObservableObject {
     func recentRecords(limit: Int) -> [RecordMetadata] {
         if records.isEmpty { refreshIndex() }
         return Array(records.prefix(limit))
+    }
+
+    func prepareUITestSeedIfRequested() {
+        guard environment["INSIGHTKIT_UI_TEST_MODE"] == "1",
+              let recordID = environment["INSIGHTKIT_UI_TEST_SEED_RECORD_ID"],
+              Self.isSafeRecordID(recordID)
+        else { return }
+
+        let metadata = RecordMetadata(
+            id: recordID,
+            createdAt: Date(timeIntervalSince1970: 1_782_720_000),
+            duration: 30,
+            mediaType: .audio,
+            source: .imported,
+            userTags: ["release"],
+            autoTags: ["restart"],
+            summaryPreview: "restart persistence evidence"
+        )
+        saveRecord(metadata, at: rootDirectory.appendingPathComponent(recordID, isDirectory: true))
     }
 
     // MARK: - CRUD

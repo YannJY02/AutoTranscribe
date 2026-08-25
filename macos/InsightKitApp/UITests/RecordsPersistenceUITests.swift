@@ -6,14 +6,16 @@ final class RecordsPersistenceUITests: InsightKitUITests {
 
     override var launchEnvironmentOverrides: [String: String] {
         guard let tempRoot else { return [:] }
-        return ["INSIGHTKIT_RECORDS_ROOT": tempRoot.path]
+        return [
+            "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
+            "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": seedRecordID,
+        ]
     }
 
     override func setUpWithError() throws {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("InsightKitRecordsUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-        try seedPersistedRecord()
         try super.setUpWithError()
     }
 
@@ -43,33 +45,5 @@ final class RecordsPersistenceUITests: InsightKitUITests {
 
         XCTAssertTrue(waitForElement(app.staticTexts["home_title"], timeout: 5))
         XCTAssertTrue(waitForElement(app.buttons["home_recent_record_\(seedRecordID)"], timeout: 5))
-    }
-
-    private func seedPersistedRecord() throws {
-        let recordDir = tempRoot.appendingPathComponent(seedRecordID)
-        try FileManager.default.createDirectory(at: recordDir, withIntermediateDirectories: true)
-        try """
-        {
-          "id": "\(seedRecordID)",
-          "createdAt": "2026-05-23T08:00:00Z",
-          "duration": 30.0,
-          "mediaType": "audio",
-          "source": "imported",
-          "userTags": ["release"],
-          "autoTags": ["restart"],
-          "summaryPreview": "restart persistence evidence"
-        }
-        """.write(to: recordDir.appendingPathComponent("metadata.json"), atomically: true, encoding: .utf8)
-        try """
-        [{"start_ms":0,"end_ms":2500,"speaker":"SPEAKER_00","text":"Restart search target survives relaunch."}]
-        """.write(to: recordDir.appendingPathComponent("transcript.json"), atomically: true, encoding: .utf8)
-        try """
-        {"structured_summary":"Restart persistence evidence remains readable.","highlights":[],"key_decisions":[],"action_items":[],"timeline_beats":[]}
-        """.write(to: recordDir.appendingPathComponent("minutes.json"), atomically: true, encoding: .utf8)
-        try "00:02 restart note".write(
-            to: recordDir.appendingPathComponent("notes.md"),
-            atomically: true,
-            encoding: .utf8
-        )
     }
 }

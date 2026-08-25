@@ -85,6 +85,36 @@ final class RecordsIndexServiceTests: XCTestCase {
         }
     }
 
+    func testPrepareUITestSeedCreatesRequestedRecord() throws {
+        let service = RecordsIndexService(environment: [
+            "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
+            "INSIGHTKIT_UI_TEST_MODE": "1",
+            "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": "record-restart-proof",
+        ])
+
+        service.prepareUITestSeedIfRequested()
+
+        XCTAssertEqual(service.records.map(\.id), ["record-restart-proof"])
+        XCTAssertEqual(service.records.first?.summaryPreview, "restart persistence evidence")
+    }
+
+    func testPrepareUITestSeedRejectsUnsafeRecordID() throws {
+        let service = RecordsIndexService(environment: [
+            "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
+            "INSIGHTKIT_UI_TEST_MODE": "1",
+            "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": "../escape",
+        ])
+
+        service.prepareUITestSeedIfRequested()
+
+        XCTAssertTrue(service.records.isEmpty)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: tempRoot.deletingLastPathComponent().appendingPathComponent("escape").path
+            )
+        )
+    }
+
     func testSearchRecordsIncludesTranscriptMinutesAndNotesContent() throws {
         let recordDir = tempRoot.appendingPathComponent("record-1")
         try FileManager.default.createDirectory(at: recordDir, withIntermediateDirectories: true)

@@ -127,56 +127,12 @@ class InsightKitUITests: XCTestCase {
         element.click()
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
 
-        if runAppleScript(
-            """
-            tell application "System Events"
-                tell process "InsightKitApp"
-                    set frontmost to true
-                end tell
-                delay 0.2
-                keystroke "\(escapeAppleScript(text))"
-            end tell
-            """
-        ), waitForStringValue(text, in: element, timeout: 1) {
-            return
-        }
-
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        element.typeKey("a", modifierFlags: .command)
         element.typeKey("v", modifierFlags: .command)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         restorePasteboard(previousString)
-    }
-
-    @discardableResult
-    func runAppleScript(_ source: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", source]
-
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return false
-        }
-
-        guard process.terminationStatus == 0 else {
-            return false
-        }
-
-        return true
-    }
-
-    private func escapeAppleScript(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     private func restorePasteboard(_ string: String?) {
