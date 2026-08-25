@@ -1,30 +1,7 @@
 import XCTest
 
 final class RecordsPersistenceUITests: InsightKitUITests {
-    private var tempRoot: URL!
     private let seedRecordID = "record-restart-proof"
-
-    override var launchEnvironmentOverrides: [String: String] {
-        guard let tempRoot else { return [:] }
-        return [
-            "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
-        ]
-    }
-
-    override func setUpWithError() throws {
-        tempRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("InsightKitRecordsUITests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-        try super.setUpWithError()
-    }
-
-    override func tearDownWithError() throws {
-        try super.tearDownWithError()
-        if let tempRoot {
-            try? FileManager.default.removeItem(at: tempRoot)
-        }
-        tempRoot = nil
-    }
 
     func testRecentRecordSearchAndRelaunchPersistence() throws {
         let homeRecord = element("home_recent_record_\(seedRecordID)").firstMatch
