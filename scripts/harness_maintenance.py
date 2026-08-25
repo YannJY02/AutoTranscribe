@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import plistlib
+import shlex
 import shutil
 import subprocess
 import sys
@@ -119,6 +120,52 @@ def _run(command: list[str], *, input_text: str | None = None) -> subprocess.Com
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout).strip())
     return completed
+
+
+def _macos_proxy_environment() -> dict[str, str]:
+    if sys.platform != "darwin":
+        return {}
+    completed = subprocess.run(
+        ["/usr/sbin/scutil", "--proxy"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return {}
+    settings: dict[str, str] = {}
+    exceptions: list[str] = []
+    reading_exceptions = False
+    for line in completed.stdout.splitlines():
+        if line == "  ExceptionsList : <array> {":
+            reading_exceptions = True
+            continue
+        if reading_exceptions:
+            if line == "  }":
+                reading_exceptions = False
+            elif line.startswith("    ") and " : " in line:
+                exceptions.append(line.split(" : ", 1)[1])
+            continue
+        if line.startswith("  ") and not line.startswith("    ") and " : " in line:
+            key, value = line[2:].split(" : ", 1)
+            settings[key] = value
+    environment = {
+        f"{scheme}_PROXY": f"http://{settings[f'{scheme}Proxy']}:{settings[f'{scheme}Port']}"
+        for scheme in ("HTTP", "HTTPS")
+        if settings.get(f"{scheme}Enable") == "1"
+        and settings.get(f"{scheme}Proxy")
+        and settings.get(f"{scheme}Port", "").isdigit()
+    }
+    if environment:
+        bypass = ["127.0.0.1", "localhost", *exceptions]
+        if settings.get("ExcludeSimpleHostnames") == "1":
+            bypass.append("<local>")
+        environment["NO_PROXY"] = ",".join(dict.fromkeys(bypass))
+    return environment
+
+
+def _shell_proxy_exports(environment: dict[str, str]) -> str:
+    return "\n".join(f"export {key}={shlex.quote(value)}" for key, value in environment.items())
 
 
 def existing_issue_url(task: MaintenanceTask, period: str) -> str | None:
@@ -288,12 +335,16 @@ def build_parser() -> argparse.ArgumentParser:
     install_symphony = subparsers.add_parser("install-symphony-launch-agent")
     install_symphony.add_argument("--repo-root", type=Path, default=ROOT)
     install_symphony.add_argument("--no-load", action="store_true")
+    subparsers.add_parser("proxy-environment")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
     try:
+        if args.command == "proxy-environment":
+            print(_shell_proxy_exports(_macos_proxy_environment()))
+            return 0
         if args.command == "install-launch-agent":
             print(install_launch_agent(args.repo_root, load=not args.no_load))
             return 0
