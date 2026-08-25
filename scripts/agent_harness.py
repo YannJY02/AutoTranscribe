@@ -336,12 +336,8 @@ def _agentic_generated_snapshot() -> dict[str, bytes]:
 
 def check_agentic_locks() -> int:
     before = _agentic_generated_snapshot()
-    actionlint = shutil.which("actionlint")
-    compile_command = ["gh", "aw", "compile", "--strict", "--validate", "--purge"]
-    if actionlint is None:
-        compile_command.append("--actionlint")
     completed = subprocess.run(
-        compile_command,
+        ["gh", "aw", "compile", "--strict", "--validate", "--actionlint", "--purge"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -352,19 +348,6 @@ def check_agentic_locks() -> int:
         return completed.returncode
 
     after = _agentic_generated_snapshot()
-    if actionlint is not None:
-        lock_files = sorted(path for path in after if path.endswith(".lock.yml"))
-        linted = subprocess.run(
-            [actionlint, *lock_files],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if linted.returncode != 0:
-            print((linted.stderr or linted.stdout).strip(), file=sys.stderr)
-            return linted.returncode
-
     changed = sorted(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
     if changed:
         print("generated Agentic Workflow files were stale; commit the compiled changes:", file=sys.stderr)

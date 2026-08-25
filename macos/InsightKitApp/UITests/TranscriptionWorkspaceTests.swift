@@ -6,12 +6,12 @@ final class TranscriptionWorkspaceTests: InsightKitUITests {
         try super.setUpWithError()
         // Transcription route is accessible via toolbar "转写总结" button from home
         // or via the home screen toolbar button
-        let transcriptionButton = app.buttons["转写总结"]
+        let transcriptionButton = app.buttons["转写总结"].firstMatch
         if transcriptionButton.waitForExistence(timeout: 3) {
             transcriptionButton.tap()
         } else {
             // Fallback: navigate via home toolbar
-            let toolbarButton = app.toolbars.buttons["转写总结"]
+            let toolbarButton = app.toolbars.buttons["转写总结"].firstMatch
             XCTAssertTrue(toolbarButton.waitForExistence(timeout: 3), "转写总结按钮应存在")
             toolbarButton.tap()
         }
@@ -40,7 +40,7 @@ final class TranscriptionWorkspaceTests: InsightKitUITests {
     }
 
     func testBackButtonNavigatesToHome() throws {
-        app.buttons["返回首页"].tap()
+        app.buttons["返回首页"].firstMatch.tap()
         let homeTitle = app.staticTexts["home_title"]
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5), "应返回首页")
     }

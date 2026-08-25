@@ -62,11 +62,11 @@ class InsightKitUITests: XCTestCase {
     }
 
     func button(_ identifier: String, fallbackLabel: String? = nil) -> XCUIElement {
-        let byIdentifier = app.buttons[identifier]
+        let byIdentifier = app.buttons[identifier].firstMatch
         if byIdentifier.exists || fallbackLabel == nil {
             return byIdentifier
         }
-        return app.buttons[fallbackLabel!]
+        return app.buttons[fallbackLabel!].firstMatch
     }
 
     func stringValue(of element: XCUIElement) -> String {

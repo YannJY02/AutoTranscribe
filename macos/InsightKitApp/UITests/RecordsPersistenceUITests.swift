@@ -31,7 +31,7 @@ final class RecordsPersistenceUITests: InsightKitUITests {
         XCTAssertTrue(waitForElement(app.staticTexts["home_title"], timeout: 5))
         XCTAssertTrue(waitForElement(app.buttons["home_recent_record_\(seedRecordID)"], timeout: 5))
 
-        app.buttons["home_recent_record_\(seedRecordID)"].tap()
+        app.buttons["home_recent_record_\(seedRecordID)"].firstMatch.tap()
         XCTAssertTrue(waitForElement(app.buttons["record_list_item_\(seedRecordID)"], timeout: 5))
 
         let searchField = app.textFields["records_search_field"]

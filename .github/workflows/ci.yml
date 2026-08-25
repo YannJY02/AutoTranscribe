@@ -16,7 +16,7 @@ concurrency:
 jobs:
   harness-governance:
     name: Harness Governance
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -35,9 +35,7 @@ jobs:
       - name: Install Agentic Workflows compiler
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          brew install actionlint
-          gh extension install github/gh-aw --pin v0.86.2
+        run: gh extension install github/gh-aw --pin v0.86.2
 
       - name: Lint repository automation
         run: |
