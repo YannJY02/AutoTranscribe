@@ -12,6 +12,9 @@ tracker:
     - closed
 polling:
   interval_ms: 10000
+observability:
+  # The HTTP dashboard and structured logs remain available; the terminal renderer is not needed under launchd.
+  dashboard_enabled: false
 workspace:
   root: ~/Developer/Workspaces/AutoTranscribe
 hooks:

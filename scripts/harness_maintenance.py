@@ -121,6 +121,34 @@ def _run(command: list[str], *, input_text: str | None = None) -> subprocess.Com
     return completed
 
 
+def _macos_proxy_environment() -> dict[str, str]:
+    if sys.platform != "darwin":
+        return {}
+    completed = subprocess.run(
+        ["/usr/sbin/scutil", "--proxy"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return {}
+    settings = dict(
+        line.strip().split(" : ", 1)
+        for line in completed.stdout.splitlines()
+        if " : " in line
+    )
+    environment = {
+        f"{scheme}_PROXY": f"http://{settings[f'{scheme}Proxy']}:{settings[f'{scheme}Port']}"
+        for scheme in ("HTTP", "HTTPS")
+        if settings.get(f"{scheme}Enable") == "1"
+        and settings.get(f"{scheme}Proxy")
+        and settings.get(f"{scheme}Port", "").isdigit()
+    }
+    if environment:
+        environment["NO_PROXY"] = "127.0.0.1,localhost"
+    return environment
+
+
 def existing_issue_url(task: MaintenanceTask, period: str) -> str | None:
     marker = marker_for(task, period)
     completed = _run(
@@ -244,14 +272,16 @@ def install_symphony_launch_agent(
     launch_agents = launch_agents_dir or Path.home() / "Library" / "LaunchAgents"
     launch_agents.mkdir(parents=True, exist_ok=True)
     destination = launch_agents / f"{SYMPHONY_LAUNCH_AGENT_LABEL}.plist"
+    environment = {
+        "PATH": runtime_path,
+        "SYMPHONY_REPO_SOURCE": str(repo_root),
+    }
+    environment.update(_macos_proxy_environment())
     payload = {
         "Label": SYMPHONY_LAUNCH_AGENT_LABEL,
         "ProgramArguments": ["/bin/sh", str(launcher)],
         "WorkingDirectory": str(repo_root),
-        "EnvironmentVariables": {
-            "PATH": runtime_path,
-            "SYMPHONY_REPO_SOURCE": str(repo_root),
-        },
+        "EnvironmentVariables": environment,
         "KeepAlive": True,
         "RunAtLoad": True,
         "ProcessType": "Background",
