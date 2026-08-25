@@ -7,7 +7,7 @@ options:
 
 targets:
   InsightKitObjCShims:
-    type: library.static
+    type: framework.static
     platform: macOS
     sources:
       - Sources/InsightKitObjCShims
@@ -29,6 +29,7 @@ targets:
       - Resources
     dependencies:
       - target: InsightKitObjCShims
+        embed: false
     entitlements:
       path: InsightKitApp.entitlements
       properties:

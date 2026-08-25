@@ -167,6 +167,26 @@ def test_agentic_lock_check_purges_orphaned_workflows(monkeypatch):
     assert "--purge" in commands[0]
 
 
+def test_agentic_lock_check_uses_native_actionlint_when_available(monkeypatch):
+    commands = []
+    snapshot = {".github/workflows/example.lock.yml": b"workflow"}
+    monkeypatch.setattr("scripts.agent_harness._agentic_generated_snapshot", lambda: snapshot)
+    monkeypatch.setattr(
+        "scripts.agent_harness.shutil.which",
+        lambda executable: "/opt/homebrew/bin/actionlint" if executable == "actionlint" else None,
+    )
+
+    def completed(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", completed)
+
+    assert check_agentic_locks() == 0
+    assert "--actionlint" not in commands[0]
+    assert commands[1] == ["/opt/homebrew/bin/actionlint", ".github/workflows/example.lock.yml"]
+
+
 def test_command_evidence_never_persists_process_output(tmp_path, monkeypatch):
     monkeypatch.setenv("HARNESS_TEST_SECRET", "do-not-persist-this-secret")
     result = _run_command(
