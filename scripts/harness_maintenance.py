@@ -217,6 +217,28 @@ def install_symphony_launch_agent(
     workflow = repo_root / "WORKFLOW.md"
     if not launcher.is_file() or not workflow.is_file():
         raise ValueError(f"Symphony launcher or workflow not found under repository: {repo_root}")
+    command_paths = {command: shutil.which(command) for command in ("symphony", "codex", "gh", "python3.11")}
+    missing = [command for command, resolved in command_paths.items() if not resolved]
+    if missing:
+        raise RuntimeError(f"required Symphony commands not found: {', '.join(missing)}")
+    command_dirs = [str(Path(resolved).parent) for resolved in command_paths.values() if resolved]
+    resolved_dirs = set(command_dirs)
+    original_dirs = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if entry]
+    ordered_command_dirs = [entry for entry in original_dirs if entry in resolved_dirs]
+    runtime_path = os.pathsep.join(
+        dict.fromkeys(
+            (
+                *ordered_command_dirs,
+                *command_dirs,
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            )
+        )
+    )
     log_root = repo_root / "logs" / "symphony"
     log_root.mkdir(parents=True, exist_ok=True)
     launch_agents = launch_agents_dir or Path.home() / "Library" / "LaunchAgents"
@@ -227,7 +249,7 @@ def install_symphony_launch_agent(
         "ProgramArguments": ["/bin/sh", str(launcher)],
         "WorkingDirectory": str(repo_root),
         "EnvironmentVariables": {
-            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "PATH": runtime_path,
             "SYMPHONY_REPO_SOURCE": str(repo_root),
         },
         "KeepAlive": True,

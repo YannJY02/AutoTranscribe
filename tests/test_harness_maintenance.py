@@ -68,12 +68,20 @@ def test_launch_agent_uses_canonical_repo_and_daily_schedule(tmp_path, monkeypat
     assert payload["StartCalendarInterval"] == {"Hour": 9, "Minute": 0}
 
 
-def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path):
+def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     launcher = repo / "scripts" / "run_symphony.sh"
     launcher.parent.mkdir(parents=True)
     launcher.write_text("#!/bin/sh\n", encoding="utf-8")
     (repo / "WORKFLOW.md").write_text("# test\n", encoding="utf-8")
+    resolved = {
+        "symphony": "/last/symphony",
+        "codex": "/first/codex",
+        "gh": "/tools/gh",
+        "python3.11": "/tools/python3.11",
+    }
+    monkeypatch.setenv("PATH", "/first:/tools:/last:/unrelated")
+    monkeypatch.setattr("scripts.harness_maintenance.shutil.which", resolved.get)
 
     destination = install_symphony_launch_agent(
         repo,
@@ -85,6 +93,7 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path):
     assert payload["ProgramArguments"] == ["/bin/sh", str(launcher)]
     assert payload["WorkingDirectory"] == str(repo)
     assert payload["EnvironmentVariables"]["SYMPHONY_REPO_SOURCE"] == str(repo)
+    assert payload["EnvironmentVariables"]["PATH"].split(":")[:3] == ["/first", "/tools", "/last"]
     assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
     assert payload["KeepAlive"] is True
     assert payload["RunAtLoad"] is True
