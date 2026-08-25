@@ -10,6 +10,7 @@ permissions:
   copilot-requests: write
 engine: copilot
 model: gpt-4.1
+max-turns: 12
 strict: true
 network: defaults
 tools:
@@ -30,7 +31,9 @@ timeout-minutes: 15
 
 # Repository knowledge gardening
 
-Read `AGENTS.md`, `CONTEXT-MAP.md`, `docs/agents/`, context documents, ADRs, and recent merged changes. Search open issues before reporting anything.
+Read `AGENTS.md`, `CONTEXT-MAP.md`, `docs/agents/`, context documents, ADRs, and recent merged changes. Search open issues before reporting anything. Inspect at most five recent main-branch commits and twelve repository files; if that is not enough to establish a concrete drift, call `noop`.
+
+Do not recursively scan the repository. Do not read or search `.scratch/` or `docs/Legacy/`; they are historical migration archives, not active knowledge surfaces.
 
 Find at most one concrete contradiction, stale path, duplicated rule, or missing durable fact that would mislead a coding agent. Create one deduplicated issue with evidence, affected paths, the smallest repair, and a verification command. If no material drift exists or an open issue already covers it, call `noop`.
 
