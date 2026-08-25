@@ -139,7 +139,7 @@ final class RecordsIndexService: ObservableObject {
     }
 
     func prepareUITestSeedIfRequested(arguments: [String] = ProcessInfo.processInfo.arguments) {
-        guard environment["INSIGHTKIT_UI_TEST_MODE"] == "1",
+        guard (environment["INSIGHTKIT_UI_TEST_MODE"] == "1" || arguments.contains("--ui-test-mode")),
               let recordID = environment["INSIGHTKIT_UI_TEST_SEED_RECORD_ID"]
                 ?? arguments.first(where: { $0.hasPrefix("--ui-test-seed-record=") })?
                     .replacingOccurrences(of: "--ui-test-seed-record=", with: ""),
