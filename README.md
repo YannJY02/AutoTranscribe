@@ -32,6 +32,7 @@
 | Records | `~/Documents/InsightKit/Records` meeting asset folders |
 | Intelligence | Smart Minutes, highlights, decisions, actions, chapters, and exports |
 | Verification | Local release closure, secret hygiene, UI hygiene, and project-normalization verifiers |
+| Agent development | [Linear cockpit](https://linear.app/yannjy/project/insightkit-agent-harness-6deb89d380ba) → GitHub Issues → local Symphony/Codex → deterministic CI → human review; see [tool boundaries](docs/agents/tool-boundaries.md) |
 
 ## Legacy AutoTranscribe Features
 

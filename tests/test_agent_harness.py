@@ -8,8 +8,8 @@ from pathlib import Path
 
 from scripts.agent_harness import (
     _run_command,
-    check_agentic_locks,
     changed_files,
+    doctor,
     gate_specs,
     parse_issue_number,
     validate_issue,
@@ -171,38 +171,14 @@ def test_gate_specs_route_harness_tests_and_symphony_shell():
     )
 
 
-def test_agentic_source_changes_compile_and_check_generated_files():
-    gates = gate_specs(
-        [".github/workflows/agentic-ci-doctor.md"], mode="full", python_executable="python3.11"
-    )
+def test_actions_are_deterministic_ci_only():
+    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+    tracked = sorted(path.name for path in workflows.iterdir() if path.is_file())
 
-    assert gates[-1].name == "agentic-workflows"
-    assert gates[-1].commands == (("python3.11", "scripts/agent_harness.py", "agentic-lock-check"),)
-
-
-def test_agentic_generated_changes_also_trigger_lock_check():
-    generated_paths = [
-        ".github/workflows/agentic-ci-doctor.lock.yml",
-        ".github/workflows/agentic_commands.yml",
-        ".github/aw/actions-lock.json",
-    ]
-
-    for path in generated_paths:
-        assert gate_specs([path], mode="quick", python_executable="python3.11")[-1].name == "agentic-workflows"
-
-
-def test_agentic_lock_check_purges_orphaned_workflows(monkeypatch):
-    commands = []
-    monkeypatch.setattr("scripts.agent_harness._agentic_generated_snapshot", lambda: {})
-
-    def completed(command, **_kwargs):
-        commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr("scripts.agent_harness.subprocess.run", completed)
-
-    assert check_agentic_locks() == 0
-    assert "--purge" in commands[0]
+    assert tracked == ["ci.yml"]
+    ci = (workflows / "ci.yml").read_text(encoding="utf-8")
+    assert "copilot-requests" not in ci
+    assert "gh-aw" not in ci
 
 
 def test_command_evidence_never_persists_process_output(tmp_path, monkeypatch):
@@ -226,6 +202,17 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "gh auth token" not in launcher
     assert "SYMPHONY_GITHUB_TOKEN" in launcher
     assert "security find-generic-password" in launcher
+
+
+def test_app_proof_doctor_checks_full_xcode_and_native_capture_tools():
+    checks = {item["check"] for item in doctor(profile="app-proof")["checks"]}
+
+    assert "command:xcodebuild" in checks
+    assert "command:xcrun" in checks
+    assert "command:xcodegen" in checks
+    assert "xcode-runtime" in checks
+    assert "file:/usr/sbin/screencapture" in checks
+    assert "file:/usr/bin/log" in checks
 
 
 def test_lock_subcommand_runs_command_and_writes_no_secret(tmp_path):
