@@ -7,7 +7,7 @@ options:
 
 targets:
   InsightKitObjCShims:
-    type: framework.static
+    type: library.static
     platform: macOS
     sources:
       - Sources/InsightKitObjCShims

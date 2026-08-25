@@ -300,10 +300,11 @@ final class LiveSessionViewModel: ObservableObject {
             }
             return
         }
-        rpcQueue.async { [weak self] in
-            guard let self else { return }
+        let rpcClient = rpcClient
+        rpcQueue.async { [weak self, rpcClient] in
             do {
-                let status = try self.rpcClient.sidecarStatus()
+                let status = try rpcClient.sidecarStatus()
+                guard let self else { return }
                 let running = (status["running"] as? Bool) ?? false
                 let pid = (status["pid"] as? Int) ?? 0
                 let socketPath = (status["socket_path"] as? String) ?? ""
@@ -329,6 +330,7 @@ final class LiveSessionViewModel: ObservableObject {
                     }
                 }
             } catch {
+                guard let self else { return }
                 self.updateMain {
                     self.sidecarHealth = .unknown
                     self.sidecarLabel = "sidecar: down"
