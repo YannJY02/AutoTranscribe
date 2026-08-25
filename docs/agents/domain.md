@@ -50,7 +50,7 @@ When historical material still matters, classify it into one of these current fo
 
 - **Context term**: if the code and user-facing workflow still use the concept, add or update the relevant `CONTEXT.md`.
 - **ADR candidate**: if the historical material records a hard-to-reverse decision with real tradeoffs, write or update an ADR.
-- **Current PRD or issue**: if the historical material describes unfinished useful work, promote it into `.scratch/<feature>/`.
+- **Current PRD or issue**: if the historical material describes unfinished useful work, create a GitHub Issue containing the current scope and a link to the historical source.
 - **Proof or release evidence**: if it is only evidence, keep it in the proof index and point current release docs to the newest proof.
 - **Owner input**: if it requires credentials, legal text, Apple account access, or public release decisions, keep it in the owner-input checklist.
 - **Legacy reference**: if the code already implements or supersedes it, leave it in Legacy and point to the current authority.

@@ -6,12 +6,30 @@ options:
   generateEmptyDirectories: true
 
 targets:
+  InsightKitObjCShims:
+    type: framework.static
+    platform: macOS
+    sources:
+      - Sources/InsightKitObjCShims
+    headers:
+      public:
+        - Sources/InsightKitObjCShims/include/*.h
+    settings:
+      base:
+        DEFINES_MODULE: YES
+        HEADER_SEARCH_PATHS: $(SRCROOT)/Sources/InsightKitObjCShims/include
+        PRODUCT_MODULE_NAME: InsightKitObjCShims
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+
   InsightKitApp:
     type: application
     platform: macOS
     sources:
       - Sources/InsightKitApp
       - Resources
+    dependencies:
+      - target: InsightKitObjCShims
+        embed: false
     entitlements:
       path: InsightKitApp.entitlements
       properties:

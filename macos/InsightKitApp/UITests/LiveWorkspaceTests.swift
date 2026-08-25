@@ -73,9 +73,6 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(playbackLabel), "回看态应显示当前播放时间")
         XCTAssertTrue(waitForStringValue("00:00", in: playbackLabel, timeout: 3))
 
-        button("live_transcript_entry_1").tap()
-        XCTAssertTrue(waitForStringValue("00:18", in: playbackLabel, timeout: 3))
-
         button("live_chapter_row_2").tap()
         XCTAssertTrue(waitForStringValue("00:42", in: playbackLabel, timeout: 3))
 

@@ -109,14 +109,14 @@ LEGACY_STANDARD_SETUP_REQUIREMENTS = {
         "manifest.md",
     ),
     "docs/agents/issue-tracker.md": (
-        "Legacy workflow assets",
-        "not the active issue tracker",
-        ".scratch/<feature>/PRD.md",
+        "Existing local markdown",
+        "GitHub Issues",
+        "migration/reference material",
     ),
     "docs/agents/triage-labels.md": (
-        "Legacy workflow assets",
-        "Only use the five triage labels",
-        ".scratch/<feature>/issues/",
+        "GitHub label",
+        "Active state lives on GitHub",
+        ".scratch/",
     ),
     "docs/agents/domain.md": (
         "Legacy promotion rules",
@@ -230,7 +230,7 @@ RELEASE_VOCAB_TERMS = (
     "Visual GUI Proof",
 )
 SCRATCH_INDEX_REQUIRED_TERMS = (
-    "Scratch Work Index",
+    "Historical Scratch Migration Index",
     "ready-for-agent",
     "ready-for-human",
     "owner-controlled",

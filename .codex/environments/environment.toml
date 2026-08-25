@@ -3,7 +3,7 @@ version = 1
 name = "transcription"
 
 [setup]
-script = ""
+script = "./scripts/agent_bootstrap.sh"
 
 [[actions]]
 name = "运行"

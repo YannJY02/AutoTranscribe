@@ -14,6 +14,7 @@ class TestJobQueue(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.store = InsightStore(Path(self.tmp) / "test.db")
+        self.store.init_schema()
         self.service = mock.MagicMock(spec=InsightService)
         self.watch = WatchBridge()
         self.queue = JobQueue(store=self.store, insight_service=self.service, watch_bridge=self.watch)

@@ -40,6 +40,11 @@ final class WorkflowCoordinator: ObservableObject {
         self.recordsNavigation = recordsNavigation
         self.capabilityClient = capabilityClient
         self.settingsOpener = settingsOpener
+        if UITestLaunchOptions.isEnabled {
+            recordsService.rootDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("InsightKitRecordsUITests", isDirectory: true)
+            recordsService.prepareUITestSeed(recordID: "record-restart-proof")
+        }
         // Phase 5: inject recordsService into child ViewModels
         liveViewModel.recordsService = recordsService
         transcriptionViewModel.recordsService = recordsService

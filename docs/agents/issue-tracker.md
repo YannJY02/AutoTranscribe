@@ -1,33 +1,40 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub
 
-Issues and PRDs for this repo live as markdown files in `.scratch/`.
+GitHub Issues are the only active task and PRD source. Use `gh`; infer the repository from the current checkout.
 
-Start at `.scratch/README.md` to see the current work lanes before choosing an issue. It explains which lanes are completed and awaiting human review, and which lanes require owner-controlled release or privacy input.
+## Agent task contract
 
-## Conventions
+Create unattended tasks with `.github/ISSUE_TEMPLATE/agent-task.yml`. Before applying `ready-for-agent`, require non-empty Goal, Context, Boundary, Acceptance, Verification, Resource class, Blockers, and Human gates sections.
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The PRD is `.scratch/<feature-slug>/PRD.md`
-- Implementation issues are `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- `isolated`: documentation, analysis, unit tests, or code that does not launch or install the app or use shared runtime state.
+- `exclusive-macos`: packaging, installed-app, XCUITest, capture, TCC, performance, canonical Records, or shared Unix socket work.
+- Blockers must be `None` or explicit `#<issue>` references; every referenced issue must be closed.
+- Human gates must be `None` before dispatch. Otherwise use `ready-for-human` or `needs-info`.
 
-## Status reading rule
+Validate before dispatch:
 
-Only pick up `ready-for-agent` issues autonomously.
+```bash
+python3.11 scripts/agent_harness.py issue-preflight --issue <number>
+```
 
-When an issue is `ready-for-human`, read the acceptance criteria and latest comments before acting. Checked criteria plus proof comments mean the issue is completed and waiting for human review. Unchecked criteria plus release-channel, privacy, Apple account, certificate, notarization, or App Store language mean owner input is required.
+## Operations
 
-## When a skill says "publish to the issue tracker"
+- Create: `gh issue create --title "..." --body-file <file>`
+- Read: `gh issue view <number> --comments`
+- Comment: `gh issue comment <number> --body-file <file>`
+- Label: `gh issue edit <number> --add-label <label> --remove-label <label>`
+- Claim: `gh issue edit <number> --add-assignee @me`
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+Only claim open, unassigned, unblocked issues whose sole triage-state label is `ready-for-agent`. Assignment is the first write. Successful automation removes `ready-for-agent`, adds `ready-for-human`, and leaves the issue open. It never merges the PR or closes the issue.
 
-## When a skill says "fetch the relevant ticket"
+## Dependencies and frontier
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+Use GitHub sub-issues and native dependencies where available. The runnable frontier contains open children whose blockers are closed, which are unassigned, and which pass the agent task contract. If native dependencies are unavailable, keep `Blocked by: #<number>` references in the Blockers section.
 
-## Legacy workflow assets
+## Pull requests
 
-Historical issue-style files under `docs/Legacy/matt-workflow-library/converted-assets/` are not the active issue tracker. They are reference material.
+PRs are delivery and review surfaces, not intake. Each implementation PR links its issue and harness evidence. Required checks must pass before `ready-for-human`; human acceptance and merge remain separate.
 
-If a historical item is still useful after checking current code, context docs, ADRs, and proof, promote it by creating a current `.scratch/<feature>/PRD.md` and `.scratch/<feature>/issues/<NN>-<slug>.md`. If the code already implements or supersedes it, leave it as Legacy reference and point to the current authority instead.
+## Existing local markdown
+
+`.scratch/` and historical issue-style files under `docs/Legacy/matt-workflow-library/` are migration/reference material, not active tracker state. Re-check useful unfinished work against current code and selectively create a GitHub Issue. Do not bulk-convert or update historical status lines as if they were live labels.

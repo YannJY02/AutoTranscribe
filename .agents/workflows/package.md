@@ -13,7 +13,8 @@ Every time code changes are made to the Swift source or Python runtime, run this
 1. Build and package the app:
 
 ```bash
-cd /Users/yann.jy/Developer/Projects/transcription && bash scripts/package_insightkit_app.sh
+repo_root="$(git rev-parse --show-toplevel)"
+bash "$repo_root/scripts/package_insightkit_app.sh"
 ```
 
 Expected output ends with:
@@ -26,11 +27,13 @@ Built app bundle: .../dist/macos/InsightKit.app
 2. Open the packaged app to verify it launches:
 
 ```bash
-open "/Users/yann.jy/Developer/Projects/transcription/dist/macos/InsightKit.app"
+repo_root="$(git rev-parse --show-toplevel)"
+open "$repo_root/dist/macos/InsightKit.app"
 ```
 
 3. Run Python tests to confirm runtime integrity:
 
 ```bash
-cd /Users/yann.jy/Developer/Projects/transcription && python3 -m pytest tests/ -v --tb=short 2>&1 | tail -20
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" && python3.11 -m pytest tests/ -v --tb=short
 ```

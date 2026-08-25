@@ -148,9 +148,9 @@ InsightKit is current.
     write(root / "docs/adr/0001-example.md", "# Example decision\n")
     write(
         root / ".scratch/README.md",
-        """# Scratch Work Index
+        """# Historical Scratch Migration Index
 
-Status: current
+Status: historical
 
 Use ready-for-agent and ready-for-human status labels.
 

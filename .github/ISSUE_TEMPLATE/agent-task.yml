@@ -1,0 +1,71 @@
+name: Agent task
+description: A bounded task that may be authorized for unattended Codex execution
+title: "[agent] "
+labels:
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: Complete every section. A human applies `ready-for-agent` only after deterministic preflight passes.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The concrete repository or user-visible state at completion.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Relevant code, docs, ADRs, evidence, and constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Boundary
+      description: In scope, out of scope, and stop conditions.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: Observable completion criteria.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Exact commands and any required runtime or visual proof.
+    validations:
+      required: true
+  - type: dropdown
+    id: resource-class
+    attributes:
+      label: Resource class
+      description: Use exclusive-macos for installed-app, GUI, capture, TCC, socket, Records, or performance work.
+      options:
+        - isolated
+        - exclusive-macos
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers
+      description: Link blocking issues as #123, or write None.
+      value: None.
+    validations:
+      required: true
+  - type: textarea
+    id: human-gates
+    attributes:
+      label: Human gates
+      description: Write None for unattended work; otherwise describe the required decision or credential.
+      value: None.
+    validations:
+      required: true
