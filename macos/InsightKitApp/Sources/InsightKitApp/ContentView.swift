@@ -41,6 +41,18 @@ struct ContentView: View {
 
     var body: some View {
         contentWithBottomStatusBar
+        .overlay(alignment: .bottomTrailing) {
+            if UITestLaunchOptions.isEnabled {
+                VStack {
+                    Text("ids=" + coordinator.recordsService.records.map(\.id).joined(separator: ","))
+                        .accessibilityIdentifier("ui_test_record_ids")
+                    Text(coordinator.recordsService.rootDirectory.path)
+                        .accessibilityIdentifier("ui_test_records_root")
+                }
+                .font(.caption2)
+                .foregroundStyle(.clear)
+            }
+        }
         .sheet(isPresented: $coordinator.liveViewModel.isSystemAudioPickerPresented) {
             SystemAudioPickerSheet(
                 sources: coordinator.liveViewModel.systemAudioSources,
