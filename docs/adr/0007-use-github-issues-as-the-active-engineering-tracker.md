@@ -1,6 +1,6 @@
 # Use GitHub Issues as the active engineering tracker
 
-Status: accepted
+Status: superseded by ADR 0008
 
 ## Context
 
@@ -19,3 +19,7 @@ This decision supersedes only the `.scratch/public-distribution-readiness/` trac
 - Successful agent work stops at `ready-for-human`; human acceptance and merge remain separate.
 - Linear is the human portfolio view for objectives, priority, and review attention. It links to GitHub execution records and must not become a competing task state store.
 - A future migration to Symphony's native Linear tracker must replace this ADR and migrate open state once; a permanent two-way active queue is not allowed.
+
+## Supersession
+
+ADR 0008 replaces the active-tracker decision after native Linear/GitHub two-way synchronization was configured and reproduced in both directions. This file remains the historical record of the GitHub-only phase.

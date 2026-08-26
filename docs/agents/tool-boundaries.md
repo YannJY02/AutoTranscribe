@@ -6,8 +6,8 @@ This repository follows the public [OpenAI Harness Engineering](https://openai.c
 
 | Layer | Role | Tool | Authoritative data | Must not do |
 | --- | --- | --- | --- | --- |
-| Human planning | Choose objectives, priority, and review attention | Linear project | Portfolio status and links | Duplicate acceptance criteria, blockers, or execution labels |
-| Execution intake | Define a runnable task contract | GitHub Issues | Goal, Context, Boundary, Acceptance, Verification, blockers, human gates, triage label | Merge code or silently authorize `ready-for-agent` |
+| Task and project truth | Choose objectives, scope, priority, detailed status, and review attention | Linear project and issues | Task contract, project membership, priority, relations, detailed status, shared labels | Maintain a second GitHub Project board |
+| Execution mirror | Expose runnable tasks to repository automation | Synced GitHub Issues | Repository issue number, coarse open/closed state, synchronized task fields | Override conflicting Linear task state or silently authorize `ready-for-agent` |
 | Durable scheduling | Poll, retry, and isolate workspaces | Local Symphony | Runtime state and per-issue workspace | Decide product priority or bypass preflight |
 | Implementation | Plan, edit, run tools, review, and open PRs | Codex App Server using the operator's ChatGPT subscription | Current checkout, repository docs, issue, tool results | Receive tracker secrets or treat chat as durable truth |
 | Application proof | Drive and inspect the native app | XCUITest, Accessibility, XCTest screenshots, `screencapture` | `.xcresult`, screenshots, optional journey video | Record the user's display without explicit opt-in |
@@ -19,13 +19,13 @@ This repository follows the public [OpenAI Harness Engineering](https://openai.c
 
 For OpenAI's browser product, CDP, DOM snapshots, LogQL, PromQL, and an ephemeral observability stack make the app legible. InsightKit's native equivalent is XCUITest/Accessibility, Unified Logging, JSON metrics, and Instruments. Add Loki, Prometheus, or OpenTelemetry only when a real multi-process or production query cannot be answered by these native per-run artifacts.
 
-## Linear boundary
+## Linear and GitHub boundary
 
-The Linear project is the human cockpit. It holds the objective, priority, status summary, and links to the repository, GitHub Issues, PRs, and operating docs. GitHub Issues remain the single machine-dispatch source under ADR 0007.
+Project: [InsightKit / AutoTranscribe](https://linear.app/yannjy/project/insightkit-autotranscribe-a2f3a38cd145)
 
-Project: [InsightKit Agent Harness](https://linear.app/yannjy/project/insightkit-agent-harness-6deb89d380ba)
+Linear is the canonical planning and task-state cockpit. Native two-way sync supplies the GitHub issue mirror required by the current GitHub-backed Symphony adapter. GitHub remains authoritative only for repository delivery facts: commits, PRs, reviews, checks, merge state, and attached proof.
 
-Do not two-way sync issue status. If the team later chooses the public Symphony specification's native Linear tracker, replace ADR 0007, migrate open work once, and remove GitHub dispatch labels in the same change.
+Native sync does not mirror Linear project membership, priority, cycles, milestones, or detailed workflow states. GitHub-created issues therefore enter the Linear team Backlog without a project and must be admitted to the canonical project in Linear. GitHub comments appear in a dedicated synced Linear thread; reply inside that thread for Linear-to-GitHub publication, while other Linear comments stay private. See ADR 0008.
 
 ## Operating entry points
 

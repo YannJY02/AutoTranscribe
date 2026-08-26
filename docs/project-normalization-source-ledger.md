@@ -1,7 +1,7 @@
 # Project Normalization Source Ledger
 
 Status: current
-Last reviewed: 2026-06-21
+Last reviewed: 2026-08-26
 
 This ledger tells future agents which existing assets to trust for project-normalization work. It classifies sources by role so current InsightKit work does not drift into legacy AutoTranscribe language, stale plans, or release-channel overclaims.
 
@@ -17,7 +17,7 @@ This ledger tells future agents which existing assets to trust for project-norma
 - **Architecture decision**: accepted ADRs or current architecture references.
 - **Release evidence**: proof ledgers and verifier scripts that support local readiness claims.
 - **Integration contract**: AttentionOS or host-facing module contracts.
-- **Future-work queue**: GitHub Issues and their dependency/triage metadata define next slices; `.scratch/` is migration history.
+- **Future-work queue**: Linear issues and their project/priority/status metadata define next slices; synchronized GitHub Issues expose those tasks to repository automation. `.scratch/` is migration history.
 
 ## Context Coverage
 
@@ -26,7 +26,7 @@ This ledger tells future agents which existing assets to trust for project-norma
 | Product | `docs/contexts/product/CONTEXT.md`, `docs/Legacy/matt-workflow-library/converted-assets/product/historical-product-rationale.md`, `docs/Legacy/matt-workflow-library/converted-assets/product/reference-output-patterns.md`, `docs/Legacy/matt-workflow-library/converted-assets/planning/content-promotion-audit.md` | Use the context file for current language; use the Legacy converted assets only as historical rationale, output-structure patterns, and promotion audit trails. |
 | Python Runtime | `docs/contexts/python-runtime/CONTEXT.md`, `scripts/asr_runtime_profile.py`, `scripts/asr_model_catalog.py`, `insightkit/ipc/server.py` | Runtime terms cover Sidecar, RPC Action, RPC Event, ASR Runtime Profile, ASR Model Catalog, Runtime Snapshot, Prewarm Watchdog, Record Writer, and Record Save Action. |
 | macOS App | `docs/contexts/macos-app/CONTEXT.md`, `macos/InsightKitApp/Sources/InsightKitApp/` | Use workspace terms such as Session Shell, Session Phase, Panel Data Source, and Record Index rather than generic page/screen language. |
-| Release Workflow | `docs/contexts/release-workflow/CONTEXT.md`, `docs/Legacy/matt-workflow-library/converted-assets/release/release-proof-index.md`, GitHub Issues, `scripts/verify_release_closure.py` | Local Release Ready and Distribution Ready remain separate claims; use Proof JSON, Closure Gate, preflight, hygiene-gate, Privacy Review Input, Public Distribution Readiness, and Sandbox Verification terms. |
+| Release Workflow | `docs/contexts/release-workflow/CONTEXT.md`, `docs/Legacy/matt-workflow-library/converted-assets/release/release-proof-index.md`, Linear tasks, synchronized GitHub Issues, `scripts/verify_release_closure.py` | Local Release Ready and Distribution Ready remain separate claims; use Proof JSON, Closure Gate, preflight, hygiene-gate, Privacy Review Input, Public Distribution Readiness, and Sandbox Verification terms. |
 | Integrations | `docs/contexts/integrations/CONTEXT.md`, `docs/attentionos-integration.md`, `insightkit/integration/attentionos_bridge.py` | `docs/attentionos-integration.md` and the generated module README are current External Host Contract surfaces; keep host terms out of core product language unless the integration context is active. |
 
 ## High-Signal Assets By Role
@@ -56,6 +56,7 @@ This ledger tells future agents which existing assets to trust for project-norma
 - `docs/adr/0002-use-persistent-unix-socket-rpc-for-app-runtime-communication.md`: accepted persistent Unix socket RPC decision.
 - `docs/adr/0003-separate-local-readiness-from-public-distribution-readiness.md`: accepted readiness vocabulary decision.
 - `docs/adr/0004-use-local-record-folders-with-runtime-record-writer.md`: accepted local Record Folder plus runtime RecordWriter decision.
+- `docs/adr/0008-use-linear-task-truth-with-a-github-execution-mirror.md`: accepted Linear task-truth and synchronized GitHub execution-mirror decision; supersedes ADR 0007.
 - `docs/Legacy/matt-workflow-library/converted-assets/architecture/architecture-decision-map.md`: historical architecture reference map; defer to ADRs when it conflicts with accepted decisions.
 - `docs/architecture-review-handoff.md`: current handoff surface for future deep module scans; not an ADR.
 - `docs/agents/loop-engineering.md`: current Matt workflow loop standard; use it to run sequential safe loops from review through implementation and verification.
@@ -68,7 +69,7 @@ This ledger tells future agents which existing assets to trust for project-norma
 - `scripts/release_preflight.sh`: local, Developer ID, and App Store preflight gate.
 - `docs/Legacy/matt-workflow-library/converted-assets/release/release-proof-index.md`: historical release proof index.
 - `docs/Legacy/matt-workflow-library/converted-assets/release/owner-input-checklist.md`: owner-controlled release and privacy inputs.
-- `.scratch/public-distribution-readiness/PRD.md`: retained migration source for owner-controlled public-distribution work; active state belongs in GitHub Issues.
+- `.scratch/public-distribution-readiness/PRD.md`: retained migration source for owner-controlled public-distribution work; active state belongs in Linear issues.
 - `docs/Legacy/matt-workflow-library/original-assets/docs/plans/2026-05-23-insightkit-goal-evidence.md`: moved product-goal evidence ledger.
 - `docs/Legacy/matt-workflow-library/original-assets/docs/plans/2026-05-24-insightkit-release-verification.md`: moved release verification notes.
 - `docs/Legacy/matt-workflow-library/original-assets/docs/plans/2026-05-26-insightkit-release-readiness-status.md`: moved release-readiness status and blocker language.
@@ -84,20 +85,21 @@ This ledger tells future agents which existing assets to trust for project-norma
 
 ### Future-Work Queue
 
-- GitHub Issues: active PRDs, implementation slices, dependencies, triage state, and human handoff.
-- `.scratch/`: historical local PRD/issue migration source only; re-check before selectively creating a GitHub Issue.
-- `docs/agents/issue-tracker.md`: GitHub Issue contract and operations.
+- Linear issues: active PRDs, implementation slices, project membership, dependencies, detailed status, and human handoff.
+- Synchronized GitHub Issues: Symphony dispatch, repository-native links, and coarse execution state.
+- `.scratch/`: historical local PRD/issue migration source only; re-check before selectively creating a Linear issue.
+- `docs/agents/issue-tracker.md`: Linear task contract, synchronization boundary, and GitHub execution operations.
 - `docs/agents/triage-labels.md`: allowed status vocabulary.
 - `docs/agents/domain.md`: domain-doc maintenance convention.
 - `docs/agents/loop-engineering.md`: Matt workflow loop packet, routes, verification ladder, feedback packet, stop rules, and record-keeping rules.
 - `docs/agents/harness.md`: Codex, Symphony, deterministic CI, resource lock, native application proof, and local recurring-maintenance contract.
-- `docs/agents/tool-boundaries.md`: Linear portfolio, GitHub execution truth, local Codex/Symphony, native observability, and human acceptance boundaries.
+- `docs/agents/tool-boundaries.md`: Linear task truth, GitHub execution mirror, local Codex/Symphony, native observability, and human acceptance boundaries.
 
 ## Use Rules
 
 - Prefer current context docs over historical plans for naming.
 - Prefer accepted ADRs over architecture notes for hard-to-reverse decisions.
 - Prefer verifier output and proof JSON over prose when making release-readiness claims.
-- Mark historical plans as historical unless a current context file, ADR, fresh verifier output, or current GitHub Issue reactivates them.
+- Mark historical plans as historical unless a current context file, ADR, fresh verifier output, or current Linear issue reactivates them.
 - Use the content-promotion audit before reprocessing moved Legacy originals; do not create duplicate current terms or issues when the audit already shows the content was absorbed.
 - Keep this ledger concise; add only high-signal assets that change where future work should start.

@@ -86,7 +86,7 @@ def issue_body(task: MaintenanceTask, period: str) -> str:
 
 ## Context
 
-This is the {period} local maintenance pass. Read AGENTS.md, docs/agents/harness.md, docs/agents/tool-boundaries.md, current Context/ADRs, and the repository feedback-promotion skill before acting. Repository files and GitHub execution evidence are authoritative; Linear is the human portfolio view.
+This is the {period} local maintenance pass. Read AGENTS.md, docs/agents/harness.md, docs/agents/tool-boundaries.md, current Context/ADRs, and the repository feedback-promotion skill before acting. Linear owns task state and priority; repository files, PRs, CI, and GitHub execution evidence own delivery proof.
 
 ## Boundary
 
@@ -211,7 +211,7 @@ def enqueue(task: MaintenanceTask, day: date, *, dry_run: bool) -> dict[str, str
             "--label",
             "harness:maintenance",
             "--label",
-            "ready-for-agent",
+            "needs-triage",
             "--body-file",
             "-",
         ],

@@ -1,6 +1,6 @@
 # InsightKit Agent Harness
 
-The repository supplies missing capabilities around Codex's built-in thread persistence, sandbox, tools, and skills. Linear is the human portfolio view; GitHub Issues are the execution control plane; local Symphony dispatches; Codex executes through the operator's ChatGPT subscription; ordinary Actions verify deterministically.
+The repository supplies missing capabilities around Codex's built-in thread persistence, sandbox, tools, and skills. Linear owns project and task truth; synchronized GitHub Issues are the execution mirror polled by local Symphony; Codex executes through the operator's ChatGPT subscription; ordinary Actions verify deterministically.
 
 ## Entry points
 
@@ -23,14 +23,14 @@ Before starting Symphony, create a dedicated fine-grained token limited to this 
 
 ## Control and feedback flow
 
-1. A human prioritizes an objective in Linear and links the authoritative GitHub execution issue when work is ready to specify.
-2. Deterministic preflight authorizes only complete, unblocked `ready-for-agent` work.
+1. A human or Codex creates and prioritizes the task in the canonical Linear project; native sync creates the GitHub execution mirror.
+2. Deterministic preflight validates the synchronized GitHub body and authorizes only complete, unblocked `ready-for-agent` work.
 3. Symphony creates an isolated clone from the locally synchronized canonical `main`, resets `origin` to GitHub, and resumes the Codex App Server thread on retry.
 4. Codex implements or investigates using repository Context, ADRs, skills, and tools.
 5. Visible macOS work records XCUITest screenshots, optional video, unified logs, JSON metrics, optional Instruments trace, and `proof.json`.
 6. Harness verification records commands and results in `logs/harness/<run>/manifest.json`; an independent local Codex review examines code changes.
 7. GitHub Actions reruns deterministic build, test, UI, package, and release checks only.
-8. The issue moves to `ready-for-human`; a human accepts and merges.
+8. The shared label moves to `ready-for-human`. A linked PR may update detailed status through configured native PR automation; otherwise a human updates Linear during handoff, accepts, and merges. Do not claim a detailed Linear status change unless it is verified on Linear.
 
 ## Resource isolation
 
@@ -63,7 +63,7 @@ Use the `native-app-proof` skill for the exact before/after workflow. Xcode is r
 
 ## Local recurring agents
 
-`scripts/harness_maintenance.py` replaces hosted Agentic Workflows. One macOS LaunchAgent runs it daily at 09:00; another keeps Symphony running across login and process failure. The maintenance schedule catches up every current-week task due by that weekday, and a period marker prevents duplicates. Monday gardens documentation, Tuesday promotes one repeated feedback invariant, and Friday repairs one golden-principle deviation. Each generated GitHub Issue passes the standard task contract and is executed by local Symphony/Codex.
+`scripts/harness_maintenance.py` replaces hosted Agentic Workflows. One macOS LaunchAgent runs it daily at 09:00; another keeps Symphony running across login and process failure. The maintenance schedule catches up every current-week task due by that weekday, and a period marker prevents duplicates. Monday gardens documentation, Tuesday promotes one repeated feedback invariant, and Friday repairs one golden-principle deviation. Each generated GitHub Issue is an allowed machine-ingress exception: native sync creates the Linear Backlog task, which must be assigned to the canonical project during triage.
 
 Preview or enqueue manually:
 

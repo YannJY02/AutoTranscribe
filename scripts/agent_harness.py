@@ -36,6 +36,7 @@ RESOURCE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 HEADING_RE = re.compile(r"^#{2,3}\s+(?P<heading>.+?)\s*$", re.MULTILINE)
 ISSUE_NUMBER_RE = re.compile(r"(?P<number>\d+)$")
 BLOCKER_RE = re.compile(r"(?<![\w/])#(?P<number>\d+)\b")
+LINEAR_ISSUE_LINK_RE = re.compile(r"https://linear\.app/[^/\s\"']+/issue/(?P<identifier>[A-Z][A-Z0-9]*-\d+)\b")
 NO_BLOCKERS = {"none", "none.", "n/a", "not applicable"}
 
 
@@ -82,6 +83,19 @@ def _label_names(payload: dict[str, Any]) -> set[str]:
     for label in payload.get("labels") or []:
         names.add(str(label.get("name", "") if isinstance(label, dict) else label))
     return names
+
+
+def linear_issue_identifier(payload: dict[str, Any]) -> str | None:
+    for comment in payload.get("comments") or []:
+        if not isinstance(comment, dict):
+            continue
+        author = comment.get("author") or {}
+        if not isinstance(author, dict) or author.get("login") != "linear-code":
+            continue
+        match = LINEAR_ISSUE_LINK_RE.search(str(comment.get("body") or ""))
+        if match:
+            return match.group("identifier")
+    return None
 
 
 def validate_issue(payload: dict[str, Any], *, allowed_assignee_login: str | None = None) -> list[str]:
@@ -143,7 +157,7 @@ def load_issue(issue_number: int) -> dict[str, Any]:
             "view",
             str(issue_number),
             "--json",
-            "number,title,body,state,labels,assignees,url",
+            "number,title,body,state,labels,assignees,comments,url",
         ]
     )
 
@@ -153,6 +167,9 @@ def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str,
     payload = load_issue(number)
     current_login = str(_run_json(["gh", "api", "user"]).get("login", "")) if resume else None
     errors = validate_issue(payload, allowed_assignee_login=current_login)
+    linear_issue = linear_issue_identifier(payload)
+    if not linear_issue:
+        errors.append("synchronized issue is missing the verified Linear linkback")
     blocker_states: list[dict[str, Any]] = []
     for blocker in blocker_numbers(str(payload.get("body") or "")):
         blocker_payload = _run_json(["gh", "issue", "view", str(blocker), "--json", "number,state,url"])
@@ -163,6 +180,7 @@ def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str,
     return {
         "status": "passed" if not errors else "failed",
         "issue": number,
+        "linear_issue": linear_issue,
         "url": payload.get("url"),
         "resource_class": next(
             (
@@ -475,7 +493,9 @@ def doctor(*, profile: str) -> dict[str, Any]:
         )
 
     text_checks = (
+        ("AGENTS.md", "canonical task, PRD, priority, and detailed-status source", True),
         ("AGENTS.md", "GitHub Issues", True),
+        ("docs/agents/issue-tracker.md", "canonical task and PRD source", True),
         ("docs/agents/loop-engineering.md", "GitHub Issue", True),
         ("WORKFLOW.md", "max_concurrent_agents: 2", True),
         ("WORKFLOW.md", "shell_environment_policy.inherit=core", True),
