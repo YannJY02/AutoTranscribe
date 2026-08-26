@@ -2,19 +2,16 @@ import XCTest
 
 final class TranscriptionWorkspaceTests: InsightKitUITests {
 
+    override var launchEnvironmentOverrides: [String: String] {
+        ["INSIGHTKIT_UI_TEST_ROUTE": "transcription"]
+    }
+
+    override var launchArgumentOverrides: [String] {
+        ["--ui-test-route=transcription"]
+    }
+
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Transcription route is accessible via toolbar "转写总结" button from home
-        // or via the home screen toolbar button
-        let transcriptionButton = app.buttons["转写总结"].firstMatch
-        if transcriptionButton.waitForExistence(timeout: 3) {
-            transcriptionButton.tap()
-        } else {
-            // Fallback: navigate via home toolbar
-            let toolbarButton = app.toolbars.buttons["转写总结"].firstMatch
-            XCTAssertTrue(toolbarButton.waitForExistence(timeout: 3), "转写总结按钮应存在")
-            toolbarButton.tap()
-        }
         let backButton = app.buttons["返回首页"]
         XCTAssertTrue(waitForElement(backButton, timeout: 5), "应导航到转写工作区")
     }
@@ -40,7 +37,7 @@ final class TranscriptionWorkspaceTests: InsightKitUITests {
     }
 
     func testBackButtonNavigatesToHome() throws {
-        app.buttons["返回首页"].firstMatch.tap()
+        app.buttons["返回首页"].firstMatch.click()
         let homeTitle = app.staticTexts["home_title"]
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5), "应返回首页")
     }
