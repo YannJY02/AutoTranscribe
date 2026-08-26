@@ -7,12 +7,12 @@ Every development pass is a bounded Goal, Context, Boundary, Action, Verificatio
 
 ## Purpose
 
-Ship one small verified change or one evidence-backed investigation, then leave the repository and GitHub Issue easier for the next agent to operate.
+Ship one small verified change or one evidence-backed investigation, then leave the Linear task and synchronized GitHub execution issue easier for the next agent to operate.
 
 ## Preconditions
 
 - Read `AGENTS.md`, `docs/agents/harness.md`, issue-tracker and triage rules.
-- Read the live GitHub Issue and all comments.
+- Interactive planning reads the canonical Linear task and its GitHub-synced thread. Unattended Symphony treats the synchronized GitHub projection as its execution contract; preflight resolves the Linear identifier from the verified `linear-code` linkback comment, while Linear-only fields remain guaranteed by triage.
 - Read `CONTEXT-MAP.md`, only relevant `CONTEXT.md` files, and affected ADRs.
 - Run `agent_harness.py issue-preflight` before unattended execution.
 
@@ -30,7 +30,7 @@ Ship one small verified change or one evidence-backed investigation, then leave 
 
 ### Project Health Route
 
-`review` → `improve-codebase-architecture` → `grilling`/`domain-modeling` → `to-prd` → `to-issues` → `implement`. Publish the accepted PRD and slices as linked GitHub Issues, not local active markdown.
+`review` → `improve-codebase-architecture` → `grilling`/`domain-modeling` → `to-prd` → `to-issues` → `implement`. Publish the accepted PRD and slices as linked Linear issues, let native sync create their GitHub mirrors, and do not use local active markdown.
 
 ### Feature Route
 
@@ -42,7 +42,7 @@ Ship one small verified change or one evidence-backed investigation, then leave 
 
 ### Legacy Asset Promotion Route
 
-Start at `docs/Legacy/matt-workflow-library/manifest.md`, compare the converted asset with current code, Context, ADRs, and proof, then classify it as a context term, ADR candidate, current PRD or issue, proof, owner input, or Legacy reference. Promote unfinished useful work into GitHub Issues. Verify documentation with `verify_project_normalization.py`.
+Start at `docs/Legacy/matt-workflow-library/manifest.md`, compare the converted asset with current code, Context, ADRs, and proof, then classify it as a context term, ADR candidate, current PRD or issue, proof, owner input, or Legacy reference. Promote unfinished useful work into Linear issues. Verify documentation with `verify_project_normalization.py`.
 
 ## Verification Ladder
 
@@ -53,7 +53,7 @@ Start at `docs/Legacy/matt-workflow-library/manifest.md`, compare the converted 
 | Matches | Does it match current repository conventions and ADRs? |
 | Works | Does executable verification pass? |
 | Explains | Can the next agent determine the next action? |
-| Records | Is evidence attached to the GitHub Issue, PR, or proof ledger? |
+| Records | Is evidence attached to the Linear task, synchronized GitHub Issue, PR, or proof ledger? |
 
 ## Required Gates
 
@@ -76,7 +76,7 @@ Stop and route to `needs-info` or `ready-for-human` before credentials, Apple ac
 
 ## Record Keeping
 
-- Comment on the GitHub Issue with the PR or no-change result, manifest path, commands, results, and remaining human gate.
+- Record the PR or no-change result, manifest path, commands, results, and remaining human gate in the GitHub-synced Linear thread so both task surfaces receive it.
 - Update Context only when vocabulary changed; add an ADR only for hard-to-reverse decisions with real alternatives.
 - Keep generated proof under `logs/diagnostics/` or `logs/harness/`; CI uploads it as an artifact.
 - Finish at `ready-for-human`; do not merge or close automatically.

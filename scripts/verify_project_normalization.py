@@ -110,12 +110,12 @@ LEGACY_STANDARD_SETUP_REQUIREMENTS = {
     ),
     "docs/agents/issue-tracker.md": (
         "Existing local markdown",
-        "GitHub Issues",
+        "GitHub execution mirror",
         "migration/reference material",
     ),
     "docs/agents/triage-labels.md": (
         "GitHub label",
-        "Active state lives on GitHub",
+        "Detailed task state lives in Linear",
         ".scratch/",
     ),
     "docs/agents/domain.md": (
@@ -238,6 +238,27 @@ SCRATCH_INDEX_REQUIRED_TERMS = (
     "legacy-matt-workflow-library/",
     "live-workspace-session/",
     "public-distribution-readiness/",
+)
+TRACKER_AUTHORITY_REQUIRED = {
+    "AGENTS.md": ("canonical task, PRD, priority, and detailed-status source",),
+    "docs/agents/issue-tracker.md": ("canonical task and PRD source", "GitHub execution mirror"),
+    "docs/contexts/release-workflow/CONTEXT.md": ("The Linear issue lane",),
+    "docs/adr/0007-use-github-issues-as-the-active-engineering-tracker.md": (
+        "Status: superseded by ADR 0008",
+    ),
+    "docs/adr/0008-use-linear-task-truth-with-a-github-execution-mirror.md": (
+        "Status: accepted",
+        "The Linear project `InsightKit / AutoTranscribe` is canonical",
+    ),
+    "WORKFLOW.md": ("Do not claim a detailed Linear status change unless it is verified on Linear.",),
+}
+STALE_TRACKER_AUTHORITY_TERMS = (
+    "GitHub Issues are the only active task",
+    "Active state lives on GitHub",
+    "GitHub Issues is the active work queue",
+    "The GitHub Issue lane",
+    "Linear is the human portfolio view",
+    "Do not two-way sync issue status",
 )
 
 
@@ -453,6 +474,44 @@ def verify_legacy_library(root: Path, findings: list[dict[str, str]], counts: di
                 )
 
 
+def verify_tracker_authority(root: Path, findings: list[dict[str, str]]) -> None:
+    agents = root / "AGENTS.md"
+    cutover_declared = agents.exists() and "canonical task, PRD, priority, and detailed-status source" in read_text(agents)
+    cutover_adr = root / "docs/adr/0008-use-linear-task-truth-with-a-github-execution-mirror.md"
+    if not cutover_declared and not cutover_adr.exists():
+        return
+
+    for rel, required_terms in TRACKER_AUTHORITY_REQUIRED.items():
+        path = root / rel
+        if not path.exists():
+            findings.append(finding(rel, "missing_tracker_authority_doc", "Linear cutover authority document is missing."))
+            continue
+        text = read_text(path)
+        for term in required_terms:
+            if term not in text:
+                findings.append(
+                    finding(rel, "missing_tracker_authority_term", f"Linear cutover authority term is missing: {term}.")
+                )
+
+    current_paths = {
+        root / "AGENTS.md",
+        root / "README.md",
+        root / "WORKFLOW.md",
+        root / "docs/project-normalization-source-ledger.md",
+        *(root / "docs/agents").glob("**/*.md"),
+        *(root / "docs/contexts").glob("**/*.md"),
+    }
+    for path in sorted(current_paths):
+        if not path.exists():
+            continue
+        text = read_text(path)
+        for term in STALE_TRACKER_AUTHORITY_TERMS:
+            if term in text:
+                findings.append(
+                    finding(relpath(root, path), "stale_tracker_authority", f"Stale tracker authority remains: {term}.")
+                )
+
+
 def verify(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     findings: list[dict[str, str]] = []
@@ -664,6 +723,8 @@ def verify(root: Path) -> dict[str, Any]:
 
     if legacy_library_requested(root):
         verify_legacy_library(root, findings, counts)
+
+    verify_tracker_authority(root, findings)
 
     return {
         "status": "passed" if not findings else "failed",

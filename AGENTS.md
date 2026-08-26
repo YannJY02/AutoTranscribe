@@ -8,11 +8,11 @@ Start each new pull-request task in a dedicated Git worktree based on `main`, wi
 
 ### Issue tracker
 
-GitHub Issues are the only active task and PRD source. Existing `.scratch/` files are historical migration material. See `docs/agents/issue-tracker.md`.
+The [InsightKit / AutoTranscribe Linear project](https://linear.app/yannjy/project/insightkit-autotranscribe-a2f3a38cd145) is the canonical task, PRD, priority, and detailed-status source. Native two-way sync mirrors issues into `YannJY02/AutoTranscribe`; GitHub remains the repository-facing execution surface for Symphony, PRs, CI, and evidence. Resolve conflicting task fields in Linear. Existing `.scratch/` files are historical migration material. See `docs/agents/issue-tracker.md`.
 
-### Human planning
+### Delivery surface
 
-Linear is the human portfolio view for objectives, priority, and review attention. It links to GitHub execution records and must not duplicate their task state. See `docs/agents/tool-boundaries.md`.
+GitHub Issues mirror Linear tasks and carry repository-native links to branches, PRs, checks, and Symphony dispatch labels. Do not create an independent task state in GitHub Projects. See `docs/agents/tool-boundaries.md`.
 
 ### Triage labels
 
@@ -34,4 +34,4 @@ Use the repository `native-app-proof` skill for visible macOS behavior and `prom
 
 ### Legacy workflow library
 
-Moved historical originals and converted Matt workflow views live under `docs/Legacy/matt-workflow-library/`. Start from its `manifest.md`; promote useful unfinished work into a current GitHub Issue, never back into the active queue as local markdown.
+Moved historical originals and converted Matt workflow views live under `docs/Legacy/matt-workflow-library/`. Start from its `manifest.md`; promote useful unfinished work into a current Linear issue and let native sync create the GitHub mirror, never back into the active queue as local markdown.

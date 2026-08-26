@@ -66,16 +66,16 @@ No description was provided.
 
 Work only inside this repository copy. This is unattended: do not ask the user questions and do not touch paths outside the workspace.
 
-1. Run `python3.11 scripts/agent_harness.py issue-preflight --issue "{{ issue.identifier }}"{% if attempt %} --resume{% endif %}`. Stop without writes if it fails.
-2. Read `AGENTS.md`, `docs/agents/harness.md`, `docs/agents/tool-boundaries.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, repository skills that match the task, and every issue comment.
+1. Run `python3.11 scripts/agent_harness.py issue-preflight --json --issue "{{ issue.identifier }}"{% if attempt %} --resume{% endif %}` and retain its `linear_issue` value. Stop without writes if preflight fails, including when the verified Linear linkback is absent.
+2. Read `AGENTS.md`, `docs/agents/harness.md`, `docs/agents/tool-boundaries.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, repository skills that match the task, and every issue comment. The synchronized GitHub projection is the unattended execution contract; do not assume access to Linear-only project, priority, or detailed-status fields.
 3. Claim the issue by assigning it to yourself. Reconfirm it is open and still labelled `ready-for-agent` immediately before the first code or GitHub write.
-4. Inspect existing branches and pull requests for the issue. Continue valid work; otherwise create `codex/gh-{{ issue.id }}` from the current default branch.
+4. Inspect existing branches and pull requests for the issue. Continue valid work; otherwise create `codex/<lowercase-linear_issue>` from the current default branch.
 5. Reproduce the problem or establish the requested baseline. For visible macOS bugs, use the `native-app-proof` skill and preserve before evidence before editing. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
 6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`; visible behavior requires after evidence and `proof.json`.
 7. Review the diff for correctness, secrets, unrelated changes, architecture conflicts, and missing evidence. If code changed, request one independent agent review and resolve every blocking finding.
-8. If changes are needed, commit only this issue's files, push, and create or update a PR against `main`. Include the issue, manifest path, commands, results, and any human-only acceptance step. Wait for required PR checks and repair failures caused by this work.
+8. If changes are needed, commit only this issue's files, push, and create or update a PR against `main`, prefixing its title with `linear_issue` so Linear attaches it. Include the synchronized GitHub issue, manifest path, commands, results, and any human-only acceptance step. Wait for required PR checks and repair failures caused by this work.
 9. If the issue is an investigation or canary and no repository change is needed, do not manufacture a commit or PR; comment with the exact evidence instead.
-10. On success, post one concise issue comment with the PR or no-change result and verification evidence, remove `ready-for-agent`, and add `ready-for-human`. Never merge the PR or close the issue.
+10. On success, post one concise issue comment with the PR or no-change result and verification evidence, remove `ready-for-agent`, and add `ready-for-human`. Detailed Linear status remains owned by Linear; use configured native PR automation or update it during human handoff. Do not claim a detailed Linear status change unless it is verified on Linear. Never merge the PR or close the issue.
 11. If a true external blocker remains after safe fallbacks, comment with evidence, remove `ready-for-agent`, and add `needs-info`. Never present incomplete work as complete.
 
 Your final response must contain completed actions, verification results, and blockers only.

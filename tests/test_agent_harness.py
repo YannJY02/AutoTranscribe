@@ -11,6 +11,8 @@ from scripts.agent_harness import (
     changed_files,
     doctor,
     gate_specs,
+    issue_preflight,
+    linear_issue_identifier,
     parse_issue_number,
     validate_issue,
 )
@@ -63,6 +65,27 @@ def test_parse_issue_number_accepts_tracker_identifiers():
     assert parse_issue_number("12") == 12
     assert parse_issue_number("#12") == 12
     assert parse_issue_number("GH-12") == 12
+
+
+def test_linear_issue_identifier_uses_verified_linkback_comment():
+    payload = issue_payload(
+        comments=[
+            {
+                "author": {"login": "linear-code"},
+                "body": '<!-- linear-linkback --><a href="https://linear.app/yannjy/issue/YAN-32">YAN-32</a>',
+            }
+        ]
+    )
+
+    assert linear_issue_identifier(payload) == "YAN-32"
+
+
+def test_issue_preflight_rejects_ready_issue_without_linear_linkback(monkeypatch):
+    monkeypatch.setattr("scripts.agent_harness.load_issue", lambda _number: issue_payload())
+
+    result = issue_preflight("12")
+
+    assert "synchronized issue is missing the verified Linear linkback" in result["errors"]
 
 
 def test_validate_issue_accepts_complete_ready_issue():

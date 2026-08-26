@@ -9,7 +9,7 @@ This manifest is the top-level index for historical InsightKit assets that have 
 
 - **Original asset** means the preserved historical source file. It may contain old names, old paths, old plans, or old release claims.
 - **Converted asset** means a newer guide that translates those historical sources into Matt workflow language: goals, decisions, issue-style slices, proof needs, blockers, and current authority.
-- **Current authority** means the file a future agent should trust first for current work. Historical sources are useful background, but they do not override current context docs, accepted ADRs, GitHub Issues, or fresh proof.
+- **Current authority** means the file a future agent should trust first for current work. Historical sources are useful background, but they do not override current context docs, accepted ADRs, Linear issues with synchronized GitHub execution mirrors, or fresh proof.
 
 ## Current Assets Not Archived
 
@@ -22,7 +22,7 @@ These current surfaces remain outside this Legacy library:
 - `docs/adr/`
 - `scripts/verify_project_normalization.py`
 
-GitHub Issues is the active work queue. `.scratch/` remains outside this library only as a historical migration archive verified for internal consistency.
+Linear is the active work queue; native sync supplies GitHub execution issues. `.scratch/` remains outside this library only as a historical migration archive verified for internal consistency.
 
 ## Original Assets
 
@@ -67,12 +67,12 @@ GitHub Issues is the active work queue. `.scratch/` remains outside this library
 | --- | --- | --- |
 | `converted-assets/product/historical-product-rationale.md` | Preserves the Feishu Minutes / smart-meeting rationale as product history. | `docs/contexts/product/CONTEXT.md` |
 | `converted-assets/product/reference-output-patterns.md` | Converts historical images and the example PDF into privacy-safe Smart Minutes output structure patterns. | `docs/contexts/product/CONTEXT.md` |
-| `converted-assets/planning/historical-implementation-prd.md` | Reframes older phase plans as a historical PRD-style story. | GitHub Issues and current context docs |
-| `converted-assets/planning/historical-implementation-issues.md` | Reframes older phase plans as historical issue-style slices. | GitHub Issues |
-| `converted-assets/planning/content-promotion-audit.md` | Records per-original content decisions and which current standard assets absorbed still-valid material. | `docs/contexts/`, `docs/adr/`, GitHub Issues, and current verifier output |
+| `converted-assets/planning/historical-implementation-prd.md` | Reframes older phase plans as a historical PRD-style story. | Linear issues and current context docs |
+| `converted-assets/planning/historical-implementation-issues.md` | Reframes older phase plans as historical issue-style slices. | Linear issues |
+| `converted-assets/planning/content-promotion-audit.md` | Records per-original content decisions and which current standard assets absorbed still-valid material. | `docs/contexts/`, `docs/adr/`, Linear issues, and current verifier output |
 | `converted-assets/architecture/architecture-decision-map.md` | Maps older architecture notes to accepted ADRs. | `docs/adr/` |
 | `converted-assets/release/release-proof-index.md` | Preserves release proof paths and local readiness claims. | `docs/contexts/release-workflow/CONTEXT.md` and fresh verifier output |
-| `converted-assets/release/owner-input-checklist.md` | Preserves owner-controlled release inputs and privacy review items. | Current GitHub Issues, release scripts, and owner decisions |
+| `converted-assets/release/owner-input-checklist.md` | Preserves owner-controlled release inputs and privacy review items. | Current Linear issues, release scripts, and owner decisions |
 
 ## Current Authority Rules
 
@@ -81,7 +81,7 @@ GitHub Issues is the active work queue. `.scratch/` remains outside this library
 - Prefer the content-promotion audit when deciding whether a moved original already had its usable content absorbed into current standard assets.
 - Prefer fresh proof JSON over historical release prose.
 - Treat Legacy release evidence as an audit trail, not a new release claim.
-- Treat moved privacy drafts as owner-review material, not published legal text; use current GitHub Issues for public-distribution work.
+- Treat moved privacy drafts as owner-review material, not published legal text; use current Linear issues for public-distribution work.
 - Keep Local Release Ready and Distribution Ready separate.
 
 ## Verification

@@ -25,7 +25,7 @@ def test_tuesday_catches_up_monday_and_tuesday_tasks():
     assert due_task_names(date(2026, 8, 25)) == ["docs-gardening", "feedback-promotion"]
 
 
-def test_maintenance_issue_is_deduplicated_and_dispatch_ready():
+def test_maintenance_issue_contract_is_dispatch_ready_after_triage():
     task = TASKS["feedback-promotion"]
     period = "2026-W35"
     body = issue_body(task, period)
@@ -48,6 +48,22 @@ def test_maintenance_issue_is_deduplicated_and_dispatch_ready():
     assert validate_issue(
         {"state": "OPEN", "labels": [{"name": "ready-for-agent"}], "assignees": [], "body": body}
     ) == []
+
+
+def test_enqueue_requires_linear_triage_before_dispatch(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr("scripts.harness_maintenance.existing_issue_url", lambda *_args: None)
+
+    def fake_run(args, *, input_text=None):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "https://github.com/YannJY02/AutoTranscribe/issues/99\n", "")
+
+    monkeypatch.setattr("scripts.harness_maintenance._run", fake_run)
+
+    enqueue(TASKS["feedback-promotion"], date(2026, 8, 25), dry_run=False)
+
+    assert "needs-triage" in calls[-1]
+    assert "ready-for-agent" not in calls[-1]
 
 
 def test_launch_agent_uses_canonical_repo_and_daily_schedule(tmp_path, monkeypatch):
