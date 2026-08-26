@@ -7,30 +7,30 @@ final class NavigationTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(homeTitle), "应从首页开始")
 
         // Home → Import (test non-permission routes first)
-        app.buttons["home_card_import"].firstMatch.tap()
+        app.buttons["home_card_import"].firstMatch.click()
         XCTAssertTrue(waitForElement(app.buttons["返回首页"], timeout: 5))
 
         // Import → Home
-        app.buttons["返回首页"].firstMatch.tap()
+        app.buttons["返回首页"].firstMatch.click()
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5))
 
         // Home → Records
-        app.buttons["home_card_records"].firstMatch.tap()
+        app.buttons["home_card_records"].firstMatch.click()
         XCTAssertTrue(waitForElement(app.buttons["返回首页"], timeout: 5))
 
         // Records → Home
-        app.buttons["返回首页"].firstMatch.tap()
+        app.buttons["返回首页"].firstMatch.click()
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5))
 
         // Home → Live (may require permissions)
-        app.buttons["home_card_live"].firstMatch.tap()
+        app.buttons["home_card_live"].firstMatch.click()
         let liveBack = app.buttons["返回首页"].firstMatch
         if !liveBack.waitForExistence(timeout: 5) {
             throw XCTSkip("Live workspace requires permissions to be pre-granted")
         }
 
         // Live → Home
-        liveBack.tap()
+        liveBack.click()
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5))
     }
 

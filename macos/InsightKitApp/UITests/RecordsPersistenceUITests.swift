@@ -6,7 +6,7 @@ final class RecordsPersistenceUITests: InsightKitUITests {
     func testRecentRecordSearchAndRelaunchPersistence() throws {
         let recordListItem = element("record_list_item_\(seedRecordID)").firstMatch
         XCTAssertTrue(waitForElement(app.staticTexts["home_title"], timeout: 5))
-        button("home_card_records").tap()
+        button("home_card_records").click()
         XCTAssertTrue(waitForElement(recordListItem, timeout: 5))
 
         let searchField = app.textFields["records_search_field"]
@@ -21,7 +21,7 @@ final class RecordsPersistenceUITests: InsightKitUITests {
         app.activate()
 
         XCTAssertTrue(waitForElement(app.staticTexts["home_title"], timeout: 5))
-        button("home_card_records").tap()
+        button("home_card_records").click()
         XCTAssertTrue(waitForElement(element("record_list_item_\(seedRecordID)").firstMatch, timeout: 5))
     }
 }

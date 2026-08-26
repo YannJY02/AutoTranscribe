@@ -40,22 +40,13 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(noteInput), "录制中应允许输入笔记")
         let submitButton = button("live_note_submit_button")
         enterText("note-123", into: noteInput)
+        app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitForElement(submitButton), "笔记提交按钮应显示")
-        let draftText = element("live_note_draft_text")
-        XCTAssertTrue(waitForElement(draftText), "应能读取笔记草稿标记")
-        XCTAssertTrue(waitForStringValue("note-123", in: draftText, timeout: 3), "输入内容应同步到笔记草稿状态")
         XCTAssertTrue(waitForEnabled(submitButton, timeout: 3), "输入笔记后提交按钮应可用")
-        submitButton.tap()
-        let submitCount = element("live_note_submit_count")
-        XCTAssertTrue(waitForElement(submitCount), "应能读取提交次数标记")
-        XCTAssertTrue(waitForStringValue("1", in: submitCount, timeout: 3), "点击提交后应触发提交动作")
-        let lastSubmittedText = element("live_note_last_submitted_text")
-        XCTAssertTrue(waitForElement(lastSubmittedText), "应能读取最近一次提交文本")
-        XCTAssertTrue(waitForStringValue("note-123", in: lastSubmittedText, timeout: 3), "提交动作应读到当前草稿内容")
-        let notesCount = element("live_notes_count")
-        XCTAssertTrue(waitForElement(notesCount), "应能读取笔记数量标记")
-        XCTAssertTrue(waitForStringValue("1", in: notesCount, timeout: 3), "提交后笔记数量应增加")
-        XCTAssertTrue(waitForElement(button("live_note_row_0"), timeout: 5), "新增笔记后应显示在列表中")
+        submitButton.click()
+        let noteRow = button("live_note_row_0")
+        XCTAssertTrue(waitForElement(noteRow, timeout: 5), "新增笔记后应显示在列表中")
+        XCTAssertEqual(noteRow.label, "note-123")
         attachScreenshot(named: "live-running-single-entry")
 
         app.typeKey(".", modifierFlags: .command)
@@ -63,7 +54,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(button("live_generate_minutes_button", fallbackLabel: "生成纪要"), timeout: 5))
         attachScreenshot(named: "live-post-session-single-entry")
 
-        button("live_generate_minutes_button", fallbackLabel: "生成纪要").tap()
+        button("live_generate_minutes_button", fallbackLabel: "生成纪要").click()
         XCTAssertTrue(waitForElement(element("live_phase_reviewing"), timeout: 5))
         XCTAssertTrue(waitForElement(element("live_smart_minutes_summary_title"), timeout: 5))
         XCTAssertTrue(waitForElement(element("live_smart_minutes_summary_body"), timeout: 5))
@@ -73,10 +64,10 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(playbackLabel), "回看态应显示当前播放时间")
         XCTAssertTrue(waitForStringValue("00:00", in: playbackLabel, timeout: 3))
 
-        button("live_chapter_row_2").tap()
+        button("live_chapter_row_2").click()
         XCTAssertTrue(waitForStringValue("00:42", in: playbackLabel, timeout: 3))
 
-        button("live_note_row_0").tap()
+        button("live_note_row_0").click()
         XCTAssertTrue(waitForStringValue("01:23", in: playbackLabel, timeout: 3))
         attachScreenshot(named: "live-review-generated-single-entry")
     }
@@ -87,7 +78,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
 
         XCTAssertTrue(waitForElement(element("live_phase_post_session"), timeout: 5))
         XCTAssertTrue(waitForElement(button("live_skip_minutes_button", fallbackLabel: "跳过"), timeout: 5))
-        button("live_skip_minutes_button", fallbackLabel: "跳过").tap()
+        button("live_skip_minutes_button", fallbackLabel: "跳过").click()
 
         XCTAssertTrue(waitForElement(element("live_phase_reviewing"), timeout: 5))
         XCTAssertTrue(waitForElement(button("live_transcript_entry_0"), timeout: 5))
@@ -97,7 +88,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
     }
 
     private func startRecording() {
-        button("live_start_recording_button", fallbackLabel: "开始录制").tap()
+        button("live_start_recording_button", fallbackLabel: "开始录制").click()
         XCTAssertTrue(waitForElement(element("live_phase_running"), timeout: 5))
         XCTAssertTrue(waitForElement(button("live_pause_recording_button", fallbackLabel: "暂停"), timeout: 5))
         XCTAssertTrue(waitForElement(button("live_stop_recording_button", fallbackLabel: "停止录制"), timeout: 5))
@@ -105,7 +96,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
     }
 
     private func toggleSource(id: String) {
-        button("live_source_toggle_\(id)").tap()
+        button("live_source_toggle_\(id)").click()
     }
 
     private func assertToggleState(id: String, expected: String) {

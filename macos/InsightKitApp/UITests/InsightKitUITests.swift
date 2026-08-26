@@ -32,7 +32,7 @@ class InsightKitUITests: XCTestCase {
             for title in allowButtons {
                 let button = alert.buttons[title]
                 if button.exists {
-                    button.tap()
+                    button.click()
                     return true
                 }
             }
