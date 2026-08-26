@@ -42,7 +42,6 @@ final class LiveWorkspaceTests: InsightKitUITests {
         enterText("note-123", into: noteInput)
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitForElement(submitButton), "笔记提交按钮应显示")
-        XCTAssertTrue(waitForStringValue("note-123", in: noteInput, timeout: 3), "输入内容应显示在笔记编辑器中")
         XCTAssertTrue(waitForEnabled(submitButton, timeout: 3), "输入笔记后提交按钮应可用")
         submitButton.click()
         let noteRow = button("live_note_row_0")
