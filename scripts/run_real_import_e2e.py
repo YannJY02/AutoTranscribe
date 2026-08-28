@@ -8,6 +8,7 @@ import json
 import os
 import re
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -262,6 +263,141 @@ def verify_fts(db_path: Path, meeting_id: str, transcript_rows: list[dict[str, A
     }
 
 
+def evaluate_database_oracle(
+    db_path: Path,
+    *,
+    meeting_id: str,
+    job_id: str,
+    expected_source_path: Path,
+    expected_segment_count: int,
+) -> dict[str, Any]:
+    """Evaluate persisted import state through read-only SQLite queries."""
+
+    assertions: dict[str, dict[str, Any]] = {}
+
+    def add_assertion(name: str, actual: Any, expected: Any, passed: bool | None = None) -> None:
+        assertions[name] = {
+            "passed": actual == expected if passed is None else passed,
+            "actual": actual,
+            "expected": expected,
+        }
+
+    resolved_db = db_path.expanduser().resolve()
+    if not resolved_db.is_file():
+        add_assertion("database_exists", False, True)
+        return {
+            "passed": False,
+            "db_path": str(resolved_db),
+            "assertions": assertions,
+            "failed_assertions": ["database_exists"],
+        }
+
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(f"{resolved_db.as_uri()}?mode=ro", uri=True, timeout=8.0)
+        connection.row_factory = sqlite3.Row
+
+        quick_check = connection.execute("PRAGMA quick_check").fetchone()
+        add_assertion("database_integrity", quick_check[0] if quick_check else None, "ok")
+
+        meetings = connection.execute(
+            "SELECT status FROM meetings WHERE id=?",
+            (meeting_id,),
+        ).fetchall()
+        add_assertion("meeting_exists_once", len(meetings), 1)
+        add_assertion("meeting_stopped", meetings[0]["status"] if len(meetings) == 1 else None, "stopped")
+
+        jobs = connection.execute(
+            """
+            SELECT state, progress, error, ended_at, source_path
+            FROM transcription_jobs
+            WHERE id=? AND meeting_id=?
+            """,
+            (job_id, meeting_id),
+        ).fetchall()
+        job = jobs[0] if len(jobs) == 1 else None
+        add_assertion("job_exists_once", len(jobs), 1)
+        add_assertion("job_completed", job["state"] if job else None, "completed")
+        add_assertion("job_progress_complete", job["progress"] if job else None, 100)
+        add_assertion("job_error_empty", job["error"] if job else None, "")
+        add_assertion(
+            "job_has_end_time",
+            bool(str(job["ended_at"] or "").strip()) if job else False,
+            True,
+        )
+        actual_source = Path(str(job["source_path"])).expanduser().resolve() if job else None
+        add_assertion(
+            "job_source_matches",
+            str(actual_source) if actual_source else None,
+            str(expected_source_path.expanduser().resolve()),
+        )
+
+        segment_count = connection.execute(
+            "SELECT COUNT(*) FROM segments WHERE meeting_id=?",
+            (meeting_id,),
+        ).fetchone()[0]
+        add_assertion("segment_count_matches_record", segment_count, expected_segment_count)
+
+        invalid_segments = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM segments
+            WHERE meeting_id=? AND (start_ms < 0 OR end_ms <= start_ms OR TRIM(text) = '')
+            """,
+            (meeting_id,),
+        ).fetchone()[0]
+        add_assertion("segment_timeline_valid", invalid_segments, 0)
+
+        orphan_segments = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM segments AS segment
+            LEFT JOIN meetings AS meeting ON meeting.id = segment.meeting_id
+            WHERE segment.meeting_id=? AND meeting.id IS NULL
+            """,
+            (meeting_id,),
+        ).fetchone()[0]
+        add_assertion("segments_have_meeting", orphan_segments, 0)
+
+        connection.execute(
+            """
+            CREATE VIRTUAL TABLE temp.segments_fts_vocab
+            USING fts5vocab(main, segments_fts, 'instance')
+            """
+        )
+        indexed_segments = connection.execute(
+            """
+            SELECT COUNT(DISTINCT indexed.doc)
+            FROM segments AS segment
+            JOIN temp.segments_fts_vocab AS indexed ON indexed.doc = segment.id
+            WHERE segment.meeting_id=?
+            """,
+            (meeting_id,),
+        ).fetchone()[0]
+        add_assertion("fts_index_complete", indexed_segments, segment_count)
+
+        insight_packages = connection.execute(
+            "SELECT COUNT(*) FROM insight_packages WHERE meeting_id=? AND TRIM(payload_json) <> ''",
+            (meeting_id,),
+        ).fetchone()[0]
+        add_assertion("insight_package_present", insight_packages, 1)
+    except sqlite3.Error as exc:
+        add_assertion("database_query_succeeded", str(exc), "no SQLite error", passed=False)
+    finally:
+        if connection is not None:
+            connection.close()
+
+    failed = [name for name, result in assertions.items() if not result["passed"]]
+    return {
+        "passed": not failed,
+        "db_path": str(resolved_db),
+        "meeting_id": meeting_id,
+        "job_id": job_id,
+        "assertions": assertions,
+        "failed_assertions": failed,
+    }
+
+
 def today_output_root() -> Path:
     day = datetime.now().strftime("%Y-%m-%d")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -344,6 +480,18 @@ def main() -> int:
         transcript_rows = load_json(record_path / "transcript.json")
         proof["record_validation"] = record
         proof["fts_validation"] = verify_fts(db_path, meeting_id, transcript_rows)
+        database_oracle = evaluate_database_oracle(
+            db_path,
+            meeting_id=meeting_id,
+            job_id=job_id,
+            expected_source_path=sample,
+            expected_segment_count=len(transcript_rows),
+        )
+        proof["oracles"] = {"database": database_oracle}
+        if not database_oracle["passed"]:
+            raise RuntimeError(
+                f"database oracle failed: {database_oracle['failed_assertions']}"
+            )
         proof["exports"] = verify_exports(socket_path, meeting_id, exports_root)
         proof["status"] = "passed"
         print(f"PASS: real import E2E proof written to {proof_path}")

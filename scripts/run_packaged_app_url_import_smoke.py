@@ -27,6 +27,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from run_real_import_e2e import (
     DEFAULT_SAMPLE,
+    evaluate_database_oracle,
     load_json,
     rpc_result,
     validate_record,
@@ -228,6 +229,18 @@ def main() -> int:
         transcript_rows = load_json(record_path / "transcript.json")
         proof["record_validation"] = record
         proof["fts_validation"] = verify_fts(args.db_path.expanduser(), str(job["meeting_id"]), transcript_rows)
+        database_oracle = evaluate_database_oracle(
+            args.db_path,
+            meeting_id=str(job["meeting_id"]),
+            job_id=job_id,
+            expected_source_path=sample,
+            expected_segment_count=len(transcript_rows),
+        )
+        proof["oracles"] = {"database": database_oracle}
+        if not database_oracle["passed"]:
+            raise RuntimeError(
+                f"database oracle failed: {database_oracle['failed_assertions']}"
+            )
         proof["exports"] = verify_exports(args.socket_path, str(job["meeting_id"]), exports_root)
         proof["status"] = "passed"
         print(f"PASS: packaged app URL import smoke proof written to {proof_path}")
