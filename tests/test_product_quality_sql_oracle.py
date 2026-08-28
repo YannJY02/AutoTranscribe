@@ -67,3 +67,31 @@ def test_database_oracle_reports_invalid_job_and_timeline(tmp_path):
     assert result["assertions"]["job_progress_complete"]["passed"] is False
     assert result["assertions"]["job_has_end_time"]["passed"] is False
     assert result["assertions"]["segment_timeline_valid"]["passed"] is False
+
+
+def test_database_oracle_detects_segment_missing_from_fts_index(tmp_path):
+    db_path = seed_completed_import(tmp_path)
+    store = InsightStore(db_path)
+    segment = store.conn.execute(
+        "SELECT id, meeting_id, text FROM segments ORDER BY id LIMIT 1"
+    ).fetchone()
+    store.conn.execute(
+        """
+        INSERT INTO segments_fts(segments_fts, rowid, meeting_id, text)
+        VALUES('delete', ?, ?, ?)
+        """,
+        (segment["id"], segment["meeting_id"], segment["text"]),
+    )
+    store.conn.commit()
+    store.close()
+
+    result = evaluate_database_oracle(
+        db_path,
+        meeting_id="meeting-1",
+        job_id="job-1",
+        expected_source_path=tmp_path / "fixture.m4a",
+        expected_segment_count=2,
+    )
+
+    assert result["passed"] is False
+    assert result["assertions"]["fts_index_complete"]["passed"] is False
