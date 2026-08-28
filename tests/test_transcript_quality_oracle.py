@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from scripts.run_real_import_e2e import evaluate_transcript_oracle
+from scripts.run_real_import_e2e import evaluate_transcript_oracle, first_search_token
 
 
 def write_reference(tmp_path, *, language: str, text: str):
@@ -52,3 +52,7 @@ def test_transcript_oracle_rejects_empty_hypothesis(tmp_path):
 
     assert result["passed"] is False
     assert result["failed_assertions"] == ["hypothesis_text_present"]
+
+
+def test_fts_search_token_supports_chinese_transcripts():
+    assert first_search_token([{"text": "我们先确认今天的目标。"}]) == "我们先确认今天的目标"
