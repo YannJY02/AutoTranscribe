@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,117 @@ def wait_for_job(socket_path: Path, job_id: str, timeout_sec: float, progress_in
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _edit_distance(reference: list[str], hypothesis: list[str]) -> int:
+    # ponytail: O(n*m) is sufficient for five-minute fixtures; use an optimized
+    # implementation only if substantially longer transcripts make this slow.
+    previous = list(range(len(hypothesis) + 1))
+    for row, reference_unit in enumerate(reference, start=1):
+        current = [row]
+        for column, hypothesis_unit in enumerate(hypothesis, start=1):
+            current.append(
+                min(
+                    current[column - 1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (reference_unit != hypothesis_unit),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _word_units(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return re.findall(r"[^\W_]+(?:['’][^\W_]+)*", normalized)
+
+
+def _character_units(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return [character for character in normalized if character.isalnum()]
+
+
+def evaluate_transcript_oracle(
+    reference_path: Path,
+    transcript_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Measure a transcript against a frozen reference without inventing a budget."""
+
+    resolved_reference = reference_path.expanduser().resolve()
+    result: dict[str, Any] = {
+        "passed": False,
+        "reference_path": str(resolved_reference),
+        "quality_budget": "not_set",
+        "metrics": {},
+        "failed_assertions": [],
+    }
+    try:
+        reference = load_json(resolved_reference)
+        segments = reference.get("segments") if isinstance(reference, dict) else None
+        if not isinstance(segments, list):
+            raise ValueError("reference segments must be a list")
+        reference_text = " ".join(str(row.get("text", "") or "") for row in segments if isinstance(row, dict)).strip()
+        hypothesis_text = " ".join(str(row.get("text", "") or "") for row in transcript_rows if isinstance(row, dict)).strip()
+        language = str(reference.get("language", "") or "").strip()
+        result.update(
+            {
+                "fixture_id": str(reference.get("fixture_id", "") or ""),
+                "language": language,
+            }
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        result["failed_assertions"] = ["reference_transcript_usable"]
+        result["error"] = str(exc)
+        return result
+
+    if not reference_text:
+        result["failed_assertions"].append("reference_text_present")
+    if not hypothesis_text:
+        result["failed_assertions"].append("hypothesis_text_present")
+    if result["failed_assertions"]:
+        return result
+
+    language_key = language.casefold()
+    measure_wer = language_key in {"english", "en"} or "mixed" in language_key or "/" in language_key
+    measure_cer = language_key in {"chinese", "zh", "zh-cn"} or "mixed" in language_key or "/" in language_key
+    if not measure_wer and not measure_cer:
+        result["failed_assertions"] = ["language_supported"]
+        return result
+
+    unit_counts: dict[str, int] = {}
+    if measure_wer:
+        reference_words = _word_units(reference_text)
+        hypothesis_words = _word_units(hypothesis_text)
+        if not reference_words:
+            result["failed_assertions"] = ["reference_words_present"]
+            return result
+        result["metrics"]["asr.wer_pct"] = round(
+            100 * _edit_distance(reference_words, hypothesis_words) / len(reference_words),
+            4,
+        )
+        unit_counts.update(
+            {"reference_words": len(reference_words), "hypothesis_words": len(hypothesis_words)}
+        )
+    if measure_cer:
+        reference_characters = _character_units(reference_text)
+        hypothesis_characters = _character_units(hypothesis_text)
+        if not reference_characters:
+            result["failed_assertions"] = ["reference_characters_present"]
+            return result
+        result["metrics"]["asr.cer_pct"] = round(
+            100 * _edit_distance(reference_characters, hypothesis_characters) / len(reference_characters),
+            4,
+        )
+        unit_counts.update(
+            {
+                "reference_characters": len(reference_characters),
+                "hypothesis_characters": len(hypothesis_characters),
+            }
+        )
+
+    result["unit_counts"] = unit_counts
+    result["passed"] = True
+    return result
 
 
 def first_search_token(transcript_rows: list[dict[str, Any]]) -> str:
@@ -407,6 +519,7 @@ def today_output_root() -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample", type=Path, default=DEFAULT_SAMPLE, help=f"Real media sample. Default: {DEFAULT_SAMPLE}")
+    parser.add_argument("--reference-transcript", type=Path, help="Frozen reference transcript used to record WER/CER.")
     parser.add_argument("--output-root", type=Path, default=today_output_root(), help="Directory for DB, records, exports, sidecar log, and proof JSON.")
     parser.add_argument("--timeout-sec", type=float, default=240, help="Maximum seconds to wait for the import job.")
     parser.add_argument("--startup-timeout-sec", type=float, default=12, help="Maximum seconds to wait for sidecar startup.")
@@ -421,6 +534,10 @@ def main() -> int:
     if not sample.exists() or not sample.is_file():
         print(f"FAIL: sample not found: {sample}")
         return 1
+    reference_path = args.reference_transcript.expanduser().resolve() if args.reference_transcript else None
+    if reference_path is not None and not reference_path.is_file():
+        print(f"FAIL: reference transcript not found: {reference_path}")
+        return 1
 
     output_root = args.output_root.expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -434,6 +551,7 @@ def main() -> int:
     proof: dict[str, Any] = {
         "date": datetime.now().isoformat(timespec="seconds"),
         "sample": str(sample),
+        "reference_transcript": str(reference_path) if reference_path else None,
         "output_root": str(output_root),
         "socket_path": str(socket_path),
         "db_path": str(db_path),
@@ -492,6 +610,13 @@ def main() -> int:
             raise RuntimeError(
                 f"database oracle failed: {database_oracle['failed_assertions']}"
             )
+        if reference_path is not None:
+            transcript_oracle = evaluate_transcript_oracle(reference_path, transcript_rows)
+            proof["oracles"]["transcript"] = transcript_oracle
+            if not transcript_oracle["passed"]:
+                raise RuntimeError(
+                    f"transcript oracle failed: {transcript_oracle['failed_assertions']}"
+                )
         proof["exports"] = verify_exports(socket_path, meeting_id, exports_root)
         proof["status"] = "passed"
         print(f"PASS: real import E2E proof written to {proof_path}")
