@@ -251,6 +251,9 @@ def first_search_token(transcript_rows: list[dict[str, Any]]) -> str:
             lower = token.lower().strip("'")
             if lower not in {"this", "that", "with", "from", "have", "will", "meeting"}:
                 return lower
+        chinese = re.search(r"[\u3400-\u9fff]{2,}", text)
+        if chinese:
+            return chinese.group(0)
     raise RuntimeError("no searchable token found in transcript")
 
 
