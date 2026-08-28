@@ -20,6 +20,7 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_SAMPLE = ROOT_DIR / "logs" / "diagnostics" / "e2e" / "real_sample_2026_5_11_en_1_30s.m4a"
 DEFAULT_DIAGNOSTICS_ROOT = ROOT_DIR / "logs" / "diagnostics"
+FIXTURE_MANIFEST = ROOT_DIR / "docs" / "performance" / "fixture-corpus-manifest.json"
 SIDECAR_SCRIPT = ROOT_DIR / "scripts" / "insight_sidecar.py"
 
 
@@ -133,6 +134,41 @@ def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def validate_frozen_fixture_pair(
+    manifest_path: Path,
+    sample_path: Path,
+    reference_path: Path,
+) -> dict[str, Any]:
+    """Return the frozen fixture after validating its selected file pins."""
+
+    from scripts.performance_fixture_corpus import verify_file_pin
+
+    manifest = load_json(manifest_path)
+    if not isinstance(manifest, dict) or manifest.get("status") != "frozen":
+        raise ValueError("fixture manifest is not frozen")
+    if manifest.get("safety", {}).get("synthetic_only") is not True:
+        raise ValueError("fixture manifest is not synthetic-only")
+
+    sample = sample_path.expanduser().resolve()
+    reference = reference_path.expanduser().resolve()
+    for fixture in manifest.get("fixtures", []):
+        media_pin = next(
+            (
+                pin
+                for pin in fixture.get("media", [])
+                if Path(str(pin.get("absolute_path", ""))).expanduser().resolve() == sample
+            ),
+            None,
+        )
+        reference_pin = fixture.get("reference_transcript", {})
+        pinned_reference = Path(str(reference_pin.get("absolute_path", ""))).expanduser().resolve()
+        if media_pin is not None and pinned_reference == reference:
+            verify_file_pin(sample, media_pin, f"media {fixture.get('fixture_id', '')}")
+            verify_file_pin(reference, reference_pin, f"reference {fixture.get('fixture_id', '')}")
+            return fixture
+    raise ValueError("media and reference must belong to the same frozen fixture")
+
+
 def _edit_distance(reference: list[str], hypothesis: list[str]) -> int:
     # ponytail: O(n*m) is sufficient for five-minute fixtures; use an optimized
     # implementation only if substantially longer transcripts make this slow.
@@ -202,8 +238,8 @@ def evaluate_transcript_oracle(
         return result
 
     language_key = language.casefold()
-    measure_wer = language_key in {"english", "en"} or "mixed" in language_key or "/" in language_key
-    measure_cer = language_key in {"chinese", "zh", "zh-cn"} or "mixed" in language_key or "/" in language_key
+    measure_wer = language_key in {"english", "en"}
+    measure_cer = language_key in {"chinese", "zh", "zh-cn"}
     if not measure_wer and not measure_cer:
         result["failed_assertions"] = ["language_supported"]
         return result
@@ -541,6 +577,13 @@ def main() -> int:
     if reference_path is not None and not reference_path.is_file():
         print(f"FAIL: reference transcript not found: {reference_path}")
         return 1
+    frozen_fixture: dict[str, Any] | None = None
+    if reference_path is not None:
+        try:
+            frozen_fixture = validate_frozen_fixture_pair(FIXTURE_MANIFEST, sample, reference_path)
+        except (OSError, ValueError) as exc:
+            print(f"FAIL: frozen fixture validation failed: {exc}")
+            return 1
 
     output_root = args.output_root.expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -555,6 +598,7 @@ def main() -> int:
         "date": datetime.now().isoformat(timespec="seconds"),
         "sample": str(sample),
         "reference_transcript": str(reference_path) if reference_path else None,
+        "fixture_id": frozen_fixture.get("fixture_id") if frozen_fixture else None,
         "output_root": str(output_root),
         "socket_path": str(socket_path),
         "db_path": str(db_path),

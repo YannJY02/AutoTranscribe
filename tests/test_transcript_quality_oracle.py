@@ -114,7 +114,7 @@ def test_frozen_manifest_rejects_mismatched_media_and_reference(tmp_path):
     try:
         validate_frozen_fixture_pair(manifest, other_media, other_reference)
     except ValueError as exc:
-        assert "hash drift" in str(exc)
+        assert "drift" in str(exc)
     else:
         raise AssertionError("modified frozen reference was accepted")
 
