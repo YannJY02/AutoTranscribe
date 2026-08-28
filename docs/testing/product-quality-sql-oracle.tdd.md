@@ -24,7 +24,7 @@ Source: the user-approved first Product Quality Oracle increment.
 | A completed import passes every database assertion | `test_database_oracle_passes_for_completed_import` | integration | PASS |
 | Incomplete job state and invalid segment timing are named as failed assertions | `test_database_oracle_reports_invalid_job_and_timeline` | integration | PASS |
 | A segment missing from the real FTS index fails `fts_index_complete` | `test_database_oracle_detects_segment_missing_from_fts_index` | integration | PASS |
-| The full non-model Python suite remains green | `scripts/run_python_tests.sh --cov` through an isolated `uv` environment | regression | PASS: 283 passed, 2 skipped, 3 deselected |
+| The full non-model Python suite remains green | `scripts/run_python_tests.sh --cov` through an isolated `uv` environment | regression | PASS: 284 passed, 2 skipped, 3 deselected; 80.86% coverage |
 | A real 30-second media import produces a passing database Oracle and export proof | `python -m scripts.run_real_import_e2e` with isolated `/tmp` storage | product journey | PASS |
 
 ## Coverage and scope
