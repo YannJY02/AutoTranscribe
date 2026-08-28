@@ -359,11 +359,17 @@ def evaluate_database_oracle(
         ).fetchone()[0]
         add_assertion("segments_have_meeting", orphan_segments, 0)
 
+        connection.execute(
+            """
+            CREATE VIRTUAL TABLE temp.segments_fts_vocab
+            USING fts5vocab(main, segments_fts, 'instance')
+            """
+        )
         indexed_segments = connection.execute(
             """
-            SELECT COUNT(*)
+            SELECT COUNT(DISTINCT indexed.doc)
             FROM segments AS segment
-            JOIN segments_fts AS indexed ON indexed.rowid = segment.id
+            JOIN temp.segments_fts_vocab AS indexed ON indexed.doc = segment.id
             WHERE segment.meeting_id=?
             """,
             (meeting_id,),
