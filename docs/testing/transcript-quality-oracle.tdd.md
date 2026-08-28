@@ -23,6 +23,7 @@ Run the existing journey with one additional argument:
 | --- | --- | --- |
 | Deterministic English WER and Chinese CER | `0ac982d`; collection failed because `evaluate_transcript_oracle` did not exist | `55547e9`; the focused Oracle and existing SQL/smoke suite passed 8/8 tests |
 | Chinese transcript FTS proof | `dd96b1d`; the completed Chinese import failed because no ASCII search token existed | `b611570`; Chinese token selection is covered and the focused suite passed 9/9 tests |
+| Frozen media/reference integrity and supported-language boundary | `503475c`; the manifest-pair validator did not exist and mixed references were incorrectly scored | `adcd64e`; matching pinned pairs pass, mismatches and drift fail, mixed language is rejected, and the focused suite passed 11/11 tests |
 
 ## Frozen-corpus verification
 
@@ -40,7 +41,7 @@ Both successful proofs also passed the database Oracle, exports, and clean
 sidecar shutdown. The earlier Chinese failure remains at
 `/private/tmp/insightkit-transcript-zh.hamcNx/proof.json`.
 
-The full non-model Python suite passed 288 tests with 2 skipped and 3
+The full non-model Python suite passed 290 tests with 2 skipped and 3
 deselected at 80.86% coverage. The isolated local runner requires
 `PYTHONPATH=.` because this worktree is not installed as a package.
 
@@ -48,3 +49,7 @@ deselected at 80.86% coverage. The isolated local runner requires
 was computed. It does not claim acceptable ASR quality. The first observed
 WER/CER values are baselines; selecting a future regression budget requires a
 separate human product decision.
+
+This increment supports the frozen English and Chinese fixtures only. Mixed
+language scoring remains unsupported until its language-unit policy and
+long-fixture performance are defined and tested.
