@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 @main
@@ -6,6 +7,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     private let coordinator = WorkflowCoordinator()
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var uiTestCaptureTimer: Timer?
 
     static func main() {
         let app = NSApplication.shared
@@ -20,6 +22,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         showMainWindow()
+        installUITestCaptureTimer()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -39,6 +42,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        uiTestCaptureTimer?.invalidate()
         coordinator.shutdown()
         SettingsView.shutdownSharedSidecar()
         SidecarManager.bestEffortShutdownSocketOwner(timeoutSec: 1)
@@ -67,6 +71,78 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         mainWindow = window
+    }
+
+    private func installUITestCaptureTimer() {
+        let environment = ProcessInfo.processInfo.environment
+        guard
+            environment["INSIGHTKIT_UI_TEST_MODE"] == "1",
+            let rootPath = environment["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"]
+        else { return }
+        let root = URL(fileURLWithPath: rootPath, isDirectory: true)
+        guard root.lastPathComponent.hasPrefix("InsightKitUITestEvidence-") else { return }
+        let requestURL = root.appendingPathComponent("capture.request")
+        uiTestCaptureTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard FileManager.default.fileExists(atPath: requestURL.path) else { return }
+            let windowTitle = try? String(contentsOf: requestURL, encoding: .utf8)
+            try? FileManager.default.removeItem(at: requestURL)
+            Task { @MainActor [weak self] in
+                await self?.captureUITestWindow(title: windowTitle, root: root)
+            }
+        }
+    }
+
+    @MainActor
+    private func captureUITestWindow(title: String?, root: URL) async {
+        do {
+            guard #available(macOS 14.4, *) else {
+                writeUITestCaptureFailure("window capture requires macOS 14.4 or newer", root: root)
+                return
+            }
+            guard let appWindow = NSApp.windows.first(where: { $0.title == title }) ?? NSApp.keyWindow else {
+                writeUITestCaptureFailure("requested window is unavailable", root: root)
+                return
+            }
+
+            let content = try await SCShareableContent.currentProcess
+            guard let window = content.windows.first(where: { $0.windowID == CGWindowID(appWindow.windowNumber) }) else {
+                writeUITestCaptureFailure("requested window is not shareable", root: root)
+                return
+            }
+
+            let configuration = SCStreamConfiguration()
+            configuration.width = Int(window.frame.width * 2)
+            configuration.height = Int(window.frame.height * 2)
+            configuration.scalesToFit = true
+            configuration.preservesAspectRatio = true
+            configuration.showsCursor = false
+            configuration.ignoreShadowsSingleWindow = true
+            configuration.ignoreGlobalClipSingleWindow = true
+            configuration.captureResolution = .best
+            configuration.shouldBeOpaque = true
+
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(desktopIndependentWindow: window),
+                configuration: configuration
+            )
+            guard let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                writeUITestCaptureFailure("captured window could not be encoded", root: root)
+                return
+            }
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try data.write(to: root.appendingPathComponent("latest.png"), options: .atomic)
+        } catch {
+            writeUITestCaptureFailure(error.localizedDescription, root: root)
+        }
+    }
+
+    private func writeUITestCaptureFailure(_ message: String, root: URL) {
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try? message.write(
+            to: root.appendingPathComponent("latest.error.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     private func installMainMenu() {

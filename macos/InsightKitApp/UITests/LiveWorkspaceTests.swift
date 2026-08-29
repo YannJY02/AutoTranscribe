@@ -30,6 +30,7 @@ final class LiveWorkspaceTests: InsightKitUITests {
         assertToggleState(id: "camera", expected: "on")
         assertToggleState(id: "screen", expected: "on")
         assertToggleState(id: "system", expected: "on")
+        XCTAssertFalse(app.staticTexts["实时语音总结异常"].exists, "UI 证据不得包含宿主机权限错误")
         attachScreenshot(named: "live-preparing-single-entry")
 
         startRecording()
