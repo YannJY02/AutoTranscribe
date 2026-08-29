@@ -161,6 +161,7 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
     assert payload["KeepAlive"] is True
     assert payload["RunAtLoad"] is True
+    assert "ProcessType" not in payload
 
 
 def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatch):
@@ -204,7 +205,7 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
     assert sleeps == [1]
 
 
-def test_bootstrap_retry_requires_exact_error_and_stops_after_three_attempts(tmp_path, monkeypatch):
+def test_bootstrap_retry_requires_exact_error_and_is_bounded(tmp_path, monkeypatch):
     transient = (
         "Bootstrap failed: 5: Input/output error\n"
         "Try re-running the command as root for richer errors."
@@ -232,8 +233,8 @@ def test_bootstrap_retry_requires_exact_error_and_stops_after_three_attempts(tmp
     monkeypatch.setattr("scripts.harness_maintenance._run", fail_transiently)
     with pytest.raises(RuntimeError, match="Input/output error"):
         _bootstrap_launch_agent("gui/501", tmp_path / "agent.plist")
-    assert attempts == 3
-    assert sleeps == [1, 1]
+    assert attempts == 20
+    assert sleeps == [1] * 19
 
 
 def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
@@ -479,6 +480,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
     gate = (root / "scripts" / "symphony_issue_gate.sh").read_text(encoding="utf-8")
     launcher = (root / "scripts" / "run_symphony.sh").read_text(encoding="utf-8")
+    codex_config = tomllib.loads((root / ".codex" / "symphony.config.toml").read_text(encoding="utf-8"))
 
     assert not (root / "scripts" / "symphony-bin" / "gh").exists()
     assert "hooks:" in workflow and "before_run:" in workflow
@@ -488,6 +490,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     assert "-u GITHUB_TOKEN -u GH_TOKEN" in workflow
     assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
     assert 'PATH="$repo_root/scripts/symphony-bin:$PATH"' not in launcher
+    assert codex_config["model"] == "gpt-5.6-sol"
 
 
 def test_symphony_codex_wrapper_trusts_exact_workspace_before_start(tmp_path):

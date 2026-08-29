@@ -129,12 +129,12 @@ def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
             "Bootstrap failed: 5: Input/output error\n"
             "Try re-running the command as root for richer errors."
     )
-    for attempt in range(3):
+    for attempt in range(20):
         try:
             _run(command)
             return
         except RuntimeError as error:
-            if str(error) != transient_error or attempt == 2:
+            if str(error) != transient_error or attempt == 19:
                 raise
             time.sleep(1)
 
@@ -317,7 +317,6 @@ def install_symphony_launch_agent(
         },
         "KeepAlive": True,
         "RunAtLoad": True,
-        "ProcessType": "Background",
         "StandardOutPath": str(log_root / "launchd.stdout.log"),
         "StandardErrorPath": str(log_root / "launchd.stderr.log"),
     }
