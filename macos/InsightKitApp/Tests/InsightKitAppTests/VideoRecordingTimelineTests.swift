@@ -4,6 +4,24 @@ import XCTest
 @testable import InsightKitApp
 
 final class VideoRecordingTimelineTests: XCTestCase {
+    func testCaptureStartTimeUsesTheSourceClock() {
+        let startTime = VideoRecordingTimeline.captureStartTime(
+            sourcePresentationTime: CMTime(seconds: 100.25, preferredTimescale: 600),
+            capturedAt: 1_000.75
+        )
+
+        XCTAssertEqual(startTime, 100.25, accuracy: 0.001)
+    }
+
+    func testCaptureStartTimeFallsBackForInvalidSourcePTS() {
+        let startTime = VideoRecordingTimeline.captureStartTime(
+            sourcePresentationTime: .invalid,
+            capturedAt: 1_000.75
+        )
+
+        XCTAssertEqual(startTime, 1_000.75, accuracy: 0.001)
+    }
+
     func testPresentationTimeUsesSourcePTSInsteadOfCallbackDelay() {
         var timeline = VideoRecordingTimeline()
 

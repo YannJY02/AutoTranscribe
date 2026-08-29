@@ -659,7 +659,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
             if self.recordingTimeline == nil {
                 self.recordingTimeline = VideoRecordingTimeline()
                 self.assetWriter?.startSession(atSourceTime: .zero)
-                self.onRecordingFirstFrame?(capturedAt)
+                self.onRecordingFirstFrame?(VideoRecordingTimeline.captureStartTime(
+                    sourcePresentationTime: sourceTimestamp,
+                    capturedAt: capturedAt
+                ))
             }
             guard var timeline = self.recordingTimeline else { return }
             let presentationTime = timeline.presentationTime(
@@ -995,6 +998,14 @@ struct VideoRecordingTimeline: Equatable {
     init(timescale: CMTimeScale = 600) {
         self.timescale = timescale
         self.minimumFrameStep = CMTime(value: 1, timescale: timescale)
+    }
+
+    static func captureStartTime(
+        sourcePresentationTime: CMTime,
+        capturedAt: TimeInterval
+    ) -> TimeInterval {
+        let sourceTime = CMTimeGetSeconds(sourcePresentationTime)
+        return sourceTime.isFinite && sourceTime >= 0 ? sourceTime : capturedAt
     }
 
     mutating func presentationTime(
