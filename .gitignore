@@ -47,3 +47,6 @@ venv/
 *.xcodeproj/
 *.xcworkspace/
 xcuserdata/
+
+# ── 本机打包状态 ──────────────────────────────────────────
+.ops/signing_identity.txt
