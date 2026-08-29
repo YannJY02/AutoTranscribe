@@ -478,7 +478,7 @@ def test_symphony_launcher_routes_github_cli_through_dedicated_token_wrapper(tmp
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.strip() == "agent-token|unset|unset|unset"
+    assert completed.stdout.strip() == "unset|unset|unset|unset"
 
 
 def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):

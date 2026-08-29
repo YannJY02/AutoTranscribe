@@ -17,21 +17,7 @@ real_gh=$(PATH="$real_path" command -v gh) || {
   echo "Real GitHub CLI command not found outside Symphony wrapper." >&2
   exit 127
 }
-token=${SYMPHONY_AGENT_GITHUB_TOKEN:-}
-if [ -z "$token" ]; then
-  token=$(/usr/bin/security find-generic-password \
-    -a YannJY02 \
-    -s gh:github.com \
-    -w 2>/dev/null || true)
-fi
-if [ -z "$token" ]; then
-  echo "Symphony agent GitHub credential is unavailable in macOS Keychain." >&2
-  exit 1
-fi
-
-GH_TOKEN=$token
-export GH_TOKEN
-unset GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN token
+unset GH_TOKEN GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN
 PATH=$real_path
 export PATH
 exec "$real_gh" "$@"
