@@ -159,14 +159,16 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     assert payload["RunAtLoad"] is True
 
 
-def _fake_symphony_commands(tmp_path):
+def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     commands = {
         "python3.11": "#!/bin/sh\nexit 0\n",
         "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2\n',
         "gh": "#!/bin/sh\nexit 0\n",
-        "symphony": '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
+        "symphony": symphony_body
+        or '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
+        "curl": curl_body or "#!/bin/sh\nexit 0\n",
     }
     for name, body in commands.items():
         command = bin_dir / name
@@ -175,13 +177,24 @@ def _fake_symphony_commands(tmp_path):
     return bin_dir
 
 
-def _run_test_symphony_launcher(tmp_path, *, create_auth=True, **extra_env):
+def _run_test_symphony_launcher(
+    tmp_path,
+    *,
+    create_auth=True,
+    symphony_body=None,
+    curl_body=None,
+    **extra_env,
+):
     root = tmp_path / "home"
     auth = root / ".codex" / "auth.json"
     auth.parent.mkdir(parents=True)
     if create_auth:
         auth.write_text(json.dumps({"auth_mode": "chatgpt"}), encoding="utf-8")
-    bin_dir = _fake_symphony_commands(tmp_path)
+    bin_dir = _fake_symphony_commands(
+        tmp_path,
+        symphony_body=symphony_body,
+        curl_body=curl_body,
+    )
     repo = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
     env.pop("SYMPHONY_CODEX_HOME", None)
@@ -192,6 +205,8 @@ def _run_test_symphony_launcher(tmp_path, *, create_auth=True, **extra_env):
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SYMPHONY_GITHUB_TOKEN": "tracker-token",
             "OPENAI_API_KEY": "must-be-unset",
+            "SYMPHONY_HEALTH_STARTUP_SECONDS": "0.05",
+            "SYMPHONY_HEALTH_INTERVAL_SECONDS": "1",
             **extra_env,
         }
     )
@@ -292,6 +307,64 @@ def test_symphony_launcher_rejects_api_key_login(tmp_path):
 
     assert completed.returncode != 0
     assert completed.stderr.strip() == "Symphony requires ChatGPT login; API-key authentication is not allowed."
+
+
+def test_symphony_launcher_stops_an_unhealthy_child_for_launchd_restart(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        symphony_body=(
+            "#!/bin/sh\n"
+            "trap '' TERM INT\n"
+            "while :; do sleep 1; done\n"
+        ),
+        curl_body="#!/bin/sh\nexit 22\n",
+        SYMPHONY_HEALTH_STARTUP_SECONDS="0",
+        SYMPHONY_HEALTH_INTERVAL_SECONDS="1",
+        SYMPHONY_HEALTH_FAILURE_LIMIT="2",
+        SYMPHONY_TERMINATION_GRACE_SECONDS="0",
+    )
+
+    assert completed.returncode != 0
+    assert "health probe failed 2 consecutive times" in completed.stderr
+
+
+def test_symphony_launcher_rejects_invalid_port(tmp_path):
+    completed, _root = _run_test_symphony_launcher(tmp_path, SYMPHONY_PORT="4000/path")
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip() == "SYMPHONY_PORT must be an integer from 1 to 65535."
+
+
+def test_symphony_launcher_rejects_zero_health_interval_and_timeout(tmp_path):
+    for variable in ("SYMPHONY_HEALTH_INTERVAL_SECONDS", "SYMPHONY_HEALTH_TIMEOUT_SECONDS"):
+        for zero in ("0", "00"):
+            case_root = tmp_path / f"{variable.lower()}-{zero}"
+            case_root.mkdir()
+            completed, _root = _run_test_symphony_launcher(case_root, **{variable: zero})
+
+            assert completed.returncode != 0
+            assert completed.stderr.strip() == (
+            "Symphony health interval and timeout must be positive integers."
+        )
+
+
+def test_symphony_launcher_rejects_all_zero_health_failure_limit(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        SYMPHONY_HEALTH_FAILURE_LIMIT="00",
+    )
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip() == (
+        "SYMPHONY_HEALTH_FAILURE_LIMIT must be a positive integer."
+    )
+
+
+def test_symphony_workflow_hands_read_only_git_delivery_to_controller():
+    workflow = (Path(__file__).resolve().parent.parent / "WORKFLOW.md").read_text(encoding="utf-8")
+
+    assert "do not create temporary Git metadata" in workflow
+    assert "controller handoff" in workflow
 
 
 def test_enqueue_reuses_existing_period_issue_without_creating(monkeypatch):

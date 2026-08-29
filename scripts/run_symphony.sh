@@ -44,7 +44,7 @@ fi
 CODEX_HOME=$symphony_codex_home
 export CODEX_HOME
 
-for required_command in symphony codex gh python3.11; do
+for required_command in symphony codex curl gh python3.11; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
     echo "Required command not found: $required_command" >&2
     exit 1
@@ -88,8 +88,123 @@ python3.11 "$repo_root/scripts/agent_harness.py" doctor --profile symphony
 GITHUB_TOKEN=$SYMPHONY_GITHUB_TOKEN
 export GITHUB_TOKEN
 
-exec symphony \
+symphony_port=${SYMPHONY_PORT:-4000}
+symphony_health_startup_seconds=${SYMPHONY_HEALTH_STARTUP_SECONDS:-15}
+symphony_health_interval_seconds=${SYMPHONY_HEALTH_INTERVAL_SECONDS:-60}
+symphony_health_timeout_seconds=${SYMPHONY_HEALTH_TIMEOUT_SECONDS:-10}
+symphony_health_failure_limit=${SYMPHONY_HEALTH_FAILURE_LIMIT:-3}
+symphony_termination_grace_seconds=${SYMPHONY_TERMINATION_GRACE_SECONDS:-5}
+
+case "$symphony_port" in
+  ''|*[!0-9]*)
+    echo "SYMPHONY_PORT must be an integer from 1 to 65535." >&2
+    exit 1
+    ;;
+esac
+if [ "$symphony_port" -lt 1 ] || [ "$symphony_port" -gt 65535 ]; then
+  echo "SYMPHONY_PORT must be an integer from 1 to 65535." >&2
+  exit 1
+fi
+case "$symphony_health_startup_seconds" in
+  ''|.|*[!0-9.]*|*.*.*)
+    echo "SYMPHONY_HEALTH_STARTUP_SECONDS must be a non-negative number." >&2
+    exit 1
+    ;;
+esac
+for positive_health_integer in \
+  "$symphony_health_interval_seconds" \
+  "$symphony_health_timeout_seconds"; do
+  case "$positive_health_integer" in
+    ''|*[!0-9]*)
+      echo "Symphony health interval and timeout must be positive integers." >&2
+      exit 1
+      ;;
+  esac
+  if [ "$positive_health_integer" -eq 0 ]; then
+    echo "Symphony health interval and timeout must be positive integers." >&2
+    exit 1
+  fi
+done
+case "$symphony_health_failure_limit" in
+  ''|*[!0-9]*)
+    echo "SYMPHONY_HEALTH_FAILURE_LIMIT must be a positive integer." >&2
+    exit 1
+    ;;
+esac
+if [ "$symphony_health_failure_limit" -eq 0 ]; then
+  echo "SYMPHONY_HEALTH_FAILURE_LIMIT must be a positive integer." >&2
+  exit 1
+fi
+case "$symphony_termination_grace_seconds" in
+  ''|*[!0-9]*)
+    echo "SYMPHONY_TERMINATION_GRACE_SECONDS must be a non-negative integer." >&2
+    exit 1
+    ;;
+esac
+
+symphony \
   --i-understand-that-this-will-be-running-without-the-usual-guardrails \
-  --port "${SYMPHONY_PORT:-4000}" \
+  --port "$symphony_port" \
   --logs-root "${SYMPHONY_LOGS_ROOT:-$repo_root/logs/symphony}" \
-  "$repo_root/WORKFLOW.md"
+  "$repo_root/WORKFLOW.md" &
+symphony_pid=$!
+
+symphony_is_running() {
+  symphony_state=$(ps -p "$symphony_pid" -o state= 2>/dev/null || true)
+  case "$symphony_state" in
+    ''|*[Zz]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+cleanup_symphony() {
+  if symphony_is_running; then
+    kill "$symphony_pid" 2>/dev/null || true
+    symphony_termination_waited=0
+    while symphony_is_running && \
+      [ "$symphony_termination_waited" -lt "$symphony_termination_grace_seconds" ]; do
+      sleep 1
+      symphony_termination_waited=$((symphony_termination_waited + 1))
+    done
+    if symphony_is_running; then
+      kill -KILL "$symphony_pid" 2>/dev/null || true
+    fi
+  fi
+  wait "$symphony_pid" 2>/dev/null || true
+}
+terminate_symphony() {
+  trap - EXIT HUP INT TERM
+  cleanup_symphony
+  exit 143
+}
+trap cleanup_symphony EXIT
+trap terminate_symphony HUP INT TERM
+
+sleep "$symphony_health_startup_seconds"
+symphony_health_failures=0
+# ponytail: process-wide restart; use a control-plane probe if Symphony exposes one.
+while symphony_is_running; do
+  if curl \
+    --silent \
+    --show-error \
+    --fail \
+    --max-time "$symphony_health_timeout_seconds" \
+    "http://127.0.0.1:$symphony_port/api/v1/state" \
+    >/dev/null; then
+    symphony_health_failures=0
+  else
+    symphony_health_failures=$((symphony_health_failures + 1))
+    if [ "$symphony_health_failures" -ge "$symphony_health_failure_limit" ]; then
+      echo "Symphony health probe failed $symphony_health_failures consecutive times; stopping child for LaunchAgent restart." >&2
+      exit 1
+    fi
+  fi
+  sleep "$symphony_health_interval_seconds"
+done
+
+set +e
+wait "$symphony_pid"
+symphony_status=$?
+set -e
+trap - EXIT HUP INT TERM
+exit "$symphony_status"

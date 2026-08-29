@@ -11,7 +11,7 @@ tracker:
   terminal_states:
     - closed
 polling:
-  interval_ms: 10000
+  interval_ms: 30000
 observability:
   # The HTTP dashboard and structured logs remain available; the terminal renderer is not needed under launchd.
   dashboard_enabled: false
@@ -73,7 +73,7 @@ Work only inside this repository copy. This is unattended: do not ask the user q
 5. Reproduce the problem or establish the requested baseline. For visible macOS bugs, use the `native-app-proof` skill and preserve before evidence before editing. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
 6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`; visible behavior requires after evidence and `proof.json`.
 7. Review the diff for correctness, secrets, unrelated changes, architecture conflicts, and missing evidence. If code changed, request one independent agent review and resolve every blocking finding.
-8. If changes are needed, commit only this issue's files, push, and create or update a PR against `main`, prefixing its title with `linear_issue` so Linear attaches it. Include the synchronized GitHub issue, manifest path, commands, results, and any human-only acceptance step. Wait for required PR checks and repair failures caused by this work.
+8. If changes are needed and `.git` is writable, commit only this issue's files, push, and create or update a PR against `main`, prefixing its title with `linear_issue` so Linear attaches it. If the workspace sandbox keeps `.git` read-only, do not create temporary Git metadata or GitHub commit objects. Stop with a controller handoff containing the exact changed files, verification commands and results, Harness manifest, and independent-review result; the controller will create the branch, commit, PR, and CI handoff from that verified tree. Include the synchronized GitHub issue and any human-only acceptance step.
 9. If the issue is an investigation or canary and no repository change is needed, do not manufacture a commit or PR; comment with the exact evidence instead.
 10. On success, post one concise issue comment with the PR or no-change result and verification evidence, remove `ready-for-agent`, and add `ready-for-human`. Detailed Linear status remains owned by Linear; use configured native PR automation or update it during human handoff. Do not claim a detailed Linear status change unless it is verified on Linear. Never merge the PR or close the issue.
 11. If a true external blocker remains after safe fallbacks, comment with evidence, remove `ready-for-agent`, and add `needs-info`. Never present incomplete work as complete.
