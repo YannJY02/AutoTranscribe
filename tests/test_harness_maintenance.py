@@ -318,6 +318,7 @@ def _run_test_symphony_launcher(
             "HOME": str(root),
             "CODEX_HOME": str(root / ".codex"),
             "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SYMPHONY_GH_WRAPPER": str(bin_dir / "gh"),
             "SYMPHONY_GITHUB_TOKEN": "tracker-token",
             "SYMPHONY_AGENT_GITHUB_TOKEN": "agent-token",
             "OPENAI_API_KEY": "must-be-unset",
@@ -474,22 +475,17 @@ def test_symphony_launcher_force_stops_term_ignoring_preflight_descendant(tmp_pa
     assert "does not contain a valid ChatGPT login" in completed.stderr
 
 
-def test_symphony_launcher_routes_github_cli_through_dedicated_token_wrapper(tmp_path):
-    completed, _root = _run_test_symphony_launcher(
-        tmp_path,
-        gh_body=(
-            '#!/bin/sh\nprintf "%s|%s|%s|%s\\n" "${GH_TOKEN-unset}" '
-            '"${GITHUB_TOKEN-unset}" "${SYMPHONY_GITHUB_TOKEN-unset}" '
-            '"${SYMPHONY_AGENT_GITHUB_TOKEN-unset}"\n'
-        ),
-        symphony_body=(
-            '#!/bin/sh\nPATH="/shim:$PATH"\nexport PATH\n'
-            "/usr/bin/perl -e 'alarm shift; exec @ARGV; exit 127' 2 gh auth status\n"
-        ),
+def test_symphony_github_wrapper_uses_trusted_cli_and_clears_source_tokens():
+    wrapper = (Path(__file__).resolve().parent.parent / "scripts" / "symphony-bin" / "gh").read_text(
+        encoding="utf-8"
     )
 
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.strip() == "unset|unset|unset|unset"
+    assert "command -v gh" not in wrapper
+    assert "real_gh=/opt/homebrew/bin/gh" in wrapper
+    assert "real_gh=/usr/local/bin/gh" in wrapper
+    assert "PATH=$trusted_path" in wrapper
+    assert "com.autotranscribe.symphony.agent-github-token" in wrapper
+    assert "unset GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN token" in wrapper
 
 
 def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):

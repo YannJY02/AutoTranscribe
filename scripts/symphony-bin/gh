@@ -1,23 +1,30 @@
 #!/bin/sh
 set -eu
 
-wrapper_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-remaining_path=${PATH:-}
-real_path=
-while [ -n "$remaining_path" ]; do
-  case "$remaining_path" in
-    *:*) path_entry=${remaining_path%%:*}; remaining_path=${remaining_path#*:} ;;
-    *) path_entry=$remaining_path; remaining_path= ;;
-  esac
-  if [ "$path_entry" != "$wrapper_dir" ]; then
-    real_path=${real_path:+"$real_path:"}$path_entry
-  fi
-done
-real_gh=$(PATH="$real_path" command -v gh) || {
-  echo "Real GitHub CLI command not found outside Symphony wrapper." >&2
+trusted_path=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+real_gh=/opt/homebrew/bin/gh
+if [ ! -x "$real_gh" ]; then
+  real_gh=/usr/local/bin/gh
+fi
+if [ ! -x "$real_gh" ]; then
+  echo "GitHub CLI is unavailable at a trusted system path." >&2
   exit 127
-}
-unset GH_TOKEN GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN
-PATH=$real_path
+fi
+token=${SYMPHONY_AGENT_GITHUB_TOKEN:-}
+if [ -z "$token" ]; then
+  token=$(/usr/bin/security find-generic-password \
+    -a symphony-agent \
+    -s com.autotranscribe.symphony.agent-github-token \
+    -w 2>/dev/null || true)
+fi
+if [ -z "$token" ]; then
+  echo "Symphony agent GitHub credential is unavailable in macOS Keychain." >&2
+  exit 1
+fi
+
+GH_TOKEN=$token
+export GH_TOKEN
+unset GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN token
+PATH=$trusted_path
 export PATH
 exec "$real_gh" "$@"

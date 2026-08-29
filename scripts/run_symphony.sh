@@ -86,7 +86,7 @@ for required_command in symphony codex curl gh python3.11; do
     exit 1
   fi
 done
-symphony_gh_wrapper="$repo_root/scripts/symphony-bin/gh"
+symphony_gh_wrapper=${SYMPHONY_GH_WRAPPER:-"$repo_root/scripts/symphony-bin/gh"}
 if [ ! -x "$symphony_gh_wrapper" ]; then
   echo "Symphony GitHub CLI wrapper is not executable: $symphony_gh_wrapper" >&2
   exit 1
