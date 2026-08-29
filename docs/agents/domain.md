@@ -30,7 +30,7 @@ Historical originals and converted Matt workflow views live in `docs/Legacy/matt
 - ADRs under `docs/adr/` that touch the area you're about to work in.
 - `docs/Legacy/matt-workflow-library/manifest.md` only when the task depends on historical material or moved Legacy assets.
 
-If these files do not exist yet, proceed silently and infer from the repo. Do not invent domain rules; note gaps for a later domain-modeling pass.
+If any context or ADR files do not exist, proceed silently. Do not suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions are actually resolved.
 
 ## Use the glossary's vocabulary
 
