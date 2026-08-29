@@ -40,6 +40,13 @@ except subprocess.TimeoutExpired:
 PY
 }
 
+for required_command in symphony codex curl gh python3.11; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    echo "Required command not found: $required_command" >&2
+    exit 1
+  fi
+done
+
 operator_codex_home=${CODEX_HOME:-"$HOME/.codex"}
 if [ -n "${SYMPHONY_CODEX_HOME:-}" ]; then
   symphony_codex_home=$SYMPHONY_CODEX_HOME
@@ -70,6 +77,13 @@ else
   fi
   runtime_config_tmp="$runtime_config.tmp.$$"
   cp "$repo_root/.codex/symphony.config.toml" "$runtime_config_tmp"
+  python3.11 - "$runtime_config_tmp" "$HOME/Developer/Workspaces/AutoTranscribe" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "a", encoding="utf-8") as config:
+    config.write(f"\n[projects.{json.dumps(sys.argv[2], ensure_ascii=False)}]\ntrust_level = \"trusted\"\n")
+PY
   mv -f "$runtime_config_tmp" "$runtime_config"
 fi
 
@@ -80,12 +94,6 @@ fi
 CODEX_HOME=$symphony_codex_home
 export CODEX_HOME
 
-for required_command in symphony codex curl gh python3.11; do
-  if ! command -v "$required_command" >/dev/null 2>&1; then
-    echo "Required command not found: $required_command" >&2
-    exit 1
-  fi
-done
 symphony_gh_wrapper="$repo_root/scripts/symphony-bin/gh"
 if [ ! -x "$symphony_gh_wrapper" ]; then
   echo "Symphony GitHub CLI wrapper is not executable: $symphony_gh_wrapper" >&2
