@@ -306,6 +306,7 @@ def _run_test_symphony_launcher(
             "CODEX_HOME": str(root / ".codex"),
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SYMPHONY_GITHUB_TOKEN": "tracker-token",
+            "SYMPHONY_AGENT_GITHUB_TOKEN": "agent-token",
             "OPENAI_API_KEY": "must-be-unset",
             "SYMPHONY_HEALTH_STARTUP_SECONDS": "0.05",
             "SYMPHONY_HEALTH_INTERVAL_SECONDS": "1",
@@ -424,6 +425,24 @@ def test_symphony_launcher_times_out_stalled_github_preflight(tmp_path):
     )
 
 
+def test_symphony_launcher_routes_github_cli_through_dedicated_token_wrapper(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        gh_body=(
+            '#!/bin/sh\nprintf "%s|%s|%s|%s\\n" "${GH_TOKEN-unset}" '
+            '"${GITHUB_TOKEN-unset}" "${SYMPHONY_GITHUB_TOKEN-unset}" '
+            '"${SYMPHONY_AGENT_GITHUB_TOKEN-unset}"\n'
+        ),
+        symphony_body=(
+            '#!/bin/sh\nPATH="/shim:$PATH"\nexport PATH\n'
+            "/usr/bin/perl -e 'alarm shift; exec @ARGV; exit 127' 2 gh auth status\n"
+        ),
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "agent-token|unset|unset|unset"
+
+
 def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):
     completed, _root = _run_test_symphony_launcher(
         tmp_path,
@@ -492,6 +511,7 @@ def test_symphony_workflow_hands_read_only_git_delivery_to_controller():
 
     assert "do not create temporary Git metadata" in workflow
     assert "controller handoff" in workflow
+    assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN -u SYMPHONY_GITHUB_TOKEN" in workflow
 
 
 def test_enqueue_reuses_existing_period_issue_without_creating(monkeypatch):

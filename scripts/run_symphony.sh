@@ -64,6 +64,13 @@ for required_command in symphony codex curl gh python3.11; do
     exit 1
   fi
 done
+symphony_gh_wrapper="$repo_root/scripts/symphony-bin/gh"
+if [ ! -x "$symphony_gh_wrapper" ]; then
+  echo "Symphony GitHub CLI wrapper is not executable: $symphony_gh_wrapper" >&2
+  exit 1
+fi
+PATH="$(dirname "$symphony_gh_wrapper"):$PATH"
+export PATH
 
 if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2
