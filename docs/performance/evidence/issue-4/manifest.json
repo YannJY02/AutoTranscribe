@@ -1,0 +1,439 @@
+{
+  "schema_version": 1,
+  "issue": {
+    "number": 4,
+    "url": "https://github.com/YannJY02/AutoTranscribe/issues/4"
+  },
+  "status": "partial-evidence-cold-and-hitch-metrics-pending",
+  "cohort": {
+    "id": "issue-4-real-world-warm-2026-08-29",
+    "recorded_at": "2026-08-29",
+    "workload": "normal daily background workload",
+    "warm_runs": {
+      "100_records": 10,
+      "1000_records": 10,
+      "passed": 20,
+      "failed": 0
+    },
+    "cold_runs": {
+      "required_per_collection": 3,
+      "completed": 0
+    },
+    "validity": "exploratory",
+    "validity_reasons": [
+      "power source was not captured at cohort start",
+      "the unmeasured priming run succeeded but its raw log was not retained",
+      "display, brightness, Low Power Mode, provider, model, and network fields were not captured at cohort start",
+      "the exact driver invocation and per-run reset command were not retained",
+      "the recorded driver used pre-request launch timing and generic navigation readiness boundaries",
+      "cold runs require separate post-restart boots",
+      "Animation Hitches and App Launch templates did not save usable traces under Xcode 27"
+    ]
+  },
+  "source": {
+    "branch": "codex/issue-4-interaction-baseline",
+    "installed_app_git_revision": "19d19e4959a6f58e17e53e235565945f4e2e8810",
+    "recorded_driver_source_sha256": "bb86bf6fbf7ccf39501acb231cf1545b62ac3dbacf24f74f2cea2e7e333e61c2",
+    "recorded_driver_executable_sha256": "62c7fc5ffbbc584ff2a5316bbbe3dea620edc9adedcfb9ed0b9b39b04b7a9578",
+    "current_driver_source_sha256": "c865ffd11ede63c7a2b3c2b0161ab5b14e328d920a1860e818a3ac77e1bc3321",
+    "current_driver_executable_sha256": "1ac7ae1ffef6b6a4cca4f1096f8a0b614643ba6833c65844cf9b6f4e73a2e448",
+    "current_driver_validation": "100-record end-to-end trace smoke passed on 2026-08-29; invalid run-kind input was rejected",
+    "current_driver_note": "post-cohort source corrects launch and destination readiness boundaries; do not apply it retroactively",
+    "fixture_manifest_sha256": "8e7005f358538276201e0f2dc42ca713115f4fc72a820ea72199d3e256ae5ddf"
+  },
+  "installed_app": {
+    "absolute_path": "/Users/yann.jy/Applications/InsightKit.app",
+    "bundle_identifier": "com.yannjy.insightkit",
+    "short_version": "0.1.0",
+    "bundle_version": "20260829173735",
+    "build_source": "local-workspace-clean",
+    "code_directory_sha256": "6533ca56276b5485f23db9a3beff3c3c98760c74a6aa49ac6cd0e3121cf42d1a",
+    "executable_sha256": "a5b479e05653002ba8b80d1760931850cf02c8191255504b4fba9e047fcf34c3",
+    "entry_count": 111,
+    "file_bytes": 8637537,
+    "inventory_sha256": "f2b757721a53ce161af4f0f9138c716e1d21d63606362da2f1ba6f1ede7e018d",
+    "signature_validation": "codesign --verify --deep --strict passed"
+  },
+  "environment": {
+    "hardware": {
+      "model_identifier": "MacBookPro18,1",
+      "chip": "Apple M1 Pro",
+      "cpu_cores": 10,
+      "memory_gb": 16
+    },
+    "os": {
+      "product": "macOS",
+      "version": "27.0",
+      "build": "26A5421a"
+    },
+    "xcode": {
+      "version": "27.0",
+      "build": "27A5252f"
+    },
+    "tools": {
+      "swift": "6.4",
+      "python": "3.14.2",
+      "xctrace": "27.0 (27A5252f)",
+      "xcodegen": "2.45.3"
+    },
+    "thermal_gate": {
+      "result": "passed",
+      "evidence_sha256": "96de6076213225f787270bff80efd2011e0ad142953c37697dc547f77d302892"
+    },
+    "power_source_at_start": "not-recorded",
+    "low_power_mode_at_start": "not-recorded",
+    "display_connections_at_start": "not-recorded",
+    "brightness_at_start": "not-recorded",
+    "provider_model_network": "not exercised by the issue-4 interaction scenario; installed defaults were not separately captured",
+    "pre_run_cpu_sample_sha256": "1f036d2510e677252114645587b563971521288f085de0a740ba3df22df25269",
+    "pre_run_process_inventory_sha256": "01a450be0923360faf0f177f6bb84871a2d1043db17f189db1d557bdbd61f27d"
+  },
+  "corpus": {
+    "id": "insightkit-installed-app-benchmark-v1",
+    "verification": {
+      "status": "passed",
+      "fixture_assets_verified": 6,
+      "record_folders_verified": 1100
+    },
+    "record_collections": [
+      {
+        "collection_sha256": "ad8ea6005ca7cd79dfb0cc6215963a5838c6977e50d277dd6682310546407064",
+        "logical_byte_size": 228469552,
+        "record_count": 100,
+        "search_query_hit_count": 10,
+        "seed": 20260801
+      },
+      {
+        "collection_sha256": "78181e4fbaa71aebfd17ca7ac89e2fafb812ac8248631a1566da4aff4e1305a7",
+        "logical_byte_size": 2284695233,
+        "record_count": 1000,
+        "search_query_hit_count": 100,
+        "seed": 20260801
+      }
+    ],
+    "scenario_parameters": {
+      "expected_search_results": {
+        "100": 10,
+        "1000": 100
+      },
+      "generated_record_search_query": "benchmark-focus-token",
+      "input_traces": {
+        "keyboard": {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/keyboard.json",
+          "byte_size": 1092,
+          "sha256": "4c9fe189f338a358189e613e347a78c8f9e762cdbdee9493420222773699dacd"
+        },
+        "pointer": {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/pointer.json",
+          "byte_size": 155,
+          "sha256": "3d3691531de781c909ce5874e785e1f0731c91235b1bad139e707b235035a4ba"
+        },
+        "resize": {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/resize.json",
+          "byte_size": 184,
+          "sha256": "d80273cdd030fc8a3e9c4911f12f08a8911e5a2fb1912bf4cace11530cd4af36"
+        },
+        "scroll": {
+          "absolute_path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/scenario-inputs/scroll.json",
+          "byte_size": 6566,
+          "sha256": "59df75717436d432482a1fdcef11de5370936ea23878914da0b197a7d0e61fa0"
+        }
+      },
+      "playback_window_seconds": 60,
+      "post_workload_recovery_seconds": 300,
+      "seek_target_fraction": 0.6,
+      "workspace_navigation_order": [
+        "home",
+        "live",
+        "import",
+        "records",
+        "settings"
+      ],
+      "workspace_scope": {
+        "included": [
+          "live",
+          "import",
+          "records",
+          "settings"
+        ],
+        "excluded": [
+          {
+            "route": "transcription",
+            "reason": "legacy route has no user-facing Home action and is outside the frozen scenario order"
+          }
+        ]
+      }
+    }
+  },
+  "metric_contract": {
+    "app.launch_to_home_usable_ms": {
+      "unit": "ms",
+      "direction": "lower",
+      "start_event": "NSWorkspace launch request accepted",
+      "stop_event": "Home Workspace rendered and Records action enabled",
+      "component": "app",
+      "phase": "launch",
+      "source": "host monotonic clock; Time Profiler corroboration"
+    },
+    "workspace.navigation_to_interactive_ms": {
+      "unit": "ms",
+      "direction": "lower",
+      "start_event": "fixed center pointer click delivered",
+      "stop_event": "destination-specific view/control available and Back action enabled",
+      "component": "app",
+      "phase": "per workspace",
+      "source": "host monotonic clock; Time Profiler corroboration"
+    },
+    "interaction.input_response_ms": {
+      "unit": "ms",
+      "direction": "lower",
+      "start_event": "final fixed keyboard event delivered",
+      "stop_event": "stable expected search result count visible",
+      "component": "app",
+      "phase": "records_search",
+      "source": "host monotonic clock; Time Profiler corroboration"
+    },
+    "interaction.scroll_hitch_rate_pct": {
+      "status": "unavailable",
+      "reason": "Animation Hitches trace failed to save under Xcode 27"
+    },
+    "window.resize_hitch_rate_pct": {
+      "status": "unavailable",
+      "reason": "Animation Hitches trace failed to save under Xcode 27"
+    }
+  },
+  "run_order": [
+    "warm-100-01",
+    "warm-100-02",
+    "warm-100-03",
+    "warm-100-04",
+    "warm-100-05",
+    "warm-100-06",
+    "warm-100-07",
+    "warm-100-08",
+    "warm-100-09",
+    "warm-100-10",
+    "warm-1000-01",
+    "warm-1000-02",
+    "warm-1000-03",
+    "warm-1000-04",
+    "warm-1000-05",
+    "warm-1000-06",
+    "warm-1000-07",
+    "warm-1000-08",
+    "warm-1000-09",
+    "warm-1000-10"
+  ],
+  "reset_evidence": {
+    "warm": "the driver terminated and relaunched the app while preserving OS caches; the separate orchestration command was not retained",
+    "cold": "not executed"
+  },
+  "driver_command_template": "installed_app_interaction_baseline --records-root <pinned collection> --record-count <100|1000> --search-hit-count <10|100> --search-hit-id <pinned hit> --run-id <run id> --run-kind warm",
+  "trace_commands": [
+    "xcrun xctrace record --template 'Time Profiler' --attach <InsightKitApp pid> --time-limit 40s --output time-profiler-1000-rerun.trace",
+    "xcrun xctrace record --template 'Time Profiler' --launch /Users/yann.jy/Applications/InsightKit.app --time-limit 15s --output time-profiler-launch.trace",
+    "xcrun xctrace record --template 'Animation Hitches' ... (tool-blocked; failure logs retained)",
+    "xcrun xctrace record --template 'App Launch' ... (tool-blocked; failure log retained)"
+  ],
+  "raw_evidence": {
+    "absolute_root": "/Users/yann.jy/Library/Application Support/InsightKit/PerformanceEvidence/2026-08-29/issue-4-interactions/raw",
+    "retention": "local-only; raw traces may include machine metadata and are not committed",
+    "artifacts": [
+      {
+        "kind": "file",
+        "relative_path": "animation-hitches-all-xctrace.log",
+        "size_bytes": 635,
+        "sha256": "c464a7ace90c0d89bdaefc68ef07cb9b60dda01ce40d2f3a23ec92c66dece567"
+      },
+      {
+        "kind": "file",
+        "relative_path": "animation-hitches-short-xctrace.log",
+        "size_bytes": 179,
+        "sha256": "eb08101cc76468149db313481252b91109ac15e5920ce529155cc87fb38fb147"
+      },
+      {
+        "kind": "file",
+        "relative_path": "animation-hitches-swiftui-xctrace.log",
+        "size_bytes": 203,
+        "sha256": "86c7d216fe0ae7195af4777b9bc2dd02f7cbfe6b903def5d8925268f14901055"
+      },
+      {
+        "kind": "file",
+        "relative_path": "animation-hitches-xctrace.log",
+        "size_bytes": 180,
+        "sha256": "d8ba1b9f46b2364a836e8e09eb5b5bbb5a8445b4819ae6040420c284d138dafa"
+      },
+      {
+        "kind": "file",
+        "relative_path": "app-launch-xctrace.log",
+        "size_bytes": 638,
+        "sha256": "0cfa2f4539d498996ded476e7758e86b308d9788566822fbd3bd7e871baa3a06"
+      },
+      {
+        "kind": "file",
+        "relative_path": "bundle-and-trace-inventories.json",
+        "size_bytes": 943,
+        "sha256": "c6020fd6b77ee8780cfa56612285faafb309b3ba400226cd3d0cbec0b4de73ec"
+      },
+      {
+        "kind": "file",
+        "relative_path": "derived-warm-stats.json",
+        "size_bytes": 7706,
+        "sha256": "2688c06389d0d0b89469bacfdf126b83944c39cf71cd3e4b52e04250cf546788"
+      },
+      {
+        "kind": "file",
+        "relative_path": "installed_app_interaction_baseline",
+        "size_bytes": 207056,
+        "sha256": "62c7fc5ffbbc584ff2a5316bbbe3dea620edc9adedcfb9ed0b9b39b04b7a9578"
+      },
+      {
+        "kind": "file",
+        "relative_path": "pre_run_processes.txt",
+        "size_bytes": 80195,
+        "sha256": "01a450be0923360faf0f177f6bb84871a2d1043db17f189db1d557bdbd61f27d"
+      },
+      {
+        "kind": "file",
+        "relative_path": "pre_run_thermal.txt",
+        "size_bytes": 146,
+        "sha256": "96de6076213225f787270bff80efd2011e0ad142953c37697dc547f77d302892"
+      },
+      {
+        "kind": "file",
+        "relative_path": "pre_run_top.txt",
+        "size_bytes": 146006,
+        "sha256": "1f036d2510e677252114645587b563971521288f085de0a740ba3df22df25269"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profile-category-stats.json",
+        "size_bytes": 1716,
+        "sha256": "5fb7d7f833deaff695ba8c5a30a4b1b97cc3a725a1a8c5a6ac5117bf0d049156"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profile-hotspots.json",
+        "size_bytes": 34809,
+        "sha256": "a3143bb3e411488c6117f89752e2b51a0e69716f7979061c5258a7905a1928bb"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-1000-rerun-toc.xml",
+        "size_bytes": 10212,
+        "sha256": "2eff6dbf10f45a1a870b1a6ae1a07a00eaf3762e8fe128c7bd36da8fe8fed238"
+      },
+      {
+        "kind": "trace_bundle",
+        "relative_path": "time-profiler-1000-rerun.trace",
+        "entry_count": 396,
+        "file_bytes": 29409528,
+        "inventory_sha256": "4bf02851fd6fe12ff868b7925998591dafa3dc4fc307e11010d1226e409d585a"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-1000-rerun.xml",
+        "size_bytes": 13304428,
+        "sha256": "76c1ab5a0996bfe075b8d159cc53cbedc5609b0462109ba7f4e56abe4f5b3d4d"
+      },
+      {
+        "kind": "trace_bundle",
+        "relative_path": "time-profiler-1000.trace",
+        "entry_count": 258,
+        "file_bytes": 22394740,
+        "inventory_sha256": "a02bdad233cd86bd8ffda39e7072b10f5132cfd0c0f7857bf9e600360d5345c5"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-launch-toc.xml",
+        "size_bytes": 7899,
+        "sha256": "2760a23445e6fa043e6018c65702b97f849ab26508c8f0f429b4b7bcd5560288"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-launch-xctrace.log",
+        "size_bytes": 277,
+        "sha256": "9d36c412efa14eb9fbf0855ae91ec04e1cc7bec9c116ef2f7e9a19cd13c0bd06"
+      },
+      {
+        "kind": "trace_bundle",
+        "relative_path": "time-profiler-launch.trace",
+        "entry_count": 340,
+        "file_bytes": 12053652,
+        "inventory_sha256": "75f8a7525aac2a379ff91a1d2e96d980e99baf698e54ec9a356270fc6a948713"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-launch.xml",
+        "size_bytes": 1301870,
+        "sha256": "5658b8d272f71b7829f3b27ba08d0bd71373dc022df8bd0cc79881c6dd6c492c"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-rerun-xctrace.log",
+        "size_bytes": 272,
+        "sha256": "c64208ea4772457584f8ee01c8ad256f6481b226bc0ae0af941936e47e6cfb0e"
+      },
+      {
+        "kind": "file",
+        "relative_path": "time-profiler-xctrace.log",
+        "size_bytes": 277,
+        "sha256": "750426b51fc99d66476337e6993875f1eaed6d4db5ae04d93aaf249e7b74d786"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-hitches-all-driver.log",
+        "size_bytes": 3526,
+        "sha256": "0d4c7ede205b526c4ec8d72b44fffd1a78f5ac9f65d3c54702137a009bdbf00c"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-hitches-driver.log",
+        "size_bytes": 3493,
+        "sha256": "8e4585b88b21d1820bbc6afba3a29e6c8fbaeafcc6a668dd6e07930653e8e0eb"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-hitches-only-driver.log",
+        "size_bytes": 3538,
+        "sha256": "8542fb5971b8c2fbe00c4000175792442a3c5f2a09a3dfab0e30cd0cc7327544"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-hitches-short-driver.log",
+        "size_bytes": 3548,
+        "sha256": "69579728453d3e403e614d82f42cb73023b1df9e3e85c694504ad9dbc75ba6a9"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-time-profiler-driver.log",
+        "size_bytes": 514,
+        "sha256": "3c556a7e292f5c94e48b7e6801f7e23331bc2d950fcd38bbce9e6197e6714cda"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-time-profiler-notify.log",
+        "size_bytes": 46,
+        "sha256": "10e8a25954ed6a3da7b326b7046eb6d64e4e8ebe5d987782cd97c66dce4755b3"
+      },
+      {
+        "kind": "file",
+        "relative_path": "trace-time-profiler-rerun-driver.log",
+        "size_bytes": 3601,
+        "sha256": "b47cd0404268ccd1616efe1874a5cb68eab7d6a8c955d0ad99e4693f0997334d"
+      },
+      {
+        "kind": "file",
+        "relative_path": "warm-100.log",
+        "size_bytes": 34778,
+        "sha256": "7ed2d28a454d6b9979f98ed25bd8dfec481d8b99141aa685f481abfc59aa6ebc"
+      },
+      {
+        "kind": "file",
+        "relative_path": "warm-1000.log",
+        "size_bytes": 34958,
+        "sha256": "edef94a198f361f51fac39d82be73260826d81aabc9823f46d1607b52bbc0b56"
+      }
+    ]
+  }
+}

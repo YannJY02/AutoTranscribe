@@ -27,8 +27,12 @@ to implement a suspected optimization.
   bundle entry, including nested helpers, resources, and the Python sidecar.
 - Plug into power, disable Low Power Mode, and keep display connections and
   brightness fixed.
-- Close unrelated apps. Before a run, require system CPU below 5% for 60
-  continuous seconds and thermal state `nominal`.
+- For a real-world cohort, keep the normal daily background workload running,
+  inventory its processes, and retain a 60-second pre-run CPU sample. CPU load
+  is descriptive evidence rather than a validity threshold; thermal state must
+  still be `nominal`. A separately declared quiescent cohort may close unrelated
+  apps and set its own fixed CPU threshold, but must not be merged with the
+  real-world cohort.
 - Keep fixture hashes, InsightKit configuration, provider/model, and network
   type fixed. A change to any fixed field starts a new cohort.
 - Keep cold and warm results separate. Do not compare different cohorts as one
@@ -239,6 +243,12 @@ Commit small sanitized evidence. Large or sensitive traces remain on the
 reference Mac; record their absolute path, byte size, and SHA-256 in the
 manifest. Never commit raw meeting content, credentials, provider payloads, or
 private transcript text.
+
+Because this repository ignores `logs/` to protect user data, the committed
+sanitized copy lives under `docs/performance/evidence/<ticket>/`. That copy is
+the public evidence index; its manifest points to the canonical local raw
+directory and inventories every retained artifact. Do not commit a second copy
+under `logs/`.
 
 ## Quality and validity gates
 
