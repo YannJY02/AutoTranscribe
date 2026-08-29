@@ -15,7 +15,29 @@ if [ "$symphony_preflight_timeout_seconds" -eq 0 ]; then
   exit 1
 fi
 run_with_preflight_timeout() {
-  /usr/bin/perl -e 'alarm shift; exec @ARGV; exit 127' "$symphony_preflight_timeout_seconds" "$@"
+  python3.11 - "$symphony_preflight_timeout_seconds" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+import time
+
+process = subprocess.Popen(sys.argv[2:], start_new_session=True)
+try:
+    raise SystemExit(process.wait(timeout=int(sys.argv[1])))
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    time.sleep(1)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait()
+    raise SystemExit(124)
+PY
 }
 
 operator_codex_home=${CODEX_HOME:-"$HOME/.codex"}

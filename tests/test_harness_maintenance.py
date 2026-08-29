@@ -8,6 +8,8 @@ import plistlib
 import pytest
 import shlex
 import subprocess
+import sys
+import time
 import tomllib
 
 from scripts.harness_maintenance import (
@@ -263,8 +265,18 @@ def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None, gh_
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     commands = {
-        "python3.11": "#!/bin/sh\nexit 0\n",
-        "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2\n',
+        "python3.11": (
+            '#!/bin/sh\nif [ "${1:-}" = - ]; then exec '
+            f'{shlex.quote(sys.executable)} "$@"; fi\nexit 0\n'
+        ),
+        "codex": (
+            '#!/bin/sh\nif [ "${FAKE_CODEX_CHILD_IGNORES_TERM:-0}" = 1 ]; then '
+            "trap 'exit 0' TERM; (trap '' TERM; sleep 3) & wait; fi\n"
+            '[ "${FAKE_CODEX_IGNORE_ALARM:-0}" = 1 ] || { '
+            '[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1; '
+            'printf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2; '
+            'exit 0; }\ntrap "" ALRM\nsleep 3\n'
+        ),
         "gh": gh_body or "#!/bin/sh\nexit 0\n",
         "symphony": symphony_body
         or '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
@@ -423,6 +435,32 @@ def test_symphony_launcher_times_out_stalled_github_preflight(tmp_path):
     assert completed.stderr.strip().endswith(
         "Codex's GitHub CLI session is not authenticated. Run: gh auth login"
     )
+
+
+def test_symphony_launcher_force_stops_preflight_that_ignores_alarm(tmp_path):
+    started_at = time.monotonic()
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        FAKE_CODEX_IGNORE_ALARM="1",
+        SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
+    )
+
+    assert completed.returncode != 0
+    assert time.monotonic() - started_at < 2.5
+    assert "does not contain a valid ChatGPT login" in completed.stderr
+
+
+def test_symphony_launcher_force_stops_term_ignoring_preflight_descendant(tmp_path):
+    started_at = time.monotonic()
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        FAKE_CODEX_CHILD_IGNORES_TERM="1",
+        SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
+    )
+
+    assert completed.returncode != 0
+    assert time.monotonic() - started_at < 2.5
+    assert "does not contain a valid ChatGPT login" in completed.stderr
 
 
 def test_symphony_launcher_routes_github_cli_through_dedicated_token_wrapper(tmp_path):
