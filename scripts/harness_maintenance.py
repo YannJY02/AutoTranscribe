@@ -127,7 +127,10 @@ def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
     try:
         _run(command)
     except RuntimeError as error:
-        if str(error) != "Bootstrap failed: 5: Input/output error":
+        if str(error) != (
+            "Bootstrap failed: 5: Input/output error\n"
+            "Try re-running the command as root for richer errors."
+        ):
             raise
         _run(command)
 

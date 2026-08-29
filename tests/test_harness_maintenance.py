@@ -175,13 +175,17 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
         "scripts.harness_maintenance.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
     )
+    transient = (
+        "Bootstrap failed: 5: Input/output error\n"
+        "Try re-running the command as root for richer errors."
+    )
     bootstraps = 0
 
     def fake_run(command, *, input_text=None):
         nonlocal bootstraps
         bootstraps += 1
         if bootstraps == 1:
-            raise RuntimeError("Bootstrap failed: 5: Input/output error")
+            raise RuntimeError(transient)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("scripts.harness_maintenance._run", fake_run)
@@ -196,7 +200,10 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
 
 
 def test_bootstrap_retry_requires_exact_error_and_stops_after_two_attempts(tmp_path, monkeypatch):
-    transient = "Bootstrap failed: 5: Input/output error"
+    transient = (
+        "Bootstrap failed: 5: Input/output error\n"
+        "Try re-running the command as root for richer errors."
+    )
     attempts = 0
 
     def fail_with_extra_context(command, *, input_text=None):
