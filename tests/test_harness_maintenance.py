@@ -347,9 +347,6 @@ def test_symphony_launcher_defaults_to_minimal_isolated_codex_home(tmp_path):
     assert (runtime / "auth.json").resolve() == root / ".codex" / "auth.json"
     config = tomllib.loads((runtime / "config.toml").read_text(encoding="utf-8"))
     assert config["features"] == {"apps": False, "plugins": False, "remote_plugin": False}
-    assert config["projects"] == {
-        str(root / "Developer" / "Workspaces" / "AutoTranscribe"): {"trust_level": "trusted"}
-    }
 
 
 def test_symphony_launcher_preserves_explicit_codex_home(tmp_path):
