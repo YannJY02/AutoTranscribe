@@ -231,6 +231,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "--resume" in gate
     assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in workflow
     assert "SYMPHONY_REAL_CODEX" in launcher
+    assert 'PATH="$repo_root/scripts/symphony-bin:$PATH"' not in launcher
     assert "GH_TOKEN=$symphony_agent_github_token" in launcher
     assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in launcher
     assert "read_timeout_ms: 120000" in workflow

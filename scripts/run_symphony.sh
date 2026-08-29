@@ -94,8 +94,6 @@ SYMPHONY_REAL_GH=${SYMPHONY_REAL_GH:-$(command -v gh)}
 SYMPHONY_PYTHON3=${SYMPHONY_PYTHON3:-$(command -v python3.11)}
 SYMPHONY_CONTROLLER_REPO_ROOT=$repo_root
 export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_CONTROLLER_REPO_ROOT
-PATH="$repo_root/scripts/symphony-bin:$PATH"
-export PATH
 
 if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2

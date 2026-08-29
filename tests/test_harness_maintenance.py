@@ -478,6 +478,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     root = Path(__file__).resolve().parent.parent
     workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
     gate = (root / "scripts" / "symphony_issue_gate.sh").read_text(encoding="utf-8")
+    launcher = (root / "scripts" / "run_symphony.sh").read_text(encoding="utf-8")
 
     assert not (root / "scripts" / "symphony-bin" / "gh").exists()
     assert "hooks:" in workflow and "before_run:" in workflow
@@ -486,6 +487,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
     assert "-u GITHUB_TOKEN -u GH_TOKEN" in workflow
     assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
+    assert 'PATH="$repo_root/scripts/symphony-bin:$PATH"' not in launcher
 
 
 def test_symphony_codex_wrapper_trusts_exact_workspace_before_start(tmp_path):
