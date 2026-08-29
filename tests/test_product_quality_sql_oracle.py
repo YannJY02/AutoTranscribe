@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 
 from insightkit.data.store import InsightStore
-from scripts.run_real_import_e2e import evaluate_database_oracle
+from scripts.run_real_import_e2e import evaluate_database_oracle, fts_index_is_consistent
 
 
 def seed_completed_import(tmp_path):
@@ -95,3 +96,24 @@ def test_database_oracle_detects_segment_missing_from_fts_index(tmp_path):
 
     assert result["passed"] is False
     assert result["assertions"]["fts_index_complete"]["passed"] is False
+
+
+def test_fts_integrity_check_uses_snapshot_without_mutating_source(tmp_path):
+    db_path = seed_completed_import(tmp_path)
+    store = InsightStore(db_path)
+    segment = store.conn.execute(
+        "SELECT id, meeting_id, text FROM segments ORDER BY id LIMIT 1"
+    ).fetchone()
+    store.conn.execute(
+        """
+        INSERT INTO segments_fts(segments_fts, rowid, meeting_id, text)
+        VALUES('delete', ?, ?, ?)
+        """,
+        (segment["id"], segment["meeting_id"], segment["text"]),
+    )
+    store.conn.commit()
+    store.close()
+    source_digest = sha256(db_path.read_bytes()).hexdigest()
+
+    assert fts_index_is_consistent(db_path) is False
+    assert sha256(db_path.read_bytes()).hexdigest() == source_digest

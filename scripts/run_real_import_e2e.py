@@ -11,6 +11,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 from datetime import datetime
@@ -414,6 +415,35 @@ def verify_fts(db_path: Path, meeting_id: str, transcript_rows: list[dict[str, A
     }
 
 
+def fts_index_is_consistent(db_path: Path) -> bool:
+    """Compare the external-content FTS index on an isolated writable snapshot."""
+
+    resolved_db = db_path.expanduser().resolve()
+    source: sqlite3.Connection | None = None
+    snapshot: sqlite3.Connection | None = None
+    try:
+        source = sqlite3.connect(f"{resolved_db.as_uri()}?mode=ro", uri=True, timeout=8.0)
+        with tempfile.TemporaryDirectory(prefix="insightkit-fts-integrity-") as temp_dir:
+            snapshot_path = Path(temp_dir) / "insightkit.db"
+            snapshot = sqlite3.connect(snapshot_path, timeout=8.0)
+            source.backup(snapshot)
+            try:
+                snapshot.execute(
+                    "INSERT INTO segments_fts(segments_fts, rank) VALUES('integrity-check', 1)"
+                )
+            except sqlite3.DatabaseError:
+                return False
+            finally:
+                snapshot.close()
+                snapshot = None
+    finally:
+        if snapshot is not None:
+            snapshot.close()
+        if source is not None:
+            source.close()
+    return True
+
+
 def evaluate_database_oracle(
     db_path: Path,
     *,
@@ -510,22 +540,7 @@ def evaluate_database_oracle(
         ).fetchone()[0]
         add_assertion("segments_have_meeting", orphan_segments, 0)
 
-        connection.execute(
-            """
-            CREATE VIRTUAL TABLE temp.segments_fts_vocab
-            USING fts5vocab(main, segments_fts, 'instance')
-            """
-        )
-        indexed_segments = connection.execute(
-            """
-            SELECT COUNT(DISTINCT indexed.doc)
-            FROM segments AS segment
-            JOIN temp.segments_fts_vocab AS indexed ON indexed.doc = segment.id
-            WHERE segment.meeting_id=?
-            """,
-            (meeting_id,),
-        ).fetchone()[0]
-        add_assertion("fts_index_complete", indexed_segments, segment_count)
+        add_assertion("fts_index_complete", fts_index_is_consistent(resolved_db), True)
 
         insight_packages = connection.execute(
             "SELECT COUNT(*) FROM insight_packages WHERE meeting_id=? AND TRIM(payload_json) <> ''",
