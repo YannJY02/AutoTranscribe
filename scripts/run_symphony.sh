@@ -51,7 +51,7 @@ for required_command in symphony codex gh python3.11; do
   fi
 done
 
-if ! codex_login_status=$(codex login status 2>/dev/null); then
+if ! codex_login_status=$(codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2
   exit 1
 fi

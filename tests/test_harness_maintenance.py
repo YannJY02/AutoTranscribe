@@ -164,7 +164,7 @@ def _fake_symphony_commands(tmp_path):
     bin_dir.mkdir()
     commands = {
         "python3.11": "#!/bin/sh\nexit 0\n",
-        "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}"\n',
+        "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2\n',
         "gh": "#!/bin/sh\nexit 0\n",
         "symphony": '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
     }
