@@ -4,7 +4,25 @@ import XCTest
 @testable import InsightKitApp
 
 final class VideoRecordingTimelineTests: XCTestCase {
-    func testPresentationTimeUsesCaptureClockInsteadOfSourcePTS() {
+    func testCaptureStartTimeUsesTheSourceClock() {
+        let startTime = VideoRecordingTimeline.captureStartTime(
+            sourcePresentationTime: CMTime(seconds: 100.25, preferredTimescale: 600),
+            capturedAt: 1_000.75
+        )
+
+        XCTAssertEqual(startTime, 100.25, accuracy: 0.001)
+    }
+
+    func testCaptureStartTimeFallsBackForInvalidSourcePTS() {
+        let startTime = VideoRecordingTimeline.captureStartTime(
+            sourcePresentationTime: .invalid,
+            capturedAt: 1_000.75
+        )
+
+        XCTAssertEqual(startTime, 1_000.75, accuracy: 0.001)
+    }
+
+    func testPresentationTimeUsesSourcePTSInsteadOfCallbackDelay() {
         var timeline = VideoRecordingTimeline()
 
         let first = timeline.presentationTime(
@@ -12,31 +30,47 @@ final class VideoRecordingTimelineTests: XCTestCase {
             capturedAt: 1_000
         )
         let second = timeline.presentationTime(
-            sourcePresentationTime: CMTime(seconds: 160, preferredTimescale: 600),
-            capturedAt: 1_001
+            sourcePresentationTime: CMTime(seconds: 101, preferredTimescale: 600),
+            capturedAt: 1_005
         )
 
         XCTAssertEqual(CMTimeGetSeconds(first), 0, accuracy: 0.001)
         XCTAssertEqual(CMTimeGetSeconds(second), 1, accuracy: 0.001)
         XCTAssertEqual(CMTimeGetSeconds(timeline.firstSourcePresentationTime!), 100, accuracy: 0.001)
-        XCTAssertEqual(CMTimeGetSeconds(timeline.lastSourcePresentationTime!), 160, accuracy: 0.001)
+        XCTAssertEqual(CMTimeGetSeconds(timeline.lastSourcePresentationTime!), 101, accuracy: 0.001)
     }
 
-    func testPresentationTimeStaysMonotonicWhenCaptureClockDoesNotAdvance() {
+    func testPresentationTimeUsesSourcePTSWhenCallbackClockDoesNotAdvance() {
         var timeline = VideoRecordingTimeline(timescale: 600)
+        let sourceStep = CMTime(seconds: 0.033, preferredTimescale: 600)
 
         let first = timeline.presentationTime(
             sourcePresentationTime: CMTime(seconds: 0, preferredTimescale: 600),
             capturedAt: 50
         )
         let second = timeline.presentationTime(
-            sourcePresentationTime: CMTime(seconds: 0.033, preferredTimescale: 600),
+            sourcePresentationTime: sourceStep,
             capturedAt: 50
         )
 
         XCTAssertEqual(CMTimeGetSeconds(first), 0, accuracy: 0.001)
         XCTAssertGreaterThan(CMTimeGetSeconds(second), CMTimeGetSeconds(first))
-        XCTAssertEqual(CMTimeGetSeconds(second), 1.0 / 600.0, accuracy: 0.0005)
+        XCTAssertEqual(CMTimeGetSeconds(second), CMTimeGetSeconds(sourceStep), accuracy: 0.0005)
+    }
+
+    func testPresentationTimeFallsBackToHostClockForInvalidSourcePTS() {
+        var timeline = VideoRecordingTimeline()
+
+        _ = timeline.presentationTime(
+            sourcePresentationTime: CMTime(seconds: 100, preferredTimescale: 600),
+            capturedAt: 1_000
+        )
+        let second = timeline.presentationTime(
+            sourcePresentationTime: .invalid,
+            capturedAt: 1_001
+        )
+
+        XCTAssertEqual(CMTimeGetSeconds(second), 1, accuracy: 0.001)
     }
 
     func testPresentationTimePreservesPausedGapForFinalComposition() {

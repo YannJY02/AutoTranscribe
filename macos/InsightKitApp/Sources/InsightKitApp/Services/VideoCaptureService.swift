@@ -659,7 +659,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
             if self.recordingTimeline == nil {
                 self.recordingTimeline = VideoRecordingTimeline()
                 self.assetWriter?.startSession(atSourceTime: .zero)
-                self.onRecordingFirstFrame?(capturedAt)
+                self.onRecordingFirstFrame?(VideoRecordingTimeline.captureStartTime(
+                    sourcePresentationTime: sourceTimestamp,
+                    capturedAt: capturedAt
+                ))
             }
             guard var timeline = self.recordingTimeline else { return }
             let presentationTime = timeline.presentationTime(
@@ -997,6 +1000,14 @@ struct VideoRecordingTimeline: Equatable {
         self.minimumFrameStep = CMTime(value: 1, timescale: timescale)
     }
 
+    static func captureStartTime(
+        sourcePresentationTime: CMTime,
+        capturedAt: TimeInterval
+    ) -> TimeInterval {
+        let sourceTime = CMTimeGetSeconds(sourcePresentationTime)
+        return sourceTime.isFinite && sourceTime >= 0 ? sourceTime : capturedAt
+    }
+
     mutating func presentationTime(
         sourcePresentationTime: CMTime,
         capturedAt: TimeInterval
@@ -1007,7 +1018,13 @@ struct VideoRecordingTimeline: Equatable {
         }
         lastSourcePresentationTime = sourcePresentationTime
 
-        let elapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        let hostElapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        let sourceElapsed = firstSourcePresentationTime.map {
+            CMTimeGetSeconds(sourcePresentationTime - $0)
+        }
+        let elapsed = sourceElapsed?.isFinite == true
+            ? max(0, sourceElapsed ?? 0)
+            : hostElapsed
         var presentationTime = CMTime(seconds: elapsed, preferredTimescale: timescale)
         if let lastPresentationTime,
            CMTimeCompare(presentationTime, lastPresentationTime) <= 0 {
