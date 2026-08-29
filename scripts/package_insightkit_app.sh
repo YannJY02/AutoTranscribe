@@ -204,8 +204,8 @@ fi
 
 swift build --package-path "$PACKAGE_DIR" -c "$CONFIGURATION"
 
-arch_name="$(uname -m)"
-bin_path="$PACKAGE_DIR/.build/${arch_name}-apple-macosx/${CONFIGURATION}/${EXECUTABLE_NAME}"
+bin_dir="$(swift build --package-path "$PACKAGE_DIR" -c "$CONFIGURATION" --show-bin-path)"
+bin_path="$bin_dir/$EXECUTABLE_NAME"
 if [[ ! -x "$bin_path" ]]; then
   bin_path="$(find "$PACKAGE_DIR/.build" -type f -name "$EXECUTABLE_NAME" -path "*/${CONFIGURATION}/*" -print | head -n 1)"
 fi
