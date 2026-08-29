@@ -318,7 +318,6 @@ def _run_test_symphony_launcher(
             "HOME": str(root),
             "CODEX_HOME": str(root / ".codex"),
             "PATH": f"{bin_dir}:/usr/bin:/bin",
-            "SYMPHONY_GH_WRAPPER": str(bin_dir / "gh"),
             "SYMPHONY_GITHUB_TOKEN": "tracker-token",
             "SYMPHONY_AGENT_GITHUB_TOKEN": "agent-token",
             "OPENAI_API_KEY": "must-be-unset",
@@ -475,17 +474,212 @@ def test_symphony_launcher_force_stops_term_ignoring_preflight_descendant(tmp_pa
     assert "does not contain a valid ChatGPT login" in completed.stderr
 
 
-def test_symphony_github_wrapper_uses_trusted_cli_and_clears_source_tokens():
-    wrapper = (Path(__file__).resolve().parent.parent / "scripts" / "symphony-bin" / "gh").read_text(
-        encoding="utf-8"
+def test_symphony_agent_github_access_stays_outside_codex():
+    root = Path(__file__).resolve().parent.parent
+    workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
+    gate = (root / "scripts" / "symphony_issue_gate.sh").read_text(encoding="utf-8")
+
+    assert not (root / "scripts" / "symphony-bin" / "gh").exists()
+    assert "hooks:" in workflow and "before_run:" in workflow
+    assert "issue-preflight --json" in gate
+    assert '"$SYMPHONY_REAL_GH" issue edit' in gate
+    assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
+    assert "-u GITHUB_TOKEN -u GH_TOKEN" in workflow
+
+
+def test_symphony_codex_wrapper_trusts_exact_workspace_before_start(tmp_path):
+    repo = Path(__file__).resolve().parent.parent
+    wrapper = repo / "scripts" / "symphony-bin" / "codex"
+    workspace = tmp_path / "GH-67"
+    workspace.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text("[features]\napps = false\n", encoding="utf-8")
+    fake_codex = tmp_path / "real-codex"
+    fake_codex.write_text("#!/bin/sh\nprintf 'started\\n'\n", encoding="utf-8")
+    fake_codex.chmod(0o755)
+    env = os.environ.copy()
+    env.update({"CODEX_HOME": str(codex_home), "SYMPHONY_REAL_CODEX": str(fake_codex)})
+
+    completed = subprocess.run(
+        [str(wrapper), "app-server"],
+        cwd=workspace,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
     )
 
-    assert "command -v gh" not in wrapper
-    assert "real_gh=/opt/homebrew/bin/gh" in wrapper
-    assert "real_gh=/usr/local/bin/gh" in wrapper
-    assert "PATH=$trusted_path" in wrapper
-    assert "com.autotranscribe.symphony.agent-github-token" in wrapper
-    assert "unset GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN token" in wrapper
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "started\n"
+    config = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
+    assert config["projects"][str(workspace)]["trust_level"] == "trusted"
+
+
+def test_symphony_codex_wrapper_rejects_config_symlink_before_start(tmp_path):
+    root = Path(__file__).resolve().parent.parent
+    wrapper = root / "scripts" / "symphony-bin" / "codex"
+    workspace = tmp_path / "GH-67"
+    workspace.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    operator_config = tmp_path / "operator-config.toml"
+    operator_config.write_text("model = 'keep-me'\n", encoding="utf-8")
+    (codex_home / "config.toml").symlink_to(operator_config)
+    started = tmp_path / "started"
+    fake_codex = tmp_path / "real-codex"
+    fake_codex.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(started))}\n", encoding="utf-8")
+    fake_codex.chmod(0o755)
+    env = os.environ.copy()
+    env.update({"CODEX_HOME": str(codex_home), "SYMPHONY_REAL_CODEX": str(fake_codex)})
+
+    completed = subprocess.run(
+        [str(wrapper), "app-server"], cwd=workspace, env=env, text=True, capture_output=True
+    )
+
+    assert completed.returncode != 0
+    assert "Refusing to update linked Codex config" in completed.stderr
+    assert not started.exists()
+    assert operator_config.read_text(encoding="utf-8") == "model = 'keep-me'\n"
+
+
+def test_symphony_codex_wrapper_serializes_workspace_trust_updates(tmp_path):
+    root = Path(__file__).resolve().parent.parent
+    wrapper = root / "scripts" / "symphony-bin" / "codex"
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text("[features]\napps = false\n", encoding="utf-8")
+    fake_codex = tmp_path / "real-codex"
+    fake_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_codex.chmod(0o755)
+    env = os.environ.copy()
+    env.update({"CODEX_HOME": str(codex_home), "SYMPHONY_REAL_CODEX": str(fake_codex)})
+    workspaces = [tmp_path / "GH-67", tmp_path / "GH-68"]
+    for workspace in workspaces:
+        workspace.mkdir()
+
+    processes = [
+        subprocess.Popen([str(wrapper), "app-server"], cwd=workspace, env=env)
+        for workspace in workspaces
+    ]
+
+    assert [process.wait() for process in processes] == [0, 0]
+    config = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
+    assert set(config["projects"]) == {str(workspace) for workspace in workspaces}
+
+
+def _symphony_issue_gate_environment(tmp_path):
+    root = Path(__file__).resolve().parent.parent
+    controller = tmp_path / "controller"
+    (controller / "scripts").mkdir(parents=True)
+    (controller / "scripts" / "agent_harness.py").write_text("# fake\n", encoding="utf-8")
+    workspace = tmp_path / "GH-67"
+    workspace.mkdir()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    preflight_args = tmp_path / "preflight-args"
+    gh_args = tmp_path / "gh-args"
+    fake_python = tmp_path / "python3.11"
+    fake_python.write_text(
+        "#!/bin/sh\n"
+        f'if [ "${{1:-}}" = -c ]; then exec {shlex.quote(sys.executable)} "$@"; fi\n'
+        'printf "%s\\n" "$@" > "$FAKE_PREFLIGHT_ARGS"\n'
+        'status=${FAKE_PREFLIGHT_EXIT:-0}\n'
+        'if [ "${FAKE_PREFLIGHT_EMPTY:-0}" != 1 ]; then '
+        'if [ "$status" -eq 0 ]; then printf \'{"status":"passed","issue":"GH-67"}\\n\'; '
+        'else printf \'{"status":"failed","issue":"GH-67"}\\n\'; fi; fi\n'
+        'exit "$status"\n',
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    fake_gh = tmp_path / "gh"
+    fake_gh.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$@" > "$FAKE_GH_ARGS"\n'
+        'exit "${FAKE_GH_EXIT:-0}"\n',
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    env = os.environ.copy()
+    env.update(
+        {
+            "SYMPHONY_CONTROLLER_REPO_ROOT": str(controller),
+            "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT": str(evidence),
+            "SYMPHONY_PYTHON3": str(fake_python),
+            "SYMPHONY_REAL_GH": str(fake_gh),
+            "FAKE_PREFLIGHT_ARGS": str(preflight_args),
+            "FAKE_GH_ARGS": str(gh_args),
+        }
+    )
+    return root / "scripts" / "symphony_issue_gate.sh", workspace, evidence, env
+
+
+def test_symphony_issue_gate_claims_once_then_resumes(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+
+    first = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+    first_args = Path(env["FAKE_PREFLIGHT_ARGS"]).read_text(encoding="utf-8")
+    second = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+    second_args = Path(env["FAKE_PREFLIGHT_ARGS"]).read_text(encoding="utf-8")
+
+    assert first.returncode == 0, first.stderr
+    assert "--resume" not in first_args
+    assert second.returncode == 0, second.stderr
+    assert "--resume" in second_args
+    assert (evidence / "GH-67.claimed").exists()
+    assert json.loads((evidence / "GH-67.json").read_text(encoding="utf-8"))["status"] == "passed"
+
+
+def test_symphony_issue_gate_preserves_preflight_failure_evidence(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+    env["FAKE_PREFLIGHT_EXIT"] = "9"
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 9
+    assert json.loads((evidence / "GH-67.json").read_text(encoding="utf-8"))["status"] == "failed"
+    assert not Path(env["FAKE_GH_ARGS"]).exists()
+    assert not (evidence / "GH-67.claimed").exists()
+
+
+def test_symphony_issue_gate_replaces_empty_preflight_failure_with_json(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+    env.update({"FAKE_PREFLIGHT_EXIT": "9", "FAKE_PREFLIGHT_EMPTY": "1"})
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 9
+    result = json.loads((evidence / "GH-67.json").read_text(encoding="utf-8"))
+    assert result == {"status": "failed", "stage": "preflight", "issue": "GH-67", "exit_code": 9}
+
+
+def test_symphony_issue_gate_recovers_from_ambiguous_assignment_failure(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+    env["FAKE_GH_EXIT"] = "1"
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 1
+    result = json.loads((evidence / "GH-67.json").read_text(encoding="utf-8"))
+    assert result == {"status": "failed", "stage": "assignment", "issue": "GH-67"}
+    assert (evidence / "GH-67.claimed").read_text(encoding="utf-8") == "pending\n"
+
+    env["FAKE_GH_EXIT"] = "0"
+    resumed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert resumed.returncode == 0, resumed.stderr
+    assert "--resume" in Path(env["FAKE_PREFLIGHT_ARGS"]).read_text(encoding="utf-8")
+    assert (evidence / "GH-67.claimed").read_text(encoding="utf-8") == "claimed\n"
+
+
+def test_symphony_issue_gate_recovers_after_assignment_before_marker_finalize(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+    (evidence / "GH-67.claimed").write_text("pending\n", encoding="utf-8")
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--resume" in Path(env["FAKE_PREFLIGHT_ARGS"]).read_text(encoding="utf-8")
 
 
 def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):

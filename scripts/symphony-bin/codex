@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+: "${CODEX_HOME:?CODEX_HOME is required}"
+: "${SYMPHONY_REAL_CODEX:?SYMPHONY_REAL_CODEX is required}"
+
+trust_workspace=0
+for argument in "$@"; do
+  if [ "$argument" = app-server ]; then
+    trust_workspace=1
+    break
+  fi
+done
+if [ "$trust_workspace" -eq 0 ]; then
+  exec "$SYMPHONY_REAL_CODEX" "$@"
+fi
+
+/usr/bin/python3 - "$CODEX_HOME/config.toml" "$PWD" <<'PY'
+import fcntl
+import json
+import os
+import sys
+
+config_path, workspace = sys.argv[1:]
+if os.path.islink(config_path):
+    raise SystemExit(f"Refusing to update linked Codex config: {config_path}")
+section = f"[projects.{json.dumps(workspace)}]"
+with open(config_path, "r+", encoding="utf-8") as config:
+    fcntl.flock(config, fcntl.LOCK_EX)
+    contents = config.read()
+    lines = contents.splitlines()
+    if section in lines:
+        start = lines.index(section) + 1
+        end = next((index for index in range(start, len(lines)) if lines[index].startswith("[")), len(lines))
+        if 'trust_level = "trusted"' not in lines[start:end]:
+            raise SystemExit(f"Codex project already has a non-trusted config entry: {workspace}")
+    else:
+        config.seek(0, os.SEEK_END)
+        config.write(f"\n{section}\ntrust_level = \"trusted\"\n")
+        config.flush()
+        os.fsync(config.fileno())
+PY
+
+exec "$SYMPHONY_REAL_CODEX" "$@"

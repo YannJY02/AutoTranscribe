@@ -46,6 +46,7 @@ if [ -n "${SYMPHONY_CODEX_HOME:-}" ]; then
 else
   symphony_codex_home="$HOME/Library/Application Support/InsightKit/SymphonyCodex"
   mkdir -p "$symphony_codex_home"
+  chmod 700 "$symphony_codex_home"
   symphony_auth="$symphony_codex_home/auth.json"
   operator_auth="$operator_codex_home/auth.json"
   if [ -L "$symphony_auth" ] && [ "$(readlink "$symphony_auth")" != "$operator_auth" ]; then
@@ -86,12 +87,14 @@ for required_command in symphony codex curl gh python3.11; do
     exit 1
   fi
 done
-symphony_gh_wrapper=${SYMPHONY_GH_WRAPPER:-"$repo_root/scripts/symphony-bin/gh"}
-if [ ! -x "$symphony_gh_wrapper" ]; then
-  echo "Symphony GitHub CLI wrapper is not executable: $symphony_gh_wrapper" >&2
-  exit 1
-fi
-PATH="$(dirname "$symphony_gh_wrapper"):$PATH"
+symphony_real_codex=$(command -v codex)
+SYMPHONY_REAL_CODEX=$symphony_real_codex
+export SYMPHONY_REAL_CODEX
+SYMPHONY_REAL_GH=${SYMPHONY_REAL_GH:-$(command -v gh)}
+SYMPHONY_PYTHON3=${SYMPHONY_PYTHON3:-$(command -v python3.11)}
+SYMPHONY_CONTROLLER_REPO_ROOT=$repo_root
+export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_CONTROLLER_REPO_ROOT
+PATH="$repo_root/scripts/symphony-bin:$PATH"
 export PATH
 
 if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
@@ -125,6 +128,21 @@ if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
+symphony_agent_github_token=${SYMPHONY_AGENT_GITHUB_TOKEN:-}
+if [ -z "$symphony_agent_github_token" ]; then
+  symphony_agent_github_token=$(/usr/bin/security find-generic-password \
+    -a symphony-agent \
+    -s com.autotranscribe.symphony.agent-github-token \
+    -w 2>/dev/null || true)
+fi
+if [ -z "$symphony_agent_github_token" ]; then
+  echo "Symphony agent GitHub credential is required in macOS Keychain." >&2
+  exit 1
+fi
+GH_TOKEN=$symphony_agent_github_token
+export GH_TOKEN
+unset SYMPHONY_AGENT_GITHUB_TOKEN symphony_agent_github_token
+
 if ! run_with_preflight_timeout gh auth status >/dev/null 2>&1; then
   echo "Codex's GitHub CLI session is not authenticated. Run: gh auth login" >&2
   exit 1
@@ -134,6 +152,10 @@ python3.11 "$repo_root/scripts/agent_harness.py" doctor --profile symphony
 
 GITHUB_TOKEN=$SYMPHONY_GITHUB_TOKEN
 export GITHUB_TOKEN
+SYMPHONY_PREFLIGHT_EVIDENCE_ROOT=${SYMPHONY_PREFLIGHT_EVIDENCE_ROOT:-"$repo_root/logs/symphony/preflight"}
+mkdir -p "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT"
+chmod 700 "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT"
+export SYMPHONY_PREFLIGHT_EVIDENCE_ROOT
 
 symphony_port=${SYMPHONY_PORT:-4000}
 symphony_health_startup_seconds=${SYMPHONY_HEALTH_STARTUP_SECONDS:-180}
