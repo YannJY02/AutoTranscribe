@@ -1,0 +1,4 @@
+[features]
+apps = false
+plugins = false
+remote_plugin = false

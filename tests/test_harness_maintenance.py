@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 import json
+import os
+from pathlib import Path
 import plistlib
 import shlex
 import subprocess
+import tomllib
 
 from scripts.harness_maintenance import (
     TASKS,
@@ -154,6 +157,141 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
     assert payload["KeepAlive"] is True
     assert payload["RunAtLoad"] is True
+
+
+def _fake_symphony_commands(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    commands = {
+        "python3.11": "#!/bin/sh\nexit 0\n",
+        "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}"\n',
+        "gh": "#!/bin/sh\nexit 0\n",
+        "symphony": '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
+    }
+    for name, body in commands.items():
+        command = bin_dir / name
+        command.write_text(body, encoding="utf-8")
+        command.chmod(0o755)
+    return bin_dir
+
+
+def _run_test_symphony_launcher(tmp_path, *, create_auth=True, **extra_env):
+    root = tmp_path / "home"
+    auth = root / ".codex" / "auth.json"
+    auth.parent.mkdir(parents=True)
+    if create_auth:
+        auth.write_text(json.dumps({"auth_mode": "chatgpt"}), encoding="utf-8")
+    bin_dir = _fake_symphony_commands(tmp_path)
+    repo = Path(__file__).resolve().parent.parent
+    env = os.environ.copy()
+    env.pop("SYMPHONY_CODEX_HOME", None)
+    env.update(
+        {
+            "HOME": str(root),
+            "CODEX_HOME": str(root / ".codex"),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SYMPHONY_GITHUB_TOKEN": "tracker-token",
+            "OPENAI_API_KEY": "must-be-unset",
+            **extra_env,
+        }
+    )
+    completed = subprocess.run(
+        ["/bin/sh", str(repo / "scripts" / "run_symphony.sh")],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed, root
+
+
+def test_symphony_launcher_defaults_to_minimal_isolated_codex_home(tmp_path):
+    completed, root = _run_test_symphony_launcher(tmp_path)
+    runtime = root / "Library" / "Application Support" / "InsightKit" / "SymphonyCodex"
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == f"{runtime}|unset"
+    assert (runtime / "auth.json").is_symlink()
+    assert (runtime / "auth.json").resolve() == root / ".codex" / "auth.json"
+    config = tomllib.loads((runtime / "config.toml").read_text(encoding="utf-8"))
+    assert config["features"] == {"apps": False, "plugins": False, "remote_plugin": False}
+
+
+def test_symphony_launcher_preserves_explicit_codex_home(tmp_path):
+    override = tmp_path / "custom-codex-home"
+    override.mkdir()
+    (override / "auth.json").write_text("custom-login", encoding="utf-8")
+    (override / "config.toml").write_text("model = 'custom'\n", encoding="utf-8")
+
+    completed, _root = _run_test_symphony_launcher(tmp_path, SYMPHONY_CODEX_HOME=str(override))
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == f"{override}|unset"
+    assert (override / "config.toml").read_text(encoding="utf-8") == "model = 'custom'\n"
+
+
+def test_symphony_launcher_fails_without_chatgpt_login(tmp_path):
+    completed, root = _run_test_symphony_launcher(tmp_path, create_auth=False)
+
+    assert completed.returncode != 0
+    assert completed.stdout == ""
+    assert completed.stderr.strip() == f"Codex ChatGPT login is required at: {root}/.codex/auth.json"
+
+
+def test_symphony_launcher_rejects_copied_auth(tmp_path):
+    runtime = tmp_path / "home" / "Library" / "Application Support" / "InsightKit" / "SymphonyCodex"
+    runtime.mkdir(parents=True)
+    (runtime / "auth.json").write_text("copied-login", encoding="utf-8")
+
+    completed, _root = _run_test_symphony_launcher(tmp_path)
+
+    assert completed.returncode != 0
+    assert "auth must be a link, not a copied file" in completed.stderr
+
+
+def test_symphony_launcher_rejects_wrong_auth_link(tmp_path):
+    runtime = tmp_path / "home" / "Library" / "Application Support" / "InsightKit" / "SymphonyCodex"
+    runtime.mkdir(parents=True)
+    wrong_auth = tmp_path / "wrong-auth.json"
+    wrong_auth.write_text("wrong-login", encoding="utf-8")
+    (runtime / "auth.json").symlink_to(wrong_auth)
+
+    completed, root = _run_test_symphony_launcher(tmp_path)
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip() == f"Symphony Codex auth must link to: {root}/.codex/auth.json"
+
+
+def test_symphony_launcher_replaces_config_link_without_following_it(tmp_path):
+    runtime = tmp_path / "home" / "Library" / "Application Support" / "InsightKit" / "SymphonyCodex"
+    runtime.mkdir(parents=True)
+    operator_config = tmp_path / "operator-config.toml"
+    operator_config.write_text("model = 'keep-me'\n", encoding="utf-8")
+    (runtime / "config.toml").symlink_to(operator_config)
+
+    completed, _root = _run_test_symphony_launcher(tmp_path)
+
+    assert completed.returncode == 0, completed.stderr
+    assert operator_config.read_text(encoding="utf-8") == "model = 'keep-me'\n"
+    assert not (runtime / "config.toml").is_symlink()
+
+
+def test_symphony_launcher_reports_invalid_chatgpt_login(tmp_path):
+    completed, _root = _run_test_symphony_launcher(tmp_path, FAKE_CODEX_LOGIN_VALID="0")
+
+    assert completed.returncode != 0
+    assert "does not contain a valid ChatGPT login" in completed.stderr
+
+
+def test_symphony_launcher_rejects_api_key_login(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        FAKE_CODEX_LOGIN_STATUS="Logged in using an API key",
+    )
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip() == "Symphony requires ChatGPT login; API-key authentication is not allowed."
 
 
 def test_enqueue_reuses_existing_period_issue_without_creating(monkeypatch):
