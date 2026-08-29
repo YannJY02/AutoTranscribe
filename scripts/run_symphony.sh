@@ -103,7 +103,7 @@ GITHUB_TOKEN=$SYMPHONY_GITHUB_TOKEN
 export GITHUB_TOKEN
 
 symphony_port=${SYMPHONY_PORT:-4000}
-symphony_health_startup_seconds=${SYMPHONY_HEALTH_STARTUP_SECONDS:-15}
+symphony_health_startup_seconds=${SYMPHONY_HEALTH_STARTUP_SECONDS:-180}
 symphony_health_interval_seconds=${SYMPHONY_HEALTH_INTERVAL_SECONDS:-60}
 symphony_health_timeout_seconds=${SYMPHONY_HEALTH_TIMEOUT_SECONDS:-10}
 symphony_health_failure_limit=${SYMPHONY_HEALTH_FAILURE_LIMIT:-3}
