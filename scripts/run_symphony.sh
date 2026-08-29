@@ -108,6 +108,10 @@ esac
 unset codex_login_status
 
 eval "$(python3.11 "$repo_root/scripts/harness_maintenance.py" proxy-environment)"
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -r /etc/ssl/cert.pem ]; then
+  SSL_CERT_FILE=/etc/ssl/cert.pem
+  export SSL_CERT_FILE
+fi
 
 if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ] && command -v security >/dev/null 2>&1; then
   SYMPHONY_GITHUB_TOKEN=$(security find-generic-password \

@@ -312,6 +312,7 @@ def _run_test_symphony_launcher(
     repo = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
     env.pop("SYMPHONY_CODEX_HOME", None)
+    env.pop("SSL_CERT_FILE", None)
     env.update(
         {
             "HOME": str(root),
@@ -359,6 +360,16 @@ def test_symphony_launcher_preserves_explicit_codex_home(tmp_path):
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == f"{override}|unset"
     assert (override / "config.toml").read_text(encoding="utf-8") == "model = 'custom'\n"
+
+
+def test_symphony_launcher_uses_readable_system_ca_bundle(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        symphony_body='#!/bin/sh\nprintf "%s\\n" "${SSL_CERT_FILE-unset}"\n',
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "/etc/ssl/cert.pem"
 
 
 def test_symphony_launcher_fails_without_chatgpt_login(tmp_path):
