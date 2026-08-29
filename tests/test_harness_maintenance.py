@@ -253,13 +253,13 @@ def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
     assert bootstraps == [(f"gui/{os.getuid()}", destination)]
 
 
-def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None):
+def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None, gh_body=None):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     commands = {
         "python3.11": "#!/bin/sh\nexit 0\n",
         "codex": '#!/bin/sh\n[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1\nprintf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2\n',
-        "gh": "#!/bin/sh\nexit 0\n",
+        "gh": gh_body or "#!/bin/sh\nexit 0\n",
         "symphony": symphony_body
         or '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
         "curl": curl_body or "#!/bin/sh\nexit 0\n",
@@ -277,6 +277,7 @@ def _run_test_symphony_launcher(
     create_auth=True,
     symphony_body=None,
     curl_body=None,
+    gh_body=None,
     **extra_env,
 ):
     root = tmp_path / "home"
@@ -288,6 +289,7 @@ def _run_test_symphony_launcher(
         tmp_path,
         symphony_body=symphony_body,
         curl_body=curl_body,
+        gh_body=gh_body,
     )
     repo = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
@@ -401,6 +403,31 @@ def test_symphony_launcher_rejects_api_key_login(tmp_path):
 
     assert completed.returncode != 0
     assert completed.stderr.strip() == "Symphony requires ChatGPT login; API-key authentication is not allowed."
+
+
+def test_symphony_launcher_times_out_stalled_github_preflight(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        gh_body="#!/bin/sh\nsleep 2\n",
+        SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
+    )
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip().endswith(
+        "Codex's GitHub CLI session is not authenticated. Run: gh auth login"
+    )
+
+
+def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        gh_body="#!/missing/interpreter\n",
+    )
+
+    assert completed.returncode != 0
+    assert completed.stderr.strip().endswith(
+        "Codex's GitHub CLI session is not authenticated. Run: gh auth login"
+    )
 
 
 def test_symphony_launcher_stops_an_unhealthy_child_for_launchd_restart(tmp_path):

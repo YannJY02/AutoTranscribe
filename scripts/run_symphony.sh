@@ -3,6 +3,20 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 unset OPENAI_API_KEY
+symphony_preflight_timeout_seconds=${SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS:-15}
+case "$symphony_preflight_timeout_seconds" in
+  ''|*[!0-9]*)
+    echo "SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer." >&2
+    exit 1
+    ;;
+esac
+if [ "$symphony_preflight_timeout_seconds" -eq 0 ]; then
+  echo "SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer." >&2
+  exit 1
+fi
+run_with_preflight_timeout() {
+  /usr/bin/perl -e 'alarm shift; exec @ARGV; exit 127' "$symphony_preflight_timeout_seconds" "$@"
+}
 
 operator_codex_home=${CODEX_HOME:-"$HOME/.codex"}
 if [ -n "${SYMPHONY_CODEX_HOME:-}" ]; then
@@ -51,7 +65,7 @@ for required_command in symphony codex curl gh python3.11; do
   fi
 done
 
-if ! codex_login_status=$(codex login status 2>&1); then
+if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2
   exit 1
 fi
@@ -78,7 +92,7 @@ if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-if ! gh auth status >/dev/null 2>&1; then
+if ! run_with_preflight_timeout gh auth status >/dev/null 2>&1; then
   echo "Codex's GitHub CLI session is not authenticated. Run: gh auth login" >&2
   exit 1
 fi
