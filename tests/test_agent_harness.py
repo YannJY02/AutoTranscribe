@@ -225,6 +225,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
     assert "-u SYMPHONY_GITHUB_TOKEN" in workflow
     assert "-u OPENAI_API_KEY" in workflow
+    assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
     assert "before_run:" in workflow
     assert "issue-preflight --json" in gate
     assert "--resume" in gate

@@ -37,7 +37,7 @@ agent:
   max_turns: 30
 codex:
   # GitHub preflight and claim run in before_run; Codex receives no tracker or agent credential.
-  command: env -u SYMPHONY_AGENT_GITHUB_TOKEN -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN -u OPENAI_API_KEY -u SYMPHONY_CONTROLLER_REPO_ROOT -u SYMPHONY_PREFLIGHT_EVIDENCE_ROOT -u SYMPHONY_PYTHON3 -u SYMPHONY_REAL_GH codex --config shell_environment_policy.inherit=core app-server
+  command: env -u SYMPHONY_AGENT_GITHUB_TOKEN -u SYMPHONY_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN -u OPENAI_API_KEY -u SYMPHONY_CONTROLLER_REPO_ROOT -u SYMPHONY_PREFLIGHT_EVIDENCE_ROOT -u SYMPHONY_PYTHON3 -u SYMPHONY_REAL_GH "$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex" --config shell_environment_policy.inherit=core app-server
   read_timeout_ms: 120000
   approval_policy: never
   thread_sandbox: workspace-write

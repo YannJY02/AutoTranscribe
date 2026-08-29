@@ -485,6 +485,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     assert '"$SYMPHONY_REAL_GH" issue edit' in gate
     assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
     assert "-u GITHUB_TOKEN -u GH_TOKEN" in workflow
+    assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
 
 
 def test_symphony_codex_wrapper_trusts_exact_workspace_before_start(tmp_path):
