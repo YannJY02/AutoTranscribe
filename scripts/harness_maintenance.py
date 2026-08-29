@@ -125,16 +125,18 @@ def _run(command: list[str], *, input_text: str | None = None) -> subprocess.Com
 
 def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
     command = ["launchctl", "bootstrap", domain, str(destination)]
-    try:
-        _run(command)
-    except RuntimeError as error:
-        if str(error) != (
+    transient_error = (
             "Bootstrap failed: 5: Input/output error\n"
             "Try re-running the command as root for richer errors."
-        ):
-            raise
-        time.sleep(1)
-        _run(command)
+    )
+    for attempt in range(3):
+        try:
+            _run(command)
+            return
+        except RuntimeError as error:
+            if str(error) != transient_error or attempt == 2:
+                raise
+            time.sleep(1)
 
 
 def _macos_proxy_environment() -> dict[str, str]:

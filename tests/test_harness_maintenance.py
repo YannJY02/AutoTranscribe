@@ -202,7 +202,7 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
     assert sleeps == [1]
 
 
-def test_bootstrap_retry_requires_exact_error_and_stops_after_two_attempts(tmp_path, monkeypatch):
+def test_bootstrap_retry_requires_exact_error_and_stops_after_three_attempts(tmp_path, monkeypatch):
     transient = (
         "Bootstrap failed: 5: Input/output error\n"
         "Try re-running the command as root for richer errors."
@@ -225,10 +225,13 @@ def test_bootstrap_retry_requires_exact_error_and_stops_after_two_attempts(tmp_p
         raise RuntimeError(transient)
 
     attempts = 0
+    sleeps = []
+    monkeypatch.setattr("scripts.harness_maintenance.time.sleep", sleeps.append)
     monkeypatch.setattr("scripts.harness_maintenance._run", fail_transiently)
     with pytest.raises(RuntimeError, match="Input/output error"):
         _bootstrap_launch_agent("gui/501", tmp_path / "agent.plist")
-    assert attempts == 2
+    assert attempts == 3
+    assert sleeps == [1, 1]
 
 
 def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
