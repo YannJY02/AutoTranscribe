@@ -4,6 +4,7 @@ import XCTest
 /// Provides shared setup/teardown and helper utilities.
 class InsightKitUITests: XCTestCase {
     var app: XCUIApplication!
+    var captureRoot: URL!
 
     var launchEnvironmentOverrides: [String: String] {
         [:]
@@ -21,7 +22,10 @@ class InsightKitUITests: XCTestCase {
             "--ui-test-mode",
         ]
         app.launchArguments += launchArgumentOverrides
+        captureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitUITestEvidence-\(UUID().uuidString)")
         app.launchEnvironment["INSIGHTKIT_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"] = captureRoot.path
         for (key, value) in launchEnvironmentOverrides {
             app.launchEnvironment[key] = value
         }
@@ -43,6 +47,10 @@ class InsightKitUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         app = nil
+        if let captureRoot {
+            try? FileManager.default.removeItem(at: captureRoot)
+        }
+        captureRoot = nil
     }
 
     // MARK: - Helpers
@@ -111,8 +119,37 @@ class InsightKitUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
-    func attachScreenshot(named name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    func attachScreenshot(named name: String, windowTitle: String = "InsightKit") {
+        let root = captureRoot!
+        let requestURL = root.appendingPathComponent("capture.request")
+        let imageURL = root.appendingPathComponent("latest.png")
+        let errorURL = root.appendingPathComponent("latest.error.txt")
+        try? FileManager.default.removeItem(at: imageURL)
+        try? FileManager.default.removeItem(at: errorURL)
+
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try windowTitle.write(to: requestURL, atomically: true, encoding: .utf8)
+        } catch {
+            XCTFail("\(name) window capture request failed: \(error)")
+            return
+        }
+
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline && !FileManager.default.fileExists(atPath: imageURL.path) {
+            if let message = try? String(contentsOf: errorURL, encoding: .utf8) {
+                XCTFail("\(name) window capture failed: \(message)")
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        guard let data = try? Data(contentsOf: imageURL) else {
+            XCTFail("\(name) window capture timed out")
+            return
+        }
+
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
