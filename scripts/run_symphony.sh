@@ -3,7 +3,7 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 unset OPENAI_API_KEY
-symphony_preflight_timeout_seconds=${SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS:-15}
+symphony_preflight_timeout_seconds=${SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS:-60}
 case "$symphony_preflight_timeout_seconds" in
   ''|*[!0-9]*)
     echo "SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer." >&2
