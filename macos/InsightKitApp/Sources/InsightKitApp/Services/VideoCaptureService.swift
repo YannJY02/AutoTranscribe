@@ -1007,7 +1007,13 @@ struct VideoRecordingTimeline: Equatable {
         }
         lastSourcePresentationTime = sourcePresentationTime
 
-        let elapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        let hostElapsed = max(0, capturedAt - (firstHostTimeSec ?? capturedAt))
+        let sourceElapsed = firstSourcePresentationTime.map {
+            CMTimeGetSeconds(sourcePresentationTime - $0)
+        }
+        let elapsed = sourceElapsed?.isFinite == true
+            ? max(0, sourceElapsed ?? 0)
+            : hostElapsed
         var presentationTime = CMTime(seconds: elapsed, preferredTimescale: timescale)
         if let lastPresentationTime,
            CMTimeCompare(presentationTime, lastPresentationTime) <= 0 {
