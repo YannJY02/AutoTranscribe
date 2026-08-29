@@ -46,6 +46,9 @@ struct Configuration {
         guard let recordCount = Int(values["--record-count"]!), recordCount > 0,
               let searchHitCount = Int(values["--search-hit-count"]!), searchHitCount > 0
         else { throw BaselineFailure(message: "record counts must be positive integers") }
+        guard ["cold", "warm", "trace"].contains(values["--run-kind"]!) else {
+            throw BaselineFailure(message: "run kind must be cold, warm, or trace")
+        }
 
         let root = values["--records-root"]!
         let canonicalRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -107,8 +110,7 @@ final class InstalledAppBaseline {
             throw BaselineFailure(message: "Canonical Installed App is missing")
         }
 
-        let launchStart = ProcessInfo.processInfo.systemUptime
-        try launch()
+        let launchStart = try launch()
         _ = try waitFor(identifier: "home_title", timeout: 30)
         _ = try waitFor(identifier: "home_card_records", timeout: 30, requireEnabled: true)
         try emitMetric(
@@ -121,17 +123,28 @@ final class InstalledAppBaseline {
         )
         try waitForStartGate()
 
-        try navigate(phase: "live", sourceIdentifier: "home_card_live")
+        try navigate(
+            phase: "live",
+            sourceIdentifier: "home_card_live",
+            readyIdentifier: "live_start_recording_button"
+        )
         try returnHome()
-        try navigate(phase: "import", sourceIdentifier: "home_card_import")
+        try navigate(
+            phase: "import",
+            sourceIdentifier: "home_card_import",
+            readyText: "拖放文件到此处"
+        )
         try returnHome()
-        try navigate(phase: "records", sourceIdentifier: "home_card_records")
-
         let recordCount = NumberFormatter.localizedString(
             from: NSNumber(value: config.recordCount),
             number: .decimal
         )
-        _ = try waitForText("全部记录 (\(recordCount))", timeout: 60)
+        try navigate(
+            phase: "records",
+            sourceIdentifier: "home_card_records",
+            readyIdentifier: "records_search_field",
+            readyText: "全部记录 (\(recordCount))"
+        )
         let searchHit = try waitFor(identifier: "record_list_item_\(config.searchHitID)", timeout: 30)
         try replayScrollTrace(on: searchHit, name: "RecordListScroll")
 
@@ -190,7 +203,7 @@ final class InstalledAppBaseline {
         runningApp.terminate()
     }
 
-    private func launch() throws {
+    private func launch() throws -> TimeInterval {
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier) {
             app.terminate()
         }
@@ -216,6 +229,7 @@ final class InstalledAppBaseline {
         configuration.activates = true
         configuration.createsNewApplicationInstance = true
 
+        let launchStart = ProcessInfo.processInfo.systemUptime
         let semaphore = DispatchSemaphore(value: 0)
         var launchedApp: NSRunningApplication?
         var launchError: Error?
@@ -232,6 +246,7 @@ final class InstalledAppBaseline {
         runningApp = launchedApp
         activate()
         application = AXUIElementCreateApplication(runningApp.processIdentifier)
+        return launchStart
     }
 
     private func waitForStartGate() throws {
@@ -244,13 +259,29 @@ final class InstalledAppBaseline {
         throw BaselineFailure(message: "timed out waiting for the trace start gate")
     }
 
-    private func navigate(phase: String, sourceIdentifier: String) throws {
+    private func navigate(
+        phase: String,
+        sourceIdentifier: String,
+        readyIdentifier: String? = nil,
+        readyRequiresEnabled: Bool = true,
+        readyText: String? = nil
+    ) throws {
         let source = try waitFor(identifier: sourceIdentifier, timeout: 15, requireEnabled: true)
         let signpostID = OSSignpostID(log: signpostLog)
         os_signpost(.begin, log: signpostLog, name: "WorkspaceNavigation", signpostID: signpostID, "%{public}s", phase)
         let start = ProcessInfo.processInfo.systemUptime
         try click(source)
         _ = try waitFor(identifier: "workflow_back_home", timeout: 30, requireEnabled: true)
+        if let readyIdentifier {
+            _ = try waitFor(
+                identifier: readyIdentifier,
+                timeout: 60,
+                requireEnabled: readyRequiresEnabled
+            )
+        }
+        if let readyText {
+            _ = try waitForText(readyText, timeout: 60)
+        }
         let value = elapsedMilliseconds(since: start)
         os_signpost(.end, log: signpostLog, name: "WorkspaceNavigation", signpostID: signpostID, "%{public}s", phase)
         try emitMetric(
@@ -258,7 +289,7 @@ final class InstalledAppBaseline {
             value: value,
             phase: phase,
             startEvent: "fixed center pointer click delivered",
-            stopEvent: "destination rendered and Back action enabled",
+            stopEvent: "destination-specific view/control available and Back action enabled",
             source: "host monotonic clock; corroborate with Instruments Time Profiler"
         )
     }
@@ -287,6 +318,7 @@ final class InstalledAppBaseline {
             ) else { throw BaselineFailure(message: "could not create scroll event") }
             event.post(tap: .cghidEventTap)
         }
+        wait(until: start + 2.15)
         os_signpost(.end, log: signpostLog, name: name, signpostID: signpostID)
         try emitWindow(name: String(describing: name), start: start)
     }

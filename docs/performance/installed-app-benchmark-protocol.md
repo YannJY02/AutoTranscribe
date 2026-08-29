@@ -244,6 +244,12 @@ reference Mac; record their absolute path, byte size, and SHA-256 in the
 manifest. Never commit raw meeting content, credentials, provider payloads, or
 private transcript text.
 
+Because this repository ignores `logs/` to protect user data, the committed
+sanitized copy lives under `docs/performance/evidence/<ticket>/`. That copy is
+the public evidence index; its manifest points to the canonical local raw
+directory and inventories every retained artifact. Do not commit a second copy
+under `logs/`.
+
 ## Quality and validity gates
 
 - Record `asr.cer_pct` for Chinese, `asr.wer_pct` for English, and both for

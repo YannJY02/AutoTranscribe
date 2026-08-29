@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "overall_status": "incomplete",
+  "checks": [
+    {
+      "name": "fixture_corpus_verification",
+      "status": "passed",
+      "evidence": "6 fixture assets and 1,100 Record Folders verified"
+    },
+    {
+      "name": "installed_app_pin",
+      "status": "passed",
+      "evidence": "revision, bundle version, code-directory hash, executable hash, signature, and deterministic bundle inventory recorded"
+    },
+    {
+      "name": "thermal_start_gate",
+      "status": "passed",
+      "evidence": "pmset reported no thermal or performance warning"
+    },
+    {
+      "name": "power_start_gate",
+      "status": "failed",
+      "evidence": "power source was not captured before the cohort; the protocol requires AC power"
+    },
+    {
+      "name": "warm_priming_evidence",
+      "status": "failed",
+      "evidence": "the priming smoke run succeeded, but its raw log was not retained"
+    },
+    {
+      "name": "warm_run_count",
+      "status": "passed",
+      "evidence": "100 records: 10/10 passed; 1,000 records: 10/10 passed"
+    },
+    {
+      "name": "cold_run_count",
+      "status": "not_executed",
+      "evidence": "0/3 post-restart cohorts; each valid cold sample requires a fresh restart and five-minute wait"
+    },
+    {
+      "name": "launch_navigation_input_metrics",
+      "status": "partial",
+      "evidence": "all 20 warm runs contain six contract-shaped metrics, but the recorded driver started launch timing before the LaunchServices request and used generic navigation readiness"
+    },
+    {
+      "name": "scroll_and_resize_replay",
+      "status": "passed",
+      "evidence": "all 20 warm runs contain RecordListScroll, LongTranscriptScroll, and WindowResize windows"
+    },
+    {
+      "name": "scroll_and_resize_hitch_metrics",
+      "status": "tool_blocked",
+      "evidence": "Xcode 27 Animation Hitches recording did not finish saving; failure logs are retained"
+    },
+    {
+      "name": "native_app_launch_trace",
+      "status": "tool_blocked",
+      "evidence": "Xcode 27 App Launch recording failed with CoreData SQLite error 14; a launch Time Profiler trace is retained"
+    },
+    {
+      "name": "time_profiler_root_cause_trace",
+      "status": "passed",
+      "evidence": "successful launch and 1,000-record interaction traces were exported and reduced to sanitized hotspot statistics"
+    },
+    {
+      "name": "state_update_amplification",
+      "status": "not_executed",
+      "evidence": "render/layout stacks were sampled, but no state-update count or causal span was recorded"
+    },
+    {
+      "name": "raw_artifact_retention",
+      "status": "passed",
+      "evidence": "32 raw files or trace bundles are inventoried under the stable local evidence root"
+    },
+    {
+      "name": "no_speculative_optimization",
+      "status": "passed",
+      "evidence": "this branch adds only measurement infrastructure, packaging compatibility, and evidence"
+    }
+  ],
+  "trace_findings": [
+    {
+      "rank": 1,
+      "finding": "1,000-record search filtering runs synchronously on the main thread",
+      "inclusive_running_sample_ms": 11706,
+      "sample_pct": 68.544,
+      "source": "RecordsIndexService.swift:193-194 and :383"
+    },
+    {
+      "rank": 2,
+      "finding": "Core Animation commit work amplifies the search and interaction update path",
+      "inclusive_running_sample_ms": 5334,
+      "sample_pct": 31.233,
+      "source": "CA::Transaction::commit / CA::Layer::commit_if_needed stacks"
+    },
+    {
+      "rank": 3,
+      "finding": "AppKit and NSHostingView layout consumes material main-thread CPU",
+      "inclusive_running_sample_ms": 4926,
+      "sample_pct": 28.844,
+      "source": "NSHostingView.layout and NSView layoutSubtree stacks"
+    },
+    {
+      "rank": 4,
+      "finding": "Record indexing reads and normalizes content on a background queue",
+      "inclusive_running_sample_ms": 1074,
+      "sample_pct": 6.289,
+      "source": "RecordsIndexService.swift:128 and :324; only 4 ms sampled on the main thread"
+    },
+    {
+      "rank": 5,
+      "finding": "Per-row date formatting is repeated during Record list rendering",
+      "inclusive_running_sample_ms": 568,
+      "sample_pct": 3.326,
+      "source": "RecordListItemView.swift:83"
+    }
+  ],
+  "limitations": [
+    "Trace category percentages overlap and describe sampled running CPU time, not wall time.",
+    "No performance budget exists yet; measured values are baselines, not pass/fail targets.",
+    "The current cohort is exploratory until corrected metric boundaries, power/priming evidence, cold runs, and hitch metrics are completed."
+  ]
+}
