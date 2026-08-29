@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -132,6 +133,7 @@ def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
             "Try re-running the command as root for richer errors."
         ):
             raise
+        time.sleep(1)
         _run(command)
 
 

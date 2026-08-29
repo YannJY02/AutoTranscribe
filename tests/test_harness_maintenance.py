@@ -189,6 +189,8 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("scripts.harness_maintenance._run", fake_run)
+    sleeps = []
+    monkeypatch.setattr("scripts.harness_maintenance.time.sleep", sleeps.append)
 
     install_symphony_launch_agent(
         repo,
@@ -197,6 +199,7 @@ def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatc
     )
 
     assert bootstraps == 2
+    assert sleeps == [1]
 
 
 def test_bootstrap_retry_requires_exact_error_and_stops_after_two_attempts(tmp_path, monkeypatch):
