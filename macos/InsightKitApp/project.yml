@@ -68,7 +68,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit.uitests
         SWIFT_VERSION: "5.0"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # Window-only evidence uses SCShareableContent.currentProcess (macOS 14.4+).
+        MACOSX_DEPLOYMENT_TARGET: "14.4"
         TEST_TARGET_NAME: InsightKitApp
         GENERATE_INFOPLIST_FILE: YES
 
