@@ -122,6 +122,16 @@ def _run(command: list[str], *, input_text: str | None = None) -> subprocess.Com
     return completed
 
 
+def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
+    command = ["launchctl", "bootstrap", domain, str(destination)]
+    try:
+        _run(command)
+    except RuntimeError as error:
+        if str(error) != "Bootstrap failed: 5: Input/output error":
+            raise
+        _run(command)
+
+
 def _macos_proxy_environment() -> dict[str, str]:
     if sys.platform != "darwin":
         return {}
@@ -248,7 +258,7 @@ def install_launch_agent(repo_root: Path, *, load: bool, launch_agents_dir: Path
     if load:
         domain = f"gui/{os.getuid()}"
         subprocess.run(["launchctl", "bootout", f"{domain}/{LAUNCH_AGENT_LABEL}"], capture_output=True, check=False)
-        _run(["launchctl", "bootstrap", domain, str(destination)])
+        _bootstrap_launch_agent(domain, destination)
     return destination
 
 
@@ -312,7 +322,7 @@ def install_symphony_launch_agent(
             capture_output=True,
             check=False,
         )
-        _run(["launchctl", "bootstrap", domain, str(destination)])
+        _bootstrap_launch_agent(domain, destination)
     return destination
 
 

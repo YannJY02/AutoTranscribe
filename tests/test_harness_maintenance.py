@@ -5,12 +5,14 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import pytest
 import shlex
 import subprocess
 import tomllib
 
 from scripts.harness_maintenance import (
     TASKS,
+    _bootstrap_launch_agent,
     _macos_proxy_environment,
     _shell_proxy_exports,
     due_task_names,
@@ -157,6 +159,91 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     assert "OPENAI_API_KEY" not in payload["EnvironmentVariables"]
     assert payload["KeepAlive"] is True
     assert payload["RunAtLoad"] is True
+
+
+def test_symphony_launch_agent_retries_one_failed_bootstrap(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    launcher = repo / "scripts" / "run_symphony.sh"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    (repo / "WORKFLOW.md").write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "scripts.harness_maintenance.shutil.which",
+        lambda command: f"/tools/{command}",
+    )
+    monkeypatch.setattr(
+        "scripts.harness_maintenance.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    bootstraps = 0
+
+    def fake_run(command, *, input_text=None):
+        nonlocal bootstraps
+        bootstraps += 1
+        if bootstraps == 1:
+            raise RuntimeError("Bootstrap failed: 5: Input/output error")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("scripts.harness_maintenance._run", fake_run)
+
+    install_symphony_launch_agent(
+        repo,
+        load=True,
+        launch_agents_dir=tmp_path / "LaunchAgents",
+    )
+
+    assert bootstraps == 2
+
+
+def test_bootstrap_retry_requires_exact_error_and_stops_after_two_attempts(tmp_path, monkeypatch):
+    transient = "Bootstrap failed: 5: Input/output error"
+    attempts = 0
+
+    def fail_with_extra_context(command, *, input_text=None):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError(f"{transient}\nPermission denied")
+
+    monkeypatch.setattr("scripts.harness_maintenance._run", fail_with_extra_context)
+    with pytest.raises(RuntimeError, match="Permission denied"):
+        _bootstrap_launch_agent("gui/501", tmp_path / "agent.plist")
+    assert attempts == 1
+
+    def fail_transiently(command, *, input_text=None):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError(transient)
+
+    attempts = 0
+    monkeypatch.setattr("scripts.harness_maintenance._run", fail_transiently)
+    with pytest.raises(RuntimeError, match="Input/output error"):
+        _bootstrap_launch_agent("gui/501", tmp_path / "agent.plist")
+    assert attempts == 2
+
+
+def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    script = repo / "scripts" / "harness_maintenance.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr("scripts.harness_maintenance.shutil.which", lambda _command: "/tools/python3.11")
+    monkeypatch.setattr(
+        "scripts.harness_maintenance.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    bootstraps = []
+    monkeypatch.setattr(
+        "scripts.harness_maintenance._bootstrap_launch_agent",
+        lambda domain, destination: bootstraps.append((domain, destination)),
+    )
+
+    destination = install_launch_agent(
+        repo,
+        load=True,
+        launch_agents_dir=tmp_path / "LaunchAgents",
+    )
+
+    assert bootstraps == [(f"gui/{os.getuid()}", destination)]
 
 
 def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None):
