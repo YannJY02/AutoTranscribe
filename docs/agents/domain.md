@@ -30,7 +30,7 @@ Historical originals and converted Matt workflow views live in `docs/Legacy/matt
 - ADRs under `docs/adr/` that touch the area you're about to work in.
 - `docs/Legacy/matt-workflow-library/manifest.md` only when the task depends on historical material or moved Legacy assets.
 
-If these files do not exist yet, proceed silently and infer from the repo. Do not invent domain rules; note gaps for a later domain-modeling pass.
+If any context or ADR files do not exist, proceed silently and infer from current code and tests. Do not suggest creating them upfront; add them lazily only when terminology or a decision is actually resolved.
 
 ## Use the glossary's vocabulary
 
@@ -50,7 +50,7 @@ When historical material still matters, classify it into one of these current fo
 
 - **Context term**: if the code and user-facing workflow still use the concept, add or update the relevant `CONTEXT.md`.
 - **ADR candidate**: if the historical material records a hard-to-reverse decision with real tradeoffs, write or update an ADR.
-- **Current PRD or issue**: if the historical material describes unfinished useful work, promote it into `.scratch/<feature>/`.
+- **Current PRD or issue**: if the historical material describes unfinished useful work, create a Linear issue containing the current scope and a link to the historical source; native sync supplies the GitHub execution mirror.
 - **Proof or release evidence**: if it is only evidence, keep it in the proof index and point current release docs to the newest proof.
 - **Owner input**: if it requires credentials, legal text, Apple account access, or public release decisions, keep it in the owner-input checklist.
 - **Legacy reference**: if the code already implements or supersedes it, leave it in Legacy and point to the current authority.

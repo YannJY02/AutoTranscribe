@@ -23,7 +23,7 @@ final class HomeViewTests: InsightKitUITests {
     }
 
     func testTapLiveCardNavigatesToLive() throws {
-        app.buttons["home_card_live"].tap()
+        app.buttons["home_card_live"].click()
         let backButton = app.buttons["返回首页"]
         if !backButton.waitForExistence(timeout: 5) {
             throw XCTSkip("Live workspace requires permissions to be pre-granted")
@@ -32,13 +32,13 @@ final class HomeViewTests: InsightKitUITests {
     }
 
     func testTapImportCardNavigatesToImport() throws {
-        app.buttons["home_card_import"].tap()
+        app.buttons["home_card_import"].click()
         let backButton = app.buttons["返回首页"]
         XCTAssertTrue(waitForElement(backButton, timeout: 5), "应导航到导入转写页面")
     }
 
     func testTapRecordsCardNavigatesToRecords() throws {
-        app.buttons["home_card_records"].tap()
+        app.buttons["home_card_records"].click()
         let backButton = app.buttons["返回首页"]
         XCTAssertTrue(waitForElement(backButton, timeout: 5), "应导航到转写记录页面")
     }

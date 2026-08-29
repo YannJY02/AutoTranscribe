@@ -4,7 +4,7 @@ final class ImportWorkspaceTests: InsightKitUITests {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        app.buttons["home_card_import"].tap()
+        app.buttons["home_card_import"].firstMatch.click()
         let backButton = app.buttons["返回首页"]
         XCTAssertTrue(waitForElement(backButton, timeout: 5))
     }
@@ -14,7 +14,7 @@ final class ImportWorkspaceTests: InsightKitUITests {
     }
 
     func testBackButtonNavigatesToHome() throws {
-        app.buttons["返回首页"].tap()
+        app.buttons["返回首页"].firstMatch.click()
         let homeTitle = app.staticTexts["home_title"]
         XCTAssertTrue(waitForElement(homeTitle, timeout: 5), "应返回首页")
     }

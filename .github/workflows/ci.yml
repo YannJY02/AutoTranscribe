@@ -6,22 +6,77 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  harness-governance:
+    name: Harness Governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install repository environment
+        run: ./scripts/agent_bootstrap.sh
+
+      - name: Lint repository automation
+        run: |
+          .venv/bin/python -m compileall -q insightkit scripts
+          bash -n scripts/agent_bootstrap.sh
+          sh -n scripts/run_symphony.sh
+
+      - name: Verify harness and governance
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            comparison_base=HEAD^
+          else
+            comparison_base="origin/$BASE_REF"
+          fi
+          .venv/bin/python scripts/agent_harness.py doctor --profile ci
+          .venv/bin/python scripts/agent_harness.py verify \
+            --base "$comparison_base" \
+            --mode quick \
+            --output-root logs/harness/ci
+
+      - name: Upload harness evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: harness-evidence
+          path: logs/harness/ci
+          if-no-files-found: error
+
   python-tests:
     name: Python Unit Tests
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install dependencies
-        run: |
-          pip install -e ".[dev]" 2>/dev/null || pip install pytest pytest-cov
+        run: pip install -e ".[dev]"
 
       - name: Run unit tests
         run: |
@@ -32,7 +87,7 @@ jobs:
             -v
 
       - name: Upload Python coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: python-coverage
@@ -41,8 +96,9 @@ jobs:
   swift-tests:
     name: Swift Unit Tests
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -50,25 +106,54 @@ jobs:
       - name: Run Swift unit tests
         working-directory: macos/InsightKitApp
         run: |
+          set -o pipefail
           swift test \
             --enable-code-coverage \
             2>&1 | tee /tmp/swift-test.log
-          grep -E "passed|failed|error" /tmp/swift-test.log | tail -5
 
       - name: Upload Swift test log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: swift-test-log
           path: /tmp/swift-test.log
 
+  release-package:
+    name: Release Package Smoke
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build and validate local package
+        env:
+          PACKAGE_ROOT: ${{ runner.temp }}/insightkit-package
+          PREFLIGHT_LOG: ${{ runner.temp }}/release-preflight.log
+        run: |
+          ./scripts/package_insightkit_app.sh \
+            --output-dir "$PACKAGE_ROOT" \
+            --adhoc-sign \
+            --no-clean
+          ./scripts/release_preflight.sh "$PACKAGE_ROOT/InsightKit.app" \
+            2>&1 | tee "$PREFLIGHT_LOG"
+
+      - name: Upload release preflight
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: release-preflight
+          path: ${{ runner.temp }}/release-preflight.log
+          if-no-files-found: warn
+
   xcuitests:
     name: XCUITests (macOS)
     runs-on: macos-15
-    # Only run on main branch pushes to save CI minutes
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -76,24 +161,22 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate xcodeproj
-        working-directory: macos/InsightKitApp
-        run: xcodegen generate
-
       - name: Run XCUITests
-        working-directory: macos/InsightKitApp
-        run: |
-          xcodebuild test \
-            -project InsightKitUITestHost.xcodeproj \
-            -scheme InsightKitApp \
-            -destination 'platform=macOS' \
-            -only-testing:InsightKitUITests \
-            -resultBundlePath TestResults.xcresult \
-            2>&1 | grep -E "(passed|failed|TEST SUCCEEDED|TEST FAILED|Executed)"
+        env:
+          INSIGHTKIT_UITEST_TIMEOUT_SEC: "900"
+          INSIGHTKIT_UITEST_LOG_PATH: ${{ runner.temp }}/insightkit-uitest.log
+          INSIGHTKIT_UITEST_RESULT_BUNDLE: ${{ runner.temp }}/InsightKitUITests.xcresult
+          INSIGHTKIT_UITEST_PROOF_ROOT: ${{ runner.temp }}/InsightKitUITests-proof
+          INSIGHTKIT_UITEST_RECORD_VIDEO: "1"
+        run: ./scripts/run_uitests.sh
 
       - name: Upload XCUITest results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: xcuitest-results
-          path: macos/InsightKitApp/TestResults.xcresult
+          path: |
+            ${{ runner.temp }}/InsightKitUITests.xcresult
+            ${{ runner.temp }}/insightkit-uitest.log
+            ${{ runner.temp }}/InsightKitUITests-proof
+          if-no-files-found: error

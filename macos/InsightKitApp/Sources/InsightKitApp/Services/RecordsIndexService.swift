@@ -58,6 +58,9 @@ final class RecordsIndexService: ObservableObject {
         defaults: UserDefaults = .standard,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
+        if let url = configuredRootDirectory(environment: environment) {
+            return url
+        }
         let bookmarkStore = SecurityScopedBookmarkStore(defaults: defaults, environment: environment)
         if let url = bookmarkStore.resolveBookmark() {
             return url
@@ -70,6 +73,9 @@ final class RecordsIndexService: ObservableObject {
 
     var rootDirectory: URL {
         get {
+            if let url = Self.configuredRootDirectory(environment: environment) {
+                return url
+            }
             if let url = bookmarkStore.resolveBookmark() {
                 return url
             }
@@ -82,6 +88,23 @@ final class RecordsIndexService: ObservableObject {
             defaults.set(newValue.path, forKey: Self.rootDirectoryDefaultsKey)
             bookmarkStore.saveBookmark(for: newValue)
         }
+    }
+
+    private static func configuredRootDirectory(environment: [String: String]) -> URL? {
+        guard let path = environment["INSIGHTKIT_RECORDS_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              path.hasPrefix("/"),
+              path != "/"
+        else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+    }
+
+    private static func isSafeRecordID(_ recordID: String) -> Bool {
+        guard let first = recordID.unicodeScalars.first,
+              recordID.count <= 128,
+              CharacterSet.alphanumerics.contains(first)
+        else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        return recordID.unicodeScalars.allSatisfy(allowed.contains)
     }
 
     // MARK: - Scanning
@@ -113,6 +136,22 @@ final class RecordsIndexService: ObservableObject {
     func recentRecords(limit: Int) -> [RecordMetadata] {
         if records.isEmpty { refreshIndex() }
         return Array(records.prefix(limit))
+    }
+
+    func prepareUITestSeed(recordID: String) {
+        guard Self.isSafeRecordID(recordID) else { return }
+
+        let metadata = RecordMetadata(
+            id: recordID,
+            createdAt: Date(),
+            duration: 30,
+            mediaType: .audio,
+            source: .imported,
+            userTags: ["release"],
+            autoTags: ["restart"],
+            summaryPreview: "restart persistence evidence"
+        )
+        saveRecord(metadata, at: rootDirectory.appendingPathComponent(recordID, isDirectory: true))
     }
 
     // MARK: - CRUD

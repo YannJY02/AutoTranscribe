@@ -278,6 +278,22 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func reloadSystemAudioSources() {
+        if isUITestingMode {
+            updateMain {
+                self.systemAudioSources = [
+                    SystemAudioSourceItem(
+                        id: "ui-test-system-source",
+                        kind: .display,
+                        title: "主显示器",
+                        subtitle: "内置显示器"
+                    ),
+                ]
+                self.selectedSystemSourceID = "ui-test-system-source"
+                self.permissionState = .granted
+                self.errorMessage = nil
+            }
+            return
+        }
         Task {
             do {
                 let sources = try await systemAudioCapture.listSources()
@@ -300,10 +316,11 @@ final class LiveSessionViewModel: ObservableObject {
             }
             return
         }
-        rpcQueue.async { [weak self] in
-            guard let self else { return }
+        let rpcClient = rpcClient
+        rpcQueue.async { [weak self, rpcClient] in
             do {
-                let status = try self.rpcClient.sidecarStatus()
+                let status = try rpcClient.sidecarStatus()
+                guard let self else { return }
                 let running = (status["running"] as? Bool) ?? false
                 let pid = (status["pid"] as? Int) ?? 0
                 let socketPath = (status["socket_path"] as? String) ?? ""
@@ -329,6 +346,7 @@ final class LiveSessionViewModel: ObservableObject {
                     }
                 }
             } catch {
+                guard let self else { return }
                 self.updateMain {
                     self.sidecarHealth = .unknown
                     self.sidecarLabel = "sidecar: down"
@@ -1195,6 +1213,7 @@ extension LiveSessionViewModel {
 
     func configureForUITestingIfNeeded() {
         guard isUITestingMode else { return }
+        errorMessage = nil
         sidecarLabel = "sidecar: ui-test"
         sidecarHealth = SidecarHealth(
             running: true,

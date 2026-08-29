@@ -1,10 +1,10 @@
-import AppKit
 import XCTest
 
 /// Base class for InsightKit UI tests.
 /// Provides shared setup/teardown and helper utilities.
 class InsightKitUITests: XCTestCase {
     var app: XCUIApplication!
+    var captureRoot: URL!
 
     var launchEnvironmentOverrides: [String: String] {
         [:]
@@ -22,7 +22,10 @@ class InsightKitUITests: XCTestCase {
             "--ui-test-mode",
         ]
         app.launchArguments += launchArgumentOverrides
+        captureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitUITestEvidence-\(UUID().uuidString)")
         app.launchEnvironment["INSIGHTKIT_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"] = captureRoot.path
         for (key, value) in launchEnvironmentOverrides {
             app.launchEnvironment[key] = value
         }
@@ -33,7 +36,7 @@ class InsightKitUITests: XCTestCase {
             for title in allowButtons {
                 let button = alert.buttons[title]
                 if button.exists {
-                    button.tap()
+                    button.click()
                     return true
                 }
             }
@@ -44,6 +47,10 @@ class InsightKitUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         app = nil
+        if let captureRoot {
+            try? FileManager.default.removeItem(at: captureRoot)
+        }
+        captureRoot = nil
     }
 
     // MARK: - Helpers
@@ -62,11 +69,11 @@ class InsightKitUITests: XCTestCase {
     }
 
     func button(_ identifier: String, fallbackLabel: String? = nil) -> XCUIElement {
-        let byIdentifier = app.buttons[identifier]
+        let byIdentifier = app.buttons[identifier].firstMatch
         if byIdentifier.exists || fallbackLabel == nil {
             return byIdentifier
         }
-        return app.buttons[fallbackLabel!]
+        return app.buttons[fallbackLabel!].firstMatch
     }
 
     func stringValue(of element: XCUIElement) -> String {
@@ -112,78 +119,47 @@ class InsightKitUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
-    func attachScreenshot(named name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    func attachScreenshot(named name: String, windowTitle: String = "InsightKit") {
+        let root = captureRoot!
+        let requestURL = root.appendingPathComponent("capture.request")
+        let imageURL = root.appendingPathComponent("latest.png")
+        let errorURL = root.appendingPathComponent("latest.error.txt")
+        try? FileManager.default.removeItem(at: imageURL)
+        try? FileManager.default.removeItem(at: errorURL)
+
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try windowTitle.write(to: requestURL, atomically: true, encoding: .utf8)
+        } catch {
+            XCTFail("\(name) window capture request failed: \(error)")
+            return
+        }
+
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline && !FileManager.default.fileExists(atPath: imageURL.path) {
+            if let message = try? String(contentsOf: errorURL, encoding: .utf8) {
+                XCTFail("\(name) window capture failed: \(message)")
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        guard let data = try? Data(contentsOf: imageURL) else {
+            XCTFail("\(name) window capture timed out")
+            return
+        }
+
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
     }
 
     func enterText(_ text: String, into element: XCUIElement) {
-        let pasteboard = NSPasteboard.general
-        let previousString = pasteboard.string(forType: .string)
-
         app.activate()
         element.click()
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-
-        if runAppleScript(
-            """
-            tell application "System Events"
-                tell process "InsightKitApp"
-                    set frontmost to true
-                end tell
-                delay 0.2
-                keystroke "\(escapeAppleScript(text))"
-            end tell
-            """
-        ) {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-            return
-        }
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        element.typeKey("v", modifierFlags: .command)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        restorePasteboard(previousString)
-    }
-
-    @discardableResult
-    func runAppleScript(_ source: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", source]
-
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return false
-        }
-
-        guard process.terminationStatus == 0 else {
-            return false
-        }
-
-        return true
-    }
-
-    private func escapeAppleScript(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-    }
-
-    private func restorePasteboard(_ string: String?) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard let string else { return }
-        pasteboard.setString(string, forType: .string)
+        element.typeKey("a", modifierFlags: .command)
+        element.typeText(text)
     }
 }

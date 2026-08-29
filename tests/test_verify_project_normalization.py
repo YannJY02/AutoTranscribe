@@ -9,6 +9,7 @@ from scripts.verify_project_normalization import (
     RELEASE_VOCAB_TERMS,
     SCRATCH_INDEX_REQUIRED_TERMS,
     verify,
+    verify_tracker_authority,
 )
 
 
@@ -148,9 +149,9 @@ InsightKit is current.
     write(root / "docs/adr/0001-example.md", "# Example decision\n")
     write(
         root / ".scratch/README.md",
-        """# Scratch Work Index
+        """# Historical Scratch Migration Index
 
-Status: current
+Status: historical
 
 Use ready-for-agent and ready-for-human status labels.
 
@@ -190,6 +191,71 @@ Status: ready-for-agent
 
 - `.scratch/project-normalization/issues/01-source-ledger.md`
 """,
+    )
+
+
+def write_linear_tracker_authority(root: Path) -> None:
+    write(
+        root / "AGENTS.md",
+        "# InsightKit Agent Instructions\n\nLinear is the canonical task, PRD, priority, and detailed-status source.\n",
+    )
+    write(
+        root / "docs/agents/issue-tracker.md",
+        "# Issue tracker\n\nLinear is the canonical task and PRD source. GitHub is the GitHub execution mirror.\n",
+    )
+    write(
+        root / "docs/contexts/release-workflow/CONTEXT.md",
+        "# Release Workflow\n\nThe Linear issue lane owns public-distribution tasks.\n",
+    )
+    write(root / "docs/adr/0007-use-github-issues-as-the-active-engineering-tracker.md", "# Old\n\nStatus: superseded by ADR 0008\n")
+    write(
+        root / "docs/adr/0008-use-linear-task-truth-with-a-github-execution-mirror.md",
+        "# Current\n\nStatus: accepted\n\nThe Linear project `InsightKit / AutoTranscribe` is canonical.\n",
+    )
+    write(
+        root / "WORKFLOW.md",
+        "# Workflow\n\nDo not claim a detailed Linear status change unless it is verified on Linear.\n",
+    )
+
+
+def test_tracker_authority_accepts_linear_cutover(tmp_path):
+    write_linear_tracker_authority(tmp_path)
+    findings: list[dict[str, str]] = []
+
+    verify_tracker_authority(tmp_path, findings)
+
+    assert findings == []
+
+
+def test_tracker_authority_rejects_stale_github_project_language(tmp_path):
+    write_linear_tracker_authority(tmp_path)
+    issue_tracker = tmp_path / "docs/agents/issue-tracker.md"
+    issue_tracker.write_text(
+        issue_tracker.read_text(encoding="utf-8") + "\nThe GitHub Issue lane owns release work.\n",
+        encoding="utf-8",
+    )
+    findings: list[dict[str, str]] = []
+
+    verify_tracker_authority(tmp_path, findings)
+
+    assert any(item["check"] == "stale_tracker_authority" for item in findings)
+
+
+def test_verify_rejects_missing_cutover_adr_after_linear_authority_is_declared(tmp_path):
+    write_minimal_normalized_repo(tmp_path)
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text(
+        agents.read_text(encoding="utf-8")
+        + "\nLinear is the canonical task, PRD, priority, and detailed-status source.\n",
+        encoding="utf-8",
+    )
+
+    result = verify(tmp_path)
+
+    assert any(
+        item["path"] == "docs/adr/0008-use-linear-task-truth-with-a-github-execution-mirror.md"
+        and item["check"] == "missing_tracker_authority_doc"
+        for item in result["findings"]
     )
 
 

@@ -103,3 +103,7 @@ _Avoid_: Report, file output
 **Settings Workspace**:
 The app surface for local runtime, provider, and permission configuration.
 _Avoid_: Preferences
+
+**Performance Experience**:
+The measurable responsiveness and efficiency of the installed app across launch, workspace loading, interaction, media playback, transcription, analysis, and resource use. It excludes visual redesign, new features, and general correctness work unless measurement shows they directly cause a performance bottleneck.
+_Avoid_: General UX cleanup, subjective polish, all app quality

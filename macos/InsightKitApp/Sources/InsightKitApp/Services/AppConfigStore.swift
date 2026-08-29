@@ -27,6 +27,9 @@ final class AppConfigStore: ObservableObject {
 
     private static var isRunningTests: Bool {
         let environment = ProcessInfo.processInfo.environment
+        if isUITestMode {
+            return true
+        }
         if environment.keys.contains(where: { $0.localizedCaseInsensitiveContains("xctest") }) {
             return true
         }
@@ -193,11 +196,13 @@ final class AppConfigStore: ObservableObject {
     }
 
     func hasAPIKey(for vendor: ProviderVendor) -> Bool {
-        ((try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? "").isEmpty == false
+        if Self.isUITestMode { return false }
+        return ((try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? "").isEmpty == false
     }
 
     func apiKeyValue(for vendor: ProviderVendor) -> String {
-        (try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? ""
+        if Self.isUITestMode { return "" }
+        return (try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? ""
     }
 
     func sidecarEnvironment() -> [String: String] {
@@ -595,9 +600,11 @@ final class AppConfigStore: ObservableObject {
     }
 
     private static func defaultConfig() -> RuntimeConfigV2 {
-        let modelDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/InsightKit/models")
-            .path
+        let modelDir = isUITestMode
+            ? "/tmp/InsightKit/models"
+            : FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support/InsightKit/models")
+                .path
 
         let providers: [ProviderProfile] = [
             ProviderProfile(
@@ -656,5 +663,9 @@ final class AppConfigStore: ObservableObject {
             strict: RuntimeConfigV2.Strict(strictMode: true),
             download: RuntimeConfigV2.Download(autoBootstrapEnabled: true)
         )
+    }
+
+    private static var isUITestMode: Bool {
+        ProcessInfo.processInfo.environment["INSIGHTKIT_UI_TEST_MODE"] == "1"
     }
 }
