@@ -98,7 +98,36 @@ def test_database_oracle_detects_segment_missing_from_fts_index(tmp_path):
     assert result["assertions"]["fts_index_complete"]["passed"] is False
 
 
-def test_fts_integrity_check_uses_snapshot_without_mutating_source(tmp_path):
+def test_database_oracle_ignores_fts_damage_from_another_meeting(tmp_path):
+    db_path = seed_completed_import(tmp_path)
+    store = InsightStore(db_path)
+    store.upsert_meeting("meeting-2", "Older fixture", "file", status="stopped")
+    store.insert_segment("meeting-2", 0, 1_000, "A", "older segment", source="file")
+    segment = store.conn.execute(
+        "SELECT id, meeting_id, text FROM segments WHERE meeting_id='meeting-2'"
+    ).fetchone()
+    store.conn.execute(
+        """
+        INSERT INTO segments_fts(segments_fts, rowid, meeting_id, text)
+        VALUES('delete', ?, ?, ?)
+        """,
+        (segment["id"], segment["meeting_id"], segment["text"]),
+    )
+    store.conn.commit()
+    store.close()
+
+    result = evaluate_database_oracle(
+        db_path,
+        meeting_id="meeting-1",
+        job_id="job-1",
+        expected_source_path=tmp_path / "fixture.m4a",
+        expected_segment_count=2,
+    )
+
+    assert result["assertions"]["fts_index_complete"]["passed"] is True
+
+
+def test_fts_integrity_check_uses_read_only_temp_index_without_mutating_source(tmp_path):
     db_path = seed_completed_import(tmp_path)
     store = InsightStore(db_path)
     segment = store.conn.execute(
@@ -115,5 +144,5 @@ def test_fts_integrity_check_uses_snapshot_without_mutating_source(tmp_path):
     store.close()
     source_digest = sha256(db_path.read_bytes()).hexdigest()
 
-    assert fts_index_is_consistent(db_path) is False
+    assert fts_index_is_consistent(db_path, "meeting-1") is False
     assert sha256(db_path.read_bytes()).hexdigest() == source_digest

@@ -11,7 +11,6 @@ import socket
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import unicodedata
 from datetime import datetime
@@ -415,33 +414,49 @@ def verify_fts(db_path: Path, meeting_id: str, transcript_rows: list[dict[str, A
     }
 
 
-def fts_index_is_consistent(db_path: Path) -> bool:
-    """Compare the external-content FTS index on an isolated writable snapshot."""
+def fts_index_is_consistent(db_path: Path, meeting_id: str) -> bool:
+    """Compare one meeting's external content with its indexed token instances."""
 
     resolved_db = db_path.expanduser().resolve()
-    source: sqlite3.Connection | None = None
-    snapshot: sqlite3.Connection | None = None
+    connection: sqlite3.Connection | None = None
     try:
-        source = sqlite3.connect(f"{resolved_db.as_uri()}?mode=ro", uri=True, timeout=8.0)
-        with tempfile.TemporaryDirectory(prefix="insightkit-fts-integrity-") as temp_dir:
-            snapshot_path = Path(temp_dir) / "insightkit.db"
-            snapshot = sqlite3.connect(snapshot_path, timeout=8.0)
-            source.backup(snapshot)
-            try:
-                snapshot.execute(
-                    "INSERT INTO segments_fts(segments_fts, rank) VALUES('integrity-check', 1)"
-                )
-            except sqlite3.DatabaseError:
-                return False
-            finally:
-                snapshot.close()
-                snapshot = None
+        connection = sqlite3.connect(f"{resolved_db.as_uri()}?mode=ro", uri=True, timeout=8.0)
+        connection.execute(
+            "CREATE VIRTUAL TABLE temp.actual_fts_vocab USING fts5vocab(main, segments_fts, 'instance')"
+        )
+        connection.execute("CREATE VIRTUAL TABLE temp.expected_fts USING fts5(meeting_id, text)")
+        connection.execute(
+            """
+            INSERT INTO temp.expected_fts(rowid, meeting_id, text)
+            SELECT id, meeting_id, text FROM main.segments WHERE meeting_id=?
+            """,
+            (meeting_id,),
+        )
+        connection.execute(
+            "CREATE VIRTUAL TABLE temp.expected_fts_vocab USING fts5vocab(temp, expected_fts, 'instance')"
+        )
+        actual = set(
+            connection.execute(
+                """
+                SELECT vocab.term, vocab.doc, vocab.col, vocab.offset
+                FROM temp.actual_fts_vocab AS vocab
+                JOIN main.segments AS segment ON segment.id = vocab.doc
+                WHERE segment.meeting_id=?
+                """,
+                (meeting_id,),
+            ).fetchall()
+        )
+        expected = set(
+            connection.execute(
+                "SELECT term, doc, col, offset FROM temp.expected_fts_vocab"
+            ).fetchall()
+        )
+        return actual == expected
+    except sqlite3.DatabaseError:
+        return False
     finally:
-        if snapshot is not None:
-            snapshot.close()
-        if source is not None:
-            source.close()
-    return True
+        if connection is not None:
+            connection.close()
 
 
 def evaluate_database_oracle(
@@ -540,7 +555,7 @@ def evaluate_database_oracle(
         ).fetchone()[0]
         add_assertion("segments_have_meeting", orphan_segments, 0)
 
-        add_assertion("fts_index_complete", fts_index_is_consistent(resolved_db), True)
+        add_assertion("fts_index_complete", fts_index_is_consistent(resolved_db, meeting_id), True)
 
         insight_packages = connection.execute(
             "SELECT COUNT(*) FROM insight_packages WHERE meeting_id=? AND TRIM(payload_json) <> ''",
