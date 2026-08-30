@@ -303,6 +303,14 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         transport.releasePausedAttempt()
 
         XCTAssertTrue(transport.waitForDeliveries(10))
+        let drainDeadline = Date().addingTimeInterval(1)
+        var queued = try currentGate.queuedEnvelopes()
+        while queued.count != 1, Date() < drainDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            queued = try currentGate.queuedEnvelopes()
+        }
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertTrue(String(decoding: try XCTUnwrap(queued.first), as: UTF8.self).contains("release_session_started"))
         XCTAssertEqual(transport.eventNames.filter { $0 == "release_session_started" }.count, 1)
     }
 
