@@ -312,22 +312,26 @@ final class SentryDiagnosticsAdapter {
         try transport.send(envelope: envelope, failureStack: failureStack)
         if acknowledge {
             try gate.acknowledgeQueuedEnvelope(envelope)
-            if isReleaseSessionEnd(envelope) { deliveredRetainedEnvelopes.removeAll() }
+            if isReleaseSessionEnd(envelope), let endedSessionID = stringField("app_session_id", in: envelope) {
+                deliveredRetainedEnvelopes = Set(deliveredRetainedEnvelopes.filter {
+                    stringField("app_session_id", in: $0) != endedSessionID
+                })
+            }
         } else {
             deliveredRetainedEnvelopes.insert(envelope)
         }
     }
 
     private func isReleaseSessionStart(_ envelope: Data) -> Bool {
-        eventName(in: envelope) == "release_session_started"
+        stringField("event_name", in: envelope) == "release_session_started"
     }
 
     private func isReleaseSessionEnd(_ envelope: Data) -> Bool {
-        eventName(in: envelope) == "release_session_ended"
+        stringField("event_name", in: envelope) == "release_session_ended"
     }
 
-    private func eventName(in envelope: Data) -> String? {
-        (try? JSONSerialization.jsonObject(with: envelope) as? [String: Any])?["event_name"] as? String
+    private func stringField(_ name: String, in envelope: Data) -> String? {
+        (try? JSONSerialization.jsonObject(with: envelope) as? [String: Any])?[name] as? String
     }
 
     /// Replays only envelopes the central gate can still decrypt and authorize.
