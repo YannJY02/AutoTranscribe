@@ -133,7 +133,7 @@ def test_timestamp_offsets_are_compared_as_instants(tmp_path: Path):
 
 def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_path: Path):
     repository_root = Path(__file__).parents[1]
-    with tempfile.TemporaryDirectory(dir=repository_root / "logs/harness") as directory:
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
         manifest = Path(directory) / "proof.json"
         repository_ref = manifest.relative_to(repository_root).as_posix()
         manifest.write_text(json.dumps({
