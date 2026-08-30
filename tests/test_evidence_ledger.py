@@ -186,7 +186,7 @@ def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_pat
 
 @pytest.mark.parametrize("field", [
     "access_token", "client_secret", "private_key", "github_pat", "accessToken", "clientSecret",
-    "aws_access_key_id", "aws_secret_access_key",
+    "aws_access_key_id", "aws_secret_access_key", "AWSAccessKeyId", "AWSAccessKey", "AWSSecretKey",
 ])
 def test_manifest_rejects_bare_credential_field_names(tmp_path: Path, field: str):
     repository_root = Path(__file__).parents[1]

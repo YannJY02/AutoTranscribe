@@ -78,7 +78,8 @@ def _identifier(prefix: str, *parts: str) -> str:
 def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(key)).replace("-", "_")
+            normalized_key = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", str(key))
+            normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", normalized_key).replace("-", "_")
             if normalized_key.casefold() in FORBIDDEN_FIELDS or CREDENTIAL_FIELD.search(normalized_key):
                 raise ValidationError(f"forbidden field: {path}.{key}")
             _walk(child, f"{path}.{key}", redact_private_paths=redact_private_paths)
