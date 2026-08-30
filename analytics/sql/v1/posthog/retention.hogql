@@ -1,0 +1,27 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH event_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.installation_id AS installation_id
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp >= toDateTime({variables.window_start})
+    AND timestamp < toDateTime({variables.window_end})
+), successes AS (
+  SELECT installation_id,toDate(timestamp_utc) day FROM event_source
+  WHERE schema_version=1 AND event_name='workflow_completed' GROUP BY installation_id,toDate(timestamp_utc)
+), cohorts AS (
+  SELECT installation_id,MIN(day) cohort_day FROM successes GROUP BY installation_id
+), cohort_retention AS (
+  SELECT c.installation_id,c.cohort_day,
+    countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 7 AND 13)>0 retained_7d_flag,
+    countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 28 AND 34)>0 retained_28d_flag
+  FROM cohorts c LEFT JOIN successes s ON s.installation_id=c.installation_id
+  GROUP BY c.installation_id,c.cohort_day
+)
+SELECT if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14)) mature_7d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35)) mature_28d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14 AND retained_7d_flag)) retained_7d,
+  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35 AND retained_28d_flag)) retained_28d,
+  if(COUNT(*)<2 OR mature_28d_cohort_installations<2,'insufficient-window/data','requires-reconciliation') evidence_state
+FROM cohort_retention c;

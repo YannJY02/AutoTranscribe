@@ -4,6 +4,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SQL_ROOT = ROOT / "analytics" / "sql" / "v1"
+POSTHOG_SQL_ROOT = SQL_ROOT / "posthog"
+QUERY_NAMES = [
+    "activation", "maswr", "funnel", "recovery",
+    "latency_guardrails", "retention", "data_quality", "reconciliation",
+]
 PARAMS = {
     "environment": "development",
     "window_start": "2026-01-01T00:00:00Z",
@@ -59,6 +64,50 @@ def test_all_versioned_queries_execute_against_deterministic_fixture():
         assert rows
 
 
+def test_posthog_queries_use_native_event_schema_and_sql_variables():
+    for name in QUERY_NAMES:
+        query = (POSTHOG_SQL_ROOT / f"{name}.hogql").read_text()
+        assert "event AS event_name" in query
+        assert "toTimeZone(timestamp, 'UTC') AS timestamp_utc" in query
+        assert "toInt(properties.schema_version) AS schema_version" in query
+        assert "{variables.environment}" in query
+        assert "{variables.window_start}" in query
+        assert "{variables.window_end}" in query
+        assert ":environment" not in query
+        assert ":window_start" not in query
+        assert ":window_end" not in query
+        assert "EXISTS(" not in query
+
+        for field in {
+            "event_sequence", "schema_version", "attempt_sequence", "duration_bucket_ms",
+            "latency_bucket_ms", "retry_count", "result_count", "module_count",
+        }:
+            if f"properties.{field}" in query:
+                assert f"toInt(properties.{field}) AS {field}" in query
+        if "properties.quality_score" in query:
+            assert "toFloat(properties.quality_score) AS quality_score" in query
+
+    assert "minOrNullIf" in (POSTHOG_SQL_ROOT / "funnel.hogql").read_text()
+    assert "HAVING countIf(event_name='workflow_started')>0 AND" in (
+        POSTHOG_SQL_ROOT / "data_quality.hogql"
+    ).read_text()
+    assert "if(started_installations=0,NULL,countIf(first_success" in (
+        POSTHOG_SQL_ROOT / "activation.hogql"
+    ).read_text()
+    assert "tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence)" in (
+        POSTHOG_SQL_ROOT / "activation.hogql"
+    ).read_text()
+    assert "if(actionable_failures=0,NULL,countIf(is_recovered))" in (
+        POSTHOG_SQL_ROOT / "recovery.hogql"
+    ).read_text()
+    assert "if(COUNT(*)=0,NULL,countIf(" in (
+        POSTHOG_SQL_ROOT / "retention.hogql"
+    ).read_text()
+    assert "if(event_count=0,NULL,unknown_schema)" in (
+        POSTHOG_SQL_ROOT / "data_quality.hogql"
+    ).read_text()
+
+
 def test_maswr_exposes_all_four_segments_and_missing_segments():
     columns, rows = run("maswr.sql")
     values = [dict(zip(columns, row)) for row in rows]
@@ -97,6 +146,24 @@ def test_activation_ignores_completion_before_first_start():
     assert result["started_installations"] == 3
     assert result["activated_installations"] == 2
     assert result["success_1_to_5m"] == 2
+
+
+def test_activation_keeps_null_bucket_from_the_earliest_completion():
+    connection = database()
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
+        "VALUES(?,?,?,1,'development','i3',?)",
+        [
+            ("workflow_started", "2026-01-03T00:00:00Z", 1, None),
+            ("workflow_completed", "2026-01-03T00:01:00Z", 2, None),
+            ("workflow_completed", "2026-01-03T00:02:00Z", 3, 60_000),
+        ],
+    )
+    cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["activated_installations"] == 2
+    assert result["success_under_1m"] == 0
+    assert result["success_1_to_5m"] == 1
 
 
 def test_recovery_does_not_cross_analysis_mode_or_window_end():

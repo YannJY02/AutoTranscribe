@@ -1,0 +1,26 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH event_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.app_session_id AS app_session_id,
+    properties.workflow AS workflow, toInt(properties.attempt_sequence) AS attempt_sequence
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp >= toDateTime({variables.window_start})
+    AND timestamp < toDateTime({variables.window_end})
+), eligible AS (
+  SELECT * FROM event_source WHERE schema_version=1
+), sessions AS (
+  SELECT app_session_id,workflow,attempt_sequence,
+    minOrNullIf(timestamp_utc,event_name='workflow_started') started,
+    minOrNullIf(timestamp_utc,event_name='record_saved') saved,
+    minOrNullIf(timestamp_utc,event_name='smart_minutes_review_opened') reviewed,
+    minOrNullIf(timestamp_utc,event_name='export_completed') exported
+  FROM eligible WHERE attempt_sequence>0 GROUP BY app_session_id,workflow,attempt_sequence
+)
+SELECT countIf(started IS NOT NULL) started,
+  countIf(saved>=started) record_saved,
+  countIf(reviewed>=saved AND saved>=started) review_opened,
+  countIf(exported>=reviewed AND reviewed>=saved AND saved>=started) export_completed,
+  if(started=0,'insufficient-data','requires-reconciliation') evidence_state
+FROM sessions;

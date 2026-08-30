@@ -1,0 +1,49 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH event_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.installation_id AS installation_id,
+    properties.app_session_id AS app_session_id, properties.workflow AS workflow,
+    toInt(properties.attempt_sequence) AS attempt_sequence, properties.analysis_mode AS analysis_mode
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp >= toDateTime({variables.window_start})
+    AND timestamp < toDateTime({variables.window_end})
+), segments AS (
+  SELECT 'live' workflow,'local' analysis_mode UNION ALL
+  SELECT 'live','cloud' UNION ALL SELECT 'import','local' UNION ALL SELECT 'import','cloud'
+), eligible AS (
+  SELECT * FROM event_source WHERE schema_version=1
+), started_attempts AS (
+  SELECT DISTINCT app_session_id,workflow,attempt_sequence FROM eligible
+  WHERE event_name='workflow_started' AND attempt_sequence>0
+), ranked AS (
+  SELECT e.*,ROW_NUMBER() OVER (
+    PARTITION BY app_session_id,workflow,attempt_sequence ORDER BY
+      multiIf(event_name='workflow_completed',0,event_name='workflow_failed',1,event_name='workflow_started',2,3),
+      event_sequence DESC
+  ) path_rank FROM eligible e JOIN started_attempts USING(app_session_id,workflow,attempt_sequence)
+), attempts AS (
+  SELECT app_session_id,workflow,attempt_sequence,
+    maxIf(analysis_mode,path_rank=1) analysis_mode,
+    countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
+  FROM ranked GROUP BY app_session_id,workflow,attempt_sequence
+), counts AS (
+  SELECT workflow,analysis_mode,SUM(starts) starts,SUM(completions) completions
+  FROM attempts GROUP BY workflow,analysis_mode
+), event_quality AS (
+  SELECT countIf(schema_version<>1) + countIf(event_sequence IS NULL OR event_sequence<=0) +
+    countIf(event_name IN ('workflow_started','workflow_completed') AND (attempt_sequence IS NULL OR attempt_sequence<=0)) +
+    countIf(event_name='workflow_completed' AND (attempt_sequence IS NULL OR attempt_sequence<=0)) AS event_issues
+  FROM event_source
+), attempt_quality AS (
+  SELECT countIf(starts<>1 OR completions>1) AS attempt_issues FROM attempts
+), quality AS (
+  SELECT event_issues+attempt_issues AS issues FROM event_quality CROSS JOIN attempt_quality
+)
+SELECT s.workflow,s.analysis_mode,coalesce(c.starts,0) AS eligible_attempts,
+  coalesce(c.completions,0) AS successful_attempts,
+  if(coalesce(c.starts,0)=0,NULL,c.completions/c.starts) AS maswr,
+  multiIf(quality.issues>0,'incomplete',coalesce(c.starts,0)=0,'missing-segment','requires-reconciliation') AS evidence_state
+FROM segments s LEFT JOIN counts c USING(workflow,analysis_mode) CROSS JOIN quality
+ORDER BY s.workflow,s.analysis_mode;
