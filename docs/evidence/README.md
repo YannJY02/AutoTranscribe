@@ -7,7 +7,7 @@ The versioned record contract is [`evidence-record.schema.json`](./evidence-reco
 ## Collectors
 
 - `collect_repository_manifest` reads a repository-bound JSON artifact once, privacy-scans those bytes, and hashes the same bytes before persisting only its reference, source revision, artifact SHA-256, bounded result, and handoff fields.
-- `collect_external_reference` is the bounded adapter for Linear, GitHub, CI, approved analytics/diagnostics readbacks, and pilot manifests. It accepts stable identifiers, revisions, approved references, lifecycle/result enums, and unknowns; claim prose is templated and no provider response is accepted.
+- `collect_external_reference` is the bounded adapter for Linear, GitHub, CI, approved analytics/diagnostics readbacks, and pilot manifests. Repository-backed external proof derives status, revision, observation time, and hash from the privacy-scanned manifest; remote links accept only bounded metadata. Claim prose is templated and no provider response is accepted.
 - `collect` is the shared normalization sink used by the named adapters. It enforces stable metadata identifier and revision syntax, source-specific inspectable-reference formats, bounded claim fields, and privacy rejection before persistence.
 - `collect_unavailable` converts a missing integration into an explicit `unobserved` record. It cannot produce a pass.
 
