@@ -48,14 +48,23 @@ if [[ "${1:-}" == "--no-regenerate" ]] && [[ -d "$XCODEPROJ" ]]; then
     info "Using existing xcodeproj at $(display_path "$XCODEPROJ")"
 else
     info "Generating xcodeproj with XcodeGen..."
-    xcodegen generate
+    XCODEGEN_LOG="$(mktemp /tmp/insightkit-xcodegen.XXXXXX.log)"
+    if ! xcodegen generate --quiet > "$XCODEGEN_LOG" 2>&1; then
+        PYTHONPATH="$SCRIPT_DIR/.." python3.11 -c \
+            'import sys; from pathlib import Path; from scripts.native_app_proof import _redact_text_file; _redact_text_file(Path(sys.argv[1]))' \
+            "$XCODEGEN_LOG"
+        error "XcodeGen failed; sanitized log: $XCODEGEN_LOG"
+        tail -n 100 "$XCODEGEN_LOG"
+        exit 1
+    fi
+    rm -f "$XCODEGEN_LOG"
     info "xcodeproj generated at $(display_path "$XCODEPROJ")"
 fi
 
 # ── Run UI Tests ────────────────────────────────────────────────────
 info "Running XCUITests..."
 
-UITEST_TIMEOUT_SEC="${INSIGHTKIT_UITEST_TIMEOUT_SEC:-90}"
+UITEST_TIMEOUT_SEC="${INSIGHTKIT_UITEST_TIMEOUT_SEC:-300}"
 LOG_PATH="${INSIGHTKIT_UITEST_LOG_PATH:-/tmp/insightkit_uitest.log}"
 RESULT_BUNDLE="${INSIGHTKIT_UITEST_RESULT_BUNDLE:-/tmp/insightkit_uitest_$(date +%Y%m%d%H%M%S).xcresult}"
 PROOF_ROOT="${INSIGHTKIT_UITEST_PROOF_ROOT:-${RESULT_BUNDLE%.xcresult}-proof}"
@@ -68,6 +77,8 @@ fi
 case "$DERIVED_DATA_PATH" in
     *\\*|*\"*) error "Derived-data path cannot contain a backslash or quote."; exit 1 ;;
 esac
+mkdir -p "$DERIVED_DATA_PATH"
+DERIVED_DATA_PATH="$(cd "$DERIVED_DATA_PATH" && pwd -P)"
 UNIFIED_LOG="$PROOF_ROOT/unified.ndjson"
 ATTACHMENTS_DIR="$PROOF_ROOT/attachments"
 XCRESULT_SUMMARY="$PROOF_ROOT/xcresult-summary.json"

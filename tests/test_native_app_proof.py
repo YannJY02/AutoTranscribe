@@ -369,4 +369,7 @@ def test_ui_proof_logs_only_the_derived_test_app_and_redacts_home_paths():
 
     assert 'processImagePath BEGINSWITH' in runner
     assert 'eventMessage CONTAINS' not in runner
+    assert 'xcodegen generate --quiet' in runner
+    assert '_redact_text_file' in runner
+    assert 'INSIGHTKIT_UITEST_TIMEOUT_SEC:-300' in runner
     assert _display_path(Path.home() / "private-proof") == "$HOME/private-proof"
