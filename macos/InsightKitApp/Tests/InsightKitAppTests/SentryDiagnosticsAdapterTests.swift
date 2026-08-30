@@ -224,6 +224,49 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         transport.releaseFirstAttempt()
 
         XCTAssertTrue(transport.waitForDeliveries(9))
+        let deadline = Date().addingTimeInterval(1)
+        while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
+    }
+
+    func testCapacityDrainRetainsReleaseStartUntilTerminalDelivery() throws {
+        let fixture = try makeFixture(maxQueueItems: 16)
+        let transport = PausingSuccessfulSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(
+            adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+            .accepted
+        )
+        XCTAssertTrue(transport.waitForFirstAttempt())
+        for _ in 1 ..< 8 {
+            XCTAssertEqual(
+                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+                .accepted
+            )
+        }
+        XCTAssertEqual(adapter.captureReleaseSession(.ok), .queueFull)
+
+        transport.releaseFirstAttempt()
+
+        XCTAssertTrue(transport.waitForDeliveries(9))
+        let startDeadline = Date().addingTimeInterval(1)
+        var queued = try fixture.gate.queuedEnvelopes()
+        while queued.count != 1, Date() < startDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            queued = try fixture.gate.queuedEnvelopes()
+        }
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertTrue(String(decoding: try XCTUnwrap(queued.first), as: UTF8.self).contains("release_session_started"))
+
+        XCTAssertEqual(adapter.captureReleaseSession(.exited), .accepted)
+        XCTAssertTrue(transport.waitForDeliveries(1))
+        let endDeadline = Date().addingTimeInterval(1)
+        while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < endDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
     }
 

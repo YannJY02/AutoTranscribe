@@ -81,9 +81,12 @@ final class SentryDiagnosticsAdapter {
     private let diagnosticsLock = NSLock()
     private let releaseSessionLock = NSLock()
     private var acceptingDelivery: Bool
+    private var capacityDrainNeeded = false
+    private var capacityDrainScheduled = false
     private var releaseSessionMayStart = true
     private var deliveryFailureCount = 0
     private var consentObservers: [NSObjectProtocol] = []
+    private var deliveredRetainedEnvelopes: Set<Data> = []
 
     var localDeliveryFailureCount: Int {
         diagnosticsLock.lock()
@@ -115,8 +118,10 @@ final class SentryDiagnosticsAdapter {
     private func revokeDelivery() {
         deliveryStateLock.lock()
         acceptingDelivery = false
+        capacityDrainNeeded = false
         deliveryStateLock.unlock()
         transport.cancelAll()
+        deliveryQueue.async { [weak self] in self?.deliveredRetainedEnvelopes.removeAll() }
     }
 
     private func enableDelivery() {
@@ -226,21 +231,103 @@ final class SentryDiagnosticsAdapter {
 
     @discardableResult
     private func scheduleDelivery(_ envelope: Data, failureStack: [UInt64], acknowledge: Bool) -> Bool {
-        guard deliverySlots.wait(timeout: .now()) == .success else { return false }
+        guard deliverySlots.wait(timeout: .now()) == .success else {
+            markCapacityDrainNeeded()
+            return false
+        }
         deliveryQueue.async { [weak self, deliverySlots] in
-            defer { deliverySlots.signal() }
+            defer {
+                deliverySlots.signal()
+                self?.scheduleCapacityDrainIfNeeded()
+            }
             guard let self, self.mayDeliver else { return }
-            let gate = self.gate
-            guard gate.consent.isEnabled else { return }
+            guard self.gate.consent.isEnabled else { return }
             do {
-                guard try gate.queuedEnvelopes().contains(envelope) else { return }
-                try self.transport.send(envelope: envelope, failureStack: failureStack)
-                if acknowledge { try gate.acknowledgeQueuedEnvelope(envelope) }
+                try self.sendQueuedEnvelope(envelope, failureStack: failureStack, acknowledge: acknowledge)
             } catch {
                 self.recordDeliveryFailure()
             }
         }
         return true
+    }
+
+    private func markCapacityDrainNeeded() {
+        deliveryStateLock.lock()
+        capacityDrainNeeded = true
+        deliveryStateLock.unlock()
+    }
+
+    private func scheduleCapacityDrainIfNeeded() {
+        deliveryStateLock.lock()
+        guard acceptingDelivery, capacityDrainNeeded, !capacityDrainScheduled else {
+            deliveryStateLock.unlock()
+            return
+        }
+        capacityDrainScheduled = true
+        deliveryStateLock.unlock()
+        deliveryQueue.async { [weak self] in self?.drainCapacityBacklog() }
+    }
+
+    private func drainCapacityBacklog() {
+        deliveryStateLock.lock()
+        capacityDrainNeeded = false
+        deliveryStateLock.unlock()
+        defer {
+            deliveryStateLock.lock()
+            capacityDrainScheduled = false
+            let shouldContinue = acceptingDelivery && capacityDrainNeeded
+            deliveryStateLock.unlock()
+            if shouldContinue { scheduleCapacityDrainIfNeeded() }
+        }
+        guard mayDeliver, gate.consent.isEnabled else { return }
+        let envelopes: [Data]
+        do {
+            envelopes = try gate.queuedEnvelopes()
+        } catch {
+            recordDeliveryFailure()
+            return
+        }
+        for envelope in envelopes {
+            guard mayDeliver, gate.consent.isEnabled else { return }
+            do {
+                try sendQueuedEnvelope(
+                    envelope,
+                    failureStack: [],
+                    acknowledge: !isReleaseSessionStart(envelope)
+                )
+            } catch {
+                recordDeliveryFailure()
+                return
+            }
+        }
+    }
+
+    private func sendQueuedEnvelope(
+        _ envelope: Data,
+        failureStack: [UInt64],
+        acknowledge: Bool
+    ) throws {
+        guard try gate.queuedEnvelopes().contains(envelope) else { return }
+        if !acknowledge, deliveredRetainedEnvelopes.contains(envelope) { return }
+        try transport.send(envelope: envelope, failureStack: failureStack)
+        if acknowledge {
+            try gate.acknowledgeQueuedEnvelope(envelope)
+            if isReleaseSessionEnd(envelope) { deliveredRetainedEnvelopes.removeAll() }
+        } else {
+            deliveredRetainedEnvelopes.insert(envelope)
+        }
+    }
+
+    private func isReleaseSessionStart(_ envelope: Data) -> Bool {
+        eventName(in: envelope) == "release_session_started"
+    }
+
+    private func isReleaseSessionEnd(_ envelope: Data) -> Bool {
+        eventName(in: envelope) == "release_session_ended"
+    }
+
+    private func eventName(in envelope: Data) -> String? {
+        (try? JSONSerialization.jsonObject(with: envelope) as? [String: Any])?["event_name"] as? String
     }
 
     /// Replays only envelopes the central gate can still decrypt and authorize.
