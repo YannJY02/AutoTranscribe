@@ -161,6 +161,17 @@ def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_pat
                 environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
                 promotion_category="gate",
             )
+        outside = tmp_path / "outside.json"
+        outside.write_text(manifest.read_text())
+        symlink = Path(directory) / "outside-link.json"
+        symlink.symlink_to(outside)
+        with pytest.raises(ValidationError, match="inside the repository"):
+            ledger.collect_repository_manifest(
+                symlink, repository_ref=symlink.relative_to(repository_root).as_posix(),
+                source_id="harness-GH-68", lifecycle_stage="verification",
+                lifecycle_transition="full-harness-completed", environment="local-macos",
+                linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68", promotion_category="gate",
+            )
         normalized = ledger.collect_repository_manifest(
             manifest, repository_ref=repository_ref, source_id="harness-GH-68",
             lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
@@ -192,6 +203,7 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
 
 @pytest.mark.parametrize("degraded", [
     {"revision": "unavailable", "result": "passed"},
+    {"revision": "UNAVAILABLE", "result": "passed"},
     {"lifecycle_transition": "connector-unavailable", "result": "passed"},
     {"lifecycle_transition": "source-unobserved", "result": "passed"},
     {"unknowns": ["connector-unavailable"], "result": "passed"},
@@ -213,8 +225,10 @@ def test_unavailable_repository_source_is_explicitly_unobserved(tmp_path: Path):
 
 
 def test_content_hash_cannot_be_used_as_source_id(tmp_path: Path):
-    with pytest.raises(ValidationError, match="stable metadata identifier"):
-        EvidenceLedger(tmp_path / "ledger.json")._collect_normalized([source(source_id="sha256:deadbeef")])
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    for source_id in ("sha256:deadbeef", "a" * 64):
+        with pytest.raises(ValidationError, match="stable metadata identifier"):
+            ledger._collect_normalized([source(source_id=source_id)])
 
 
 def test_schema_matches_the_accepted_yan_43_record_contract():

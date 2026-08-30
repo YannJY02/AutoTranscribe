@@ -29,6 +29,7 @@ SOURCES = frozenset({"linear", "github", "ci", "repository", "analytics", "diagn
 SEVERE_EVENTS = frozenset({"security", "privacy", "data-loss"})
 FEEDBACK_EVENTS = SEVERE_EVENTS | {"review", "bug"}
 SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+HASH_SHAPED_ID = re.compile(r"^[0-9a-fA-F]{32,128}$")
 REVISION = re.compile(r"^(?:(?:sha256:[0-9a-f]{6,64})|(?:[A-Za-z0-9][A-Za-z0-9._/-]{0,127})|unavailable)$")
 METADATA_CODE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 EVIDENCE_ID = re.compile(r"^ev_v1_[0-9a-f]{24}$")
@@ -130,7 +131,7 @@ def _is_degraded(item: dict[str, Any]) -> bool:
     codes.extend(str(value) for value in item.get("unknowns", []))
     return any(
         marker in value
-        for value in codes
+        for value in (code.casefold() for code in codes)
         for marker in ("unavailable", "degraded", "unobserved", "blocked", "missing", "partial")
     )
 
@@ -153,7 +154,7 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
         raise ValidationError("unsupported promotion_category")
     if item["privacy_class"] not in PRIVACY_CLASSES:
         raise ValidationError("unsupported privacy_class")
-    if not SOURCE_ID.fullmatch(str(item["source_id"])):
+    if not SOURCE_ID.fullmatch(str(item["source_id"])) or HASH_SHAPED_ID.fullmatch(str(item["source_id"])):
         raise ValidationError("source_id must be a stable metadata identifier")
     if not REVISION.fullmatch(str(item["revision"])):
         raise ValidationError("revision must be a stable metadata revision")
@@ -364,7 +365,10 @@ class EvidenceLedger:
         if not _is_repo_ref(repository_ref):
             raise ValidationError("repository_ref must be a safe repository-relative path")
         repository_root = Path(__file__).resolve().parent.parent
-        if path.resolve() != (repository_root / repository_ref).resolve():
+        resolved_path = path.resolve()
+        if not resolved_path.is_relative_to(repository_root):
+            raise ValidationError("manifest path must resolve inside the repository")
+        if resolved_path != (repository_root / repository_ref).resolve():
             raise ValidationError("manifest path must match repository_ref")
         try:
             manifest_bytes = path.read_bytes()
