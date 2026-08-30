@@ -1,0 +1,66 @@
+{
+  "dataset_version": "smart-minutes-v1",
+  "description": "Synthetic, privacy-safe Smart Minutes evaluation cases. No text derives from a real meeting.",
+  "cases": [
+    {
+      "id": "zh-release-decision",
+      "language": "zh",
+      "expected_behavior": "success",
+      "safety": {"synthetic": true},
+      "transcript": [
+        {"start_ms": 0, "end_ms": 4200, "speaker": "甲", "text": "今天讨论虚构的星河项目发布方案。"},
+        {"start_ms": 5000, "end_ms": 9800, "speaker": "乙", "text": "我们决定采用蓝色主题，原因是测试用户更容易识别。"},
+        {"start_ms": 10500, "end_ms": 15000, "speaker": "甲", "text": "乙负责周五前完成演示稿并在测试环境复核。"}
+      ],
+      "reference": {
+        "decisions": ["采用蓝色主题"],
+        "actions": ["乙负责周五前完成演示稿"],
+        "forbidden_claims": ["正式上线", "预算获批"]
+      }
+    },
+    {
+      "id": "en-launch-plan",
+      "language": "en",
+      "expected_behavior": "success",
+      "safety": {"synthetic": true},
+      "transcript": [
+        {"start_ms": 0, "end_ms": 3500, "speaker": "Alex", "text": "This is a fictional launch rehearsal for Project Cedar."},
+        {"start_ms": 4000, "end_ms": 8600, "speaker": "Blair", "text": "We decided to keep the pilot offline because the sample data is synthetic."},
+        {"start_ms": 9000, "end_ms": 13200, "speaker": "Alex", "text": "Blair owns the checklist and will finish it by Friday."}
+      ],
+      "reference": {
+        "decisions": ["keep the pilot offline"],
+        "actions": ["Blair owns the checklist"],
+        "forbidden_claims": ["production deployment", "customer approval"]
+      }
+    },
+    {
+      "id": "mixed-design-review",
+      "language": "mixed",
+      "expected_behavior": "success",
+      "safety": {"synthetic": true},
+      "transcript": [
+        {"start_ms": 0, "end_ms": 3900, "speaker": "A", "text": "今天 review 虚构的 Aurora onboarding flow。"},
+        {"start_ms": 4300, "end_ms": 8700, "speaker": "B", "text": "Decision: keep the local-first path，避免上传测试文本。"},
+        {"start_ms": 9200, "end_ms": 13600, "speaker": "A", "text": "B 负责 update prototype by Friday，然后安排下一次 review。"}
+      ],
+      "reference": {
+        "decisions": ["keep the local-first path"],
+        "actions": ["B 负责 update prototype by Friday"],
+        "forbidden_claims": ["cloud upload enabled", "真实客户"]
+      }
+    },
+    {
+      "id": "empty-transcript",
+      "language": "en",
+      "expected_behavior": "bounded_failure",
+      "safety": {"synthetic": true},
+      "transcript": [],
+      "reference": {
+        "decisions": [],
+        "actions": [],
+        "forbidden_claims": ["meeting completed"]
+      }
+    }
+  ]
+}
