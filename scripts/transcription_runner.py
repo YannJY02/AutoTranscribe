@@ -92,7 +92,7 @@ def run_transcription_job(
     check_cancel()
     progress(82, "building_final")
     try:
-        package = insight_service.build_final(transcript_rows)
+        package = insight_service.build_final(transcript_rows, session_id=meeting_id)
     except Exception:
         package = insight_service.build_local_extractive(transcript_rows)
     call_meta = insight_service.last_call_meta

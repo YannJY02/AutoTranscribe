@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "insightkit"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["langfuse==4.15.1"]
 
 [project.optional-dependencies]
 dev = ["numpy", "pytest", "pytest-cov", "pytest-asyncio"]

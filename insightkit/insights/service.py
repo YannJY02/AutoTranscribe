@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from insightkit.insights.postprocess import postprocess_insight_package
 from insightkit.insights.provider import (
     ProviderAdapter,
+    completion_text_and_usage,
     ProviderError,
     describe_provider_error,
     probe_provider as provider_probe,
@@ -24,6 +27,28 @@ SYSTEM_PROMPT = (PROMPT_DIR / "system_instruction.md").read_text(encoding="utf-8
 LIVE_PROMPT = (PROMPT_DIR / "live_insight_prompt.md").read_text(encoding="utf-8")
 FINAL_PROMPT = (PROMPT_DIR / "final_insight_prompt.md").read_text(encoding="utf-8")
 logger = logging.getLogger(__name__)
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _langfuse_client() -> Any | None:
+    if not _env_enabled("INSIGHTKIT_LANGFUSE_ENABLED"):
+        return None
+
+    required = ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"]
+    missing = [name for name in required if not os.getenv(name, "").strip()]
+    if missing:
+        raise RuntimeError(f"Langfuse tracing enabled but missing: {', '.join(missing)}")
+
+    from langfuse import Langfuse
+
+    return Langfuse(
+        base_url=os.environ["LANGFUSE_BASE_URL"],
+        environment=os.getenv("LANGFUSE_TRACING_ENVIRONMENT", "development"),
+        release=os.getenv("INSIGHTKIT_BUILD", "0.1.0"),
+    )
 
 
 class InsightService:
@@ -44,6 +69,7 @@ class InsightService:
             else:
                 strict_mode = os.getenv("INSIGHTKIT_STRICT_MODE", "1").strip() != "0"
         self.strict_mode = bool(strict_mode)
+        self._langfuse = _langfuse_client()
         self.last_call_meta: dict[str, Any] = {
             "vendor": self.default_vendor,
             "model": self.model,
@@ -70,6 +96,7 @@ class InsightService:
         provider_vendor: str | None = None,
         provider_model: str | None = None,
         strict_mode: bool | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         user_prompt = LIVE_PROMPT.replace(
             "{{TRANSCRIPT_WINDOW_JSON}}", json.dumps(transcript_window, ensure_ascii=False)
@@ -81,6 +108,7 @@ class InsightService:
             provider_model=provider_model,
             strict_mode=strict_mode,
             transcript_context=transcript_window,
+            session_id=session_id,
         )
 
     def build_final(
@@ -89,6 +117,7 @@ class InsightService:
         provider_vendor: str | None = None,
         provider_model: str | None = None,
         strict_mode: bool | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         user_prompt = FINAL_PROMPT.replace(
             "{{FULL_TRANSCRIPT_JSON}}", json.dumps(full_transcript, ensure_ascii=False)
@@ -100,6 +129,7 @@ class InsightService:
             provider_model=provider_model,
             strict_mode=strict_mode,
             transcript_context=full_transcript,
+            session_id=session_id,
         )
 
     def build_local_extractive(self, full_transcript: list[dict[str, Any]]) -> dict[str, Any]:
@@ -122,6 +152,7 @@ class InsightService:
         provider_model: str | None,
         strict_mode: bool | None,
         transcript_context: list[dict[str, Any]] | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         effective_strict = self.strict_mode if strict_mode is None else bool(strict_mode)
         effective_vendor = (provider_vendor or self.default_vendor).strip().lower()
@@ -141,20 +172,106 @@ class InsightService:
             "strict_mode": effective_strict,
         }
 
-        try:
-            raw = provider.complete(SYSTEM_PROMPT, user_prompt, resolved_model)
-        except Exception as exc:
-            logger.error("provider completion failed: %s", exc)
-            mapped = describe_provider_error(str(exc), vendor=resolved_vendor)
-            message = mapped["message"]
-            if mapped.get("hint"):
-                message = f"{message} {mapped['hint']}"
-            raise ProviderError(message) from exc
+        mode = "live" if live_mode else "final"
+        trace_name = f"generate-smart-minutes-{mode}"
+        capture_content = _env_enabled("INSIGHTKIT_LANGFUSE_CAPTURE_CONTENT")
+        attributes = nullcontext()
+        if self._langfuse is not None:
+            from langfuse import propagate_attributes
 
-        payload = self._parse_or_fallback(raw, live_mode=live_mode, strict_mode=effective_strict)
-        payload = postprocess_insight_package(payload, full_transcript=transcript_context)
-        validate_insight_package(payload)
-        return payload
+            attributes = propagate_attributes(
+                session_id=session_id,
+                tags=["smart-minutes", mode, resolved_vendor],
+                trace_name=trace_name,
+            )
+
+        with attributes:
+            with self._observation(
+                as_type="chain",
+                name=trace_name,
+                input=self._trace_input(transcript_context, capture_content),
+                metadata={
+                    "feature": "smart-minutes",
+                    "mode": mode,
+                    "vendor": resolved_vendor,
+                    "strict_mode": effective_strict,
+                    "content_capture": capture_content,
+                },
+            ) as trace:
+                generation_input: Any = {
+                    "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
+                    "user_prompt_sha256": hashlib.sha256(user_prompt.encode()).hexdigest(),
+                    "input_characters": len(user_prompt),
+                }
+                if capture_content:
+                    generation_input = [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ]
+
+                with self._observation(
+                    as_type="generation",
+                    name="call-analysis-provider",
+                    model=resolved_model,
+                    model_parameters={"temperature": 0.2, "response_format": "json_object"},
+                    input=generation_input,
+                    metadata={"vendor": resolved_vendor},
+                ) as generation:
+                    try:
+                        completion = provider.complete(SYSTEM_PROMPT, user_prompt, resolved_model)
+                        raw, usage_details = completion_text_and_usage(completion)
+                    except Exception as exc:
+                        logger.error("provider completion failed: %s", exc)
+                        mapped = describe_provider_error(str(exc), vendor=resolved_vendor)
+                        message = mapped["message"]
+                        if mapped.get("hint"):
+                            message = f"{message} {mapped['hint']}"
+                        raise ProviderError(message) from exc
+                    if generation is not None:
+                        generation.update(
+                            output=raw if capture_content else {"output_characters": len(raw)},
+                            usage_details=usage_details or None,
+                        )
+
+                payload = self._parse_or_fallback(raw, live_mode=live_mode, strict_mode=effective_strict)
+                payload = postprocess_insight_package(payload, full_transcript=transcript_context)
+                validate_insight_package(payload)
+                if trace is not None:
+                    trace.update(output=payload if capture_content else self._trace_output(payload))
+                return payload
+
+    def _observation(self, **kwargs: Any) -> Any:
+        if self._langfuse is None:
+            return nullcontext()
+        return self._langfuse.start_as_current_observation(**kwargs)
+
+    def flush_traces(self) -> None:
+        if self._langfuse is not None:
+            try:
+                self._langfuse.flush()
+            except Exception as exc:
+                logger.warning("Langfuse trace flush failed: %s", exc)
+
+    @staticmethod
+    def _trace_input(transcript: list[dict[str, Any]] | None, capture_content: bool) -> Any:
+        rows = transcript or []
+        if capture_content:
+            return rows
+        return {
+            "segment_count": len(rows),
+            "transcript_characters": sum(len(str(row.get("text", "") or "")) for row in rows),
+            "content": "omitted",
+        }
+
+    @staticmethod
+    def _trace_output(payload: dict[str, Any]) -> dict[str, int | str]:
+        return {
+            "schema": "InsightPackageV1",
+            "highlights": len(payload.get("highlight_insights", [])),
+            "decisions": len(payload.get("decision_ledger", [])),
+            "actions": len(payload.get("action_tracks", [])),
+            "timeline_beats": len(payload.get("timeline_beats", [])),
+        }
 
     @staticmethod
     def _parse_or_fallback(raw: str, live_mode: bool, strict_mode: bool) -> dict[str, Any]:

@@ -150,6 +150,15 @@ Use these commands for the current **InsightKit** macOS meeting assistant:
 python3 scripts/insight_sidecar.py
 ```
 
+### Optional Langfuse tracing
+
+Copy the Langfuse variables from `.env.example` into your shell environment before starting the sidecar or app. Tracing stays off unless `INSIGHTKIT_LANGFUSE_ENABLED=1`; transcript and Smart Minutes content stay omitted unless `INSIGHTKIT_LANGFUSE_CAPTURE_CONTENT=1` is also set. Each Smart Minutes run is traced as a chain with a nested provider generation, grouped by meeting ID, including model and token usage when the provider returns it.
+
+```bash
+set -a; source .env; set +a
+python3 scripts/insight_sidecar.py
+```
+
 ### Build macOS app shell (SwiftPM)
 
 ```bash

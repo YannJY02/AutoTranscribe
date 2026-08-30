@@ -38,6 +38,7 @@ class InsightCoordinator:
             provider_vendor=provider_vendor,
             provider_model=provider_model,
             strict_mode=strict_mode,
+            session_id=meeting_id,
         )
         call_meta = self.insight_service.last_call_meta
         return {
@@ -65,6 +66,7 @@ class InsightCoordinator:
                 provider_vendor=provider_vendor,
                 provider_model=provider_model,
                 strict_mode=strict_mode,
+                session_id=meeting_id,
             )
         except Exception:
             stored = self.store.get_insight_package(meeting_id)
@@ -103,7 +105,7 @@ class InsightCoordinator:
         job = self.store.get_latest_transcription_job_for_meeting(meeting_id)
         source_path = str(job.get("source_path", "") if job else "")
         try:
-            package = self.insight_service.build_final(segments)
+            package = self.insight_service.build_final(segments, session_id=meeting_id)
         except Exception:
             stored = self.store.get_insight_package(meeting_id)
             package = stored["payload"] if stored is not None else self.insight_service.build_local_extractive(segments)

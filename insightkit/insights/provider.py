@@ -21,6 +21,12 @@ DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash"
 
 
+@dataclass(frozen=True)
+class ProviderCompletion:
+    text: str
+    usage_details: dict[str, int] = field(default_factory=dict)
+
+
 def _redact_secret(value: str) -> str:
     redacted = re.sub(r"(Authorization:\s*Bearer\s+)[^\s,\"]+", r"\1[REDACTED]", value, flags=re.IGNORECASE)
     redacted = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
@@ -36,7 +42,7 @@ def _redact_secret(value: str) -> str:
 
 
 class ProviderAdapter(Protocol):
-    def complete(self, system_prompt: str, user_prompt: str, model: str) -> str:
+    def complete(self, system_prompt: str, user_prompt: str, model: str) -> str | ProviderCompletion:
         raise NotImplementedError
 
 
@@ -121,7 +127,7 @@ class OpenAICompatibleProvider:
     api_key: str
     extra_headers: dict[str, str] = field(default_factory=dict)
 
-    def complete(self, system_prompt: str, user_prompt: str, model: str) -> str:
+    def complete(self, system_prompt: str, user_prompt: str, model: str) -> ProviderCompletion:
         url = self.base_url.rstrip("/") + "/chat/completions"
         body = {
             "model": model,
@@ -140,7 +146,16 @@ class OpenAICompatibleProvider:
 
         content = self._request(url=url, body=body, headers=headers)
         try:
-            return content["choices"][0]["message"]["content"]
+            usage = content.get("usage") or {}
+            return ProviderCompletion(
+                text=content["choices"][0]["message"]["content"],
+                usage_details=_usage_details(
+                    usage,
+                    input_key="prompt_tokens",
+                    output_key="completion_tokens",
+                    total_key="total_tokens",
+                ),
+            )
         except Exception as exc:
             raise ProviderError(f"bad provider response: {_redact_secret(repr(content))}") from exc
 
@@ -186,7 +201,7 @@ class GeminiProvider:
     base_url: str
     api_key: str
 
-    def complete(self, system_prompt: str, user_prompt: str, model: str) -> str:
+    def complete(self, system_prompt: str, user_prompt: str, model: str) -> ProviderCompletion:
         model_name = urllib.parse.quote(model, safe="")
         url = (
             self.base_url.rstrip("/")
@@ -216,9 +231,45 @@ class GeminiProvider:
             raise ProviderError(_redact_secret(str(exc))) from exc
 
         try:
-            return content["candidates"][0]["content"]["parts"][0]["text"]
+            usage = content.get("usageMetadata") or {}
+            return ProviderCompletion(
+                text=content["candidates"][0]["content"]["parts"][0]["text"],
+                usage_details=_usage_details(
+                    usage,
+                    input_key="promptTokenCount",
+                    output_key="candidatesTokenCount",
+                    total_key="totalTokenCount",
+                ),
+            )
         except Exception as exc:
             raise ProviderError(f"bad gemini response: {content}") from exc
+
+
+def _usage_details(
+    usage: dict[str, Any],
+    *,
+    input_key: str,
+    output_key: str,
+    total_key: str,
+) -> dict[str, int]:
+    def token_count(key: str) -> int:
+        try:
+            return max(0, int(usage.get(key, 0) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    details = {
+        "input_tokens": token_count(input_key),
+        "output_tokens": token_count(output_key),
+        "total_tokens": token_count(total_key),
+    }
+    return {key: value for key, value in details.items() if value > 0}
+
+
+def completion_text_and_usage(completion: str | ProviderCompletion) -> tuple[str, dict[str, int]]:
+    if isinstance(completion, ProviderCompletion):
+        return completion.text, completion.usage_details
+    return str(completion), {}
 
 
 def _default_profiles() -> dict[str, ProviderProfile]:
@@ -318,11 +369,12 @@ def probe_provider(
             model_override=model_override,
             base_url_override=base_url_override,
         )
-        probe_text = provider.complete(
+        probe_completion = provider.complete(
             "你是可用性探测器。仅返回 JSON 对象。",
             "输出 {\"ok\":true}。",
             profile.model_id,
         )
+        probe_text, _ = completion_text_and_usage(probe_completion)
         ok = _probe_response_ok(str(probe_text))
         return {
             "ok": ok,

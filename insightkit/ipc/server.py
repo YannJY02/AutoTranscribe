@@ -118,6 +118,9 @@ class InsightRPCServer:
     def shutdown(self) -> None:
         self._active = False
         self._job_queue.shutdown()
+        flush_traces = getattr(self.insight_service, "flush_traces", None)
+        if flush_traces is not None:
+            flush_traces()
         if self._server_socket is not None:
             self._server_socket.close()
         if self.socket_path.exists():
