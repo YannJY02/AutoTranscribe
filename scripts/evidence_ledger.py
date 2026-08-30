@@ -10,7 +10,9 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime
+import unicodedata
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 from urllib.parse import urlsplit
@@ -56,7 +58,10 @@ CREDENTIAL_FIELD = re.compile(
     r"(?i)(?:^|_)(?:(?:token|secret|password|credential|authorization|pat)s?|"
     r"(?:api|private|access|secret)_key(?:_id)?)$"
 )
-RFC3339 = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$")
+RFC3339 = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.(?P<fraction>[0-9]+))?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+)
 POSTHOG_HOSTS = frozenset({"app.posthog.com", "eu.posthog.com", "us.posthog.com"})
 REQUIRED = (
     "linear_issue_id", "github_issue_or_pr_id", "lifecycle_stage", "lifecycle_transition",
@@ -122,6 +127,10 @@ def _has_unsafe_ref_chars(value: str) -> bool:
     return any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)
 
 
+def _has_unsafe_text_chars(value: str) -> bool:
+    return any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in value)
+
+
 def _is_repo_ref(value: str) -> bool:
     if not isinstance(value, str) or _has_unsafe_ref_chars(value):
         return False
@@ -147,7 +156,7 @@ def _https_ref(value: str, hosts: set[str] | frozenset[str] | None = None) -> bo
         return False
     return bool(
         len(value) <= 500 and parsed.scheme == "https" and parsed.netloc
-        and not parsed.username and not parsed.password
+        and not parsed.username and not parsed.password and parsed.port in {None, 443}
         and (hosts is None or parsed.hostname in hosts)
     )
 
@@ -177,8 +186,14 @@ def _valid_timestamp(value: Any) -> bool:
     return parsed.tzinfo is not None
 
 
-def _timestamp(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+def _timestamp(value: str) -> tuple[int, Decimal]:
+    match = RFC3339.fullmatch(value)
+    if match is None:
+        raise ValidationError("observed_at must be an RFC 3339 timestamp")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    whole = parsed.astimezone(timezone.utc).replace(tzinfo=None, microsecond=0) - datetime(1970, 1, 1)
+    fraction = match.group("fraction")
+    return whole.days * 86_400 + whole.seconds, Decimal(f"0.{fraction}") if fraction else Decimal(0)
 
 
 def _is_degraded(item: dict[str, Any]) -> bool:
@@ -258,7 +273,10 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
 
     for field in ("fact", "gap_or_decision", "owner_action", "recheck_source", "human_gate"):
         value = item[field]
-        if not isinstance(value, str) or not value.strip() or len(value) > 500 or "\n" in value:
+        if (
+            not isinstance(value, str) or not value.strip() or len(value) > 500
+            or _has_unsafe_text_chars(value)
+        ):
             raise ValidationError(f"{field} must be bounded non-empty metadata")
     if not isinstance(item["unknowns"], list) or not all(isinstance(value, str) for value in item["unknowns"]):
         raise ValidationError("unknowns must be a list of strings")
@@ -561,6 +579,8 @@ class EvidenceLedger:
     def _claim_lines(record: dict[str, Any]) -> list[str]:
         return [
             f"- [{record['result']}] {record['fact']} ({record['source_ref']})",
+            f"  - Evidence ID: {record['evidence_id']}",
+            f"  - Artifact SHA-256: {record['artifact_sha256'] or 'None.'}",
             f"  - Gap/decision: {record['gap_or_decision']}",
             f"  - Owner/action: {record['owner_action']}",
             f"  - Recheck: {record['recheck_source']}",

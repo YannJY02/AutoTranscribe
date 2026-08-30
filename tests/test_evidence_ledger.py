@@ -130,6 +130,15 @@ def test_timestamp_offsets_are_compared_as_instants(tmp_path: Path):
     with pytest.raises(ValidationError, match="stale source observation"):
         ledger._collect_normalized([source(observed_at="2026-08-30T10:00:00+02:00", revision="build-old")])
 
+    precise = EvidenceLedger(tmp_path / "precise-ledger.json")
+    precise._collect_normalized([
+        source(observed_at="2026-08-30T09:30:00.0000001Z", revision="z-revision")
+    ])
+    changed = precise._collect_normalized([
+        source(observed_at="2026-08-30T09:30:00.0000002Z", revision="a-revision")
+    ])
+    assert next(record for record in changed["records"] if record["revision"] == "a-revision")["result"] == "passed"
+
 
 def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_path: Path):
     repository_root = Path(__file__).parents[1]
@@ -286,9 +295,16 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         ledger._collect_normalized([source(source_ref="https://[broken")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://[broken")])
-    for source_ref in ("https://github.com:bad/x", "https://github.com:99999/x"):
+    for source_ref in ("https://github.com:bad/x", "https://github.com:99999/x", "https://github.com:1/x"):
         with pytest.raises(ValidationError, match="inspectable approved reference"):
             ledger._collect_normalized([source(source_ref=source_ref)])
+    for item in (
+        source(source_type="linear", source_ref="https://linear.app:1/yannjy/issue/YAN-50"),
+        source(source_type="analytics", source_ref="https://us.posthog.com:1/project/1/insights/2"),
+        source(source_type="diagnostics", source_ref="https://sentry.io:1/organizations/example/issues/1"),
+    ):
+        with pytest.raises(ValidationError, match="inspectable approved reference"):
+            ledger._collect_normalized([item])
     accepted = ledger._collect_normalized([
         source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2")
     ])
@@ -306,6 +322,9 @@ def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc333
     for field in ("lifecycle_stage", "lifecycle_transition", "environment"):
         with pytest.raises(ValidationError, match=field):
             ledger._collect_normalized([source(**{field: 1})])
+    for unsafe in ("safe\r# forged", "safe\x00forged", "safe\u2028# forged"):
+        with pytest.raises(ValidationError, match="bounded non-empty metadata"):
+            ledger._collect_normalized([source(fact=unsafe)])
     for observed_at in (
         "2026-W35T09:00:00Z", "2026-08-30 09:00:00Z", "2026-08-30T09:00:00+00:00:01",
         "2026-08-30T09:00:00+00:60", "2026-08-30T09:00:00+24:00",
@@ -432,7 +451,11 @@ def test_repeated_feedback_requires_independent_runs_but_severe_event_routes_onc
 
 def test_handoff_requires_explicit_linked_evidence_and_validates_supplied_ledger(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
-    normalized = ledger._collect_normalized([source()])
+    artifact_sha = "sha256:" + "a" * 64
+    normalized = ledger._collect_normalized([source(
+        source_type="repository", source_ref="logs/harness/GH-68/manifest.json",
+        artifact_sha256=artifact_sha,
+    )])
     evidence_id = normalized["records"][0]["evidence_id"]
     with pytest.raises(ValidationError, match="explicit evidence IDs"):
         ledger.issue_handoff("GH-68", normalized)
@@ -440,7 +463,10 @@ def test_handoff_requires_explicit_linked_evidence_and_validates_supplied_ledger
         ledger.issue_handoff("GH-69", normalized, evidence_ids={evidence_id})
     with pytest.raises(ValidationError, match="malformed ledger"):
         ledger.issue_handoff("GH-68", {"schema_version": 1, "records": [{"fact": "forged"}]}, evidence_ids={evidence_id})
-    assert "Focused regressions passed" in ledger.issue_handoff("GH-68", normalized, evidence_ids={evidence_id})
+    handoff = ledger.issue_handoff("GH-68", normalized, evidence_ids={evidence_id})
+    assert "Focused regressions passed" in handoff
+    assert f"Evidence ID: {evidence_id}" in handoff
+    assert f"Artifact SHA-256: {artifact_sha}" in handoff
 
 
 def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
