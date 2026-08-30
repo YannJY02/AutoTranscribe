@@ -393,6 +393,7 @@ struct SentryRuntimeConfiguration: Equatable {
               let dsn = URL(string: rawDSN),
               dsn.scheme == "https",
               dsn.user != nil,
+              !dsn.lastPathComponent.isEmpty,
               dsn.lastPathComponent.allSatisfy(\.isNumber)
         else { return nil }
         return SentryRuntimeConfiguration(dsn: dsn)
