@@ -262,9 +262,9 @@ extension LiveSessionViewModel {
                     }
                     SentryDiagnosticsRuntime.shared.captureFailure(
                         workflow: .live,
-                        phase: .finalizing,
+                        phase: .reviewing,
                         providerClass: .none,
-                        errorCategory: .runtime,
+                        errorCategory: .storage,
                         recoveryResult: .succeeded
                     )
                 }
@@ -276,9 +276,9 @@ extension LiveSessionViewModel {
                     }
                     SentryDiagnosticsRuntime.shared.captureFailure(
                         workflow: .live,
-                        phase: .finalizing,
+                        phase: .reviewing,
                         providerClass: .none,
-                        errorCategory: .runtime,
+                        errorCategory: .storage,
                         recoveryResult: .failed
                     )
                 }

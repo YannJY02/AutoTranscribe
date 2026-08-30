@@ -428,7 +428,13 @@ final class WorkflowCoordinator: ObservableObject {
                     }
                 case .error:
                     telemetryLiveStartedAt = nil
-                    captureTelemetryFailure(workflow: .live, phase: .running, category: .runtime, recovery: .notAttempted)
+                    captureTelemetryFailure(
+                        workflow: .live,
+                        phase: .running,
+                        provider: Self.telemetryProvider(for: liveViewModel.analysisRuntimeState),
+                        category: .runtime,
+                        recovery: .notAttempted
+                    )
                 default:
                     break
                 }
@@ -440,8 +446,27 @@ final class WorkflowCoordinator: ObservableObject {
                 guard let self else { return }
                 if let message, !message.isEmpty {
                     let category = Self.telemetryCategory(for: message)
-                    captureTelemetryFailure(workflow: .import, phase: .running, category: category, recovery: .notAttempted)
+                    captureTelemetryFailure(
+                        workflow: .import,
+                        phase: .running,
+                        provider: .none,
+                        category: category,
+                        recovery: .notAttempted
+                    )
                 }
+            }
+            .store(in: &cancellables)
+
+        transcriptionViewModel.$errorMessage
+            .sink { [weak self] message in
+                guard let self, let message, !message.isEmpty else { return }
+                captureTelemetryFailure(
+                    workflow: .import,
+                    phase: .running,
+                    provider: Self.telemetryProvider(for: transcriptionViewModel.analysisRuntimeState),
+                    category: Self.telemetryCategory(for: message),
+                    recovery: .notAttempted
+                )
             }
             .store(in: &cancellables)
 
@@ -455,13 +480,10 @@ final class WorkflowCoordinator: ObservableObject {
     private func captureTelemetryFailure(
         workflow: SentryDiagnosticsAdapter.Workflow,
         phase: SentryDiagnosticsAdapter.Phase,
+        provider: SentryDiagnosticsAdapter.ProviderClass,
         category: SentryDiagnosticsAdapter.ErrorCategory,
         recovery: SentryDiagnosticsAdapter.RecoveryResult
     ) {
-        let analysisState = workflow == .live
-            ? liveViewModel.analysisRuntimeState
-            : transcriptionViewModel.analysisRuntimeState
-        let provider: SentryDiagnosticsAdapter.ProviderClass = analysisState == .missingConfig ? .none : .byok
         SentryDiagnosticsRuntime.shared.captureFailure(
             workflow: workflow,
             phase: phase,
@@ -469,6 +491,10 @@ final class WorkflowCoordinator: ObservableObject {
             errorCategory: category,
             recoveryResult: recovery
         )
+    }
+
+    private static func telemetryProvider(for state: AnalysisRuntimeState) -> SentryDiagnosticsAdapter.ProviderClass {
+        state == .missingConfig ? .none : .byok
     }
 
     private static func telemetryCategory(for message: String) -> SentryDiagnosticsAdapter.ErrorCategory {

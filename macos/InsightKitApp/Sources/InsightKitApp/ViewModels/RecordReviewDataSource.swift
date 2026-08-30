@@ -187,7 +187,7 @@ final class RecordReviewDataSource: ObservableObject {
                         workflow: .recordReview,
                         phase: .reviewing,
                         providerClass: .none,
-                        errorCategory: .runtime,
+                        errorCategory: .storage,
                         recoveryResult: .succeeded
                     )
                 }
@@ -205,7 +205,7 @@ final class RecordReviewDataSource: ObservableObject {
                         workflow: .recordReview,
                         phase: .reviewing,
                         providerClass: .none,
-                        errorCategory: .runtime,
+                        errorCategory: .storage,
                         recoveryResult: .failed
                     )
                 }

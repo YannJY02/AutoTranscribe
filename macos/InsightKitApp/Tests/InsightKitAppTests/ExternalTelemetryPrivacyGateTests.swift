@@ -88,7 +88,11 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
             queue: nil
-        ) { _ in revoked.fulfill() }
+        ) { _ in
+            XCTAssertFalse(productGate.consent.isEnabled)
+            XCTAssertFalse(sentryGate.consent.isEnabled)
+            revoked.fulfill()
+        }
         defer { NotificationCenter.default.removeObserver(observer) }
 
         try ProductAnalytics(gate: productGate).setConsent(enabled: false)

@@ -7,6 +7,10 @@ environment never grants or restores consent, so a persisted opt-out wins. The D
 and project values are release-administration inputs and must never enter the app,
 repository, logs, or proof artifacts.
 
+Sentry uses the same optional `INSIGHTKIT_ANALYTICS_ENVIRONMENT` override as
+product analytics; debug builds default to `development` and release builds to
+`release`.
+
 Set `INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED=0` to explicitly disable telemetry. On
 the next launch this invokes the central gate's cryptographic purge, deletes its
 bounded queue and queue key, and constructs no Sentry transport. An absent setting

@@ -6,10 +6,12 @@ import MachO
 protocol SentryDiagnosticsTransport {
     func send(envelope: Data, failureStack: [UInt64]) throws
     func cancelAll()
+    func resume()
 }
 
 extension SentryDiagnosticsTransport {
     func cancelAll() {}
+    func resume() {}
 }
 
 final class SentryDiagnosticsAdapter {
@@ -74,21 +76,50 @@ final class SentryDiagnosticsAdapter {
     private let transport: SentryDiagnosticsTransport
     private let deliveryQueue = DispatchQueue(label: "com.yannjy.insightkit.sentry-delivery", qos: .utility)
     private let deliverySlots = DispatchSemaphore(value: 8)
-    private var consentObserver: NSObjectProtocol?
+    private let deliveryStateLock = NSLock()
+    private var acceptingDelivery: Bool
+    private var consentObservers: [NSObjectProtocol] = []
 
     init(gate: ExternalTelemetryPrivacyGate, transport: SentryDiagnosticsTransport) {
         self.gate = gate
         self.transport = transport
-        consentObserver = NotificationCenter.default.addObserver(
+        acceptingDelivery = gate.consent.isEnabled
+        consentObservers.append(NotificationCenter.default.addObserver(
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
             queue: nil
-        ) { [weak self] _ in self?.transport.cancelAll() }
+        ) { [weak self] _ in self?.revokeDelivery() })
+        consentObservers.append(NotificationCenter.default.addObserver(
+            forName: .externalTelemetryConsentDidEnable,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in self?.enableDelivery() })
         deliveryQueue.async { [weak self] in self?.drainPersistedQueue() }
     }
 
     deinit {
-        if let consentObserver { NotificationCenter.default.removeObserver(consentObserver) }
+        consentObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func revokeDelivery() {
+        deliveryStateLock.lock()
+        acceptingDelivery = false
+        deliveryStateLock.unlock()
+        transport.cancelAll()
+    }
+
+    private func enableDelivery() {
+        transport.resume()
+        deliveryStateLock.lock()
+        acceptingDelivery = true
+        deliveryStateLock.unlock()
+        _ = captureReleaseSession(.ok)
+    }
+
+    private var mayDeliver: Bool {
+        deliveryStateLock.lock()
+        defer { deliveryStateLock.unlock() }
+        return acceptingDelivery
     }
 
     @discardableResult
@@ -106,12 +137,14 @@ final class SentryDiagnosticsAdapter {
             return outcome.result
         }
         guard deliverySlots.wait(timeout: .now()) == .success else { return .queueFull }
-        deliveryQueue.async { [gate, transport, deliverySlots] in
+        deliveryQueue.async { [weak self, deliverySlots] in
             defer { deliverySlots.signal() }
+            guard let self, self.mayDeliver else { return }
+            let gate = self.gate
             guard gate.consent.isEnabled else { return }
             guard (try? gate.queuedEnvelopes().contains(envelope)) == true else { return }
             do {
-                try transport.send(envelope: envelope, failureStack: failureStack)
+                try self.transport.send(envelope: envelope, failureStack: failureStack)
                 try gate.acknowledgeQueuedEnvelope(envelope)
             } catch { return }
         }
@@ -159,12 +192,14 @@ final class SentryDiagnosticsAdapter {
     @discardableResult
     private func scheduleDelivery(_ envelope: Data, failureStack: [UInt64], acknowledge: Bool) -> Bool {
         guard deliverySlots.wait(timeout: .now()) == .success else { return false }
-        deliveryQueue.async { [gate, transport, deliverySlots] in
+        deliveryQueue.async { [weak self, deliverySlots] in
             defer { deliverySlots.signal() }
+            guard let self, self.mayDeliver else { return }
+            let gate = self.gate
             guard gate.consent.isEnabled else { return }
             guard (try? gate.queuedEnvelopes().contains(envelope)) == true else { return }
             do {
-                try transport.send(envelope: envelope, failureStack: failureStack)
+                try self.transport.send(envelope: envelope, failureStack: failureStack)
                 if acknowledge { try gate.acknowledgeQueuedEnvelope(envelope) }
             } catch { return }
         }
@@ -176,9 +211,11 @@ final class SentryDiagnosticsAdapter {
     /// waiting for vendor networking during app termination.
     private func drainPersistedQueue() {
         try? gate.recoverAbandonedReleaseSessions()
-        guard gate.consent.isEnabled, let envelopes = try? gate.queuedEnvelopesForDelivery() else { return }
+        guard mayDeliver, gate.consent.isEnabled,
+              let envelopes = try? gate.queuedEnvelopesForDelivery()
+        else { return }
         for envelope in envelopes {
-            guard gate.consent.isEnabled else { return }
+            guard mayDeliver, gate.consent.isEnabled else { return }
             do {
                 try transport.send(envelope: envelope, failureStack: [])
                 try gate.acknowledgeQueuedEnvelope(envelope)
@@ -234,6 +271,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
     private var deliveredSessionStarts: [String: String] = [:]
     private let deliveryLock = NSLock()
     private var cancellationGeneration: UInt64 = 0
+    private var isCancelled = false
     private var activeTasks: [URLSessionDataTask] = []
 
     init(configuration: SentryRuntimeConfiguration, session: URLSession = .shared) {
@@ -257,7 +295,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             )
         }
         deliveryLock.lock()
-        guard generation == cancellationGeneration else {
+        guard !isCancelled, generation == cancellationGeneration else {
             deliveryLock.unlock()
             throw TransportError.rejected
         }
@@ -287,10 +325,17 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
     func cancelAll() {
         deliveryLock.lock()
         cancellationGeneration &+= 1
+        isCancelled = true
         let tasks = activeTasks
         activeTasks.removeAll()
         deliveryLock.unlock()
         tasks.forEach { $0.cancel() }
+    }
+
+    func resume() {
+        deliveryLock.lock()
+        isCancelled = false
+        deliveryLock.unlock()
     }
 
     func makeRequest(approvedEnvelope: Data, failureStack: [UInt64]) throws -> URLRequest {
@@ -460,16 +505,17 @@ final class SentryDiagnosticsRuntime {
         let bundle = Bundle.main
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
         let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
-        let telemetryEnvironment = environment["INSIGHTKIT_TELEMETRY_ENVIRONMENT"]
-            .flatMap(TelemetryEnvironment.init(rawValue:))
-        if explicitSetting == "1", telemetryEnvironment == nil {
-            adapter = nil
-            return
-        }
+        #if DEBUG
+        let defaultEnvironment = TelemetryEnvironment.development
+        #else
+        let defaultEnvironment = TelemetryEnvironment.release
+        #endif
+        let telemetryEnvironment = environment["INSIGHTKIT_ANALYTICS_ENVIRONMENT"]
+            .flatMap(TelemetryEnvironment.init(rawValue:)) ?? defaultEnvironment
         let storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("InsightKit/Telemetry/Sentry", isDirectory: true)
         guard let configuration = try? ExternalTelemetryConfiguration(
-            environment: telemetryEnvironment ?? .development,
+            environment: telemetryEnvironment,
             retentionDays: 7,
             maxQueueItems: 64
         ) else {

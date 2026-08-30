@@ -3,8 +3,14 @@ import XCTest
 @testable import InsightKitApp
 
 final class SentryDiagnosticsAdapterTests: XCTestCase {
+    private func makeFixture(enable: Bool = true, maxQueueItems: Int = 8) throws -> Fixture {
+        let fixture = try Fixture(enable: enable, maxQueueItems: maxQueueItems)
+        addTeardownBlock { fixture.cleanup() }
+        return fixture
+    }
+
     func testRawFailureContentIsScrubbedBeforeSyntheticTransportReceivesEnvelope() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let transport = RecordingSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
@@ -44,7 +50,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testDisabledGateNeverInvokesTransport() throws {
-        let fixture = try Fixture(enable: false)
+        let fixture = try makeFixture(enable: false)
         let transport = RecordingSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
@@ -54,7 +60,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testUnifiedConsentRevocationCancelsInFlightSentryDelivery() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
         let transport = BlockingSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: sentryGate, transport: transport)
@@ -67,8 +73,49 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(try sentryGate.queuedEnvelopes().isEmpty)
     }
 
+    func testQueuedDeliveryCannotStartWhileRevocationCancellationIsPaused() throws {
+        let fixture = try makeFixture()
+        let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
+        let transport = PausedCancellationSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: sentryGate, transport: transport)
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForFirstAttempt())
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        let revoked = expectation(description: "revocation completed")
+        DispatchQueue.global().async {
+            try? ProductAnalytics(gate: fixture.gate).setConsent(enabled: false)
+            revoked.fulfill()
+        }
+        XCTAssertTrue(transport.waitForCancellation())
+
+        XCTAssertFalse(transport.waitForSecondAttempt())
+
+        transport.finishCancellation()
+        wait(for: [revoked], timeout: 1)
+    }
+
+    func testSameAdapterStartsReleaseSessionAfterOptInAndReenable() throws {
+        let fixture = try makeFixture(enable: false)
+        let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
+        let transport = RecordingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: sentryGate, transport: transport)
+        let analytics = ProductAnalytics(gate: fixture.gate)
+
+        try analytics.setConsent(enabled: true)
+        XCTAssertTrue(transport.waitForEnvelope())
+        try analytics.setConsent(enabled: false)
+        try analytics.setConsent(enabled: true)
+        XCTAssertTrue(transport.waitForEnvelope())
+
+        let eventNames = try transport.envelopes.map {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])["event_name"] as? String
+        }
+        XCTAssertEqual(eventNames, ["release_session_started", "release_session_started"])
+        _ = adapter
+    }
+
     func testExplicitDisablePurgesWithoutTelemetryEnvironment() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         XCTAssertEqual(fixture.gate.record(event: .init(
             name: "review_opened",
             properties: ["workflow": "live", "phase": "reviewing"]
@@ -88,7 +135,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testSiblingVendorQueueRecoversAfterSharedKeyRotation() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
         XCTAssertEqual(sentryGate.record(event: .init(
             name: "workflow_failed",
@@ -127,14 +174,14 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testThrowingTransportDoesNotEscapeCaptureBoundary() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: ThrowingSentryTransport())
 
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
     }
 
     func testNewAdapterReplaysGateAuthorizedEnvelopeAfterTransportFailure() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let failing = SignalingThrowingSentryTransport()
         let first = SentryDiagnosticsAdapter(gate: fixture.gate, transport: failing)
         XCTAssertEqual(first.captureReleaseSession(.ok), .accepted)
@@ -159,7 +206,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testReleaseHealthAndPerformanceUseBoundedApprovedEvents() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let transport = RecordingSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
@@ -174,7 +221,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testSuccessfulCleanExitAcknowledgesPairedDurableSessionState() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let transport = RecordingSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
@@ -190,7 +237,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testStartupDrainRetainsCurrentProcessOpenSessionMarker() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         XCTAssertEqual(fixture.gate.record(event: .init(
             name: "release_session_started",
             properties: ["session_status": "ok"]
@@ -205,7 +252,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testClosingReleaseSessionNeverExceedsGateQueueBound() throws {
-        let fixture = try Fixture(maxQueueItems: 2)
+        let fixture = try makeFixture(maxQueueItems: 2)
         XCTAssertEqual(fixture.gate.record(event: .init(
             name: "release_session_started",
             properties: ["session_status": "ok"]
@@ -224,7 +271,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
     }
 
     func testRecoveringManyAbandonedSessionsNeverExceedsGateQueueBound() throws {
-        let fixture = try Fixture(maxQueueItems: 3)
+        let fixture = try makeFixture(maxQueueItems: 3)
         XCTAssertEqual(fixture.gate.record(event: .init(
             name: "release_session_started",
             properties: ["session_status": "ok"]
@@ -261,8 +308,50 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         ]))
     }
 
+    func testEnabledRuntimeUsesSharedDefaultEnvironmentAndStartsReleaseSession() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+
+        let runtime = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: fixture.gate,
+            transportOverride: transport
+        )
+
+        XCTAssertTrue(transport.waitForEnvelope())
+        XCTAssertTrue(String(decoding: transport.envelopes[0], as: UTF8.self).contains("release_session_started"))
+        _ = runtime
+    }
+
+    func testHTTPTransportRejectsAfterCancellationUntilExplicitResume() throws {
+        StubSentryURLProtocol.reset()
+        let sessionConfiguration = URLSessionConfiguration.ephemeral
+        sessionConfiguration.protocolClasses = [StubSentryURLProtocol.self]
+        let session = URLSession(configuration: sessionConfiguration)
+        let fixture = try makeFixture()
+        let approved = try XCTUnwrap(fixture.gate.record(event: .init(
+            name: "workflow_failed",
+            properties: ["workflow": "live", "phase": "running"]
+        )).debugEnvelope)
+        let configuration = try XCTUnwrap(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+        ]))
+        let transport = SentryHTTPTransport(configuration: configuration, session: session)
+
+        transport.cancelAll()
+        XCTAssertThrowsError(try transport.send(envelope: approved, failureStack: []))
+        XCTAssertEqual(StubSentryURLProtocol.requestCount, 0)
+        transport.resume()
+        XCTAssertNoThrow(try transport.send(envelope: approved, failureStack: []))
+        XCTAssertEqual(StubSentryURLProtocol.requestCount, 1)
+    }
+
     func testHTTPTransportBuildsSerializableSentryEventAndTransactionEnvelopes() throws {
-        let fixture = try Fixture()
+        let fixture = try makeFixture()
         let approved = try XCTUnwrap(fixture.gate.record(event: .init(name: "workflow_completed", properties: [
             "workflow": "live", "phase": "running", "outcome": "succeeded", "duration_bucket_ms": 5_000,
         ])).debugEnvelope)
@@ -308,7 +397,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             "0x1234"
         )
 
-        let sessionFixture = try Fixture(maxQueueItems: 1)
+        let sessionFixture = try makeFixture(maxQueueItems: 1)
         XCTAssertEqual(sessionFixture.gate.record(event: .init(
             name: "release_session_started",
             properties: ["session_status": "ok"]
@@ -358,6 +447,63 @@ private final class BlockingSentryTransport: SentryDiagnosticsTransport, @unchec
     func waitForCancellation() -> Bool { cancelled.wait(timeout: .now() + 0.1) == .success }
 }
 
+private final class PausedCancellationSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var attemptCount = 0
+    private let firstAttempt = DispatchSemaphore(value: 0)
+    private let secondAttempt = DispatchSemaphore(value: 0)
+    private let releaseFirst = DispatchSemaphore(value: 0)
+    private let cancellationStarted = DispatchSemaphore(value: 0)
+    private let cancellationMayFinish = DispatchSemaphore(value: 0)
+
+    func send(envelope: Data, failureStack: [UInt64]) throws {
+        lock.lock()
+        attemptCount += 1
+        let attempt = attemptCount
+        lock.unlock()
+        if attempt == 1 {
+            firstAttempt.signal()
+            _ = releaseFirst.wait(timeout: .now() + 1)
+        } else {
+            secondAttempt.signal()
+        }
+        throw CocoaError(.userCancelled)
+    }
+
+    func cancelAll() {
+        cancellationStarted.signal()
+        releaseFirst.signal()
+        _ = cancellationMayFinish.wait(timeout: .now() + 1)
+    }
+
+    func waitForFirstAttempt() -> Bool { firstAttempt.wait(timeout: .now() + 1) == .success }
+    func waitForSecondAttempt() -> Bool { secondAttempt.wait(timeout: .now() + 0.1) == .success }
+    func waitForCancellation() -> Bool { cancellationStarted.wait(timeout: .now() + 1) == .success }
+    func finishCancellation() { cancellationMayFinish.signal() }
+}
+
+private final class StubSentryURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    private static var requests = 0
+    static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return requests }
+    static func reset() { lock.lock(); requests = 0; lock.unlock() }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.lock(); Self.requests += 1; Self.lock.unlock()
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 private struct ThrowingSentryTransport: SentryDiagnosticsTransport {
     func send(envelope: Data, failureStack: [UInt64]) throws { throw CocoaError(.fileWriteUnknown) }
 }
@@ -371,10 +517,12 @@ private final class SignalingThrowingSentryTransport: SentryDiagnosticsTransport
     func waitForAttempt() -> Bool { attempted.wait(timeout: .now() + 1) == .success }
 }
 
-private struct Fixture {
-    let gate: ExternalTelemetryPrivacyGate
-    private let defaults: UserDefaults
+private final class Fixture {
+    private(set) var gate: ExternalTelemetryPrivacyGate!
+    private let suite: String
+    private var defaults: UserDefaults?
     private let directory: URL
+    private let preferencesURL: URL
     private let keyBox: QueueKeyBox
     private let maxQueueItems: Int
 
@@ -384,8 +532,11 @@ private struct Fixture {
         localDefaults.removePersistentDomain(forName: suite)
         let localDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         let localKeyBox = QueueKeyBox()
+        self.suite = suite
         defaults = localDefaults
         directory = localDirectory
+        preferencesURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Preferences/\(suite).plist")
         keyBox = localKeyBox
         self.maxQueueItems = maxQueueItems
         gate = ExternalTelemetryPrivacyGate(
@@ -401,8 +552,20 @@ private struct Fixture {
         if enable { try gate.setConsent(enabled: true, consentVersion: 1) }
     }
 
+    func cleanup() {
+        guard let defaults else { return }
+        _ = gate.disableAndPurge()
+        gate = nil
+        defaults.removePersistentDomain(forName: suite)
+        self.defaults = nil
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: preferencesURL)
+    }
+
     func restartedGate() throws -> ExternalTelemetryPrivacyGate {
-        ExternalTelemetryPrivacyGate(
+        let keyBox = self.keyBox
+        let defaults = try XCTUnwrap(defaults)
+        return ExternalTelemetryPrivacyGate(
             configuration: try ExternalTelemetryConfiguration(
                 environment: .development,
                 retentionDays: 7,
@@ -419,7 +582,9 @@ private struct Fixture {
     }
 
     func siblingGate(relativePath: String) throws -> ExternalTelemetryPrivacyGate {
-        ExternalTelemetryPrivacyGate(
+        let keyBox = self.keyBox
+        let defaults = try XCTUnwrap(defaults)
+        return ExternalTelemetryPrivacyGate(
             configuration: try ExternalTelemetryConfiguration(
                 environment: .development,
                 retentionDays: 7,

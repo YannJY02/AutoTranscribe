@@ -588,7 +588,6 @@ final class ProductAnalytics {
             uploadEpoch &+= 1
             uploadInFlight = false
             stateLock.unlock()
-            NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
             transportOperationLock.lock()
             transport?.cancelAll()
             transportOperationLock.unlock()

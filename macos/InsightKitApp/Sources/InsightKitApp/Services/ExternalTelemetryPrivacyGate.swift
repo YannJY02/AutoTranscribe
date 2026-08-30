@@ -5,6 +5,9 @@ extension Notification.Name {
     static let externalTelemetryConsentWillRevoke = Notification.Name(
         "com.yannjy.insightkit.external-telemetry-consent-will-revoke"
     )
+    static let externalTelemetryConsentDidEnable = Notification.Name(
+        "com.yannjy.insightkit.external-telemetry-consent-did-enable"
+    )
 }
 
 enum TelemetryEnvironment: String, CaseIterable, Codable {
@@ -553,6 +556,7 @@ final class ExternalTelemetryPrivacyGate {
         Self.revocationTasks.removeAll()
         Self.stateLock.unlock()
         Self.consentTransitionLock.unlock()
+        NotificationCenter.default.post(name: .externalTelemetryConsentDidEnable, object: nil)
     }
 
     @discardableResult
@@ -575,6 +579,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
+        NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
         onRevocationAdmitted()
         let admission = RevocationAdmission(
             generation: disablingGeneration,
