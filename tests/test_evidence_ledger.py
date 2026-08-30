@@ -317,6 +317,12 @@ def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc333
         ledger._collect_normalized([source(source_ref="https://github.com/" + "a" * 500)])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_ref="https://github.com/x\r# forged")])
+    for unsafe_ref in (
+        "https://github.com/x\u202e#forged",
+        "https://github.com/x\u009f#forged",
+    ):
+        with pytest.raises(ValidationError, match="inspectable approved reference"):
+            ledger._collect_normalized([source(source_ref=unsafe_ref)])
     with pytest.raises(ValidationError, match="issue or PR identifier"):
         ledger._collect_normalized([source(github_issue_or_pr_id=68)])
     for field in ("lifecycle_stage", "lifecycle_transition", "environment"):

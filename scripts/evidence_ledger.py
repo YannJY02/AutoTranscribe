@@ -124,7 +124,7 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
 
 
 def _has_unsafe_ref_chars(value: str) -> bool:
-    return any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)
+    return any(char.isspace() for char in value) or _has_unsafe_text_chars(value)
 
 
 def _has_unsafe_text_chars(value: str) -> bool:
