@@ -428,44 +428,9 @@ final class WorkflowCoordinator: ObservableObject {
                     }
                 case .error:
                     telemetryLiveStartedAt = nil
-                    captureTelemetryFailure(
-                        workflow: .live,
-                        phase: .running,
-                        provider: Self.telemetryProvider(for: liveViewModel.analysisRuntimeState),
-                        category: .runtime,
-                        recovery: .notAttempted
-                    )
                 default:
                     break
                 }
-            }
-            .store(in: &cancellables)
-
-        importViewModel.$errorMessage
-            .sink { [weak self] message in
-                guard let self else { return }
-                if let message, !message.isEmpty {
-                    captureTelemetryFailure(
-                        workflow: .import,
-                        phase: .running,
-                        provider: .none,
-                        category: .unknown,
-                        recovery: .notAttempted
-                    )
-                }
-            }
-            .store(in: &cancellables)
-
-        transcriptionViewModel.$errorMessage
-            .sink { [weak self] message in
-                guard let self, let message, !message.isEmpty else { return }
-                captureTelemetryFailure(
-                    workflow: .import,
-                    phase: .running,
-                    provider: Self.telemetryProvider(for: transcriptionViewModel.analysisRuntimeState),
-                    category: .unknown,
-                    recovery: .notAttempted
-                )
             }
             .store(in: &cancellables)
 
@@ -474,26 +439,6 @@ final class WorkflowCoordinator: ObservableObject {
                 self?.appState.transcriptionState = jobs.first(where: { $0.state == .running })?.state
             }
             .store(in: &cancellables)
-    }
-
-    private func captureTelemetryFailure(
-        workflow: SentryDiagnosticsAdapter.Workflow,
-        phase: SentryDiagnosticsAdapter.Phase,
-        provider: SentryDiagnosticsAdapter.ProviderClass,
-        category: SentryDiagnosticsAdapter.ErrorCategory,
-        recovery: SentryDiagnosticsAdapter.RecoveryResult
-    ) {
-        SentryDiagnosticsRuntime.shared.captureFailure(
-            workflow: workflow,
-            phase: phase,
-            providerClass: provider,
-            errorCategory: category,
-            recoveryResult: recovery
-        )
-    }
-
-    private static func telemetryProvider(for state: AnalysisRuntimeState) -> SentryDiagnosticsAdapter.ProviderClass {
-        state == .missingConfig ? .none : .byok
     }
 
     private func bridgeChildObjectChanges() {

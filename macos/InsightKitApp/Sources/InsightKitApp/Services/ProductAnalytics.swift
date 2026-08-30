@@ -884,7 +884,13 @@ final class ProductAnalytics {
             var values = properties(workflow: workflow, path: explicitPath, phase: phase, outcome: "failed")
             values["error_code"] = errorCode
             values["recovery_action"] = recoveryAction
-            _ = emit("workflow_failed", properties: values)
+            _ = emitWorkflowFailure(
+                values,
+                workflow: workflow,
+                path: explicitPath,
+                phase: phase,
+                errorCode: errorCode
+            )
             return
         }
         workflowFailed(
@@ -934,7 +940,13 @@ final class ProductAnalytics {
         )
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
-        _ = emit("workflow_failed", properties: values)
+        _ = emitWorkflowFailure(
+            values,
+            workflow: context.workflow,
+            path: context.path,
+            phase: phase,
+            errorCode: errorCode
+        )
     }
 
     @discardableResult
@@ -961,13 +973,37 @@ final class ProductAnalytics {
         var values = terminalProperties(workflow: workflow, context: context, phase: phase, outcome: "failed")
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
-        guard emit("workflow_failed", properties: values) == .accepted else { return false }
+        guard emitWorkflowFailure(
+            values,
+            workflow: workflow,
+            path: context.path,
+            phase: phase,
+            errorCode: errorCode
+        ) else { return false }
         stateLock.lock()
         attempts[key]?.terminalEmitted = true
         pendingRecoveries[key] = recoveryAction == "none"
             ? nil
             : PendingRecovery(path: context.path, sequence: context.sequence, phase: phase)
         stateLock.unlock()
+        return true
+    }
+
+    @discardableResult
+    private func emitWorkflowFailure(
+        _ values: [String: Any],
+        workflow: String,
+        path: ProductAnalyticsPath,
+        phase: String,
+        errorCode: String
+    ) -> Bool {
+        guard emit("workflow_failed", properties: values) == .accepted else { return false }
+        SentryDiagnosticsRuntime.shared.captureFailure(
+            workflow: workflow,
+            path: path,
+            phase: phase,
+            errorCode: errorCode
+        )
         return true
     }
 

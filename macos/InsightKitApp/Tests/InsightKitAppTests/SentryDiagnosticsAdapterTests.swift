@@ -315,6 +315,22 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         ]))
     }
 
+    func testProductAnalyticsFailureUsesOriginDimensions() throws {
+        let failure = try XCTUnwrap(SentryDiagnosticsAdapter.Failure.productAnalytics(
+            workflow: "import",
+            path: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok"),
+            phase: "exporting",
+            errorCode: "storage"
+        ))
+
+        XCTAssertEqual(failure.workflow, .import)
+        XCTAssertEqual(failure.phase, .exporting)
+        XCTAssertEqual(failure.engineClass, .local)
+        XCTAssertEqual(failure.providerClass, .byok)
+        XCTAssertEqual(failure.errorCategory, .storage)
+        XCTAssertEqual(failure.recoveryResult, .notAttempted)
+    }
+
     func testEnabledRuntimeUsesSharedDefaultEnvironmentAndStartsReleaseSession() throws {
         let fixture = try makeFixture()
         let transport = RecordingSentryTransport()
