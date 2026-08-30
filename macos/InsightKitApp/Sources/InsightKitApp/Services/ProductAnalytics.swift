@@ -1,5 +1,36 @@
 import Foundation
 
+private final class InMemoryUserDefaults: UserDefaults {
+    private let lock = NSLock()
+    private var values: [String: Any] = [:]
+
+    override func object(forKey defaultName: String) -> Any? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[defaultName]
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        values[defaultName] = value
+    }
+
+    override func removeObject(forKey defaultName: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeValue(forKey: defaultName)
+    }
+
+    override func string(forKey defaultName: String) -> String? {
+        object(forKey: defaultName) as? String
+    }
+
+    override func data(forKey defaultName: String) -> Data? {
+        object(forKey: defaultName) as? Data
+    }
+}
+
 final class ProductAnalyticsEvidenceLedger {
     private let url: URL
     private let queue = DispatchQueue(label: "com.yannjy.insightkit.product-analytics-ledger", qos: .utility)
@@ -249,25 +280,60 @@ final class ProductAnalytics {
     var isEnabled: Bool { gate.consent.isEnabled }
     static let shared: ProductAnalytics = {
         let bundle = Bundle.main
+        let process = ProcessInfo.processInfo.environment
+        let isUITest = process["INSIGHTKIT_UI_TEST_MODE"] == "1"
         #if DEBUG
         let defaultEnvironment = TelemetryEnvironment.development
         #else
         let defaultEnvironment = TelemetryEnvironment.release
         #endif
-        let environment = ProcessInfo.processInfo.environment["INSIGHTKIT_ANALYTICS_ENVIRONMENT"]
+        let environment = process["INSIGHTKIT_ANALYTICS_ENVIRONMENT"]
             .flatMap(TelemetryEnvironment.init(rawValue:)) ?? defaultEnvironment
         let configuration = try! ExternalTelemetryConfiguration(environment: environment, retentionDays: 30, maxQueueItems: 1_000)
-        let storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("InsightKit/Telemetry", isDirectory: true)
-        let gate = ExternalTelemetryPrivacyGate(
-            configuration: configuration,
-            appVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0",
-            appBuild: bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
-            storageDirectory: storage
-        )
-        let process = ProcessInfo.processInfo.environment
+        let appVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let appBuild = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        let storage: URL
+        let gate: ExternalTelemetryPrivacyGate
+        if isUITest {
+            let root = process["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"].map(URL.init(fileURLWithPath:))
+                ?? FileManager.default.temporaryDirectory
+            storage = root.appendingPathComponent("ProductAnalytics", isDirectory: true)
+            let queueKeyLock = NSLock()
+            var queueKey: Data?
+            gate = ExternalTelemetryPrivacyGate(
+                configuration: configuration,
+                appVersion: appVersion,
+                appBuild: appBuild,
+                defaults: InMemoryUserDefaults(),
+                storageDirectory: storage,
+                readQueueKey: {
+                    queueKeyLock.lock()
+                    defer { queueKeyLock.unlock() }
+                    return queueKey
+                },
+                saveQueueKey: { data in
+                    queueKeyLock.lock()
+                    queueKey = data
+                    queueKeyLock.unlock()
+                },
+                deleteQueueKey: {
+                    queueKeyLock.lock()
+                    queueKey = nil
+                    queueKeyLock.unlock()
+                }
+            )
+        } else {
+            storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("InsightKit/Telemetry", isDirectory: true)
+            gate = ExternalTelemetryPrivacyGate(
+                configuration: configuration,
+                appVersion: appVersion,
+                appBuild: appBuild,
+                storageDirectory: storage
+            )
+        }
         let environmentKey = environment.rawValue.uppercased().replacingOccurrences(of: "-", with: "_")
-        let transport = process["POSTHOG_\(environmentKey)_HOST"].flatMap { host in
+        let transport = isUITest ? nil : process["POSTHOG_\(environmentKey)_HOST"].flatMap { host in
             process["POSTHOG_\(environmentKey)_PROJECT_KEY"].flatMap { PostHogProductAnalyticsTransport(host: host, projectKey: $0) }
         }
         let ledger = ProductAnalyticsEvidenceLedger(url: storage.appendingPathComponent("local-evidence-ledger-v1.json"))

@@ -60,4 +60,29 @@ final class NavigationTests: InsightKitUITests {
         XCTAssertTrue(importCard.exists, "导入转写卡片应存在")
         XCTAssertTrue(recordsCard.exists, "转写记录卡片应存在")
     }
+
+    func testTelemetryConsentDefaultsOffAndDisclosesDataUse() throws {
+        app.buttons["home_open_settings"].firstMatch.click()
+        let settingsWindow = app.windows["InsightKit 设置"].firstMatch
+        XCTAssertTrue(waitForElement(settingsWindow, timeout: 5))
+
+        let consent = settingsWindow.switches["settings_external_telemetry_toggle"]
+        for _ in 0..<8 where !consent.isHittable {
+            settingsWindow.scrollViews.firstMatch.swipeUp()
+        }
+
+        XCTAssertTrue(consent.isHittable, "外部遥测开关应在设置中可见")
+        let readback = settingsWindow.staticTexts["settings_external_telemetry_readback_status"]
+        XCTAssertTrue(waitForStringValue("当前状态：关闭", in: readback))
+        let isOff = (consent.value as? String) == "0"
+            || (consent.value as? NSNumber)?.boolValue == false
+        XCTAssertTrue(isOff, "外部遥测应默认关闭")
+        let disclosure = settingsWindow.staticTexts["settings_external_telemetry_disclosure"]
+        XCTAssertTrue(disclosure.exists)
+        let disclosureText = stringValue(of: disclosure)
+        for requiredText in ["默认关闭", "PostHog", "Sentry", "30 天", "不会发送会议内容"] {
+            XCTAssertTrue(disclosureText.contains(requiredText), "披露缺少：\(requiredText)")
+        }
+        attachScreenshot(named: "product-evidence-telemetry-settings", windowTitle: "InsightKit 设置")
+    }
 }

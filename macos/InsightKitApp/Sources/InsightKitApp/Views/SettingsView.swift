@@ -3,6 +3,8 @@ import CoreGraphics
 import SwiftUI
 
 struct SettingsView: View {
+    private static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收匿名产品流程事件，Sentry 接收有界错误与发布诊断；两者只使用允许列表中的低基数属性，远端原始数据最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止两个通道、清除本地队列；远端删除仍需按服务端删除流程完成。"
+
     private struct VendorDraft {
         var baseURL: String
         var modelID: String
@@ -42,6 +44,7 @@ struct SettingsView: View {
 
     @State private var statusMessage: String = ""
     @State private var telemetryEnabled = false
+    @State private var telemetryReadbackCompleted = false
     @State private var isRunningTask = false
     @State private var providerProbeResult: ProviderProbeResult?
     @State private var providerProbeAt: Date?
@@ -119,9 +122,18 @@ struct SettingsView: View {
                         }
                     }
                 ))
-                Text("默认关闭。启用后，PostHog 接收匿名产品流程事件，Sentry 接收有界错误与发布诊断；两者只使用允许列表中的低基数属性，远端原始数据最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止两个通道、清除本地队列；远端删除仍需按服务端删除流程完成。")
+                .accessibilityIdentifier("settings_external_telemetry_toggle")
+                Text(telemetryReadbackCompleted
+                    ? (telemetryEnabled ? "当前状态：已启用" : "当前状态：关闭")
+                    : "当前状态：读取中")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings_external_telemetry_readback_status")
+                Text(Self.externalTelemetryDisclosure)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(Self.externalTelemetryDisclosure)
+                    .accessibilityIdentifier("settings_external_telemetry_disclosure")
             }
 
             if !statusMessage.isEmpty {
@@ -152,6 +164,7 @@ struct SettingsView: View {
             ExternalTelemetryConsentController.read { enabled in
                 DispatchQueue.main.async {
                     telemetryEnabled = enabled
+                    telemetryReadbackCompleted = true
                 }
             }
             syncFromStore()
