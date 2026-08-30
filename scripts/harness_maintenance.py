@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -120,6 +121,22 @@ def _run(command: list[str], *, input_text: str | None = None) -> subprocess.Com
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout).strip())
     return completed
+
+
+def _bootstrap_launch_agent(domain: str, destination: Path) -> None:
+    command = ["launchctl", "bootstrap", domain, str(destination)]
+    transient_error = (
+            "Bootstrap failed: 5: Input/output error\n"
+            "Try re-running the command as root for richer errors."
+    )
+    for attempt in range(20):
+        try:
+            _run(command)
+            return
+        except RuntimeError as error:
+            if str(error) != transient_error or attempt == 19:
+                raise
+            time.sleep(1)
 
 
 def _macos_proxy_environment() -> dict[str, str]:
@@ -248,7 +265,7 @@ def install_launch_agent(repo_root: Path, *, load: bool, launch_agents_dir: Path
     if load:
         domain = f"gui/{os.getuid()}"
         subprocess.run(["launchctl", "bootout", f"{domain}/{LAUNCH_AGENT_LABEL}"], capture_output=True, check=False)
-        _run(["launchctl", "bootstrap", domain, str(destination)])
+        _bootstrap_launch_agent(domain, destination)
     return destination
 
 
@@ -300,7 +317,6 @@ def install_symphony_launch_agent(
         },
         "KeepAlive": True,
         "RunAtLoad": True,
-        "ProcessType": "Background",
         "StandardOutPath": str(log_root / "launchd.stdout.log"),
         "StandardErrorPath": str(log_root / "launchd.stderr.log"),
     }
@@ -312,7 +328,7 @@ def install_symphony_launch_agent(
             capture_output=True,
             check=False,
         )
-        _run(["launchctl", "bootstrap", domain, str(destination)])
+        _bootstrap_launch_agent(domain, destination)
     return destination
 
 
