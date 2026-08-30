@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "rungs": [
+    "deterministic",
+    "runtime-integration",
+    "packaged-app",
+    "xcuitest",
+    "manual-only"
+  ],
+  "claims": [
+    {
+      "id": "home-visible-cards",
+      "surface": "home",
+      "claim": "The three Home Workspace cards are visible in the target app window.",
+      "rung": "xcuitest",
+      "command": ["python3.11", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "env", "INSIGHTKIT_UITEST_SELECTED_TESTS=HomeViewTests/testHomeScreenShowsThreeCards", "INSIGHTKIT_UITEST_EXPECTED_SCREENSHOTS=target-window", "./scripts/run_uitests.sh"]
+    },
+    {
+      "id": "live-state-and-recovery",
+      "surface": "live",
+      "claim": "Live capture states, finalization, and recoverable refresh failures preserve transcript state.",
+      "rung": "deterministic",
+      "command": ["swift", "test", "--package-path", "macos/InsightKitApp", "--filter", "LiveSessionViewModelTests"]
+    },
+    {
+      "id": "live-visible-review",
+      "surface": "live",
+      "claim": "The generated Live review flow exposes its uniquely visible primary interactions.",
+      "rung": "xcuitest",
+      "command": ["python3.11", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "env", "INSIGHTKIT_UITEST_SELECTED_TESTS=LiveWorkspaceTests/testSingleEntryGeneratedReviewFlowCoversPrimaryInteractions", "INSIGHTKIT_UITEST_EXPECTED_SCREENSHOTS=target-window", "./scripts/run_uitests.sh"]
+    },
+    {
+      "id": "import-coordination",
+      "surface": "import",
+      "claim": "A synthetic import follows the product coordinator and record-writing contracts.",
+      "rung": "runtime-integration",
+      "command": ["python3.11", "-m", "pytest", "-q", "tests/test_transcription_import_rpc.py", "tests/test_record_writer.py"]
+    },
+    {
+      "id": "import-visible-layout",
+      "surface": "import",
+      "claim": "The Import workspace exposes its uniquely visible three-panel layout.",
+      "rung": "xcuitest",
+      "command": ["python3.11", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "env", "INSIGHTKIT_UITEST_SELECTED_TESTS=ImportWorkspaceTests/testThreePanelLayoutVisible", "INSIGHTKIT_UITEST_EXPECTED_SCREENSHOTS=target-window", "./scripts/run_uitests.sh"]
+    },
+    {
+      "id": "record-folder-health",
+      "surface": "records",
+      "claim": "Complete, missing, and damaged synthetic record folders map to the expected health and recovery state.",
+      "rung": "deterministic",
+      "command": ["swift", "test", "--package-path", "macos/InsightKitApp", "--filter", "MeetingAssetSnapshotTests"]
+    },
+    {
+      "id": "settings-config-secret-boundary",
+      "surface": "settings",
+      "claim": "Provider configuration repair preserves compatible values and sidecar configuration reads stored secrets silently.",
+      "rung": "deterministic",
+      "command": ["swift", "test", "--package-path", "macos/InsightKitApp", "--filter", "AppConfigStoreTests"]
+    },
+    {
+      "id": "restart-record-persistence",
+      "surface": "restart-persistence",
+      "claim": "A seeded synthetic record remains searchable after app termination and relaunch.",
+      "rung": "xcuitest",
+      "command": ["python3.11", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "env", "INSIGHTKIT_UITEST_SELECTED_TESTS=RecordsPersistenceUITests/testRecentRecordSearchAndRelaunchPersistence", "INSIGHTKIT_UITEST_EXPECTED_SCREENSHOTS=target-window", "./scripts/run_uitests.sh"]
+    },
+    {
+      "id": "failure-recovery-contracts",
+      "surface": "failure-recovery",
+      "claim": "A sidecar build mismatch is detected and its missing-socket shutdown path remains recoverable.",
+      "rung": "deterministic",
+      "command": ["swift", "test", "--package-path", "macos/InsightKitApp", "--filter", "SidecarBuildMismatchRecoveryTests"]
+    },
+    {
+      "id": "saved-media-subjective-quality",
+      "surface": "live",
+      "claim": "A human judges saved simultaneous-presentation media readable and subjectively acceptable.",
+      "rung": "manual-only",
+      "build": "UNOBSERVED; record the exact CFBundleVersion before observation",
+      "scenario": "synthetic screen-and-camera saved-media review",
+      "expected_observation": "Saved video visibly contains readable synthetic screen content and camera presence in one surface.",
+      "remaining_uncertainty": "No observation has been made; readability and subjective media quality remain human-only.",
+      "result": "unobserved"
+    },
+    {
+      "id": "permission-recovery-subjective-copy",
+      "surface": "failure-recovery",
+      "claim": "A human judges the real macOS permission-recovery guidance understandable.",
+      "rung": "manual-only",
+      "build": "UNOBSERVED; record the exact CFBundleVersion before observation",
+      "scenario": "owner-controlled real TCC denial and recovery",
+      "expected_observation": "The app identifies the blocked capability and the owner understands the recovery action.",
+      "remaining_uncertainty": "Real TCC state is intentionally unchanged and comprehensibility is not machine-verifiable.",
+      "result": "unobserved"
+    }
+  ]
+}

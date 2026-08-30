@@ -45,6 +45,15 @@ class InsightKitUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        if let app, app.state != .notRunning {
+            let targetWindow = app.windows.firstMatch
+            if targetWindow.exists {
+                let attachment = XCTAttachment(screenshot: targetWindow.screenshot())
+                attachment.name = "target-window-\(name.replacingOccurrences(of: "/", with: "-"))"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
         app?.terminate()
         app = nil
         if let captureRoot {
