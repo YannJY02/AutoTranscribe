@@ -260,13 +260,6 @@ extension LiveSessionViewModel {
                     ProductAnalytics.submit {
                         $0.recoveryCompleted("live", phase: "reviewing", succeeded: true)
                     }
-                    SentryDiagnosticsRuntime.shared.captureFailure(
-                        workflow: .live,
-                        phase: .reviewing,
-                        providerClass: .none,
-                        errorCategory: .storage,
-                        recoveryResult: .succeeded
-                    )
                 }
             } catch {
                 self.updateMain {
@@ -274,13 +267,6 @@ extension LiveSessionViewModel {
                     ProductAnalytics.submit {
                         $0.recoveryCompleted("live", phase: "reviewing", succeeded: false)
                     }
-                    SentryDiagnosticsRuntime.shared.captureFailure(
-                        workflow: .live,
-                        phase: .reviewing,
-                        providerClass: .none,
-                        errorCategory: .storage,
-                        recoveryResult: .failed
-                    )
                 }
             }
         }

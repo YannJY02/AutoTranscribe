@@ -368,6 +368,19 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(object["event_name"] as? String, "recovery_completed")
         let properties = try XCTUnwrap(object["properties"] as? [String: Any])
         XCTAssertEqual(properties["recovery_result"] as? String, "failed")
+
+        let configuration = try XCTUnwrap(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+        ]))
+        let request = try SentryHTTPTransport(configuration: configuration).makeRequest(
+            approvedEnvelope: transport.envelopes[0],
+            failureStack: [0x1234]
+        )
+        let lines = try XCTUnwrap(request.httpBody).split(separator: 0x0a)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(lines[2])) as? [String: Any])
+        XCTAssertEqual(payload["level"] as? String, "warning")
+        XCTAssertNil(payload["exception"])
     }
 
     func testEnabledRuntimeUsesSharedDefaultEnvironmentAndStartsReleaseSession() throws {

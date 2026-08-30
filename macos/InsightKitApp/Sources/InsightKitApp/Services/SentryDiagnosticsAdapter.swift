@@ -404,6 +404,21 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
                 "attrs": ["release": release, "environment": environment],
             ]
             itemType = "session"
+        } else if eventName == "recovery_completed" {
+            payload = [
+                "event_id": eventID,
+                "timestamp": timestamp,
+                "platform": "native",
+                "level": properties["recovery_result"] as? String == "succeeded" ? "info" : "warning",
+                "logger": "insightkit.diagnostics",
+                "release": release,
+                "dist": build,
+                "environment": environment,
+                "transaction": eventName,
+                "tags": properties,
+                "message": ["formatted": "InsightKit workflow recovery completed"],
+            ]
+            itemType = "event"
         } else if eventName == "workflow_completed" {
             let bucket = properties["duration_bucket_ms"] as? Int ?? 1_000
             let formatter = ISO8601DateFormatter()
