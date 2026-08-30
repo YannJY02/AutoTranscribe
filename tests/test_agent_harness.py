@@ -218,11 +218,22 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     root = Path(__file__).resolve().parent.parent
     workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
     launcher = (root / "scripts/run_symphony.sh").read_text(encoding="utf-8")
+    gate = (root / "scripts/symphony_issue_gate.sh").read_text(encoding="utf-8")
 
     assert "shell_environment_policy.inherit=core" in workflow
     assert "shell_environment_policy.inherit=all" not in workflow
-    assert "env -u SYMPHONY_GITHUB_TOKEN" in workflow
+    assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
+    assert "-u SYMPHONY_GITHUB_TOKEN" in workflow
     assert "-u OPENAI_API_KEY" in workflow
+    assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
+    assert "before_run:" in workflow
+    assert "issue-preflight --json" in gate
+    assert "--resume" in gate
+    assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in workflow
+    assert "SYMPHONY_REAL_CODEX" in launcher
+    assert 'PATH="$repo_root/scripts/symphony-bin:$PATH"' not in launcher
+    assert "GH_TOKEN=$symphony_agent_github_token" in launcher
+    assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in launcher
     assert "read_timeout_ms: 120000" in workflow
     assert "dashboard_enabled: false" in workflow
     assert "SYMPHONY_REPO_SOURCE" in workflow
