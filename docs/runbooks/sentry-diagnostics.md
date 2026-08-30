@@ -42,6 +42,11 @@ session. If a full backlog cannot be delivered, the bounded queue replaces only
 its oldest item so the current session remains closable; the local `queueFull`
 diagnostic records that replacement.
 
+Delivery remains bounded to eight concurrent slots. When a slot frees, one
+coalesced catch-up drain retries accepted durable envelopes without waiting for
+restart. A delivered terminal marker clears retry state only for its matching
+`app_session_id`, so another open session cannot emit a duplicate start marker.
+
 ## Local synthetic proof
 
 Run:
