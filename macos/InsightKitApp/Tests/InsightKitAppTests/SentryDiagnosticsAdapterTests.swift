@@ -200,6 +200,33 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.localDeliveryFailureCount, 1)
     }
 
+    func testPersistedEnvelopeRetriesAfterDeliveryCapacityBecomesAvailable() throws {
+        let fixture = try makeFixture(maxQueueItems: 16)
+        let transport = PausingSuccessfulSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(
+            adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+            .accepted
+        )
+        XCTAssertTrue(transport.waitForFirstAttempt())
+        for _ in 1 ..< 8 {
+            XCTAssertEqual(
+                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+                .accepted
+            )
+        }
+        XCTAssertEqual(
+            adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+            .queueFull
+        )
+
+        transport.releaseFirstAttempt()
+
+        XCTAssertTrue(transport.waitForDeliveries(9))
+        XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
+    }
+
     func testNewAdapterReplaysGateAuthorizedEnvelopeAfterTransportFailure() throws {
         let fixture = try makeFixture()
         let failing = SignalingThrowingSentryTransport()
@@ -675,6 +702,7 @@ private final class PausingSuccessfulSentryTransport: SentryDiagnosticsTransport
     private let firstAttempt = DispatchSemaphore(value: 0)
     private let secondAttempt = DispatchSemaphore(value: 0)
     private let releaseFirst = DispatchSemaphore(value: 0)
+    private let delivered = DispatchSemaphore(value: 0)
 
     func send(envelope: Data, failureStack: [UInt64]) throws {
         lock.lock()
@@ -687,11 +715,15 @@ private final class PausingSuccessfulSentryTransport: SentryDiagnosticsTransport
         } else {
             secondAttempt.signal()
         }
+        delivered.signal()
     }
 
     func waitForFirstAttempt() -> Bool { firstAttempt.wait(timeout: .now() + 1) == .success }
     func waitForSecondAttempt() -> Bool { secondAttempt.wait(timeout: .now() + 0.1) == .success }
     func releaseFirstAttempt() { releaseFirst.signal() }
+    func waitForDeliveries(_ count: Int) -> Bool {
+        (0 ..< count).allSatisfy { _ in delivered.wait(timeout: .now() + 1) == .success }
+    }
 }
 
 private final class StubSentryURLProtocol: URLProtocol, @unchecked Sendable {
