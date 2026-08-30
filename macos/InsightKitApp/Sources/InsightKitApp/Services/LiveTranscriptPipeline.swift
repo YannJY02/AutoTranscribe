@@ -56,6 +56,7 @@ enum LiveTranscriptPipelinePauseReason {
 struct LiveTranscriptPipelineOutcome {
     let chunkIndex: Int
     let latencyMs: Int
+    let analysisLatencyMs: Int?
     let ingestedCount: Int
     let transcriptSegments: [TranscriptSegment]
     let captureState: CaptureState
@@ -65,6 +66,34 @@ struct LiveTranscriptPipelineOutcome {
     let providerMetric: String?
     let analysisRuntimeState: AnalysisRuntimeState?
     let errorMessage: String?
+
+    init(
+        chunkIndex: Int,
+        latencyMs: Int,
+        analysisLatencyMs: Int? = nil,
+        ingestedCount: Int,
+        transcriptSegments: [TranscriptSegment],
+        captureState: CaptureState,
+        firstSegmentMs: Int?,
+        lastTranscriptAt: Date?,
+        refresh: LiveTranscriptPipelineRefresh,
+        providerMetric: String?,
+        analysisRuntimeState: AnalysisRuntimeState?,
+        errorMessage: String?
+    ) {
+        self.chunkIndex = chunkIndex
+        self.latencyMs = latencyMs
+        self.analysisLatencyMs = analysisLatencyMs
+        self.ingestedCount = ingestedCount
+        self.transcriptSegments = transcriptSegments
+        self.captureState = captureState
+        self.firstSegmentMs = firstSegmentMs
+        self.lastTranscriptAt = lastTranscriptAt
+        self.refresh = refresh
+        self.providerMetric = providerMetric
+        self.analysisRuntimeState = analysisRuntimeState
+        self.errorMessage = errorMessage
+    }
 }
 
 struct LiveTranscriptPipelineErrorClassifier {
@@ -146,6 +175,7 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
             return LiveTranscriptPipelineOutcome(
                 chunkIndex: chunkIndex,
                 latencyMs: 0,
+                analysisLatencyMs: nil,
                 ingestedCount: 0,
                 transcriptSegments: [],
                 captureState: captureState(context: context, hasNewTranscript: false),
@@ -201,7 +231,9 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
         }
 
         do {
+            let analysisStartedAt = clock()
             let result = try runtime.refreshLiveInsight(meetingID: context.meetingID, windowSec: 120)
+            let analysisLatencyMs = max(0, Int(clock().timeIntervalSince(analysisStartedAt) * 1_000))
             coordinator.markRefreshed(at: processedAt)
             return outcome(
                 context: context,
@@ -211,7 +243,8 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
                 transcriptSegments: transcriptSegments,
                 processedAt: processedAt,
                 firstSegmentMs: firstSegmentMs,
-                refresh: .success(result)
+                refresh: .success(result),
+                analysisLatencyMs: analysisLatencyMs
             )
         } catch {
             if errorClassifier.isProviderAuthFailure(error) {
@@ -305,6 +338,7 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
         processedAt: Date,
         firstSegmentMs: Int?,
         refresh: LiveTranscriptPipelineRefresh,
+        analysisLatencyMs: Int? = nil,
         providerMetric: String? = nil,
         analysisRuntimeState: AnalysisRuntimeState? = nil,
         errorMessage: String? = nil
@@ -312,6 +346,7 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
         LiveTranscriptPipelineOutcome(
             chunkIndex: chunkIndex,
             latencyMs: latencyMs,
+            analysisLatencyMs: analysisLatencyMs,
             ingestedCount: ingested,
             transcriptSegments: transcriptSegments,
             captureState: captureState(context: context, hasNewTranscript: !transcriptSegments.isEmpty),

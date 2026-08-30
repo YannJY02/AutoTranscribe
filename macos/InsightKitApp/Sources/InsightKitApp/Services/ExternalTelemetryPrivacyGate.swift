@@ -1,6 +1,12 @@
 import Foundation
 import CryptoKit
 
+extension Notification.Name {
+    static let externalTelemetryConsentWillRevoke = Notification.Name(
+        "com.yannjy.insightkit.external-telemetry-consent-will-revoke"
+    )
+}
+
 enum TelemetryEnvironment: String, CaseIterable, Codable {
     case development
     case ownerPilot = "owner-pilot"
@@ -109,6 +115,7 @@ final class ExternalTelemetryPrivacyGate {
         let consentVersion: Int
         let installationID: String
         let appSessionID: String
+        let eventSequence: Int
         let properties: [String: PropertyValue]
 
         enum CodingKeys: String, CodingKey {
@@ -121,7 +128,49 @@ final class ExternalTelemetryPrivacyGate {
             case consentVersion = "consent_version"
             case installationID = "installation_id"
             case appSessionID = "app_session_id"
+            case eventSequence = "event_sequence"
             case properties
+        }
+
+        init(
+            schemaVersion: Int,
+            eventName: String,
+            timestampUTC: Date,
+            appVersion: String,
+            appBuild: String,
+            environment: String,
+            consentVersion: Int,
+            installationID: String,
+            appSessionID: String,
+            eventSequence: Int,
+            properties: [String: PropertyValue]
+        ) {
+            self.schemaVersion = schemaVersion
+            self.eventName = eventName
+            self.timestampUTC = timestampUTC
+            self.appVersion = appVersion
+            self.appBuild = appBuild
+            self.environment = environment
+            self.consentVersion = consentVersion
+            self.installationID = installationID
+            self.appSessionID = appSessionID
+            self.eventSequence = eventSequence
+            self.properties = properties
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+            eventName = try container.decode(String.self, forKey: .eventName)
+            timestampUTC = try container.decode(Date.self, forKey: .timestampUTC)
+            appVersion = try container.decode(String.self, forKey: .appVersion)
+            appBuild = try container.decode(String.self, forKey: .appBuild)
+            environment = try container.decode(String.self, forKey: .environment)
+            consentVersion = try container.decode(Int.self, forKey: .consentVersion)
+            installationID = try container.decode(String.self, forKey: .installationID)
+            appSessionID = try container.decode(String.self, forKey: .appSessionID)
+            eventSequence = try container.decodeIfPresent(Int.self, forKey: .eventSequence) ?? 0
+            properties = try container.decode([String: PropertyValue].self, forKey: .properties)
         }
     }
 
@@ -197,12 +246,19 @@ final class ExternalTelemetryPrivacyGate {
     /// Contract version 1. Both event names and every property/value are closed sets.
     private static let schemaV1: [String: [String: PropertyRule]] = [
         "workflow_started": commonWorkflowRules,
+        "record_saved": commonWorkflowRules,
+        "record_reopened": commonWorkflowRules,
+        "transcript_search_completed": commonWorkflowRules,
+        "smart_minutes_review_opened": commonWorkflowRules,
+        "export_completed": commonWorkflowRules,
         "workflow_completed": commonWorkflowRules,
-        "workflow_failed": commonWorkflowRules.merging([
-            "error_category": .enumStrings(["configuration", "permission", "runtime", "storage", "unknown"]),
-            "recovery_action": .enumStrings(["retry", "open-settings", "restart", "none"]),
-        ]) { _, new in new },
+        "workflow_failed": commonWorkflowRules,
+        "recovery_attempted": commonWorkflowRules,
+        "recovery_completed": commonWorkflowRules,
+        "telemetry_consent_changed": ["telemetry_enabled": .boolean],
         "review_opened": commonWorkflowRules,
+        "release_session_started": ["session_status": .enumStrings(["ok"])],
+        "release_session_ended": ["session_status": .enumStrings(["exited", "crashed", "abnormal"])],
         "app_crashed": [
             "error_category": .enumStrings(["runtime", "storage", "unknown"]),
             "phase": .enumStrings(["launch", "preparing", "running", "finalizing", "reviewing"]),
@@ -211,11 +267,21 @@ final class ExternalTelemetryPrivacyGate {
 
     private static let commonWorkflowRules: [String: PropertyRule] = [
         "workflow": .enumStrings(["live", "import", "record-review"]),
-        "analysis_mode": .enumStrings(["local", "byok-cloud", "disabled"]),
-        "phase": .enumStrings(["preparing", "running", "finalizing", "reviewing"]),
+        "analysis_mode": .enumStrings(["local", "cloud", "byok-cloud", "disabled"]),
+        "engine_class": .enumStrings(["local", "system", "remote"]),
+        "provider_class": .enumStrings(["local", "byok", "none", "managed"]),
+        "phase": .enumStrings(["launch", "preparing", "running", "finalizing", "analysis", "reviewing", "exporting"]),
         "outcome": .enumStrings(["succeeded", "failed", "cancelled"]),
+        "error_code": .enumStrings(["configuration", "permission-denied", "runtime-unavailable", "provider-unavailable", "storage", "unknown"]),
+        "error_category": .enumStrings(["configuration", "permission", "runtime", "storage", "unknown"]),
+        "recovery_action": .enumStrings(["retry", "open-settings", "restart", "none"]),
+        "recovery_result": .enumStrings(["succeeded", "failed", "not-attempted"]),
         "duration_bucket_ms": .enumIntegers([1_000, 5_000, 15_000, 30_000, 60_000, 300_000, 900_000, 1_800_000, 3_600_000]),
+        "latency_bucket_ms": .enumIntegers([100, 250, 500, 1_000, 5_000, 15_000, 30_000, 60_000, 300_000]),
+        "attempt_sequence": .boundedInteger(1 ... 10_000),
+        "retry_count": .boundedInteger(0 ... 10),
         "result_count": .boundedInteger(0 ... 10_000),
+        "module_count": .boundedInteger(0 ... 100),
         "quality_score": .boundedNumber(0 ... 1),
         "recovered": .boolean,
     ]
@@ -268,6 +334,8 @@ final class ExternalTelemetryPrivacyGate {
     private let revocationKey = "insightkit.external-telemetry.revoked.v1"
     private let disableEvidenceFallbackKey = "insightkit.external-telemetry.disable-evidence-fallback.v1"
     private var appSessionID: String
+    private let sequenceLock = NSLock()
+    private var nextEventSequence = 0
 
     private let diagnosticsLock = NSLock()
     private var diagnostics = LocalDiagnostics()
@@ -532,7 +600,7 @@ final class ExternalTelemetryPrivacyGate {
         }
         let queueFileDeleted: Bool
         do {
-            try removeQueuedItems()
+            try removeAllQueuedItems()
             queueFileDeleted = true
         } catch {
             queueFileDeleted = false
@@ -573,10 +641,32 @@ final class ExternalTelemetryPrivacyGate {
     }
 
     private func removeQueuedItems() throws {
-        if FileManager.default.fileExists(atPath: queueURL.path) {
+        let manager = FileManager.default
+        if manager.fileExists(atPath: queueURL.path) {
             try removeItem(queueURL)
         }
-        guard !FileManager.default.fileExists(atPath: queueURL.path) else {
+        guard !manager.fileExists(atPath: queueURL.path) else {
+            throw PurgeError.queueStillPresent
+        }
+    }
+
+    private func removeAllQueuedItems() throws {
+        let manager = FileManager.default
+        var queueURLs = [queueURL]
+        if let enumerator = manager.enumerator(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in enumerator where
+                url.lastPathComponent == queueURL.lastPathComponent && url != queueURL {
+                queueURLs.append(url)
+            }
+        }
+        for url in queueURLs where manager.fileExists(atPath: url.path) {
+            try removeItem(url)
+        }
+        guard queueURLs.allSatisfy({ !manager.fileExists(atPath: $0.path) }) else {
             throw PurgeError.queueStillPresent
         }
     }
@@ -636,6 +726,7 @@ final class ExternalTelemetryPrivacyGate {
             consentVersion: activeConsent.version,
             installationID: _installationID,
             appSessionID: appSessionID,
+            eventSequence: allocateEventSequence(),
             properties: properties
         )
 
@@ -749,6 +840,25 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
+    /// Removes only the exact, already-uploaded prefix. Newer offline events remain queued.
+    func acknowledgeUploadedEnvelopes(_ uploaded: [Data]) throws -> Bool {
+        guard !uploaded.isEmpty else { return false }
+        let admission = observeConsent()
+        guard admission.consent.isEnabled else { return false }
+        return try Self.persistenceQueue.sync {
+            let currentConsent = observeConsent()
+            Self.stateLock.lock()
+            let remainsAuthorized = admission.generation == Self.consentGeneration
+            Self.stateLock.unlock()
+            guard remainsAuthorized, currentConsent.consent == admission.consent else { return false }
+            let current = try readQueueWithoutExpiry()
+            let encoded = try current.map { try encoder.encode($0) }
+            guard encoded.starts(with: uploaded) else { return false }
+            try persistEncrypted(Array(current.dropFirst(uploaded.count)))
+            return true
+        }
+    }
+
     private static func isValidAppVersion(_ value: String) -> Bool {
         value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?$"#, options: .regularExpression) != nil
     }
@@ -760,9 +870,16 @@ final class ExternalTelemetryPrivacyGate {
     private func readQueueWithoutExpiry() throws -> [Envelope] {
         guard FileManager.default.fileExists(atPath: queueURL.path) else { return [] }
         guard let keyData = try readQueueKey() else { return [] }
-        let sealed = try AES.GCM.SealedBox(combined: Data(contentsOf: queueURL))
-        let clear = try AES.GCM.open(sealed, using: SymmetricKey(data: keyData))
-        return try decoder.decode([Envelope].self, from: clear)
+        let data = try Data(contentsOf: queueURL)
+        do {
+            let sealed = try AES.GCM.SealedBox(combined: data)
+            let clear = try AES.GCM.open(sealed, using: SymmetricKey(data: keyData))
+            return try decoder.decode([Envelope].self, from: clear)
+        } catch {
+            try removeQueuedItems()
+            mutateDiagnostics { $0.rejected += 1 }
+            return []
+        }
     }
 
     private func loadAndExpireQueue() throws -> [Envelope] {
@@ -823,11 +940,20 @@ final class ExternalTelemetryPrivacyGate {
               envelope.consentVersion == readConsent().version,
               envelope.installationID == _installationID,
               UUID(uuidString: envelope.appSessionID) != nil,
+              envelope.eventSequence >= 0,
               envelope.timestampUTC <= now(),
               let rules = Self.schemaV1[envelope.eventName],
               Set(envelope.properties.keys).isSubset(of: Set(rules.keys))
         else { return false }
         return envelope.properties.allSatisfy { rules[$0.key]?.accepts($0.value) == true }
+    }
+
+    private func allocateEventSequence() -> Int {
+        sequenceLock.lock()
+        nextEventSequence += 1
+        let value = nextEventSequence
+        sequenceLock.unlock()
+        return value
     }
 
     private func mutateDiagnostics(_ mutation: (inout LocalDiagnostics) -> Void) {

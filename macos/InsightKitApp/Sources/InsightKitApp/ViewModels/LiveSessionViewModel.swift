@@ -428,6 +428,9 @@ final class LiveSessionViewModel: ObservableObject {
                 ])
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
+                let analyticsPath = ProductAnalyticsPath(
+                    providers: try? self.rpcClient.providersStatus(probeActive: false)
+                )
                 self.updateMain {
                     self.captureState = .warmingModel
                     self.liveWarmup = LiveWarmupSnapshot(
@@ -453,6 +456,9 @@ final class LiveSessionViewModel: ObservableObject {
                                 throw NSError(domain: "InsightKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "缺少系统音频源"])
                             }
                             try await self.systemAudioCapture.start(sourceID: sourceID)
+                        }
+                        ProductAnalytics.submit {
+                            $0.beginWorkflow("live", provisionalPath: analyticsPath)
                         }
                         self.startVisualRecordingIfNeeded(meetingID: meetingID)
                         self.permissionState = .granted
@@ -595,6 +601,8 @@ final class LiveSessionViewModel: ObservableObject {
 
         rpcQueue.async { [weak self] in
             guard let self else { return }
+            ProductAnalytics.submit { $0.recoveryAttempted("live", phase: "analysis") }
+            var analysisStartedAt: UInt64?
             do {
                 try self.sidecarManager.startIfNeeded(ensureReady: { [weak self] in
                     guard let self else { return }
@@ -609,8 +617,12 @@ final class LiveSessionViewModel: ObservableObject {
                     )
                     try self.replaceRuntimeTranscript(meetingID: buildTargetID, segments: mediaSegments)
                 }
+                let startedAt = DispatchTime.now().uptimeNanoseconds
+                analysisStartedAt = startedAt
                 let result = try self.rpcClient.buildFinal(meetingID: buildTargetID)
-                self.updateWorkbench(result)
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000)
+                self.updateWorkbench(result, analyticsLatencyMilliseconds: analysisLatencyMS)
+                ProductAnalytics.submit { $0.recoveryCompleted("live", phase: "analysis", succeeded: true) }
                 self.updateMain {
                     self.lastInsightPackage = result.package
                     self.captureState = .idle
@@ -618,6 +630,18 @@ final class LiveSessionViewModel: ObservableObject {
                 }
                 self.saveToRecords(meetingID: buildTargetID, insightPackageOverride: result.package)
             } catch {
+                let analysisLatencyMS = analysisStartedAt.map {
+                    Int((DispatchTime.now().uptimeNanoseconds - $0) / 1_000_000)
+                }
+                ProductAnalytics.submit {
+                    $0.workflowFailed(
+                        "live",
+                        phase: "analysis",
+                        errorCode: "unknown",
+                        recoveryAction: "retry",
+                        analysisLatencyMilliseconds: analysisLatencyMS
+                    )
+                }
                 self.updateMain {
                     if self.captureState == .refreshing {
                         self.captureState = .idle
@@ -629,6 +653,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func exportDocument(format: String = "markdown") {
+        ProductAnalytics.submit { $0.exportAttempted("live") }
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -642,6 +667,13 @@ final class LiveSessionViewModel: ObservableObject {
                 ) {
                     self.updateMain {
                         self.lastExportPath = url.path
+                        let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
+                        let duration = self.recordingDuration
+                        let hasBlockingError = self.errorMessage != nil
+                        ProductAnalytics.submit { analytics in
+                            analytics.exportCompleted("live")
+                            analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
+                        }
                     }
                     return
                 }
@@ -653,8 +685,18 @@ final class LiveSessionViewModel: ObservableObject {
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
                 self.updateMain {
                     self.lastExportPath = result.path
+                    let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
+                    let duration = self.recordingDuration
+                    let hasBlockingError = self.errorMessage != nil
+                    ProductAnalytics.submit { analytics in
+                        analytics.exportCompleted("live")
+                        analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
+                    }
                 }
             } catch {
+                ProductAnalytics.submit { analytics in
+                    analytics.workflowFailed("live", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
+                }
                 self.publishError(error)
             }
         }

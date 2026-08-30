@@ -1,0 +1,33 @@
+-- query_version: 1; event_schema_version: 1
+WITH eligible AS (
+ SELECT * FROM events WHERE schema_version=1 AND environment=:environment
+ AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
+), diagnostics AS (
+ SELECT SUM(CASE WHEN schema_version<>1 THEN 1 ELSE 0 END) unknown_schema,
+ SUM(CASE WHEN event_sequence IS NULL OR event_sequence<=0 THEN 1 ELSE 0 END) missing_event_sequence,
+ SUM(CASE WHEN event_name IN ('workflow_started','workflow_completed')
+          AND (attempt_sequence IS NULL OR attempt_sequence<=0) THEN 1 ELSE 0 END) missing_attempt_sequence,
+ SUM(CASE WHEN event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed') THEN 1 ELSE 0 END) unknown_event,
+ SUM(CASE WHEN workflow IS NOT NULL AND workflow NOT IN ('live','import') THEN 1 ELSE 0 END) unknown_workflow,
+ SUM(CASE WHEN analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud') THEN 1 ELSE 0 END) unknown_analysis_mode,
+ SUM(CASE WHEN provider_class IS NOT NULL AND provider_class NOT IN ('local','byok','none') THEN 1 ELSE 0 END) unknown_provider_class,
+ SUM(CASE WHEN phase IS NOT NULL AND phase NOT IN ('preparing','running','finalizing','analysis','reviewing','exporting') THEN 1 ELSE 0 END) unknown_phase,
+ SUM(CASE WHEN outcome IS NOT NULL AND outcome NOT IN ('succeeded','failed','cancelled') THEN 1 ELSE 0 END) unknown_outcome,
+ SUM(CASE WHEN error_code IS NOT NULL AND error_code NOT IN ('configuration','permission-denied','runtime-unavailable','provider-unavailable','storage','unknown') THEN 1 ELSE 0 END) unknown_error_code,
+ SUM(CASE WHEN recovery_action IS NOT NULL AND recovery_action NOT IN ('retry','open-settings','restart','none') THEN 1 ELSE 0 END) unknown_recovery_action,
+ SUM(CASE WHEN retry_count NOT BETWEEN 0 AND 10 OR result_count NOT BETWEEN 0 AND 10000 OR module_count NOT BETWEEN 0 AND 100 OR quality_score NOT BETWEEN 0 AND 1 THEN 1 ELSE 0 END) out_of_bounds,
+ SUM(CASE WHEN duration_bucket_ms IS NOT NULL AND duration_bucket_ms NOT IN (1000,5000,15000,30000,60000,300000,900000,1800000,3600000) THEN 1 ELSE 0 END) unknown_duration_bucket,
+ SUM(CASE WHEN latency_bucket_ms IS NOT NULL AND latency_bucket_ms NOT IN (100,250,500,1000,5000,15000,30000,60000,300000) THEN 1 ELSE 0 END) unknown_latency_bucket,
+ SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') AND provider_class IS NULL THEN 1
+          WHEN event_name='workflow_completed' AND latency_bucket_ms IS NULL THEN 1 ELSE 0 END) missing_terminal_dimensions
+ FROM events WHERE environment=:environment AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
+), duplicates AS (
+ SELECT (SELECT COUNT(*) FROM (
+  SELECT app_session_id,workflow,attempt_sequence FROM eligible WHERE attempt_sequence>0
+  GROUP BY app_session_id,workflow,attempt_sequence
+  HAVING SUM(event_name='workflow_started')>0 AND (SUM(event_name='workflow_started')<>1 OR SUM(event_name='workflow_completed')>1)
+ )) + (SELECT COUNT(*) FROM eligible WHERE event_name='workflow_completed' AND (attempt_sequence IS NULL OR attempt_sequence<=0)) duplicate_attempt_groups
+)
+SELECT diagnostics.*,duplicate_attempt_groups,
+ CASE WHEN unknown_schema+missing_event_sequence+missing_attempt_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+duplicate_attempt_groups=0 THEN 'complete' ELSE 'incomplete' END evidence_state
+FROM diagnostics CROSS JOIN duplicates;

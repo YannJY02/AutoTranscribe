@@ -62,6 +62,12 @@ extension LiveSessionViewModel {
                     presentationStatus: capturedPresentationStatus
                 ))
                 let recordPath = outcome.recordPath
+                ProductAnalytics.submit { analytics in
+                    analytics.recordSaved(
+                        "live",
+                        path: ProductAnalyticsPath(provider: capturedAnalysisMeta?["provider"] as? String)
+                    )
+                }
                 if !recordPath.isEmpty {
                     self.copyCaptureTimelineSidecar(
                         from: capturedTimelineSidecarURL,
@@ -89,6 +95,9 @@ extension LiveSessionViewModel {
                     self.isFinalizingLiveSession = false
                 }
             } catch {
+                ProductAnalytics.submit { analytics in
+                    analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
+                }
                 self.updateMain {
                     self.isFinalizingLiveSession = false
                 }
@@ -193,6 +202,10 @@ extension LiveSessionViewModel {
         guard !path.isEmpty else { return }
         let recordPath = URL(fileURLWithPath: path)
         let duration = recordingDuration
+        ProductAnalytics.submit {
+            $0.workflowFailed("live", phase: "reviewing", errorCode: "storage", recoveryAction: "retry")
+            $0.recoveryAttempted("live", phase: "reviewing")
+        }
         updateMain {
             self.transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
         }
@@ -211,10 +224,16 @@ extension LiveSessionViewModel {
                         ? "逐字稿已恢复；现有智能纪要仍保留，但可能需要重新生成以匹配新逐字稿。"
                         : "逐字稿已恢复。"
                     self.recordingStatusMessage = nil
+                    ProductAnalytics.submit {
+                        $0.recoveryCompleted("live", phase: "reviewing", succeeded: true)
+                    }
                 }
             } catch {
                 self.updateMain {
                     self.transcriptRecoveryStatusMessage = "逐字稿恢复失败：\(error.localizedDescription)"
+                    ProductAnalytics.submit {
+                        $0.recoveryCompleted("live", phase: "reviewing", succeeded: false)
+                    }
                 }
             }
         }

@@ -3,6 +3,492 @@ import CryptoKit
 @testable import InsightKitApp
 
 final class ExternalTelemetryPrivacyGateTests: XCTestCase {
+    private final class SuccessfulTransport: ProductAnalyticsTransport {
+        let sent = XCTestExpectation(description: "sent")
+        private(set) var envelopes: [Data] = []
+        func send(envelopes: [Data], completion: @escaping (Bool) -> Void) {
+            self.envelopes = envelopes
+            sent.fulfill()
+            completion(true)
+        }
+        func cancelAll() {}
+    }
+
+    private final class DelayedTransport: ProductAnalyticsTransport {
+        let sent = XCTestExpectation(description: "sent")
+        private(set) var sendCount = 0
+        private(set) var cancelled = false
+        private var completion: ((Bool) -> Void)?
+        func send(envelopes: [Data], completion: @escaping (Bool) -> Void) {
+            sendCount += 1; self.completion = completion
+            if sendCount == 1 { sent.fulfill() }
+        }
+        func cancelAll() { cancelled = true }
+        func complete(_ success: Bool) { completion?(success) }
+    }
+
+    func testProductAnalyticsAllowsOnlyOneBatchInFlightAndCancelsBeforeOptOutPurge() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let transport = DelayedTransport()
+        let analytics = ProductAnalytics(gate: gate, transport: transport)
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live"]), .accepted)
+        XCTAssertEqual(analytics.emit("record_saved", properties: ["workflow": "live"]), .accepted)
+        wait(for: [transport.sent], timeout: 2)
+
+        XCTAssertEqual(transport.sendCount, 1)
+        try analytics.setConsent(enabled: false)
+        XCTAssertTrue(transport.cancelled)
+        transport.complete(true)
+        XCTAssertEqual(try gate.queuedEnvelopes(), [])
+    }
+
+    func testUnifiedConsentRevocationPurgesProductAndSentryQueues() throws {
+        let productGate = makeGate(storageDirectory: root)
+        let sentryRoot = root.appendingPathComponent("Sentry", isDirectory: true)
+        let sentryGate = makeGate(storageDirectory: sentryRoot)
+        try productGate.setConsent(enabled: true, consentVersion: 1)
+        XCTAssertEqual(productGate.record(event: validEvent()).result, .accepted)
+        XCTAssertEqual(sentryGate.record(event: .init(name: "app_crashed", properties: [
+            "error_category": "runtime", "phase": "running",
+        ])).result, .accepted)
+        XCTAssertEqual(try productGate.queuedEnvelopes().count, 1)
+        XCTAssertEqual(try sentryGate.queuedEnvelopes().count, 1)
+        let revoked = expectation(description: "all external telemetry transports notified")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .externalTelemetryConsentWillRevoke,
+            object: nil,
+            queue: nil
+        ) { _ in revoked.fulfill() }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        try ProductAnalytics(gate: productGate).setConsent(enabled: false)
+
+        wait(for: [revoked], timeout: 1)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("external-telemetry-queue-v1.json").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: sentryRoot.appendingPathComponent("external-telemetry-queue-v1.json").path
+        ))
+    }
+
+    func testWorkflowCompletionRequiresEveryDeterministicMeetingAssetCriterion() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowCompleted("live", evaluation: .evaluate(
+            recordPath: nil, duration: 0, exportCompleted: true, hasBlockingError: false
+        ))
+        let objects = try queuedObjects(gate)
+        XCTAssertEqual(objects.map { $0["event_name"] as? String }, ["workflow_started"])
+    }
+
+    func testLocalEvidenceLedgerStoresOnlyAggregateCounts() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("ledger.json")
+        let analytics = ProductAnalytics(gate: gate, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
+        let deadline = Date().addingTimeInterval(2)
+        while !FileManager.default.fileExists(atPath: ledgerURL.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
+        let data = try Data(contentsOf: ledgerURL)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("workflow_started|live|local"))
+        XCTAssertFalse(text.contains("installation_id"))
+        XCTAssertFalse(text.contains("app_session_id"))
+        let first = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(first["window_start"])
+        XCTAssertNotNil(first["window_end"])
+        XCTAssertEqual(first["offline_pending"] as? Int, 1)
+
+        let reloaded = ProductAnalyticsEvidenceLedger(url: ledgerURL)
+        let envelope = try XCTUnwrap(gate.record(event: .init(name: "workflow_started", properties: ["workflow": "live", "analysis_mode": "local"])).debugEnvelope)
+        reloaded.record(envelope)
+        var reloadedCount = 0
+        while Date() < deadline {
+            if let latest = try? JSONSerialization.jsonObject(with: Data(contentsOf: ledgerURL)) as? [String: Any],
+               let counts = latest["event_counts"] as? [String: Int] {
+                reloadedCount = counts["workflow_started|live|local"] ?? 0
+                if reloadedCount == 2 { break }
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(reloadedCount, 2)
+    }
+
+    func testConcurrentLedgerAdmissionCannotOverwriteOptOutState() throws {
+        let gate = makeGate(maxQueueItems: 100)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("concurrent-ledger.json")
+        let analytics = ProductAnalytics(gate: gate, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
+        let group = DispatchGroup()
+        for _ in 0..<20 {
+            group.enter()
+            DispatchQueue.global().async {
+                _ = analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"])
+                group.leave()
+            }
+        }
+        try analytics.setConsent(enabled: false)
+        XCTAssertEqual(group.wait(timeout: .now() + 2), .success)
+
+        let deadline = Date().addingTimeInterval(2)
+        var manifest: [String: Any] = [:]
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: ledgerURL),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               value["opted_out"] as? Bool == true {
+                manifest = value
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(manifest["opted_out"] as? Bool, true)
+        XCTAssertEqual(manifest["offline_pending"] as? Int, 0)
+    }
+
+    func testLedgerAcknowledgementPreservesNewerPendingAdmission() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("ack-ledger.json")
+        let transport = DelayedTransport()
+        let analytics = ProductAnalytics(
+            gate: gate, transport: transport,
+            ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL)
+        )
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live"]), .accepted)
+        wait(for: [transport.sent], timeout: 2)
+        XCTAssertEqual(analytics.emit("record_saved", properties: ["workflow": "live"]), .accepted)
+        transport.complete(true)
+
+        let deadline = Date().addingTimeInterval(2)
+        var pending = -1
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: ledgerURL),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                pending = value["offline_pending"] as? Int ?? -1
+                if pending == 1 { break }
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(pending, 1)
+    }
+
+    func testLedgerRemainsPendingWhenUploadedQueueAcknowledgementCannotPersist() throws {
+        let writes = LockedValue(0)
+        let gate = makeGate(writeData: { data, url in
+            let attempt = writes.withValue { value -> Int in value += 1; return value }
+            if attempt >= 2 { throw CocoaError(.fileWriteNoPermission) }
+            try data.write(to: url, options: .atomic)
+        })
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("failed-ack-ledger.json")
+        let transport = SuccessfulTransport()
+        let analytics = ProductAnalytics(gate: gate, transport: transport, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live"]), .accepted)
+        wait(for: [transport.sent], timeout: 2)
+
+        let deadline = Date().addingTimeInterval(2)
+        var pending = -1
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: ledgerURL),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                pending = value["offline_pending"] as? Int ?? -1
+                if pending == 1 { break }
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(pending, 1)
+        XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
+    }
+
+    func testProductAnalyticsFlushesAcceptedEnvelopeAndAcknowledgesIt() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let transport = SuccessfulTransport()
+        let analytics = ProductAnalytics(gate: gate, transport: transport)
+
+        XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
+        wait(for: [transport.sent], timeout: 2)
+        let deadline = Date().addingTimeInterval(2)
+        while !(try gate.queuedEnvelopes()).isEmpty, Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
+
+        XCTAssertEqual(transport.envelopes.count, 1)
+        XCTAssertEqual(try gate.queuedEnvelopes(), [])
+    }
+
+    func testProductAnalyticsV1AcceptsExactCustomEventFamily() throws {
+        let gate = makeGate(maxQueueItems: 11)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let names = [
+            "workflow_started", "record_saved", "record_reopened",
+            "transcript_search_completed", "smart_minutes_review_opened",
+            "export_completed", "workflow_completed", "workflow_failed",
+            "recovery_attempted", "recovery_completed", "telemetry_consent_changed",
+        ]
+
+        for name in names {
+            let properties: [String: Any] = name == "telemetry_consent_changed"
+                ? ["telemetry_enabled": true]
+                : ["workflow": "live", "analysis_mode": "cloud"]
+            XCTAssertEqual(analytics.emit(name, properties: properties), .accepted, name)
+        }
+        XCTAssertEqual(try gate.queuedEnvelopes().count, names.count)
+    }
+
+    func testCentralGateAcceptsSentryEventsButProductAnalyticsRejectsThem() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+
+        XCTAssertEqual(
+            gate.record(event: .init(name: "app_crashed", properties: [
+                "error_category": "runtime", "phase": "running",
+            ])).result,
+            .accepted
+        )
+        XCTAssertEqual(
+            analytics.emit("app_crashed", properties: [
+                "error_category": "runtime", "phase": "running",
+            ]),
+            .rejected
+        )
+        for name in ["$pageview", "$autocapture"] {
+            XCTAssertEqual(gate.record(event: .init(name: name, properties: [:])).result, .rejected, name)
+        }
+    }
+
+    func testResolvedAttemptUsesActualPathAndEmitsOneCompletionAcrossRepeatedExports() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let analytics = ProductAnalytics(gate: gate, now: { clock })
+        analytics.beginWorkflow(
+            "live",
+            provisionalPath: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+        )
+        analytics.resolveWorkflow("live", path: .local, analysisLatencyMilliseconds: 2_500)
+        analytics.recordSaved("live")
+        analytics.reviewOpened("live")
+        clock = clock.addingTimeInterval(3)
+        analytics.exportCompleted("live")
+        analytics.workflowCompleted("live", evaluation: MeetingAssetWorkflowSuccess(
+            recordReopenable: true,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        ))
+        analytics.exportCompleted("live")
+        analytics.workflowCompleted("live", evaluation: MeetingAssetWorkflowSuccess(
+            recordReopenable: true,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        ))
+
+        let objects = try gate.queuedEnvelopes().map {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])
+        }
+        let workflowEvents = objects.filter { ($0["event_name"] as? String) != "telemetry_consent_changed" }
+        let started = try XCTUnwrap(workflowEvents.first { $0["event_name"] as? String == "workflow_started" })
+        XCTAssertEqual((started["properties"] as? [String: Any])?["analysis_mode"] as? String, "cloud")
+        XCTAssertTrue(workflowEvents.filter { $0["event_name"] as? String != "workflow_started" }.allSatisfy {
+            let properties = $0["properties"] as? [String: Any]
+            return properties?["analysis_mode"] as? String == "local"
+                && properties?["provider_class"] as? String == "local"
+        })
+        let completions = objects.filter { $0["event_name"] as? String == "workflow_completed" }
+        XCTAssertEqual(completions.count, 1)
+        let terminal = try XCTUnwrap(completions.first?["properties"] as? [String: Any])
+        XCTAssertEqual(terminal["latency_bucket_ms"] as? Int, 5_000)
+        XCTAssertNotNil(terminal["duration_bucket_ms"])
+    }
+
+    func testRecordObservationUsesExplicitPersistedPathAfterFailedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow(
+            "import",
+            provisionalPath: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+        )
+        analytics.workflowFailed("import", phase: "analysis", errorCode: "provider-unavailable", recoveryAction: "none")
+        let record = ProductAnalyticsContext(workflow: "import", path: .local)
+        analytics.observeRecord(record)
+        analytics.exportCompleted("import", explicitPath: record.path)
+
+        let recordEvents = try queuedObjects(gate).filter {
+            ["record_reopened", "smart_minutes_review_opened", "export_completed"]
+                .contains($0["event_name"] as? String ?? "")
+        }
+        XCTAssertEqual(recordEvents.count, 3)
+        XCTAssertTrue(recordEvents.allSatisfy {
+            let properties = $0["properties"] as? [String: Any]
+            return properties?["analysis_mode"] as? String == "local"
+                && properties?["provider_class"] as? String == "local"
+        })
+    }
+
+    func testFailedExportRecoveryEmitsClosedFailedPair() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowFailed("live", phase: "exporting", errorCode: "storage", recoveryAction: "retry")
+        analytics.exportAttempted("live")
+        analytics.workflowFailed("live", phase: "exporting", errorCode: "storage", recoveryAction: "retry")
+
+        let events = try queuedObjects(gate)
+        let names = events.compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names.filter { $0 == "recovery_attempted" }.count, 1)
+        let completed = try XCTUnwrap(events.first { $0["event_name"] as? String == "recovery_completed" })
+        XCTAssertEqual((completed["properties"] as? [String: Any])?["outcome"] as? String, "failed")
+    }
+
+    func testAnalysisFailureUsesMeasuredProviderLatencyBucket() throws {
+        let gate = makeGate(maxQueueItems: 10)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow(
+            "import",
+            provisionalPath: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+        )
+        analytics.workflowFailed(
+            "import",
+            phase: "analysis",
+            errorCode: "unknown",
+            recoveryAction: "retry",
+            analysisLatencyMilliseconds: 2_500
+        )
+
+        let failure = try XCTUnwrap(queuedObjects(gate).first { $0["event_name"] as? String == "workflow_failed" })
+        XCTAssertEqual((failure["properties"] as? [String: Any])?["latency_bucket_ms"] as? Int, 5_000)
+    }
+
+    func testSameWorkflowCanTrackIndependentJobAttemptsWithoutUploadingJobKeys() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let first = ProductAnalyticsAttemptContext(workflow: "import")
+        let second = ProductAnalyticsAttemptContext(workflow: "import")
+
+        analytics.beginWorkflow(first, provisionalPath: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok"))
+        analytics.beginWorkflow(second, provisionalPath: .local)
+        analytics.workflowFailed(first, phase: "analysis", errorCode: "provider-unavailable", recoveryAction: "none")
+        analytics.recordSaved(second)
+        analytics.reviewOpened(second)
+        analytics.exportCompleted(second)
+        analytics.workflowCompleted(second, evaluation: MeetingAssetWorkflowSuccess(
+            recordReopenable: true,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        ))
+
+        let objects = try queuedObjects(gate)
+        let starts = objects.filter { $0["event_name"] as? String == "workflow_started" }
+        XCTAssertEqual(starts.compactMap { ($0["properties"] as? [String: Any])?["attempt_sequence"] as? Int }, [1, 2])
+        let failure = try XCTUnwrap(objects.first { $0["event_name"] as? String == "workflow_failed" })
+        XCTAssertEqual((failure["properties"] as? [String: Any])?["analysis_mode"] as? String, "cloud")
+        XCTAssertEqual((failure["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 1)
+        let completion = try XCTUnwrap(objects.first { $0["event_name"] as? String == "workflow_completed" })
+        XCTAssertEqual((completion["properties"] as? [String: Any])?["analysis_mode"] as? String, "local")
+        XCTAssertEqual((completion["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 2)
+        let serialized = String(data: try JSONSerialization.data(withJSONObject: objects), encoding: .utf8) ?? ""
+        XCTAssertFalse(serialized.contains("job_id"))
+        XCTAssertFalse(serialized.contains("meeting_id"))
+        XCTAssertFalse(serialized.contains("attempt_id"))
+    }
+
+    func testAttemptSequenceRemainsMonotonicAcrossConsentEpochsInOneAppSession() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow(ProductAnalyticsAttemptContext(workflow: "import"), provisionalPath: .local)
+        try analytics.setConsent(enabled: false)
+        try analytics.setConsent(enabled: true)
+        analytics.beginWorkflow(ProductAnalyticsAttemptContext(workflow: "import"), provisionalPath: .local)
+
+        let start = try XCTUnwrap(queuedObjects(gate).first { $0["event_name"] as? String == "workflow_started" })
+        XCTAssertEqual((start["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 2)
+    }
+
+    func testReopenedRecordRecoveryUsesOneNonPrivateAttemptOrdinal() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let context = ProductAnalyticsContext(workflow: "import", path: .local)
+        analytics.observeRecord(context)
+        analytics.workflowFailed(context, phase: "reviewing", errorCode: "storage", recoveryAction: "retry")
+        analytics.recoveryAttempted(context, phase: "reviewing")
+        analytics.recoveryCompleted(context, phase: "reviewing", succeeded: true)
+
+        let events = try queuedObjects(gate)
+        XCTAssertEqual(events.count, 5)
+        XCTAssertTrue(events.allSatisfy {
+            ($0["properties"] as? [String: Any])?["attempt_sequence"] as? Int == 1
+        })
+    }
+
+    func testConsentEpochClearsUnacceptedAndPriorWorkflowState() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        try analytics.setConsent(enabled: true)
+        analytics.workflowFailed("live", phase: "running", errorCode: "unknown", recoveryAction: "none")
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        try analytics.setConsent(enabled: false)
+        try analytics.setConsent(enabled: true)
+        analytics.workflowFailed("live", phase: "running", errorCode: "unknown", recoveryAction: "none")
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["telemetry_consent_changed"])
+    }
+
+    func testProductAnalyticsV1AcceptsApprovedLowCardinalityDimensions() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+
+        let outcome = analytics.emit("workflow_failed", properties: [
+            "workflow": "import", "analysis_mode": "local", "provider_class": "none",
+            "phase": "analysis", "outcome": "failed", "error_code": "provider-unavailable",
+            "recovery_action": "retry", "duration_bucket_ms": 5_000,
+            "latency_bucket_ms": 1_000, "retry_count": 1, "result_count": 3,
+            "module_count": 2,
+        ])
+
+        XCTAssertEqual(outcome, .accepted)
+    }
+
+    func testProductAnalyticsV1RejectsLegacyUnapprovedProperties() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        for property in ["error_category", "recovered"] {
+            XCTAssertEqual(analytics.emit("workflow_failed", properties: [property: true]), .rejected)
+        }
+    }
+
+    func testSuccessfulUploadAcknowledgesOnlyUploadedQueuePrefix() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        let uploaded = try gate.queuedEnvelopes()
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+
+        XCTAssertTrue(try gate.acknowledgeUploadedEnvelopes(uploaded))
+
+        XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
+    }
+
     private var suiteName = ""
     private var defaults: UserDefaults!
     private var root: URL!
@@ -49,13 +535,14 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(outcome.debugEnvelope)) as? [String: Any])
         XCTAssertEqual(Set(object.keys), [
             "schema_version", "event_name", "timestamp_utc", "app_version", "app_build",
-            "environment", "consent_version", "installation_id", "app_session_id", "properties",
+            "environment", "consent_version", "installation_id", "app_session_id", "event_sequence", "properties",
         ])
         XCTAssertEqual(object["schema_version"] as? Int, 1)
         XCTAssertEqual(object["event_name"] as? String, "workflow_completed")
         XCTAssertEqual(object["environment"] as? String, "development")
         XCTAssertEqual(object["installation_id"] as? String, "11111111-1111-4111-8111-111111111111")
         XCTAssertEqual(object["app_session_id"] as? String, "22222222-2222-4222-8222-222222222222")
+        XCTAssertEqual(object["event_sequence"] as? Int, 1)
         let properties = try XCTUnwrap(object["properties"] as? [String: Any])
         XCTAssertEqual(properties["workflow"] as? String, "import")
         XCTAssertEqual(properties["analysis_mode"] as? String, "local")
@@ -1946,6 +2433,12 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             "duration_bucket_ms": 5_000,
             "result_count": 3,
         ])
+    }
+
+    private func queuedObjects(_ gate: ExternalTelemetryPrivacyGate) throws -> [[String: Any]] {
+        try gate.queuedEnvelopes().map {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])
+        }
     }
 
     private func assertInvalidConsentTransitionCannotOverwriteNewerEnable(

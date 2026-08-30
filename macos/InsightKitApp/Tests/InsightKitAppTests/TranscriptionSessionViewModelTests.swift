@@ -3,6 +3,61 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
+    func testNewCompletionKeepsMeetingSelectionStableWhileAnotherJobIsActive() {
+        let rpc = RPCClientMock()
+        let completed = TranscriptionJob(
+            id: "job-a", meetingID: "meeting-a", sourcePath: "/tmp/a.wav", title: "a",
+            state: .completed, progress: 100, stage: "completed", error: "", reason: "",
+            startedAt: Date().addingTimeInterval(-10), endedAt: Date()
+        )
+        let active = TranscriptionJob(
+            id: "job-b", meetingID: "meeting-b", sourcePath: "/tmp/b.wav", title: "b",
+            state: .running, progress: 50, stage: "running", error: "", reason: "",
+            startedAt: Date(), endedAt: nil
+        )
+        rpc.transcriptionStatusStub = TranscriptionStatusResult(
+            watcher: .init(isRunning: true, dirs: ["/tmp"], queueSize: 1, activeJobID: active.id),
+            queue: [], activeJob: active,
+            lastCompleted: .init(job: completed, meetingID: completed.meetingID, segmentsCount: 1, updatedAt: Date()),
+            jobs: [active, completed]
+        )
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false
+        )
+
+        vm.refreshStatus()
+        let first = expectation(description: "new completion selected")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(vm.currentMeetingID, "meeting-a")
+            vm.refreshStatus()
+            first.fulfill()
+        }
+        wait(for: [first], timeout: 1)
+        let second = expectation(description: "completed selection remains stable")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(vm.currentMeetingID, "meeting-a")
+            second.fulfill()
+        }
+        wait(for: [second], timeout: 1)
+    }
+
+    func testAcceptedImportPublishesMeetingBeforeStatusRefreshSucceeds() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false
+        )
+
+        vm.importFile(path: "/tmp/input.wav")
+
+        let accepted = expectation(description: "accepted import state")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(vm.currentMeetingID, "m-1")
+            accepted.fulfill()
+        }
+        wait(for: [accepted], timeout: 1)
+    }
+
     func testPreemptForLiveCancelsRunningJobAndStopsWatcher() throws {
         let rpc = RPCClientMock()
         let vm = TranscriptionSessionViewModel(

@@ -62,7 +62,11 @@ struct TranscriptionWorkspaceView: View {
                     TranscriptStreamView(
                         searchText: $viewModel.searchText,
                         selectedEvidence: $viewModel.selectedEvidence,
-                        segments: viewModel.transcriptSegments
+                        segments: viewModel.transcriptSegments,
+                        analyticsContext: ProductAnalyticsContext(
+                            workflow: "import",
+                            path: ProductAnalyticsPath(provider: viewModel.metrics.provider)
+                        )
                     )
                 }
             }

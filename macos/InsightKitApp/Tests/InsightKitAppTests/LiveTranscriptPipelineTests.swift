@@ -51,7 +51,10 @@ final class LiveTranscriptPipelineTests: XCTestCase {
         runtime.transcribeResult = [makeDelta(text: "Refresh this live transcript delta.")]
         runtime.transcriptDeltaResult = 1
         runtime.refreshResult = makeRefreshResult(provider: "openai:gpt-4o-mini")
-        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
+        let pipeline = LiveTranscriptPipeline(
+            runtime: runtime,
+            clock: sequenceClock([1_000, 1_000.2, 1_000.3, 1_002.8])
+        )
 
         let outcome = try pipeline.process(
             chunk: makeChunk(index: 0),
@@ -64,6 +67,7 @@ final class LiveTranscriptPipelineTests: XCTestCase {
             return XCTFail("Expected refresh success")
         }
         XCTAssertEqual(result.provider, "openai:gpt-4o-mini")
+        XCTAssertEqual(outcome.analysisLatencyMs, 2_500)
         XCTAssertNil(outcome.analysisRuntimeState)
     }
 
@@ -283,6 +287,13 @@ private func makeDelta(
 
 private func fixedClock(_ timestamp: TimeInterval = 1_001) -> () -> Date {
     { Date(timeIntervalSince1970: timestamp) }
+}
+
+private func sequenceClock(_ timestamps: [TimeInterval]) -> () -> Date {
+    var values = timestamps.makeIterator()
+    return {
+        Date(timeIntervalSince1970: values.next()!)
+    }
 }
 
 private func makeRefreshResult(provider: String = "openai:gpt-4o-mini") -> InsightRefreshResult {

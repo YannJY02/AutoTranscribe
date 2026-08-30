@@ -41,6 +41,7 @@ struct SettingsView: View {
     @State private var savedFeedbackTask: Task<Void, Never>? = nil
 
     @State private var statusMessage: String = ""
+    @State private var telemetryEnabled = false
     @State private var isRunningTask = false
     @State private var providerProbeResult: ProviderProbeResult?
     @State private var providerProbeAt: Date?
@@ -99,6 +100,29 @@ struct SettingsView: View {
             vendorSection
             asrSection
             storageSection
+            Section("外部遥测") {
+                Toggle("共享匿名产品与诊断数据", isOn: Binding(
+                    get: { telemetryEnabled },
+                    set: { enabled in
+                        telemetryEnabled = enabled
+                        ExternalTelemetryConsentController.setEnabled(enabled) { result in
+                            DispatchQueue.main.async {
+                                switch result {
+                                case .success(let readback): telemetryEnabled = readback
+                                case .failure:
+                                    statusMessage = "外部遥测设置未能保存。"
+                                    ExternalTelemetryConsentController.read { readback in
+                                        DispatchQueue.main.async { telemetryEnabled = readback }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ))
+                Text("默认关闭。启用后，PostHog 接收匿名产品流程事件，Sentry 接收有界错误与发布诊断；两者只使用允许列表中的低基数属性，远端原始数据最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止两个通道、清除本地队列；远端删除仍需按服务端删除流程完成。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if !statusMessage.isEmpty {
                 Section {
@@ -125,6 +149,11 @@ struct SettingsView: View {
         .padding(16)
         .frame(minWidth: 600, idealWidth: 680)
         .onAppear {
+            ExternalTelemetryConsentController.read { enabled in
+                DispatchQueue.main.async {
+                    telemetryEnabled = enabled
+                }
+            }
             syncFromStore()
             Task {
                 try? await refreshASRRuntimeStatus()
