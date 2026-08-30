@@ -22,6 +22,26 @@ import subprocess
 import sys
 import time
 
+
+def process_group_has_live_members(process_group: int) -> bool:
+    states = subprocess.run(
+        ["ps", "-o", "state=", "-g", str(process_group)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if states.returncode == 0:
+        return any(
+            state.strip() and not state.lstrip().startswith("Z")
+            for state in states.stdout.splitlines()
+        )
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
 process = subprocess.Popen(sys.argv[2:], start_new_session=True)
 try:
     raise SystemExit(process.wait(timeout=int(sys.argv[1])))
@@ -38,9 +58,7 @@ except subprocess.TimeoutExpired:
     process.wait()
     group_wait_deadline = time.monotonic() + 1
     while time.monotonic() < group_wait_deadline:
-        try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
+        if not process_group_has_live_members(process.pid):
             break
         time.sleep(0.01)
     else:
