@@ -194,7 +194,7 @@ def test_manifest_rejects_bare_credential_field_names(tmp_path: Path, field: str
         manifest = Path(directory) / "proof.json"
         manifest.write_text(json.dumps({
             "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
-            field: "ghp_abcdefghijklmnopqrstuvwxyz012345",
+            field: "opaque-value",
         }))
         with pytest.raises(ValidationError, match="forbidden field"):
             EvidenceLedger(tmp_path / "ledger.json").collect_repository_manifest(
