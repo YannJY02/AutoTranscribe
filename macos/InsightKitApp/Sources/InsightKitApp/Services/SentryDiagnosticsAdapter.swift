@@ -5,6 +5,11 @@ import MachO
 /// configuration exists, a Sentry SDK transport. It receives only gate-approved JSON.
 protocol SentryDiagnosticsTransport {
     func send(envelope: Data, failureStack: [UInt64]) throws
+    func cancelAll()
+}
+
+extension SentryDiagnosticsTransport {
+    func cancelAll() {}
 }
 
 final class SentryDiagnosticsAdapter {
@@ -69,11 +74,21 @@ final class SentryDiagnosticsAdapter {
     private let transport: SentryDiagnosticsTransport
     private let deliveryQueue = DispatchQueue(label: "com.yannjy.insightkit.sentry-delivery", qos: .utility)
     private let deliverySlots = DispatchSemaphore(value: 8)
+    private var consentObserver: NSObjectProtocol?
 
     init(gate: ExternalTelemetryPrivacyGate, transport: SentryDiagnosticsTransport) {
         self.gate = gate
         self.transport = transport
+        consentObserver = NotificationCenter.default.addObserver(
+            forName: .externalTelemetryConsentWillRevoke,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in self?.transport.cancelAll() }
         deliveryQueue.async { [weak self] in self?.drainPersistedQueue() }
+    }
+
+    deinit {
+        if let consentObserver { NotificationCenter.default.removeObserver(consentObserver) }
     }
 
     @discardableResult
@@ -217,6 +232,9 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
     private let session: URLSession
     private let sessionStateLock = NSLock()
     private var deliveredSessionStarts: [String: String] = [:]
+    private let deliveryLock = NSLock()
+    private var cancellationGeneration: UInt64 = 0
+    private var activeTasks: [URLSessionDataTask] = []
 
     init(configuration: SentryRuntimeConfiguration, session: URLSession = .shared) {
         self.configuration = configuration
@@ -227,12 +245,28 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
         let request = try makeRequest(approvedEnvelope: approvedEnvelope, failureStack: failureStack)
         let finished = DispatchSemaphore(value: 0)
         let result = DeliveryResult()
-        let task = session.dataTask(with: request) { _, response, error in
+        deliveryLock.lock()
+        let generation = cancellationGeneration
+        deliveryLock.unlock()
+        var task: URLSessionDataTask!
+        task = session.dataTask(with: request) { _, response, error in
             defer { finished.signal() }
             result.setAccepted(
                 error == nil
                     && ((response as? HTTPURLResponse).map { (200 ..< 300).contains($0.statusCode) } ?? false)
             )
+        }
+        deliveryLock.lock()
+        guard generation == cancellationGeneration else {
+            deliveryLock.unlock()
+            throw TransportError.rejected
+        }
+        activeTasks.append(task)
+        deliveryLock.unlock()
+        defer {
+            deliveryLock.lock()
+            activeTasks.removeAll { $0 === task }
+            deliveryLock.unlock()
         }
         task.resume()
         guard finished.wait(timeout: .now() + 2) == .success else {
@@ -248,6 +282,15 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             deliveredSessionStarts[sessionID] = timestamp
             sessionStateLock.unlock()
         }
+    }
+
+    func cancelAll() {
+        deliveryLock.lock()
+        cancellationGeneration &+= 1
+        let tasks = activeTasks
+        activeTasks.removeAll()
+        deliveryLock.unlock()
+        tasks.forEach { $0.cancel() }
     }
 
     func makeRequest(approvedEnvelope: Data, failureStack: [UInt64]) throws -> URLRequest {

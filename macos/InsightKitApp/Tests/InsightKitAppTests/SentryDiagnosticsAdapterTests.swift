@@ -36,6 +36,10 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(object["app_version"] as? String, "1.2.3")
         XCTAssertEqual(object["app_build"] as? String, "71")
         XCTAssertEqual(object["environment"] as? String, "development")
+        let deadline = Date().addingTimeInterval(1)
+        while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
     }
 
@@ -47,6 +51,20 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.capture(.syntheticFailure), .disabled)
         XCTAssertFalse(transport.waitForEnvelope(timeout: 0.1))
         XCTAssertTrue(transport.envelopes.isEmpty)
+    }
+
+    func testUnifiedConsentRevocationCancelsInFlightSentryDelivery() throws {
+        let fixture = try Fixture()
+        let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
+        let transport = BlockingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: sentryGate, transport: transport)
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForAttempt())
+
+        try ProductAnalytics(gate: fixture.gate).setConsent(enabled: false)
+
+        XCTAssertTrue(transport.waitForCancellation())
+        XCTAssertTrue(try sentryGate.queuedEnvelopes().isEmpty)
     }
 
     func testExplicitDisablePurgesWithoutTelemetryEnvironment() throws {
@@ -322,6 +340,22 @@ private final class RecordingSentryTransport: SentryDiagnosticsTransport, @unche
     func waitForEnvelope(timeout: TimeInterval = 1) -> Bool {
         delivered.wait(timeout: .now() + timeout) == .success
     }
+}
+
+private final class BlockingSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
+    private let attempted = DispatchSemaphore(value: 0)
+    private let release = DispatchSemaphore(value: 0)
+    private let cancelled = DispatchSemaphore(value: 0)
+
+    func send(envelope: Data, failureStack: [UInt64]) throws {
+        attempted.signal()
+        _ = release.wait(timeout: .now() + 1)
+        throw CocoaError(.userCancelled)
+    }
+
+    func cancelAll() { cancelled.signal(); release.signal() }
+    func waitForAttempt() -> Bool { attempted.wait(timeout: .now() + 1) == .success }
+    func waitForCancellation() -> Bool { cancelled.wait(timeout: .now() + 0.1) == .success }
 }
 
 private struct ThrowingSentryTransport: SentryDiagnosticsTransport {

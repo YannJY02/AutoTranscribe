@@ -138,6 +138,7 @@ final class ExternalTelemetryPrivacyGate {
             schemaVersion: Int,
             eventName: String,
             timestampUTC: Date,
+            sessionStartedUTC: Date? = nil,
             appVersion: String,
             appBuild: String,
             environment: String,
@@ -150,6 +151,7 @@ final class ExternalTelemetryPrivacyGate {
             self.schemaVersion = schemaVersion
             self.eventName = eventName
             self.timestampUTC = timestampUTC
+            self.sessionStartedUTC = sessionStartedUTC
             self.appVersion = appVersion
             self.appBuild = appBuild
             self.environment = environment
@@ -165,6 +167,7 @@ final class ExternalTelemetryPrivacyGate {
             schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
             eventName = try container.decode(String.self, forKey: .eventName)
             timestampUTC = try container.decode(Date.self, forKey: .timestampUTC)
+            sessionStartedUTC = try container.decodeIfPresent(Date.self, forKey: .sessionStartedUTC)
             appVersion = try container.decode(String.self, forKey: .appVersion)
             appBuild = try container.decode(String.self, forKey: .appBuild)
             environment = try container.decode(String.self, forKey: .environment)
@@ -934,6 +937,7 @@ final class ExternalTelemetryPrivacyGate {
                 consentVersion: start.consentVersion,
                 installationID: start.installationID,
                 appSessionID: start.appSessionID,
+                eventSequence: start.eventSequence,
                 properties: ["session_status": .string(status)]
             )
             queue[index] = end
@@ -962,6 +966,7 @@ final class ExternalTelemetryPrivacyGate {
                     consentVersion: start.consentVersion,
                     installationID: start.installationID,
                     appSessionID: start.appSessionID,
+                    eventSequence: start.eventSequence,
                     properties: ["session_status": .string("abnormal")]
                 )
                 changed = true
