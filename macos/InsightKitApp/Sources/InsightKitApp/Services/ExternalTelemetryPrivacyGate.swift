@@ -30,6 +30,7 @@ struct ExternalTelemetryWorkflowFailureContext {
     let providerClass: ExternalTelemetryProviderClass
     let errorCategory: ExternalTelemetryErrorCategory
     let recoveryResult: ExternalTelemetryRecoveryResult
+    let failureStack: [UInt64]
 }
 
 struct ExternalTelemetryWorkflowRecoveryContext {
@@ -339,7 +340,7 @@ final class ExternalTelemetryPrivacyGate {
     private static let consentTransitionLock = NSLock()
     private static var consentGeneration: UInt64 = 0
     private static var completedRevocationEpoch: String?
-    private static var pendingPersistenceItems = 0
+    private static var pendingPersistenceItemsByQueue: [String: Int] = [:]
     private static var revocationTasks: [String: RevocationTask] = [:]
     static var revocationTaskCountForTesting: Int {
         stateLock.lock()
@@ -364,6 +365,7 @@ final class ExternalTelemetryPrivacyGate {
     private let onRevocationEpochRetired: () -> Void
     private let onEnableConsentPersisted: () -> Void
     private let queueURL: URL
+    private let persistenceQueueKey: String
     private let consentKey = "insightkit.external-telemetry.consent.v1"
     private let installationIDKey = "insightkit.external-telemetry.installation-id.v1"
     private let consentEpochKey = "insightkit.external-telemetry.consent-epoch.v1"
@@ -473,6 +475,7 @@ final class ExternalTelemetryPrivacyGate {
         self.onRevocationEpochRetired = onRevocationEpochRetired
         self.onEnableConsentPersisted = onEnableConsentPersisted
         queueURL = storageDirectory.appendingPathComponent("external-telemetry-queue-v1.json")
+        persistenceQueueKey = queueURL.standardizedFileURL.path
         disableEvidenceURL = storageDirectory.appendingPathComponent("external-telemetry-disable-evidence-v1.json")
         encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -816,18 +819,24 @@ final class ExternalTelemetryPrivacyGate {
             }
             return RecordOutcome(result: .disabled, debugEnvelope: nil)
         }
-        guard Self.pendingPersistenceItems < configuration.maxQueueItems else {
+        let pendingPersistenceItems = Self.pendingPersistenceItemsByQueue[persistenceQueueKey, default: 0]
+        guard pendingPersistenceItems < configuration.maxQueueItems else {
             Self.stateLock.unlock()
             mutateDiagnostics { $0.queueFull += 1 }
             return RecordOutcome(result: .queueFull, debugEnvelope: nil)
         }
         let generation = Self.consentGeneration
-        Self.pendingPersistenceItems += 1
+        Self.pendingPersistenceItemsByQueue[persistenceQueueKey] = pendingPersistenceItems + 1
         Self.stateLock.unlock()
         Self.persistenceQueue.async { [self] in
             defer {
                 Self.stateLock.lock()
-                Self.pendingPersistenceItems -= 1
+                let remaining = Self.pendingPersistenceItemsByQueue[persistenceQueueKey, default: 1] - 1
+                if remaining == 0 {
+                    Self.pendingPersistenceItemsByQueue.removeValue(forKey: persistenceQueueKey)
+                } else {
+                    Self.pendingPersistenceItemsByQueue[persistenceQueueKey] = remaining
+                }
                 Self.stateLock.unlock()
             }
             let persistenceObservation = observeConsent(.persistenceWorker)

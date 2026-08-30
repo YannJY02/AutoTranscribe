@@ -30,6 +30,7 @@ final class SentryDiagnosticsAdapter {
         let providerClass: ProviderClass
         let errorCategory: ErrorCategory
         let recoveryResult: RecoveryResult
+        let failureStack: [UInt64]
 
         // Deliberately accepted only so callers can hand the adapter vendor-shaped
         // failures. These prohibited fields are never inspected or serialized.
@@ -45,6 +46,7 @@ final class SentryDiagnosticsAdapter {
             providerClass: ProviderClass,
             errorCategory: ErrorCategory,
             recoveryResult: RecoveryResult,
+            failureStack: [UInt64] = Thread.callStackReturnAddresses.map(\.uint64Value),
             errorMessage: String? = nil,
             breadcrumbs: [String] = [],
             contexts: [String: Any] = [:],
@@ -56,6 +58,7 @@ final class SentryDiagnosticsAdapter {
             self.providerClass = providerClass
             self.errorCategory = errorCategory
             self.recoveryResult = recoveryResult
+            self.failureStack = failureStack
             self.errorMessage = errorMessage
             self.breadcrumbs = breadcrumbs
             self.contexts = contexts
@@ -157,7 +160,6 @@ final class SentryDiagnosticsAdapter {
 
     @discardableResult
     func capture(_ failure: Failure) -> ExternalTelemetryPrivacyGate.RecordResult {
-        let failureStack = Thread.callStackReturnAddresses.map(\.uint64Value)
         let outcome = gate.record(event: .init(name: "workflow_failed", properties: [
             "workflow": failure.workflow.rawValue,
             "phase": failure.phase.rawValue,
@@ -169,7 +171,7 @@ final class SentryDiagnosticsAdapter {
         guard outcome.result == .accepted, let envelope = outcome.debugEnvelope else {
             return outcome.result
         }
-        guard scheduleDelivery(envelope, failureStack: failureStack, acknowledge: true) else { return .queueFull }
+        guard scheduleDelivery(envelope, failureStack: failure.failureStack, acknowledge: true) else { return .queueFull }
         return outcome.result
     }
 
@@ -733,7 +735,8 @@ final class SentryDiagnosticsRuntime {
                 engineClass: context.engineClass,
                 providerClass: context.providerClass,
                 errorCategory: context.errorCategory,
-                recoveryResult: context.recoveryResult
+                recoveryResult: context.recoveryResult,
+                failureStack: context.failureStack
             ))
         case .recovery(let context):
             _ = adapter?.captureRecovery(context)

@@ -336,12 +336,19 @@ final class ProductAnalytics {
         label: "com.yannjy.insightkit.product-analytics-submission",
         qos: .utility
     )
+    private static let submissionFailureStackKey = DispatchSpecificKey<[UInt64]>()
 
     /// Resolves the runtime singleton away from the caller so Keychain, queue
     /// readback, and filesystem setup can never delay a product interaction.
-    static func submit(_ operation: @escaping (ProductAnalytics) -> Void) {
+    static func submit(
+        failureStack: [UInt64] = Thread.callStackReturnAddresses.map(\.uint64Value),
+        using analytics: ProductAnalytics? = nil,
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) {
         submissionQueue.async {
-            operation(shared)
+            submissionQueue.setSpecific(key: submissionFailureStackKey, value: failureStack)
+            defer { submissionQueue.setSpecific(key: submissionFailureStackKey, value: nil) }
+            operation(analytics ?? shared)
         }
     }
 
@@ -1043,7 +1050,9 @@ final class ProductAnalytics {
             engineClass: .local,
             providerClass: provider,
             errorCategory: category,
-            recoveryResult: recoveryResult
+            recoveryResult: recoveryResult,
+            failureStack: DispatchQueue.getSpecific(key: submissionFailureStackKey)
+                ?? Thread.callStackReturnAddresses.map(\.uint64Value)
         )
     }
 

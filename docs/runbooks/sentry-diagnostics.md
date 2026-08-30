@@ -28,9 +28,15 @@ timeout; rejection or unavailability cannot block or crash a workflow.
 
 Sentry uses its own encrypted queue under `InsightKit/Telemetry/Sentry`; shared
 consent and queue-key erasure still make one opt-out a cryptographic purge without
-letting Sentry consume product-analytics records. The app-level consent control is
+letting Sentry consume product-analytics records. Pending-write capacity is also
+counted per durable queue, so a saturated product-analytics queue cannot reject a
+Sentry diagnostic. The app-level consent control is
 delivered by YAN-54, so production opt-in remains blocked until that dependency is
 merged.
+
+Failure return addresses are captured at the workflow call site before the
+asynchronous product-analytics submission hop and forwarded without local variables,
+messages, paths, or other meeting content.
 
 The local lifecycle marker reports clean exits and abandoned sessions. It does not
 distinguish a crash from force-quit, so a vendor crash-free-rate claim remains

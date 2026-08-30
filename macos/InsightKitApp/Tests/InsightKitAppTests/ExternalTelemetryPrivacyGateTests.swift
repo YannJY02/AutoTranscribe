@@ -2246,6 +2246,42 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(try blockingGate.queuedEnvelopes().count, 2)
     }
 
+    func testPendingPersistenceCapacityIsIsolatedByDurableQueue() throws {
+        let productRoot = root.appendingPathComponent("ProductAnalytics", isDirectory: true)
+        let sentryRoot = root.appendingPathComponent("Sentry", isDirectory: true)
+        let productQueueURL = productRoot.appendingPathComponent("external-telemetry-queue-v1.json")
+        let persistenceStarted = expectation(description: "product persistence started")
+        let releasePersistence = DispatchSemaphore(value: 0)
+        defer { releasePersistence.signal() }
+        let productGate = makeGate(storageDirectory: productRoot, writeData: { data, url in
+            if url == productQueueURL {
+                persistenceStarted.fulfill()
+                releasePersistence.wait()
+            }
+            try data.write(to: url, options: .atomic)
+        })
+        try productGate.setConsent(enabled: true, consentVersion: 1)
+        XCTAssertEqual(productGate.record(event: validEvent()).result, .accepted)
+        wait(for: [persistenceStarted], timeout: 2)
+
+        let sentryGate = makeGate(maxQueueItems: 1, storageDirectory: sentryRoot)
+        XCTAssertEqual(sentryGate.record(event: .init(
+            name: "workflow_failed",
+            properties: [
+                "workflow": "live", "phase": "running", "engine_class": "local",
+                "provider_class": "none", "error_category": "runtime",
+                "recovery_result": "not-attempted",
+            ]
+        )).result, .accepted)
+
+        releasePersistence.signal()
+        let deadline = Date().addingTimeInterval(2)
+        while (try? sentryGate.queuedEnvelopes().count) != 1, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(try sentryGate.queuedEnvelopes().count, 1)
+    }
+
     func testRepeatedInvalidConsentCoalescesWhileRevocationPurgeIsBlocked() throws {
         let seed = makeGate()
         try seed.setConsent(enabled: true, consentVersion: 1)

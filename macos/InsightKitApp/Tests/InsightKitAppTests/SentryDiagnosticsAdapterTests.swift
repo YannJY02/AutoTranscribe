@@ -21,6 +21,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             providerClass: .none,
             errorCategory: .runtime,
             recoveryResult: .succeeded,
+            failureStack: [0x1111, 0x2222],
             errorMessage: "secret meeting words",
             breadcrumbs: ["/Users/person/private/meeting.m4a"],
             contexts: ["request": "Bearer sk-secret"],
@@ -29,6 +30,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
         XCTAssertEqual(result, .accepted)
         XCTAssertTrue(transport.waitForEnvelope())
+        XCTAssertEqual(transport.failureStacks, [[0x1111, 0x2222]])
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: transport.envelopes[0]) as? [String: Any])
         let properties = try XCTUnwrap(object["properties"] as? [String: Any])
         XCTAssertEqual(properties["workflow"] as? String, "live")
@@ -627,6 +629,34 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         _ = runtime
     }
 
+    func testWorkflowFailureCarriesOriginStackThroughRuntimeToTransport() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+        let runtime = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: fixture.gate,
+            transportOverride: transport
+        )
+        XCTAssertTrue(transport.waitForEnvelope())
+        let analytics = ProductAnalytics(gate: fixture.gate, onWorkflowSignal: runtime.capture)
+
+        ProductAnalytics.submit(failureStack: [0x1111, 0x2222], using: analytics) {
+            $0.workflowFailed(
+                "live",
+                phase: "running",
+                errorCode: "runtime-unavailable",
+                recoveryAction: "retry",
+                explicitPath: .local
+            )
+        }
+
+        XCTAssertTrue(transport.waitForEnvelope())
+        XCTAssertEqual(transport.failureStacks.last, [0x1111, 0x2222])
+    }
+
     func testHTTPTransportRejectsAfterCancellationUntilExplicitResume() throws {
         StubSentryURLProtocol.reset()
         let sessionConfiguration = URLSessionConfiguration.ephemeral
@@ -719,10 +749,12 @@ private final class RecordingSentryTransport: SentryDiagnosticsTransport, @unche
     private let lock = NSLock()
     private let delivered = DispatchSemaphore(value: 0)
     private(set) var envelopes: [Data] = []
+    private(set) var failureStacks: [[UInt64]] = []
 
     func send(envelope: Data, failureStack: [UInt64]) throws {
         lock.lock()
         envelopes.append(envelope)
+        failureStacks.append(failureStack)
         lock.unlock()
         delivered.signal()
     }
