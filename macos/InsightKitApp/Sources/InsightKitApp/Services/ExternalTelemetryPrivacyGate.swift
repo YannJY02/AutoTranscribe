@@ -918,12 +918,12 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
-    /// Readback for vendor delivery keeps this process's open session as a durable
-    /// crash marker. Prior sessions have already gained a paired terminal envelope.
+    /// Startup readback only replays prior sessions. Current-session events already
+    /// have a direct delivery scheduled by their capture path.
     func queuedEnvelopesForDelivery() throws -> [Data] {
         try queuedEnvelopes().filter { data in
             guard let envelope = try? decoder.decode(Envelope.self, from: data) else { return false }
-            return !(envelope.eventName == "release_session_started" && envelope.appSessionID == appSessionID)
+            return envelope.appSessionID != appSessionID
         }
     }
 

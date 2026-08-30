@@ -258,6 +258,17 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         _ = adapter
     }
 
+    func testStartupDrainDoesNotRaceCurrentProcessCaptureDelivery() throws {
+        let fixture = try makeFixture()
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "review_opened",
+            properties: ["workflow": "live", "phase": "reviewing"]
+        )).result, .accepted)
+
+        XCTAssertTrue(try fixture.gate.queuedEnvelopesForDelivery().isEmpty)
+        XCTAssertEqual(try fixture.restartedGate().queuedEnvelopesForDelivery().count, 1)
+    }
+
     func testClosingReleaseSessionNeverExceedsGateQueueBound() throws {
         let fixture = try makeFixture(maxQueueItems: 2)
         XCTAssertEqual(fixture.gate.record(event: .init(
