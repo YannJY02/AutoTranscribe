@@ -15,6 +15,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 from urllib.parse import urlsplit
 
+if __package__:
+    from .verify_secret_hygiene import SECRET_RULES
+else:
+    from verify_secret_hygiene import SECRET_RULES
+
 
 SCHEMA_VERSION = 1
 PROMOTION_CATEGORIES = frozenset({
@@ -70,6 +75,10 @@ def _canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
+def _contains_secret(value: str) -> bool:
+    return bool(SECRET.search(value) or any(rule.pattern.search(value) for rule in SECRET_RULES))
+
+
 def _reject_duplicate_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -92,7 +101,7 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
     if isinstance(value, dict):
         for key, child in value.items():
             key_text = str(key)
-            if PRIVATE_PATH.search(key_text) or SECRET.search(key_text):
+            if PRIVATE_PATH.search(key_text) or _contains_secret(key_text):
                 raise ValidationError(f"forbidden field at {path}")
             normalized_key = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", key_text)
             normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", normalized_key).replace("-", "_")
@@ -105,7 +114,7 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
     elif isinstance(value, str):
         if PRIVATE_PATH.search(value) and not redact_private_paths:
             raise ValidationError(f"private path rejected at {path}")
-        if SECRET.search(value):
+        if _contains_secret(value):
             raise ValidationError(f"secret-like value rejected at {path}")
 
 
@@ -596,6 +605,7 @@ class EvidenceLedger:
             raise ValidationError(f"Friday update is missing linked evidence: {', '.join(sorted(missing))}")
         if any(
             by_id[evidence_id]["source_type"] != "linear"
+            or by_id[evidence_id]["claim_class"] != "observed"
             or by_id[evidence_id]["result"] == "unobserved"
             or by_id[evidence_id]["revision"] == "unavailable"
             or _is_degraded(by_id[evidence_id])

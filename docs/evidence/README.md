@@ -35,7 +35,7 @@ The CLI reads a JSON array of typed `external-reference` adapter items and write
     "result": "passed",
     "claim_class": "observed",
     "promotion_category": "status",
-    "unknowns": ["direct-linear-fields-unobserved"]
+    "unknowns": []
   }
 ]
 ```

@@ -224,6 +224,34 @@ def test_manifest_rejects_secret_or_private_text_in_field_names(tmp_path: Path, 
         assert field not in str(error.value)
 
 
+@pytest.mark.parametrize("secret", [
+    "-----BEGIN " + "PRIVATE KEY-----",
+    "sk-" + "a" * 40,
+    "sk-" + "ant-" + "a" * 32,
+    "AI" + "za" + "A" * 35,
+    "gh" + "p_" + "A" * 36,
+    "hf_" + "A" * 30,
+    "sk_" + "live_" + "A" * 24,
+    "AK" + "IA" + "A" * 16,
+])
+def test_manifest_rejects_repository_secret_formats_in_values(tmp_path: Path, secret: str):
+    repository_root = Path(__file__).parents[1]
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
+        manifest = Path(directory) / "proof.json"
+        manifest.write_text(json.dumps({
+            "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+            "note": secret,
+        }))
+        with pytest.raises(ValidationError, match="secret-like value") as error:
+            EvidenceLedger(tmp_path / "ledger.json").collect_repository_manifest(
+                manifest, repository_ref=manifest.relative_to(repository_root).as_posix(),
+                source_id="harness-GH-68", lifecycle_stage="verification",
+                lifecycle_transition="full-harness-completed", environment="local-macos",
+                linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68", promotion_category="gate",
+            )
+        assert secret not in str(error.value)
+
+
 def test_manifest_rejects_duplicate_json_keys_before_privacy_scan(tmp_path: Path):
     repository_root = Path(__file__).parents[1]
     with tempfile.TemporaryDirectory(dir=repository_root) as directory:
@@ -371,6 +399,13 @@ def test_boolean_schema_versions_are_rejected(tmp_path: Path):
         })
 
 
+def test_readme_adapter_example_is_executable(tmp_path: Path):
+    readme = (Path(__file__).parents[1] / "docs/evidence/README.md").read_text()
+    example = readme.split("```json\n", 1)[1].split("\n```", 1)[0]
+    normalized = EvidenceLedger(tmp_path / "ledger.json").collect_adapter_items(json.loads(example))
+    assert len(normalized["records"]) == 1
+
+
 def test_repeated_feedback_requires_independent_runs_but_severe_event_routes_once(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     below = ledger.route_repeated_feedback(
@@ -433,6 +468,21 @@ def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
         unavailable_ledger.friday_update(
             "2026-W35", unavailable,
             live_linear_evidence_ids={unavailable_id}, linked_evidence_ids=set(),
+        )
+
+    inferred_ledger = EvidenceLedger(tmp_path / "inferred.json")
+    inferred = inferred_ledger._collect_normalized([
+        source(
+            source_type="linear", source_id="YAN-50",
+            source_ref="https://linear.app/yannjy/issue/YAN-50",
+            revision="linear-inference-1", claim_class="inference", promotion_category="status",
+        )
+    ])
+    inferred_id = inferred["records"][0]["evidence_id"]
+    with pytest.raises(ValidationError, match="live Linear evidence"):
+        inferred_ledger.friday_update(
+            "2026-W35", inferred,
+            live_linear_evidence_ids={inferred_id}, linked_evidence_ids=set(),
         )
 
 
