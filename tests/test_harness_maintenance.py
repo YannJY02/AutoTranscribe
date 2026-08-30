@@ -262,7 +262,9 @@ def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
     assert bootstraps == [(f"gui/{os.getuid()}", destination)]
 
 
-def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None, gh_body=None):
+def _fake_symphony_commands(
+    tmp_path, *, symphony_body=None, curl_body=None, gh_body=None, ps_body=None
+):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     commands = {
@@ -272,7 +274,9 @@ def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None, gh_
         ),
         "codex": (
             '#!/bin/sh\nif [ "${FAKE_CODEX_CHILD_IGNORES_TERM:-0}" = 1 ]; then '
-            "trap 'exit 0' TERM; (trap '' TERM; sleep 3) & wait; fi\n"
+            "trap 'exit 0' TERM; "
+            "sh -c 'trap \"\" TERM; printf \"%s\\n\" \"$$\" > \"$FAKE_CODEX_CHILD_PID_FILE\"; exec sleep 3' & "
+            "wait; fi\n"
             '[ "${FAKE_CODEX_IGNORE_ALARM:-0}" = 1 ] || { '
             '[ "${FAKE_CODEX_LOGIN_VALID:-1}" = 1 ] || exit 1; '
             'printf "%s\\n" "${FAKE_CODEX_LOGIN_STATUS:-Logged in using ChatGPT}" >&2; '
@@ -283,6 +287,8 @@ def _fake_symphony_commands(tmp_path, *, symphony_body=None, curl_body=None, gh_
         or '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
         "curl": curl_body or "#!/bin/sh\nexit 0\n",
     }
+    if ps_body is not None:
+        commands["ps"] = ps_body
     for name, body in commands.items():
         command = bin_dir / name
         command.write_text(body, encoding="utf-8")
@@ -297,6 +303,7 @@ def _run_test_symphony_launcher(
     symphony_body=None,
     curl_body=None,
     gh_body=None,
+    ps_body=None,
     **extra_env,
 ):
     root = tmp_path / "home"
@@ -309,6 +316,7 @@ def _run_test_symphony_launcher(
         symphony_body=symphony_body,
         curl_body=curl_body,
         gh_body=gh_body,
+        ps_body=ps_body,
     )
     repo = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
@@ -463,16 +471,41 @@ def test_symphony_launcher_force_stops_preflight_that_ignores_alarm(tmp_path):
 
 
 def test_symphony_launcher_force_stops_term_ignoring_preflight_descendant(tmp_path):
+    child_pid_file = tmp_path / "term-ignoring-child.pid"
     started_at = time.monotonic()
     completed, _root = _run_test_symphony_launcher(
         tmp_path,
         FAKE_CODEX_CHILD_IGNORES_TERM="1",
+        FAKE_CODEX_CHILD_PID_FILE=str(child_pid_file),
         SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
     )
 
     assert completed.returncode != 0
     assert time.monotonic() - started_at < 2.5
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
     assert "does not contain a valid ChatGPT login" in completed.stderr
+
+
+def test_symphony_launcher_treats_zombie_only_preflight_group_as_terminated(tmp_path):
+    ps_called = tmp_path / "ps-called"
+    started_at = time.monotonic()
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        FAKE_CODEX_CHILD_IGNORES_TERM="1",
+        FAKE_CODEX_CHILD_PID_FILE=str(tmp_path / "term-ignoring-child.pid"),
+        SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
+        ps_body=(
+            "#!/bin/sh\n"
+            f"printf 'called\\n' >> {shlex.quote(str(ps_called))}\n"
+            "printf 'Z\\n'\n"
+        ),
+    )
+
+    assert ps_called.read_text(encoding="utf-8").splitlines() == ["called"]
+    assert completed.returncode != 0
+    assert time.monotonic() - started_at < 2.5
 
 
 def test_symphony_agent_github_access_stays_outside_codex():
