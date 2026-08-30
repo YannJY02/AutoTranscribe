@@ -270,6 +270,42 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
     }
 
+    func testPriorSessionTerminalDoesNotClearCurrentStartDeduplication() throws {
+        let fixture = try makeFixture(maxQueueItems: 16)
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "release_session_started",
+            properties: ["session_status": "ok"]
+        )).result, .accepted)
+        _ = try XCTUnwrap(fixture.gate.closeReleaseSession(status: "exited"))
+        let currentGate = try fixture.restartedGate()
+        let transport = FailFirstThenPausingSuccessfulSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: currentGate, transport: transport)
+        XCTAssertTrue(transport.waitForFailedAttempt())
+
+        XCTAssertEqual(adapter.captureReleaseSession(.ok), .accepted)
+        XCTAssertTrue(transport.waitForDeliveries(1))
+        XCTAssertEqual(
+            adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+            .accepted
+        )
+        XCTAssertTrue(transport.waitForPausedAttempt())
+        for _ in 1 ..< 8 {
+            XCTAssertEqual(
+                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+                .accepted
+            )
+        }
+        XCTAssertEqual(
+            adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
+            .queueFull
+        )
+
+        transport.releasePausedAttempt()
+
+        XCTAssertTrue(transport.waitForDeliveries(10))
+        XCTAssertEqual(transport.eventNames.filter { $0 == "release_session_started" }.count, 1)
+    }
+
     func testNewAdapterReplaysGateAuthorizedEnvelopeAfterTransportFailure() throws {
         let fixture = try makeFixture()
         let failing = SignalingThrowingSentryTransport()
@@ -764,6 +800,51 @@ private final class PausingSuccessfulSentryTransport: SentryDiagnosticsTransport
     func waitForFirstAttempt() -> Bool { firstAttempt.wait(timeout: .now() + 1) == .success }
     func waitForSecondAttempt() -> Bool { secondAttempt.wait(timeout: .now() + 0.1) == .success }
     func releaseFirstAttempt() { releaseFirst.signal() }
+    func waitForDeliveries(_ count: Int) -> Bool {
+        (0 ..< count).allSatisfy { _ in delivered.wait(timeout: .now() + 1) == .success }
+    }
+}
+
+private final class FailFirstThenPausingSuccessfulSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var attemptCount = 0
+    private var recordedEnvelopes: [Data] = []
+    private let failedAttempt = DispatchSemaphore(value: 0)
+    private let pausedAttempt = DispatchSemaphore(value: 0)
+    private let releasePaused = DispatchSemaphore(value: 0)
+    private let delivered = DispatchSemaphore(value: 0)
+
+    var eventNames: [String] {
+        lock.lock()
+        let envelopes = recordedEnvelopes
+        lock.unlock()
+        return envelopes.compactMap {
+            (try? JSONSerialization.jsonObject(with: $0) as? [String: Any])?["event_name"] as? String
+        }
+    }
+
+    func send(envelope: Data, failureStack: [UInt64]) throws {
+        lock.lock()
+        attemptCount += 1
+        let attempt = attemptCount
+        lock.unlock()
+        if attempt == 1 {
+            failedAttempt.signal()
+            throw CocoaError(.fileWriteUnknown)
+        }
+        if attempt == 3 {
+            pausedAttempt.signal()
+            _ = releasePaused.wait(timeout: .now() + 1)
+        }
+        lock.lock()
+        recordedEnvelopes.append(envelope)
+        lock.unlock()
+        delivered.signal()
+    }
+
+    func waitForFailedAttempt() -> Bool { failedAttempt.wait(timeout: .now() + 1) == .success }
+    func waitForPausedAttempt() -> Bool { pausedAttempt.wait(timeout: .now() + 1) == .success }
+    func releasePausedAttempt() { releasePaused.signal() }
     func waitForDeliveries(_ count: Int) -> Bool {
         (0 ..< count).allSatisfy { _ in delivered.wait(timeout: .now() + 1) == .success }
     }
