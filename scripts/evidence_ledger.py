@@ -65,17 +65,17 @@ def _identifier(prefix: str, *parts: str) -> str:
     return f"{prefix}_v{SCHEMA_VERSION}_{digest}"
 
 
-def _walk(value: Any, path: str = "input") -> None:
+def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
             if str(key).casefold() in FORBIDDEN_FIELDS:
                 raise ValidationError(f"forbidden field: {path}.{key}")
-            _walk(child, f"{path}.{key}")
+            _walk(child, f"{path}.{key}", redact_private_paths=redact_private_paths)
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            _walk(child, f"{path}[{index}]")
+            _walk(child, f"{path}[{index}]", redact_private_paths=redact_private_paths)
     elif isinstance(value, str):
-        if PRIVATE_PATH.search(value):
+        if PRIVATE_PATH.search(value) and not redact_private_paths:
             raise ValidationError(f"private path rejected at {path}")
         if SECRET.search(value):
             raise ValidationError(f"secret-like value rejected at {path}")
@@ -350,7 +350,8 @@ class EvidenceLedger:
             raise ValidationError(f"manifest is unreadable or malformed: {error}") from error
         if not isinstance(payload, dict):
             raise ValidationError("manifest must be a JSON object")
-        _walk(payload, "manifest")
+        # Harness manifests include a local workspace field; it is deliberately omitted below.
+        _walk(payload, "manifest", redact_private_paths=True)
         result = str(payload.get("status", "unobserved"))
         if result not in SOURCE_RESULTS:
             result = "unobserved"

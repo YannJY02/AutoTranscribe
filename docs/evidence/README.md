@@ -11,7 +11,7 @@ The versioned record contract is [`evidence-record.schema.json`](./evidence-reco
 - `collect` is the shared normalization sink used by the named adapters. It enforces stable metadata identifier and revision syntax, source-specific inspectable-reference formats, bounded claim fields, and privacy rejection before persistence.
 - `collect_unavailable` converts a missing integration into an explicit `unobserved` record. It cannot produce a pass.
 
-Inputs containing transcript or meeting content, prompts, provider payloads, credential-like fields, secret-like strings, or private absolute paths are rejected before any write. Repository references reject URI schemes; external references require an inspectable HTTPS URL or repository artifact. Writers lock the ledger and atomically replace it after validating the whole batch.
+Inputs containing transcript or meeting content, prompts, provider payloads, credential-like fields, or secret-like strings are rejected before any write. Private paths are rejected from normalized inputs and deliberately omitted from repository manifests (including Harness `workspace`). Repository references reject URI schemes; external references require an inspectable HTTPS URL or repository artifact. Writers lock the ledger and atomically replace it after validating the whole batch.
 
 ## Dry-run handoff
 

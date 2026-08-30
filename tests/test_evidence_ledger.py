@@ -127,15 +127,20 @@ def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_pat
         )
     assert not ledger.path.exists()
 
-    manifest.write_text(json.dumps({"status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT}))
-    record = ledger.collect_repository_manifest(
+    manifest.write_text(json.dumps({
+        "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+        "workspace": "/Users/alice/private-workspace",
+    }))
+    normalized = ledger.collect_repository_manifest(
         manifest, repository_ref="logs/harness/GH-68/proof.json", source_id="harness-GH-68",
         lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
         environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
         promotion_category="gate",
-    )["records"][0]
+    )
+    record = normalized["records"][0]
     assert record["revision"] == "abc123"
     assert record["artifact_sha256"].startswith("sha256:")
+    assert "/Users/" not in json.dumps(normalized)
 
 
 def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path):
