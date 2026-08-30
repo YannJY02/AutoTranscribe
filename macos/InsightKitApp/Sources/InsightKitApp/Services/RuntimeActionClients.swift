@@ -224,7 +224,8 @@ final class InsightRuntimeActionRPCAdapter: RuntimeActionRPCAdapting {
             durationSec: request.durationSec,
             analysisMeta: request.analysisMeta,
             notesMD: request.notesMD,
-            presentationStatus: request.presentationStatus
+            presentationStatus: request.presentationStatus,
+            finalizationLeaseToken: request.finalizationLeaseToken
         )
     }
 
@@ -253,6 +254,7 @@ struct RecordSaveActionRequest {
     let analysisMeta: [String: Any]?
     let notesMD: String
     let presentationStatus: LivePresentationCaptureStatus?
+    let finalizationLeaseToken: String?
 
     init(
         meetingID: String,
@@ -265,7 +267,8 @@ struct RecordSaveActionRequest {
         durationSec: Double,
         analysisMeta: [String: Any]?,
         notesMD: String,
-        presentationStatus: LivePresentationCaptureStatus? = nil
+        presentationStatus: LivePresentationCaptureStatus? = nil,
+        finalizationLeaseToken: String? = nil
     ) {
         self.meetingID = meetingID
         self.title = title
@@ -278,6 +281,7 @@ struct RecordSaveActionRequest {
         self.analysisMeta = analysisMeta
         self.notesMD = notesMD
         self.presentationStatus = presentationStatus
+        self.finalizationLeaseToken = finalizationLeaseToken
     }
 }
 

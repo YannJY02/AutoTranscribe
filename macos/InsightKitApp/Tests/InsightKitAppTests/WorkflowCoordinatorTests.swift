@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import InsightKitApp
 
@@ -199,6 +200,140 @@ final class WorkflowCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(coordinator.livePhase, .livePostSession)
         XCTAssertFalse(coordinator.canStartLive)
+    }
+
+    func testImportProcessingBlocksSidecarConfigRestart() {
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let importViewModel = ImportSessionViewModel(rpcClient: RPCClientMock())
+        let coordinator = WorkflowCoordinator(
+            transcriptionViewModel: tx,
+            importViewModel: importViewModel,
+            capabilityClient: RPCClientMock()
+        )
+
+        XCTAssertFalse(coordinator.hasActiveSidecarWork)
+        importViewModel.sessionPhase = .processing
+        XCTAssertTrue(coordinator.hasActiveSidecarWork)
+    }
+
+    func testLiveFinalizationAndInsightRefreshBlockSidecarConfigRestart() {
+        let live = LiveSessionViewModel(rpcClient: RPCClientMock())
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            liveViewModel: live,
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+
+        live.isFinalizingLiveSession = true
+        XCTAssertTrue(coordinator.hasActiveSidecarWork)
+
+        live.isFinalizingLiveSession = false
+        live.captureState = .refreshing
+        XCTAssertTrue(coordinator.hasActiveSidecarWork)
+    }
+
+    func testTranscriptionInsightBuildBlocksSidecarConfigRestart() {
+        let rpc = RPCClientMock()
+        rpc.buildFinalDelaySec = 0.1
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        tx.currentMeetingID = "transcription-finalizing"
+        let coordinator = WorkflowCoordinator(
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+
+        tx.buildFinalInsight()
+
+        XCTAssertTrue(coordinator.hasActiveSidecarWork)
+    }
+
+    func testTranscriptionSubmissionBlocksSidecarConfigRestartBeforeStatusRefresh() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusDelaySec = 0.1
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        let coordinator = WorkflowCoordinator(
+            transcriptionViewModel: tx,
+            capabilityClient: RPCClientMock()
+        )
+
+        tx.importFile(path: "/tmp/synthetic.wav")
+
+        XCTAssertTrue(tx.hasPendingSidecarMutation)
+        XCTAssertTrue(coordinator.hasActiveSidecarWork)
+    }
+
+    func testCompletedMeetingArtifactLoadsAreCoalescedInsteadOfDropped() {
+        let rpc = RPCClientMock()
+        let tx = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+
+        let completed = expectation(description: "both artifact loads complete")
+        var cancellable: AnyCancellable?
+        cancellable = tx.$isBuildingFinalInsight.sink { isBuilding in
+            if !isBuilding, rpc.buildFinalMeetingIDs.count == 2 {
+                completed.fulfill()
+            }
+        }
+
+        tx.loadArtifactsForMeeting("meeting-1")
+        tx.loadArtifactsForMeeting("meeting-2")
+
+        wait(for: [completed], timeout: 1.0)
+        cancellable?.cancel()
+        XCTAssertEqual(rpc.buildFinalMeetingIDs, ["meeting-1", "meeting-2"])
+        XCTAssertFalse(tx.isBuildingFinalInsight)
+    }
+
+    func testFailedFinalizationAbortKeepsVisibleBusyState() {
+        let rpc = RPCClientMock()
+        rpc.recordsSaveError = NSError(domain: "test", code: 1)
+        rpc.finalizationAbortError = NSError(domain: "test", code: 2)
+        let abortAttempted = expectation(description: "finalization abort attempted")
+        rpc.finalizationAbortObserver = { abortAttempted.fulfill() }
+        let live = LiveSessionViewModel(rpcClient: rpc)
+        let segment = TranscriptSegment(
+            startMs: 0,
+            endMs: 1_000,
+            speaker: "speaker",
+            source: "mic",
+            text: "content"
+        )
+
+        live.saveToRecords(
+            meetingID: "failed-finalization",
+            transcriptSegmentsOverride: [segment],
+            finalizationLeaseToken: "lease-token"
+        )
+
+        wait(for: [abortAttempted], timeout: 1.0)
+        drainWorkflowCoordinatorTestMainQueue()
+        XCTAssertTrue(live.isFinalizingLiveSession)
+        XCTAssertEqual(rpc.finalizationAbortCalls.first?.leaseToken, "lease-token")
     }
 }
 

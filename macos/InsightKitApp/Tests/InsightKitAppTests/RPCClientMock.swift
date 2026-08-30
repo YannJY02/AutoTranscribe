@@ -30,12 +30,23 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionStatusDelaySec: TimeInterval = 0
     var transcriptionStatusError: Error?
     var transcriptionCancelError: Error?
+    var finalizationAbortError: Error?
+    var finalizationAbortCalls: [(meetingID: String, leaseToken: String)] = []
+    var finalizationAbortObserver: (() -> Void)?
+    var recordsSaveError: Error?
     var providersStatusError: Error?
     var providersStatusCalls = 0
     var providerProbeError: Error?
     var transcriptListStub: [TranscriptSegment] = []
     var buildFinalDelaySec: TimeInterval = 0
     var buildFinalCalls = 0
+    private let buildFinalLock = NSLock()
+    private var recordedBuildFinalMeetingIDs: [String] = []
+    var buildFinalMeetingIDs: [String] {
+        buildFinalLock.lock()
+        defer { buildFinalLock.unlock() }
+        return recordedBuildFinalMeetingIDs
+    }
     var buildFinalError: Error?
     var asrPrewarmError: Error?
     var asrPrewarmCalls: [(model: String, engine: LocalASREngine?, timeoutSec: Int)] = []
@@ -101,6 +112,12 @@ final class RPCClientMock: InsightRPCClientProtocol {
 
     func sessionStart(meetingID: String, title: String, source: String) throws {}
     func sessionStop(meetingID: String) throws {}
+    func sessionStopForFinalization(meetingID: String, leaseToken: String) throws {}
+    func sessionFinalizationAbort(meetingID: String, leaseToken: String) throws {
+        finalizationAbortCalls.append((meetingID, leaseToken))
+        finalizationAbortObserver?()
+        if let finalizationAbortError { throw finalizationAbortError }
+    }
     func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int { 0 }
     func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment] {
         Array(transcriptListStub.prefix(limit))
@@ -109,6 +126,9 @@ final class RPCClientMock: InsightRPCClientProtocol {
     func buildFinal(meetingID: String) throws -> InsightRefreshResult {
         methodCalls.append("insight.build_final")
         buildFinalCalls += 1
+        buildFinalLock.lock()
+        recordedBuildFinalMeetingIDs.append(meetingID)
+        buildFinalLock.unlock()
         if buildFinalDelaySec > 0 {
             Thread.sleep(forTimeInterval: buildFinalDelaySec)
         }
@@ -327,7 +347,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
         durationSec: Double,
         analysisMeta: [String: Any]?,
         notesMD: String,
-        presentationStatus: LivePresentationCaptureStatus?
+        presentationStatus: LivePresentationCaptureStatus?,
+        finalizationLeaseToken: String?
     ) throws -> String {
         methodCalls.append("records.save")
         recordsSaveSegments.append(segments)
@@ -343,6 +364,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
             notesMD: notesMD,
             presentationStatus: presentationStatus
         ))
+        if let recordsSaveError { throw recordsSaveError }
         return "/tmp/mock-records/\(meetingID)"
     }
 

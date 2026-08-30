@@ -62,6 +62,22 @@ COMPATIBILITY_ROUTES = (
     },
 )
 
+READ_ONLY_METHODS = {
+    "transcript.list",
+    "sidecar.status",
+    "sidecar.version",
+    "sidecar.compatibility_routes",
+    "sidecar.ensure_ready",
+    "asr.runtime.status",
+    "analysis.providers.status",
+    "analysis.provider.probe",
+    "diagnostics.quick_check",
+    "live.session.status",
+    "transcription.status",
+    "sidecar.action_registry",
+    "module.capabilities",
+}
+
 
 class InsightRPCServer:
     def __init__(
@@ -81,6 +97,9 @@ class InsightRPCServer:
         self._version = os.getenv("INSIGHTKIT_VERSION", "0.1.0")
         self._last_error_code = ""
         self._last_latency_ms = 0
+        self._admission_lock = threading.RLock()
+        self._shutdown_pending = False
+        self._in_flight_mutations = 0
 
         # Delegate modules.
         self._push_broker = PushBroker()
@@ -191,6 +210,7 @@ class InsightRPCServer:
         handlers = {
             "session.start": self._session_start,
             "session.stop": self._session_stop,
+            "session.finalization.abort": self._session_finalization_abort,
             "stream.push_audio": self._stream_push_audio,
             "transcript.delta": self._transcript_delta,
             "transcript.replace": self._transcript_replace,
@@ -234,8 +254,19 @@ class InsightRPCServer:
             self._last_latency_ms = int((time.perf_counter() - started_at) * 1000)
             return {"id": req_id, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
+        protected = method != "sidecar.shutdown" and method not in READ_ONLY_METHODS
         try:
-            result = handlers[method](params)
+            if protected:
+                with self._admission_lock:
+                    if self._shutdown_pending:
+                        raise RuntimeError("sidecar_shutting_down: request rejected")
+                    self._in_flight_mutations += 1
+            try:
+                result = handlers[method](params)
+            finally:
+                if protected:
+                    with self._admission_lock:
+                        self._in_flight_mutations -= 1
             self._last_error_code = ""
             self._last_latency_ms = int((time.perf_counter() - started_at) * 1000)
             return {"id": req_id, "result": result}
@@ -251,6 +282,14 @@ class InsightRPCServer:
 
     def _session_stop(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.session_stop(params)
+
+    def _session_finalization_abort(self, params: dict[str, Any]) -> dict[str, Any]:
+        meeting_id = str(params.get("meeting_id", "") or "").strip()
+        if not meeting_id:
+            raise ValueError("meeting_id is required")
+        token = str(params.get("finalization_lease_token", "") or "")
+        self._session_handler.complete_finalization(meeting_id, token)
+        return {"meeting_id": meeting_id, "state": "aborted"}
 
     def _stream_push_audio(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.stream_push_audio(params)
@@ -335,6 +374,8 @@ class InsightRPCServer:
 
     def _sidecar_status(self, params: dict[str, Any]) -> dict[str, Any]:
         _ = params
+        with self._admission_lock:
+            live_sessions = self._session_handler.active_session_count()
         return {
             "running": self._active,
             "pid": os.getpid(),
@@ -342,7 +383,7 @@ class InsightRPCServer:
             "build": self._build,
             "socket_path": str(self.socket_path),
             "uptime_sec": int((datetime.now(timezone.utc) - self._started_at).total_seconds()),
-            "live_sessions": len([s for s in self._session_handler._live_sessions.values() if s.get("state") == "running"]),
+            "live_sessions": live_sessions,
             "ready": self._active and self._server_socket is not None,
             "python_executable": sys.executable,
             "python_version": sys.version.split()[0],
@@ -355,15 +396,26 @@ class InsightRPCServer:
         return {
             "version": self._version,
             "build": self._build,
+            "idle_shutdown_guard": "accepted-v1",
             "capabilities": self._module_capabilities({}).get("actions", []),
             "action_registry": self._sidecar_action_registry({}),
             "compatibility_routes": self._sidecar_compatibility_routes({}),
         }
 
     def _sidecar_shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
-        _ = params
+        require_idle = bool(params.get("require_idle"))
+        if require_idle:
+            with self._admission_lock:
+                if self._in_flight_mutations or self._session_handler.active_session_count():
+                    raise RuntimeError("sidecar_busy: live session or request is active")
+                if not self._job_queue.begin_idle_shutdown():
+                    raise RuntimeError("sidecar_busy: transcription queue or watcher is active")
+                self._shutdown_pending = True
         threading.Thread(target=self._shutdown_async, daemon=True).start()
-        return {"ok": True, "shutting_down": True}
+        result: dict[str, Any] = {"ok": True, "shutting_down": True}
+        if require_idle:
+            result["idle_guard"] = "accepted-v1"
+        return result
 
     def _shutdown_async(self) -> None:
         time.sleep(0.1)
@@ -443,6 +495,7 @@ class InsightRPCServer:
             "actions": [
                 "session.start",
                 "session.stop",
+                "session.finalization.abort",
                 "transcript.delta",
                 "transcript.list",
                 "insight.refresh_live",
@@ -540,6 +593,8 @@ class InsightRPCServer:
         meeting_id = str(params.get("meeting_id", "") or "").strip()
         if not meeting_id:
             raise ValueError("meeting_id is required")
+        finalization_token = str(params.get("finalization_lease_token", "") or "")
+        has_finalization_lease = self._session_handler.validate_finalization(meeting_id, finalization_token)
         title = str(params.get("title", "") or meeting_id)
         source_path = str(params.get("source_path", "") or "")
         segments = params.get("segments") or []
@@ -567,6 +622,8 @@ class InsightRPCServer:
             notes_md=notes_md,
             presentation_status=presentation_status,
         )
+        if has_finalization_lease:
+            self._session_handler.complete_finalization(meeting_id, finalization_token)
         return {"ok": True, "record_path": str(record_path)}
 
     def _module_run(self, params: dict[str, Any]) -> dict[str, Any]:

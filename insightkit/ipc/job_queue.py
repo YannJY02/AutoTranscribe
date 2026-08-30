@@ -36,8 +36,12 @@ class JobQueue:
         self._last_completed: dict[str, Any] | None = None
         self._worker: threading.Thread | None = None
         self._worker_stop = threading.Event()
+        self._accepting_jobs = True
+        self._watch_starts_in_flight = 0
 
     def shutdown(self) -> None:
+        with self._lock:
+            self._accepting_jobs = False
         self._worker_stop.set()
         self._watch_bridge.stop()
         if self._worker is not None and self._worker.is_alive():
@@ -70,6 +74,8 @@ class JobQueue:
         }
 
         with self._lock:
+            if not self._accepting_jobs:
+                raise RuntimeError("sidecar is shutting down and cannot accept transcription jobs")
             self._jobs[job_id] = job
             self._cancel_events[job_id] = threading.Event()
             self._queue.append(job_id)
@@ -87,10 +93,18 @@ class JobQueue:
             raise ValueError("dirs must be array")
         if not dirs:
             dirs = [str(Path.home() / "Desktop"), str(Path.home() / "Downloads")]
-        return self._watch_bridge.start(
-            [str(Path(d).expanduser()) for d in dirs],
-            on_file=self._enqueue_watch_file,
-        )
+        with self._lock:
+            if not self._accepting_jobs:
+                raise RuntimeError("sidecar is shutting down and cannot start the watcher")
+            self._watch_starts_in_flight += 1
+        try:
+            return self._watch_bridge.start(
+                [str(Path(d).expanduser()) for d in dirs],
+                on_file=self._enqueue_watch_file,
+            )
+        finally:
+            with self._lock:
+                self._watch_starts_in_flight -= 1
 
     def transcription_watch_stop(self, params: dict[str, Any]) -> dict[str, Any]:
         _ = params
@@ -116,6 +130,15 @@ class JobQueue:
             "last_completed": last_completed,
             "jobs": jobs[:limit],
         }
+
+    def begin_idle_shutdown(self) -> bool:
+        """Atomically stop new queue admissions when no transcription work is active."""
+        with self._lock:
+            watcher_running = self._watch_bridge.status().get("state") == "running"
+            if self._watch_starts_in_flight or watcher_running or self._active_job_id is not None or self._queue:
+                return False
+            self._accepting_jobs = False
+            return True
 
     def transcription_cancel_job(self, params: dict[str, Any]) -> dict[str, Any]:
         job_id = str(params.get("job_id", "") or "").strip()

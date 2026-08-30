@@ -10,7 +10,12 @@ struct SettingsView: View {
     }
 
     @ObservedObject private var configStore = AppConfigStore.shared
+    @ObservedObject private var coordinator: WorkflowCoordinator
     private let recordsService = RecordsIndexService()
+
+    init(coordinator: WorkflowCoordinator) {
+        self.coordinator = coordinator
+    }
 
     @State private var selectedVendor: ProviderVendor = .openai
     @State private var loadedVendor: ProviderVendor = .openai
@@ -158,11 +163,17 @@ struct SettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings_analysis_mode_picker")
+            .disabled(coordinator.hasActiveSidecarWork || isRunningTask)
             Text(configStore.config.analysis.mode == .local
                  ? "Smart Minutes 在设备上生成，不需要 API Key 或网络连接。"
                  : "Smart Minutes 使用下方选择的云端服务；语音识别引擎单独配置。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if coordinator.hasActiveSidecarWork {
+                Text("当前录制或导入任务完成后才能切换分析方式，避免中断正在处理的记录。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             // Vendor picker
             Picker("服务提供商", selection: $selectedVendor) {
@@ -272,7 +283,11 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .disabled(isRunningTask || !Self.shouldProbeCloudAnalysis(for: configStore.config.analysis.mode))
+                .disabled(
+                    isRunningTask
+                        || coordinator.hasActiveSidecarWork
+                        || !Self.shouldProbeCloudAnalysis(for: configStore.config.analysis.mode)
+                )
             }
 
             if let warning = selectedVendorKeyWarning {
@@ -317,6 +332,7 @@ struct SettingsView: View {
                             runAsync { try await applyConfigAndProbeProviders() }
                         }
                         .controlSize(.small)
+                        .disabled(isRunningTask || coordinator.hasActiveSidecarWork)
 
                         if !probe.ok {
                             Button("打开钥匙串设置提示") {
@@ -456,17 +472,17 @@ struct SettingsView: View {
                 Button("一键修复语音识别") {
                     runAsync { try await applyConfigAndBootstrapASR() }
                 }
-                .disabled(isRunningTask)
+                .disabled(isRunningTask || coordinator.hasActiveSidecarWork)
 
                 Button("一键测试服务") {
                     runAsync { try await runQuickDiagnostics() }
                 }
-                .disabled(isRunningTask)
+                .disabled(isRunningTask || coordinator.hasActiveSidecarWork)
 
                 Button("重启 Sidecar") {
                     runAsync { try await restartSidecar() }
                 }
-                .disabled(isRunningTask)
+                .disabled(isRunningTask || coordinator.hasActiveSidecarWork)
             }
 
             if let runtime = asrRuntimeSnapshot {
@@ -773,6 +789,10 @@ struct SettingsView: View {
 
     private func selectAnalysisMode(_ mode: AnalysisMode) {
         guard configStore.config.analysis.mode != mode else { return }
+        guard !coordinator.hasActiveSidecarWork else {
+            statusMessage = "当前录制或导入任务仍在运行，分析方式未更改。"
+            return
+        }
         configStore.updateAnalysisMode(mode)
         runAsync { try await ensureSidecarInSyncIfNeeded() }
     }
@@ -874,7 +894,8 @@ struct SettingsView: View {
         flushVendorToStore()
         saveCurrentVendorAPIKey()
         let ensureReadyProbe = { [rpc] in _ = try rpc.ensureReady(timeoutSec: 6) }
-        try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+        try requireIdleSidecar()
+        try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe, requireIdle: true)
         try await refreshASRRuntimeStatus()
         await MainActor.run {
             lastAppliedConfigRevision = configStore.configRevision
@@ -926,7 +947,8 @@ struct SettingsView: View {
         let ensureReadyProbe = { [rpc] in _ = try rpc.ensureReady(timeoutSec: 6) }
         let revision = configStore.configRevision
         if revision != lastAppliedConfigRevision {
-            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+            try requireIdleSidecar()
+            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe, requireIdle: true)
             await MainActor.run {
                 lastAppliedConfigRevision = revision
             }
@@ -935,10 +957,21 @@ struct SettingsView: View {
         do {
             _ = try rpc.ensureReady(timeoutSec: 6)
         } catch {
-            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe)
+            try requireIdleSidecar()
+            try sidecarManager.rebootstrap(ensureReady: ensureReadyProbe, requireIdle: true)
             await MainActor.run {
                 lastAppliedConfigRevision = configStore.configRevision
             }
+        }
+    }
+
+    private func requireIdleSidecar() throws {
+        guard !coordinator.hasActiveSidecarWork else {
+            throw NSError(
+                domain: "InsightKit.Settings",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "当前录制或导入任务仍在运行，Sidecar 未重启。"]
+            )
         }
     }
 
