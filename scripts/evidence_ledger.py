@@ -70,6 +70,19 @@ def _canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
+def _reject_duplicate_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValidationError("duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _load_json(value: str | bytes) -> Any:
+    return json.loads(value, object_pairs_hook=_reject_duplicate_fields)
+
+
 def _identifier(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:24]
     return f"{prefix}_v{SCHEMA_VERSION}_{digest}"
@@ -78,11 +91,14 @@ def _identifier(prefix: str, *parts: str) -> str:
 def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            normalized_key = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", str(key))
+            key_text = str(key)
+            if PRIVATE_PATH.search(key_text) or SECRET.search(key_text):
+                raise ValidationError(f"forbidden field at {path}")
+            normalized_key = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", key_text)
             normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", normalized_key).replace("-", "_")
             if normalized_key.casefold() in FORBIDDEN_FIELDS or CREDENTIAL_FIELD.search(normalized_key):
-                raise ValidationError(f"forbidden field: {path}.{key}")
-            _walk(child, f"{path}.{key}", redact_private_paths=redact_private_paths)
+                raise ValidationError(f"forbidden field at {path}")
+            _walk(child, f"{path}.*", redact_private_paths=redact_private_paths)
     elif isinstance(value, list):
         for index, child in enumerate(value):
             _walk(child, f"{path}[{index}]", redact_private_paths=redact_private_paths)
@@ -93,18 +109,33 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
             raise ValidationError(f"secret-like value rejected at {path}")
 
 
+def _has_unsafe_ref_chars(value: str) -> bool:
+    return any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)
+
+
 def _is_repo_ref(value: str) -> bool:
-    parsed = urlsplit(value)
+    if not isinstance(value, str) or _has_unsafe_ref_chars(value):
+        return False
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
     path = PurePosixPath(value)
     return bool(
         value and len(value) <= 500 and not parsed.scheme and not parsed.netloc
-        and not value.startswith(("/", "\\")) and "\\" not in value and not any(char.isspace() for char in value)
+        and not value.startswith(("/", "\\")) and "\\" not in value
         and "/" in value and all(part not in {"", ".", ".."} for part in path.parts)
     )
 
 
-def _https_ref(value: str, hosts: set[str] | None = None) -> bool:
-    parsed = urlsplit(value)
+def _https_ref(value: str, hosts: set[str] | frozenset[str] | None = None) -> bool:
+    if not isinstance(value, str) or _has_unsafe_ref_chars(value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        parsed.port
+    except ValueError:
+        return False
     return bool(
         len(value) <= 500 and parsed.scheme == "https" and parsed.netloc
         and not parsed.username and not parsed.password
@@ -115,11 +146,13 @@ def _https_ref(value: str, hosts: set[str] | None = None) -> bool:
 def _approved_external_ref(source_type: str, value: str) -> bool:
     if _is_repo_ref(value):
         return True
-    hostname = urlsplit(value).hostname or ""
     if source_type == "analytics":
-        return _https_ref(value) and hostname in POSTHOG_HOSTS
+        return _https_ref(value, POSTHOG_HOSTS)
     if source_type == "diagnostics":
-        return _https_ref(value) and (hostname == "sentry.io" or hostname.endswith(".sentry.io"))
+        if not _https_ref(value):
+            return False
+        hostname = urlsplit(value).hostname or ""
+        return hostname == "sentry.io" or hostname.endswith(".sentry.io")
     return False
 
 
@@ -157,19 +190,25 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
     missing = [field for field in REQUIRED if field not in item]
     if missing:
         raise ValidationError(f"missing fields: {', '.join(missing)}")
-    if item["source_type"] not in SOURCES:
+    if not isinstance(item["source_type"], str) or item["source_type"] not in SOURCES:
         raise ValidationError("unsupported source_type")
-    if item["claim_class"] not in CLAIM_CLASSES:
+    if not isinstance(item["claim_class"], str) or item["claim_class"] not in CLAIM_CLASSES:
         raise ValidationError("unsupported claim_class")
-    if item["result"] not in (RESULTS if persisted else SOURCE_RESULTS):
+    if not isinstance(item["result"], str) or item["result"] not in (RESULTS if persisted else SOURCE_RESULTS):
         raise ValidationError("unsupported result")
-    if item["promotion_category"] is not None and item["promotion_category"] not in PROMOTION_CATEGORIES:
+    if item["promotion_category"] is not None and (
+        not isinstance(item["promotion_category"], str) or item["promotion_category"] not in PROMOTION_CATEGORIES
+    ):
         raise ValidationError("unsupported promotion_category")
-    if item["privacy_class"] not in PRIVACY_CLASSES:
+    if not isinstance(item["privacy_class"], str) or item["privacy_class"] not in PRIVACY_CLASSES:
         raise ValidationError("unsupported privacy_class")
-    if not SOURCE_ID.fullmatch(str(item["source_id"])) or HASH_SHAPED_ID.fullmatch(str(item["source_id"])):
+    if (
+        not isinstance(item["source_id"], str)
+        or not SOURCE_ID.fullmatch(item["source_id"])
+        or HASH_SHAPED_ID.fullmatch(item["source_id"])
+    ):
         raise ValidationError("source_id must be a stable metadata identifier")
-    if not REVISION.fullmatch(str(item["revision"])):
+    if not isinstance(item["revision"], str) or not REVISION.fullmatch(item["revision"]):
         raise ValidationError("revision must be a stable metadata revision")
     if item["linear_issue_id"] is not None and (
         not isinstance(item["linear_issue_id"], str) or not LINEAR_ISSUE.fullmatch(item["linear_issue_id"])
@@ -182,17 +221,21 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
         raise ValidationError("github_issue_or_pr_id must be a stable issue or PR identifier")
     if item["promotion_category"] is not None and not (item["linear_issue_id"] or item["github_issue_or_pr_id"]):
         raise ValidationError("promoted evidence requires an issue linkage")
-    if item["artifact_sha256"] is not None and not ARTIFACT_SHA.fullmatch(str(item["artifact_sha256"])):
+    if item["artifact_sha256"] is not None and (
+        not isinstance(item["artifact_sha256"], str) or not ARTIFACT_SHA.fullmatch(item["artifact_sha256"])
+    ):
         raise ValidationError("artifact_sha256 must be a full SHA-256")
     if item["source_type"] == "repository" and item["artifact_sha256"] is None and item["revision"] != "unavailable":
         raise ValidationError("repository evidence requires artifact_sha256")
     if not _valid_timestamp(item["observed_at"]):
         raise ValidationError("observed_at must be an RFC 3339 timestamp")
     for field in ("lifecycle_stage", "lifecycle_transition", "environment"):
-        if not METADATA_CODE.fullmatch(str(item[field])):
+        if not isinstance(item[field], str) or not METADATA_CODE.fullmatch(item[field]):
             raise ValidationError(f"{field} must be bounded metadata")
 
-    source_ref = str(item["source_ref"])
+    source_ref = item["source_ref"]
+    if not isinstance(source_ref, str):
+        raise ValidationError("source_ref is not an inspectable approved reference")
     if item["source_type"] == "linear":
         inspectable = _https_ref(source_ref, {"linear.app"})
     elif item["source_type"] in {"github", "ci"}:
@@ -223,7 +266,12 @@ class EvidenceLedger:
 
     @staticmethod
     def _validate_ledger(loaded: Any) -> dict[str, Any]:
-        if not isinstance(loaded, dict) or loaded.get("schema_version") != SCHEMA_VERSION or not isinstance(loaded.get("records"), list):
+        if (
+            not isinstance(loaded, dict)
+            or type(loaded.get("schema_version")) is not int
+            or loaded.get("schema_version") != SCHEMA_VERSION
+            or not isinstance(loaded.get("records"), list)
+        ):
             raise ValidationError("unsupported or malformed ledger")
         _walk(loaded)
         by_id: dict[str, dict[str, Any]] = {}
@@ -231,7 +279,7 @@ class EvidenceLedger:
             try:
                 if not isinstance(record, dict) or set(record) != RECORD_FIELDS:
                     raise ValidationError("record fields do not match the schema")
-                if record["schema_version"] != SCHEMA_VERSION:
+                if type(record["schema_version"]) is not int or record["schema_version"] != SCHEMA_VERSION:
                     raise ValidationError("record schema_version is invalid")
                 claim = {field: record[field] for field in REQUIRED}
                 _validate(claim, persisted=True)
@@ -282,7 +330,7 @@ class EvidenceLedger:
         if not self.path.exists():
             return {"schema_version": SCHEMA_VERSION, "records": []}
         try:
-            loaded = json.loads(self.path.read_text())
+            loaded = _load_json(self.path.read_text())
         except (OSError, json.JSONDecodeError) as error:
             raise ValidationError(f"unsupported or malformed ledger: {error}") from error
         return self._validate_ledger(loaded)
@@ -390,7 +438,7 @@ class EvidenceLedger:
             raise ValidationError("manifest path must match repository_ref")
         try:
             manifest_bytes = path.read_bytes()
-            payload = json.loads(manifest_bytes)
+            payload = _load_json(manifest_bytes)
         except (OSError, json.JSONDecodeError) as error:
             raise ValidationError(f"manifest is unreadable or malformed: {error}") from error
         if not isinstance(payload, dict):
@@ -438,7 +486,7 @@ class EvidenceLedger:
                 raise ValidationError("repository evidence path must resolve inside the repository")
             try:
                 artifact = path.read_bytes()
-                payload = json.loads(artifact)
+                payload = _load_json(artifact)
             except (OSError, json.JSONDecodeError) as error:
                 raise ValidationError(f"repository evidence is unreadable or malformed: {error}") from error
             if not isinstance(payload, dict):
@@ -546,7 +594,13 @@ class EvidenceLedger:
         missing = requested - set(by_id)
         if missing:
             raise ValidationError(f"Friday update is missing linked evidence: {', '.join(sorted(missing))}")
-        if any(by_id[evidence_id]["source_type"] != "linear" for evidence_id in live_linear_evidence_ids):
+        if any(
+            by_id[evidence_id]["source_type"] != "linear"
+            or by_id[evidence_id]["result"] == "unobserved"
+            or by_id[evidence_id]["revision"] == "unavailable"
+            or _is_degraded(by_id[evidence_id])
+            for evidence_id in live_linear_evidence_ids
+        ):
             raise ValidationError("Friday update is missing live Linear evidence")
         lines = [f"# Friday Project Update: {period}", ""]
         for evidence_id in sorted(requested):
@@ -565,6 +619,12 @@ class EvidenceLedger:
             raise ValidationError("feedback evidence and run IDs must be paired")
         if any(not (_https_ref(ref, {"github.com", "linear.app"}) or _is_repo_ref(ref)) for ref in evidence_refs):
             raise ValidationError("feedback evidence must use inspectable approved references")
+        repository_root = Path(__file__).resolve().parent.parent
+        for ref in evidence_refs:
+            if _is_repo_ref(ref):
+                evidence_path = (repository_root / ref).resolve()
+                if not evidence_path.is_relative_to(repository_root) or not evidence_path.is_file():
+                    raise ValidationError("feedback evidence must exist inside the repository")
         if any(not METADATA_CODE.fullmatch(run_id) for run_id in run_ids):
             raise ValidationError("feedback run IDs must be bounded metadata")
         threshold = 1 if event_class in SEVERE_EVENTS else max(2, accepted_threshold)
@@ -626,7 +686,7 @@ def main() -> int:
     args = parser.parse_args()
     ledger = EvidenceLedger(args.ledger)
     try:
-        result = ledger.collect_adapter_items(json.loads(args.input.read_text())) if args.input else ledger._load()
+        result = ledger.collect_adapter_items(_load_json(args.input.read_text())) if args.input else ledger._load()
         if args.issue_handoff:
             if not args.evidence_id:
                 parser.error("--issue-handoff requires at least one --evidence-id")

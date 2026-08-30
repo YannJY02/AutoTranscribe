@@ -205,6 +205,44 @@ def test_manifest_rejects_bare_credential_field_names(tmp_path: Path, field: str
             )
 
 
+@pytest.mark.parametrize("field", ["token=supersecret", "/Users/alice/private-proof"])
+def test_manifest_rejects_secret_or_private_text_in_field_names(tmp_path: Path, field: str):
+    repository_root = Path(__file__).parents[1]
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
+        manifest = Path(directory) / "proof.json"
+        manifest.write_text(json.dumps({
+            "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+            field: "opaque-value",
+        }))
+        with pytest.raises(ValidationError, match="forbidden field") as error:
+            EvidenceLedger(tmp_path / "ledger.json").collect_repository_manifest(
+                manifest, repository_ref=manifest.relative_to(repository_root).as_posix(),
+                source_id="harness-GH-68", lifecycle_stage="verification",
+                lifecycle_transition="full-harness-completed", environment="local-macos",
+                linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68", promotion_category="gate",
+            )
+        assert field not in str(error.value)
+
+
+def test_manifest_rejects_duplicate_json_keys_before_privacy_scan(tmp_path: Path):
+    repository_root = Path(__file__).parents[1]
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
+        manifest = Path(directory) / "proof.json"
+        manifest.write_text(
+            '{"status":"passed","commit":"abc123","finished_at":"'
+            + OBSERVED_AT
+            + '","token=supersecret":"first","token=supersecret":"second"}'
+        )
+        with pytest.raises(ValidationError, match="duplicate JSON field") as error:
+            EvidenceLedger(tmp_path / "ledger.json").collect_repository_manifest(
+                manifest, repository_ref=manifest.relative_to(repository_root).as_posix(),
+                source_id="harness-GH-68", lifecycle_stage="verification",
+                lifecycle_transition="full-harness-completed", environment="local-macos",
+                linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68", promotion_category="gate",
+            )
+        assert "supersecret" not in str(error.value)
+
+
 def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     with pytest.raises(ValidationError, match="inspectable approved reference"):
@@ -216,6 +254,13 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         ledger._collect_normalized([source(source_type="analytics", source_ref="analytics:cohort-7")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://evil.example/readback")])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_ref="https://[broken")])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_type="analytics", source_ref="https://[broken")])
+    for source_ref in ("https://github.com:bad/x", "https://github.com:99999/x"):
+        with pytest.raises(ValidationError, match="inspectable approved reference"):
+            ledger._collect_normalized([source(source_ref=source_ref)])
     accepted = ledger._collect_normalized([
         source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2")
     ])
@@ -226,8 +271,13 @@ def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc333
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_ref="https://github.com/" + "a" * 500)])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_ref="https://github.com/x\r# forged")])
     with pytest.raises(ValidationError, match="issue or PR identifier"):
         ledger._collect_normalized([source(github_issue_or_pr_id=68)])
+    for field in ("lifecycle_stage", "lifecycle_transition", "environment"):
+        with pytest.raises(ValidationError, match=field):
+            ledger._collect_normalized([source(**{field: 1})])
     for observed_at in (
         "2026-W35T09:00:00Z", "2026-08-30 09:00:00Z", "2026-08-30T09:00:00+00:00:01",
         "2026-08-30T09:00:00+00:60", "2026-08-30T09:00:00+24:00",
@@ -309,6 +359,18 @@ def test_schema_matches_the_accepted_yan_43_record_contract():
     assert "superseded" in schema["properties"]["result"]["enum"]
 
 
+def test_boolean_schema_versions_are_rejected(tmp_path: Path):
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    normalized = ledger._collect_normalized([source()])
+    with pytest.raises(ValidationError, match="malformed ledger"):
+        ledger._validate_ledger({**normalized, "schema_version": True})
+    with pytest.raises(ValidationError, match="record schema_version"):
+        ledger._validate_ledger({
+            **normalized,
+            "records": [{**normalized["records"][0], "schema_version": True}],
+        })
+
+
 def test_repeated_feedback_requires_independent_runs_but_severe_event_routes_once(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     below = ledger.route_repeated_feedback(
@@ -325,6 +387,12 @@ def test_repeated_feedback_requires_independent_runs_but_severe_event_routes_onc
     assert below["status"] == "below-threshold"
     assert severe["status"] == "accepted"
     assert severe["selected_surfaces"] == ["docs/agents/harness.md"]
+    with pytest.raises(ValidationError, match="feedback evidence"):
+        ledger.route_repeated_feedback(
+            "missing-proof", evidence_refs=["logs/no/a.json", "logs/no/b.json"],
+            run_ids=["review-1", "review-2"], event_class="review",
+            available_surfaces=["docs/agents/harness.md"],
+        )
 
 
 def test_handoff_requires_explicit_linked_evidence_and_validates_supplied_ledger(tmp_path: Path):
@@ -354,6 +422,18 @@ def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
         "2026-W35", normalized, live_linear_evidence_ids={linear_id}, linked_evidence_ids={repository_id},
     )
     assert "Friday Project Update" in update and "Focused regressions passed" in update
+
+    unavailable_ledger = EvidenceLedger(tmp_path / "unavailable.json")
+    unavailable = unavailable_ledger.collect_unavailable(
+        "linear", "YAN-50", "linear-unavailable", observed_at=OBSERVED_AT,
+        environment="controller", lifecycle_stage="handoff", linear_issue_id="YAN-50",
+    )
+    unavailable_id = unavailable["records"][0]["evidence_id"]
+    with pytest.raises(ValidationError, match="live Linear evidence"):
+        unavailable_ledger.friday_update(
+            "2026-W35", unavailable,
+            live_linear_evidence_ids={unavailable_id}, linked_evidence_ids=set(),
+        )
 
 
 def test_adapter_rejects_claim_prose_and_non_array_cli_input(tmp_path: Path):
