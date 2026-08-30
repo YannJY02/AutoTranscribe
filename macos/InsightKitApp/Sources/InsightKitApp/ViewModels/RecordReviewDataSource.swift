@@ -183,6 +183,13 @@ final class RecordReviewDataSource: ObservableObject {
                             succeeded: true
                         )
                     }
+                    SentryDiagnosticsRuntime.shared.captureFailure(
+                        workflow: .recordReview,
+                        phase: .reviewing,
+                        providerClass: .none,
+                        errorCategory: .runtime,
+                        recoveryResult: .succeeded
+                    )
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -194,6 +201,13 @@ final class RecordReviewDataSource: ObservableObject {
                             succeeded: false
                         )
                     }
+                    SentryDiagnosticsRuntime.shared.captureFailure(
+                        workflow: .recordReview,
+                        phase: .reviewing,
+                        providerClass: .none,
+                        errorCategory: .runtime,
+                        recoveryResult: .failed
+                    )
                 }
             }
         }

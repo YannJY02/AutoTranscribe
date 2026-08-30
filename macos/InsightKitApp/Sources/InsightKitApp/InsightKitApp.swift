@@ -20,6 +20,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = SentryDiagnosticsRuntime.shared
         NSApp.setActivationPolicy(.regular)
         showMainWindow()
         installUITestCaptureTimer()
@@ -42,6 +43,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        SentryDiagnosticsRuntime.shared.applicationWillTerminate()
         uiTestCaptureTimer?.invalidate()
         coordinator.shutdown()
         SettingsView.shutdownSharedSidecar()

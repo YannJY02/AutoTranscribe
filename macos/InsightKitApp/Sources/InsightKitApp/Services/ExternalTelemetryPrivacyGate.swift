@@ -109,6 +109,7 @@ final class ExternalTelemetryPrivacyGate {
         let schemaVersion: Int
         let eventName: String
         let timestampUTC: Date
+        let sessionStartedUTC: Date?
         let appVersion: String
         let appBuild: String
         let environment: String
@@ -122,6 +123,7 @@ final class ExternalTelemetryPrivacyGate {
             case schemaVersion = "schema_version"
             case eventName = "event_name"
             case timestampUTC = "timestamp_utc"
+            case sessionStartedUTC = "session_started_utc"
             case appVersion = "app_version"
             case appBuild = "app_build"
             case environment
@@ -738,6 +740,7 @@ final class ExternalTelemetryPrivacyGate {
             schemaVersion: 1,
             eventName: event.name,
             timestampUTC: now(),
+            sessionStartedUTC: nil,
             appVersion: appVersion,
             appBuild: appBuild,
             environment: configuration.environment.rawValue,
@@ -878,6 +881,95 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
+    /// Readback for vendor delivery keeps this process's open session as a durable
+    /// crash marker. Prior sessions have already gained a paired terminal envelope.
+    func queuedEnvelopesForDelivery() throws -> [Data] {
+        try queuedEnvelopes().filter { data in
+            guard let envelope = try? decoder.decode(Envelope.self, from: data) else { return false }
+            return !(envelope.eventName == "release_session_started" && envelope.appSessionID == appSessionID)
+        }
+    }
+
+    /// Removes one successfully delivered item from the same bounded durable queue.
+    /// A consent change between delivery and acknowledgement fails closed and purge owns cleanup.
+    func acknowledgeQueuedEnvelope(_ data: Data) throws {
+        let observation = observeConsent()
+        guard observation.consent.isEnabled,
+              let target = try? decoder.decode(Envelope.self, from: data)
+        else { return }
+        try Self.persistenceQueue.sync {
+            var queue = try loadAndExpireQueue()
+            guard queue.contains(target), observeConsent().consent == observation.consent else { return }
+            if target.eventName == "release_session_ended" {
+                queue.removeAll {
+                    $0.appSessionID == target.appSessionID
+                        && ($0.eventName == "release_session_started" || $0.eventName == "release_session_ended")
+                }
+            } else {
+                queue.remove(at: queue.firstIndex(of: target)!)
+            }
+            try persist(queue)
+        }
+    }
+
+    /// Converts this process's durable open release session into a terminal event.
+    /// The original pseudonymous session id and start timestamp remain available to
+    /// the vendor adapter; only the terminal event timestamp changes.
+    func closeReleaseSession(status: String) throws -> Data? {
+        guard ["exited", "abnormal"].contains(status), consent.isEnabled else { return nil }
+        return try Self.persistenceQueue.sync {
+            var queue = try loadAndExpireQueue()
+            guard let index = queue.lastIndex(where: {
+                $0.eventName == "release_session_started" && $0.appSessionID == appSessionID
+            }) else { return nil }
+            let start = queue[index]
+            let end = Envelope(
+                schemaVersion: start.schemaVersion,
+                eventName: "release_session_ended",
+                timestampUTC: now(),
+                sessionStartedUTC: start.timestampUTC,
+                appVersion: start.appVersion,
+                appBuild: start.appBuild,
+                environment: start.environment,
+                consentVersion: start.consentVersion,
+                installationID: start.installationID,
+                appSessionID: start.appSessionID,
+                properties: ["session_status": .string(status)]
+            )
+            queue[index] = end
+            try persist(queue)
+            return try encoder.encode(end)
+        }
+    }
+
+    /// Any durable open session from a different process ended without a clean close.
+    func recoverAbandonedReleaseSessions() throws {
+        guard consent.isEnabled else { return }
+        try Self.persistenceQueue.sync {
+            var queue = try loadAndExpireQueue()
+            var changed = false
+            for index in queue.indices where queue[index].eventName == "release_session_started"
+                && queue[index].appSessionID != appSessionID {
+                let start = queue[index]
+                queue[index] = Envelope(
+                    schemaVersion: start.schemaVersion,
+                    eventName: "release_session_ended",
+                    timestampUTC: now(),
+                    sessionStartedUTC: start.timestampUTC,
+                    appVersion: start.appVersion,
+                    appBuild: start.appBuild,
+                    environment: start.environment,
+                    consentVersion: start.consentVersion,
+                    installationID: start.installationID,
+                    appSessionID: start.appSessionID,
+                    properties: ["session_status": .string("abnormal")]
+                )
+                changed = true
+            }
+            if changed { try persist(queue) }
+        }
+    }
+
     private static func isValidAppVersion(_ value: String) -> Bool {
         value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?$"#, options: .regularExpression) != nil
     }
@@ -895,6 +987,8 @@ final class ExternalTelemetryPrivacyGate {
             let clear = try AES.GCM.open(sealed, using: SymmetricKey(data: keyData))
             return try decoder.decode([Envelope].self, from: clear)
         } catch {
+            // A rotated shared queue key or tampered payload is irrecoverable. Delete
+            // the unreadable vendor queue so a later consent epoch can persist again.
             try removeQueuedItems()
             mutateDiagnostics { $0.rejected += 1 }
             return []
@@ -961,6 +1055,9 @@ final class ExternalTelemetryPrivacyGate {
               UUID(uuidString: envelope.appSessionID) != nil,
               envelope.eventSequence >= 0,
               envelope.timestampUTC <= now(),
+              (envelope.sessionStartedUTC == nil
+                  || (envelope.eventName == "release_session_ended"
+                      && envelope.sessionStartedUTC! <= envelope.timestampUTC)),
               let rules = Self.schemaV1[envelope.eventName],
               Set(envelope.properties.keys).isSubset(of: Set(rules.keys))
         else { return false }

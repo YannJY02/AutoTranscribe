@@ -19,6 +19,7 @@ final class WorkflowCoordinator: ObservableObject {
     private var capabilities: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
     private var didShutdown = false
+    private var telemetryLiveStartedAt: TimeInterval?
     /// Dedicated GCD queue for blocking RPC I/O.
     private let rpcQueue = DispatchQueue(label: "InsightKit.WorkflowCoordinator.RPC", qos: .userInitiated)
 
@@ -412,6 +413,35 @@ final class WorkflowCoordinator: ObservableObject {
         liveViewModel.$captureState
             .sink { [weak self] state in
                 self?.appState.liveState = state
+                guard let self else { return }
+                switch state {
+                case .capturing where telemetryLiveStartedAt == nil:
+                    telemetryLiveStartedAt = ProcessInfo.processInfo.systemUptime
+                case .idle:
+                    if let started = telemetryLiveStartedAt {
+                        SentryDiagnosticsRuntime.shared.capturePerformance(
+                            workflow: .live,
+                            phase: .running,
+                            milliseconds: max(0, Int((ProcessInfo.processInfo.systemUptime - started) * 1_000))
+                        )
+                        telemetryLiveStartedAt = nil
+                    }
+                case .error:
+                    telemetryLiveStartedAt = nil
+                    captureTelemetryFailure(workflow: .live, phase: .running, category: .runtime, recovery: .notAttempted)
+                default:
+                    break
+                }
+            }
+            .store(in: &cancellables)
+
+        importViewModel.$errorMessage
+            .sink { [weak self] message in
+                guard let self else { return }
+                if let message, !message.isEmpty {
+                    let category = Self.telemetryCategory(for: message)
+                    captureTelemetryFailure(workflow: .import, phase: .running, category: category, recovery: .notAttempted)
+                }
             }
             .store(in: &cancellables)
 
@@ -420,6 +450,33 @@ final class WorkflowCoordinator: ObservableObject {
                 self?.appState.transcriptionState = jobs.first(where: { $0.state == .running })?.state
             }
             .store(in: &cancellables)
+    }
+
+    private func captureTelemetryFailure(
+        workflow: SentryDiagnosticsAdapter.Workflow,
+        phase: SentryDiagnosticsAdapter.Phase,
+        category: SentryDiagnosticsAdapter.ErrorCategory,
+        recovery: SentryDiagnosticsAdapter.RecoveryResult
+    ) {
+        let analysisState = workflow == .live
+            ? liveViewModel.analysisRuntimeState
+            : transcriptionViewModel.analysisRuntimeState
+        let provider: SentryDiagnosticsAdapter.ProviderClass = analysisState == .missingConfig ? .none : .byok
+        SentryDiagnosticsRuntime.shared.captureFailure(
+            workflow: workflow,
+            phase: phase,
+            providerClass: provider,
+            errorCategory: category,
+            recoveryResult: recovery
+        )
+    }
+
+    private static func telemetryCategory(for message: String) -> SentryDiagnosticsAdapter.ErrorCategory {
+        let normalized = message.lowercased()
+        if normalized.contains("permission") || normalized.contains("权限") { return .permission }
+        if normalized.contains("config") || normalized.contains("配置") || normalized.contains("key") { return .configuration }
+        if normalized.contains("file") || normalized.contains("文件") || normalized.contains("存储") { return .storage }
+        return .runtime
     }
 
     private func bridgeChildObjectChanges() {
