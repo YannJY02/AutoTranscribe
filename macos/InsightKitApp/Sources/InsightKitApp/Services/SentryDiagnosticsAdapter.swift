@@ -392,7 +392,8 @@ struct SentryRuntimeConfiguration: Equatable {
               let rawDSN = environment["INSIGHTKIT_SENTRY_DSN"],
               let dsn = URL(string: rawDSN),
               dsn.scheme == "https",
-              dsn.user != nil,
+              let publicKey = dsn.user,
+              !publicKey.isEmpty,
               !dsn.lastPathComponent.isEmpty,
               dsn.lastPathComponent.allSatisfy(\.isNumber)
         else { return nil }

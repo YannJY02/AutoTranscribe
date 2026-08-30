@@ -541,6 +541,10 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
             "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid",
         ]))
+        XCTAssertNil(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://@example.invalid/71",
+        ]))
         XCTAssertNotNil(SentryRuntimeConfiguration.from(environment: [
             "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
             "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
