@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib
 import json
+import math
 import sys
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,10 @@ from insightkit.insights.schema_validator import validate_insight_package
 from insightkit.insights.service import InsightService
 
 DEFAULT_DATASET = ROOT / "evals/smart_minutes/v1"
+
+
+class BoundedFailureError(Exception):
+    """Deliberate adapter signal that a bounded-failure case was rejected safely."""
 
 
 def _canonical_hash(values: list[dict[str, Any]]) -> str:
@@ -44,9 +49,33 @@ def load_eval_contract(dataset_dir: Path) -> dict[str, Any]:
     }
 
 
-def _overlaps_source(span: dict[str, Any], transcript: list[dict[str, Any]]) -> bool:
-    start, end = int(span.get("start_ms", -1)), int(span.get("end_ms", -1))
-    return any(start <= int(row["end_ms"]) and end >= int(row["start_ms"]) for row in transcript)
+def _span_bounds(span: Any) -> tuple[int, int] | None:
+    if not isinstance(span, dict):
+        return None
+    try:
+        start, end = int(span.get("start_ms", -1)), int(span.get("end_ms", -1))
+    except (TypeError, ValueError):
+        return None
+    return (start, end) if 0 <= start <= end else None
+
+
+def _overlaps_source(span: Any, transcript: list[dict[str, Any]]) -> bool:
+    bounds = _span_bounds(span)
+    if bounds is None:
+        return False
+    start, end = bounds
+    try:
+        return any(start <= int(row["end_ms"]) and end >= int(row["start_ms"]) for row in transcript)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _span_member(span: Any, key: str) -> Any:
+    return span.get(key) if isinstance(span, dict) else None
+
+
+def _linkage_failure_detail(span: Any) -> str:
+    return "has no source overlap" if _span_bounds(span) is not None else "has invalid bounds or no source overlap"
 
 
 def _failure(case_id: str, metric: str, expected: str, actual: str, evidence: str) -> dict[str, str]:
@@ -65,35 +94,47 @@ def evaluate_package(case: dict[str, Any], package: dict[str, Any], latency_ms: 
         validate_insight_package(package)
     except Exception as exc:
         failures.append(_failure(case["id"], "schema", "valid InsightPackageV1", type(exc).__name__, "output"))
-        return {"case": case["id"], "gate_result": "fail", "failures": failures, "diagnostics": {"latency_ms": latency_ms}}
+        list_sections = ("highlight_insights", "speaker_perspectives", "decision_ledger", "action_tracks", "timeline_beats", "provenance_links")
+        if not isinstance(package, dict) or any(section in package and not isinstance(package[section], list) for section in list_sections):
+            return {"case": case["id"], "gate_result": "fail", "failures": failures, "diagnostics": {"latency_ms": latency_ms}}
 
     transcript = case.get("transcript") or []
     evidence_sections = (("highlight_insights", "evidence_span"), ("decision_ledger", "evidence_span"), ("action_tracks", "evidence_span"))
     for section, field in evidence_sections:
-        for index, item in enumerate(package.get(section) or []):
+        for index, raw_item in enumerate(package.get(section) or []):
+            item = raw_item if isinstance(raw_item, dict) else {}
             span = item.get(field) or {}
-            if transcript and not _overlaps_source(span, transcript):
+            if not _overlaps_source(span, transcript):
                 failures.append(_failure(
                     case["id"], "source_evidence_linkage",
                     "every generated evidence span overlaps a source transcript segment",
-                    f"{section}[{index}] span {span.get('start_ms')}-{span.get('end_ms')} has no source overlap",
+                    f"{section}[{index}] span {_span_member(span, 'start_ms')}-{_span_member(span, 'end_ms')} {_linkage_failure_detail(span)}",
                     f"output.{section}[{index}].{field}",
                 ))
 
-    for item_index, item in enumerate(package.get("speaker_perspectives") or []):
-        for span_index, span in enumerate(item.get("evidence_spans") or []):
-            if transcript and not _overlaps_source(span, transcript):
+    for item_index, raw_item in enumerate(package.get("speaker_perspectives") or []):
+        item = raw_item if isinstance(raw_item, dict) else {}
+        raw_spans = item.get("evidence_spans") or []
+        spans = raw_spans if isinstance(raw_spans, list) else [{}]
+        for span_index, span in enumerate(spans):
+            if not _overlaps_source(span, transcript):
                 failures.append(_failure(
                     case["id"], "source_evidence_linkage",
                     "every generated evidence span overlaps a source transcript segment",
                     f"speaker_perspectives[{item_index}] evidence_spans[{span_index}] "
-                    f"span {span.get('start_ms')}-{span.get('end_ms')} has no source overlap",
+                    f"span {_span_member(span, 'start_ms')}-{_span_member(span, 'end_ms')} {_linkage_failure_detail(span)}",
                     f"output.speaker_perspectives[{item_index}].evidence_spans[{span_index}]",
                 ))
 
     if case["expected_behavior"] == "bounded_failure":
-        review_marked = any(item.get("needs_review") is True for section in ("decision_ledger", "action_tracks") for item in package.get(section) or [])
-        if not review_marked:
+        generated_claims = [
+            item
+            for section in ("decision_ledger", "action_tracks")
+            for item in package.get(section) or []
+            if isinstance(item, dict)
+        ]
+        all_review_marked = bool(generated_claims) and all(item.get("needs_review") is True for item in generated_claims)
+        if not all_review_marked:
             failures.append(_failure(case["id"], "failure_behavior", "fallback output is explicitly marked needs_review", "no review marker found", "output.decision_ledger|action_tracks"))
 
     rendered = json.dumps(package, ensure_ascii=False).lower()
@@ -112,6 +153,12 @@ def evaluate_package(case: dict[str, Any], package: dict[str, Any], latency_ms: 
         "decision_action_fidelity": fidelity,
         "semantic_scores": "unscored_without_approved_adapter",
     }
+    if case["expected_behavior"] == "bounded_failure":
+        diagnostics["bounded_failure_observation"] = {
+            "generated_decisions": len(package.get("decision_ledger") or []),
+            "generated_actions": len(package.get("action_tracks") or []),
+            "all_generated_claims_need_review": all_review_marked,
+        }
     return {"case": case["id"], "gate_result": "fail" if failures else "pass", "failures": failures, "diagnostics": diagnostics}
 
 
@@ -124,14 +171,23 @@ def _load_adapter(spec: str | Callable[[dict[str, Any]], dict[str, Any]]) -> Cal
     return getattr(importlib.import_module(module_name), function_name)
 
 
+def _callable_identity(value: str | Callable[..., Any]) -> str:
+    if isinstance(value, str):
+        return value
+    return f"{value.__module__}:{value.__qualname__}"
+
+
 def _bounded_semantic_result(result: Any, metric_ids: set[str]) -> dict[str, float | bool | None]:
     if not isinstance(result, dict):
-        return {}
-    return {
-        key: value
-        for key, value in result.items()
-        if key in metric_ids and (value is None or isinstance(value, (int, float, bool)))
-    }
+        raise ValueError("semantic adapter result must be a mapping")
+    bounded = {key: value for key, value in result.items() if key in metric_ids}
+    if not bounded or any(
+        not (value is None or isinstance(value, (int, float, bool)))
+        or (isinstance(value, float) and not math.isfinite(value))
+        for value in bounded.values()
+    ):
+        raise ValueError("semantic adapter returned no valid diagnostics")
+    return bounded
 
 
 def _apply_semantic_adapter(
@@ -142,36 +198,76 @@ def _apply_semantic_adapter(
     package: dict[str, Any],
     result: dict[str, Any],
     metric_ids: set[str],
-) -> None:
+) -> dict[str, str] | None:
     if adapter is None:
-        return
+        return None
     try:
         observation = adapter({"leg": leg, "case": case, "output": package})
-        result["diagnostics"]["semantic_adapter"] = _bounded_semantic_result(observation, metric_ids)
-    except Exception:
+    except Exception as exc:
         result["diagnostics"]["semantic_adapter"] = {"status": "adapter_failed_without_payload_capture"}
+        return _failure(
+            case["id"],
+            "semantic_evaluation",
+            "configured semantic adapter returns bounded rubric diagnostics",
+            f"semantic adapter raised {type(exc).__name__}",
+            f"semantic.{leg}.execution",
+        )
+    try:
+        result["diagnostics"]["semantic_adapter"] = _bounded_semantic_result(observation, metric_ids)
+        return None
+    except ValueError:
+        result["diagnostics"]["semantic_adapter"] = {"status": "adapter_returned_no_valid_diagnostics"}
+        return _failure(
+            case["id"],
+            "semantic_evaluation",
+            "configured semantic adapter returns bounded rubric diagnostics",
+            "semantic adapter returned no valid diagnostics",
+            f"semantic.{leg}.result",
+        )
+
+
+def _markdown_diagnostics(diagnostics: dict[str, Any]) -> list[str]:
+    lines = [f"  - latency: `{diagnostics['latency_ms']} ms`"]
+    lines.append(f"  - module counts: `{json.dumps(diagnostics.get('module_counts', {}), ensure_ascii=False, sort_keys=True)}`")
+    lines.append(f"  - decision/action fidelity: `{json.dumps(diagnostics.get('decision_action_fidelity', {}), ensure_ascii=False, sort_keys=True)}`")
+    lines.append(f"  - forbidden claims observed: `{json.dumps(diagnostics.get('forbidden_claims_observed', []), ensure_ascii=False)}`")
+    if "bounded_failure_observation" in diagnostics:
+        lines.append(f"  - bounded failure: `{json.dumps(diagnostics['bounded_failure_observation'], ensure_ascii=False, sort_keys=True)}`")
+    if "semantic_adapter" in diagnostics:
+        lines.append(f"  - semantic diagnostics: `{json.dumps(diagnostics['semantic_adapter'], ensure_ascii=False, sort_keys=True)}`")
+    return lines
 
 
 def _markdown(report: dict[str, Any]) -> str:
     external = report["legs"]["external"]
+    semantic = report["legs"]["semantic"]
     lines = [
         "# Smart Minutes evaluation report", "",
         f"- Dataset: `{report['dataset']['version']}` (`{report['dataset']['sha256']}`)",
         f"- Gate result: **{report['gate_result'].upper()}**",
         f"- Local baseline: {report['legs']['local']['status']} (`local-extractive` / `heuristic-v1`)",
         f"- External baseline: {'Unobserved' if external['status'] == 'unobserved' else external['status']}",
+        f"- Semantic evaluation: {semantic['status']}",
     ]
     if external.get("missing_prerequisite"):
         lines.append(f"- External prerequisite: {external['missing_prerequisite']}")
+    if semantic.get("missing_prerequisite"):
+        lines.append(f"- Semantic prerequisite: {semantic['missing_prerequisite']}")
+    if semantic.get("adapter"):
+        lines.append(f"- Semantic adapter: `{semantic['adapter']}`")
+    for failure in semantic.get("failures", []):
+        lines.append(f"- Semantic failure `{failure['case']}` / `{failure['metric']}`: expected {failure['expected_contract']}; actual {failure['actual_observation']}; evidence `{failure['evidence_reference']}`")
     lines.extend(["", "## Cases", ""])
     for case in report["cases"]:
-        lines.append(f"- `{case['case']}`: {case['gate_result'].upper()}, latency `{case['diagnostics']['latency_ms']} ms`")
+        lines.append(f"- `{case['case']}`: {case['gate_result'].upper()}")
+        lines.extend(_markdown_diagnostics(case["diagnostics"]))
         for failure in case["failures"]:
             lines.append(f"  - {failure['metric']}: expected {failure['expected_contract']}; actual {failure['actual_observation']}; evidence `{failure['evidence_reference']}`")
     if external.get("cases"):
         lines.extend(["", f"## External cases ({external.get('provider', '')} / {external.get('model', '')})", ""])
         for case in external["cases"]:
             lines.append(f"- `{case['case']}`: {case['gate_result'].upper()}")
+            lines.extend(_markdown_diagnostics(case["diagnostics"]))
             for failure in case["failures"]:
                 lines.append(f"  - {failure['metric']}: expected {failure['expected_contract']}; actual {failure['actual_observation']}; evidence `{failure['evidence_reference']}`")
     lines.extend(["", "> Semantic and latency observations are diagnostic; no numeric quality threshold is accepted.", ""])
@@ -181,7 +277,30 @@ def _markdown(report: dict[str, Any]) -> str:
 def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | None = None, semantic_adapter: str | Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
     contract = load_eval_contract(dataset_dir)
     metric_ids = {metric["id"] for metric in contract["rubric"]["metrics"]}
-    adapter = _load_adapter(semantic_adapter) if semantic_adapter else None
+    adapter = None
+    semantic_leg: dict[str, Any] = {
+        "status": "unobserved",
+        "missing_prerequisite": "approved semantic adapter configuration (--semantic-adapter) was not provided",
+    }
+    if semantic_adapter:
+        try:
+            adapter = _load_adapter(semantic_adapter)
+            semantic_leg = {
+                "status": "observed",
+                "adapter": _callable_identity(semantic_adapter),
+            }
+        except Exception:
+            semantic_leg = {
+                "status": "failed",
+                "missing_prerequisite": "configured semantic adapter could not be loaded",
+                "failures": [_failure(
+                    "<configuration>",
+                    "semantic_evaluation",
+                    "configured semantic adapter can be loaded",
+                    "semantic adapter could not be loaded",
+                    "semantic.configuration",
+                )],
+            }
     service = InsightService()
     results = []
     for case in contract["cases"]:
@@ -189,7 +308,15 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
         package = service.build_local_extractive(case["transcript"])
         elapsed = (time.perf_counter() - started) * 1000
         result = evaluate_package(case, package, elapsed)
-        _apply_semantic_adapter(adapter, leg="local", case=case, package=package, result=result, metric_ids=metric_ids)
+        semantic_failure = _apply_semantic_adapter(adapter, leg="local", case=case, package=package, result=result, metric_ids=metric_ids)
+        if semantic_failure:
+            semantic_leg["status"] = "failed"
+            semantic_leg["missing_prerequisite"] = (
+                "configured semantic adapter returned no valid diagnostics"
+                if semantic_failure["evidence_reference"].endswith(".result")
+                else "configured semantic adapter failed without payload capture"
+            )
+            semantic_leg.setdefault("failures", []).append(semantic_failure)
         results.append(result)
 
     external_leg: dict[str, Any] = {
@@ -197,11 +324,16 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
         "missing_prerequisite": "explicit adapter configuration (--external-vendor) was not provided",
     }
     if external:
+        implementation_version = external.get("implementation_version") or (
+            _callable_identity(external["builder"])
+            if external.get("builder") is not None
+            else "InsightService.build_final"
+        )
         external_leg = {
             "status": "observed",
             "provider": external["vendor"],
             "model": external.get("model", ""),
-            "implementation_version": external.get("implementation_version", "InsightService.build_final"),
+            "implementation_version": implementation_version,
             "gate_result": "pass",
             "cases": [],
         }
@@ -218,7 +350,15 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
                     external_leg["provider"] = cloud_service.last_call_meta.get("vendor") or external_leg["provider"]
                     external_leg["model"] = cloud_service.last_call_meta.get("model") or external_leg["model"]
                 case_result = evaluate_package(case, package, (time.perf_counter() - started) * 1000)
-                _apply_semantic_adapter(adapter, leg="external", case=case, package=package, result=case_result, metric_ids=metric_ids)
+                semantic_failure = _apply_semantic_adapter(adapter, leg="external", case=case, package=package, result=case_result, metric_ids=metric_ids)
+                if semantic_failure:
+                    semantic_leg["status"] = "failed"
+                    semantic_leg["missing_prerequisite"] = (
+                        "configured semantic adapter returned no valid diagnostics"
+                        if semantic_failure["evidence_reference"].endswith(".result")
+                        else "configured semantic adapter failed without payload capture"
+                    )
+                    semantic_leg.setdefault("failures", []).append(semantic_failure)
                 external_leg["cases"].append(case_result)
             except Exception as exc:
                 lower = str(exc).lower()
@@ -227,18 +367,29 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
                         "status": "unobserved",
                         "provider": external["vendor"],
                         "model": external.get("model", ""),
-                        "implementation_version": external.get("implementation_version", "InsightService.build_final"),
+                        "implementation_version": implementation_version,
                         "missing_prerequisite": "provider credentials are not configured",
                     }
                     break
                 elapsed = (time.perf_counter() - started) * 1000
+                if case["expected_behavior"] == "bounded_failure" and isinstance(exc, BoundedFailureError):
+                    external_leg["cases"].append({
+                        "case": case["id"],
+                        "gate_result": "pass",
+                        "failures": [],
+                        "diagnostics": {
+                            "latency_ms": round(elapsed, 3),
+                            "bounded_failure_observation": {"named_error": type(exc).__name__},
+                        },
+                    })
+                    continue
                 external_leg["cases"].append({
                     "case": case["id"],
                     "gate_result": "fail",
                     "failures": [_failure(case["id"], "failure_behavior", "configured baseline returns a valid InsightPackageV1 or an explicit prerequisite is absent", f"external baseline raised {type(exc).__name__}", "external.execution")],
                     "diagnostics": {"latency_ms": round(elapsed, 3)},
                 })
-                break
+                continue
         if external_leg["status"] == "observed" and any(case["gate_result"] == "fail" for case in external_leg["cases"]):
             external_leg["gate_result"] = "fail"
 
@@ -248,11 +399,11 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
         "dataset": {"version": contract["dataset_version"], "sha256": contract["dataset_sha256"]},
         "rubric": {"version": contract["rubric"]["rubric_version"], "policy": contract["rubric"]["policy"]},
         "gate_result": "fail" if any(item["gate_result"] == "fail" for item in results) or external_leg.get("gate_result") == "fail" else "pass",
-        "legs": {"local": {"status": "observed", "provider": "local-extractive", "model": "heuristic-v1", "implementation_version": "InsightService.build_local_extractive"}, "external": external_leg},
+        "legs": {"local": {"status": "observed", "provider": "local-extractive", "model": "heuristic-v1", "implementation_version": "InsightService.build_local_extractive"}, "external": external_leg, "semantic": semantic_leg},
         "cases": results,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "smart-minutes-eval.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "smart-minutes-eval.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     (output_dir / "smart-minutes-eval.md").write_text(_markdown(report), encoding="utf-8")
     return report
 
