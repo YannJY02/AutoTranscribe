@@ -196,6 +196,11 @@ def _timestamp(value: str) -> tuple[int, Decimal]:
     return whole.days * 86_400 + whole.seconds, Decimal(f"0.{fraction}") if fraction else Decimal(0)
 
 
+def _markdown_literal(value: str) -> str:
+    fence = "`" * (max((len(match.group()) for match in re.finditer(r"`+", value)), default=0) + 1)
+    return f"{fence} {value} {fence}"
+
+
 def _is_degraded(item: dict[str, Any]) -> bool:
     codes = [str(item.get("revision", "")), str(item.get("lifecycle_transition", ""))]
     codes.extend(str(value) for value in item.get("unknowns", []))
@@ -578,14 +583,14 @@ class EvidenceLedger:
     @staticmethod
     def _claim_lines(record: dict[str, Any]) -> list[str]:
         return [
-            f"- [{record['result']}] {record['fact']} ({record['source_ref']})",
-            f"  - Evidence ID: {record['evidence_id']}",
-            f"  - Artifact SHA-256: {record['artifact_sha256'] or 'None.'}",
-            f"  - Gap/decision: {record['gap_or_decision']}",
-            f"  - Owner/action: {record['owner_action']}",
-            f"  - Recheck: {record['recheck_source']}",
-            f"  - Human gate: {record['human_gate']}",
-            f"  - Unknowns: {', '.join(record['unknowns']) if record['unknowns'] else 'None.'}",
+            f"- [{record['result']}] {_markdown_literal(record['fact'])} ({_markdown_literal(record['source_ref'])})",
+            f"  - Evidence ID: {_markdown_literal(record['evidence_id'])}",
+            f"  - Artifact SHA-256: {_markdown_literal(record['artifact_sha256'] or 'None.')}",
+            f"  - Gap/decision: {_markdown_literal(record['gap_or_decision'])}",
+            f"  - Owner/action: {_markdown_literal(record['owner_action'])}",
+            f"  - Recheck: {_markdown_literal(record['recheck_source'])}",
+            f"  - Human gate: {_markdown_literal(record['human_gate'])}",
+            f"  - Unknowns: {_markdown_literal(', '.join(record['unknowns']) if record['unknowns'] else 'None.')}",
         ]
 
     def issue_handoff(self, issue: str, ledger: dict[str, Any] | None = None,

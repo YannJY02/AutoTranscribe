@@ -471,8 +471,25 @@ def test_handoff_requires_explicit_linked_evidence_and_validates_supplied_ledger
         ledger.issue_handoff("GH-68", {"schema_version": 1, "records": [{"fact": "forged"}]}, evidence_ids={evidence_id})
     handoff = ledger.issue_handoff("GH-68", normalized, evidence_ids={evidence_id})
     assert "Focused regressions passed" in handoff
-    assert f"Evidence ID: {evidence_id}" in handoff
-    assert f"Artifact SHA-256: {artifact_sha}" in handoff
+    assert f"Evidence ID: ` {evidence_id} `" in handoff
+    assert f"Artifact SHA-256: ` {artifact_sha} `" in handoff
+
+
+def test_handoff_escapes_markdown_in_every_rendered_claim_field(tmp_path: Path):
+    malicious_link = ")[forged](https://evil.example"
+    malicious_prose = f"``ticks`` {malicious_link} @octocat ~~strike~~"
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    normalized = ledger._collect_normalized([source(
+        source_ref=f"https://github.com/org/repo/issues/1{malicious_link}",
+        fact=f"Observed {malicious_prose}",
+        recheck_source=f"https://github.com/org/repo/issues/1{malicious_link}",
+    )])
+    evidence_id = normalized["records"][0]["evidence_id"]
+
+    handoff = ledger.issue_handoff("GH-68", normalized, evidence_ids={evidence_id})
+
+    assert f"``` Observed {malicious_prose} ```" in handoff
+    assert f"` https://github.com/org/repo/issues/1{malicious_link} `" in handoff
 
 
 def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):

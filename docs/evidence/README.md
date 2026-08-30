@@ -60,7 +60,7 @@ The CLI reads a JSON array of typed `external-reference` adapter items and write
   --linked-evidence-id ev_v1_111111111111111111111111
 ```
 
-Only material scope, acceptance, dependency, priority, status, gate, milestone, owner-action, and continue-or-stop transitions receive a promotion category. Ordinary commands, repeated green tests, and unchanged polling are not records. Every candidate includes fact, gap or decision, owner action, recheck source, human gate, unknowns, and an inspectable evidence link. Rendered handoffs also include the immutable evidence ID and recorded artifact SHA-256 so the linked bytes remain attributable.
+Only material scope, acceptance, dependency, priority, status, gate, milestone, owner-action, and continue-or-stop transitions receive a promotion category. Ordinary commands, repeated green tests, and unchanged polling are not records. Every candidate includes fact, gap or decision, owner action, recheck source, human gate, unknowns, and an inspectable evidence link. Handoff metadata is rendered as GFM-safe literals, including the immutable evidence ID and recorded artifact SHA-256, so external values cannot create links or mentions and the linked bytes remain attributable.
 
 `unknowns` and unavailable-source reasons are lowercase metadata codes, never caller prose. `friday_update` requires the stable IDs returned by the current live Linear read and the explicitly linked evidence IDs. It rejects a requested Linear issue that has no observed Linear record, and excludes all other ledger history. In an unattended workspace where direct Linear is unavailable, first persist `collect_unavailable("linear", ...)`; the result remains `unobserved` and cannot become a pass.
 
