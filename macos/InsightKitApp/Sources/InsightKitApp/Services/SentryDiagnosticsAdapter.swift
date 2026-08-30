@@ -77,8 +77,16 @@ final class SentryDiagnosticsAdapter {
     private let deliveryQueue = DispatchQueue(label: "com.yannjy.insightkit.sentry-delivery", qos: .utility)
     private let deliverySlots = DispatchSemaphore(value: 8)
     private let deliveryStateLock = NSLock()
+    private let diagnosticsLock = NSLock()
     private var acceptingDelivery: Bool
+    private var deliveryFailureCount = 0
     private var consentObservers: [NSObjectProtocol] = []
+
+    var localDeliveryFailureCount: Int {
+        diagnosticsLock.lock()
+        defer { diagnosticsLock.unlock() }
+        return deliveryFailureCount
+    }
 
     init(gate: ExternalTelemetryPrivacyGate, transport: SentryDiagnosticsTransport) {
         self.gate = gate
@@ -136,18 +144,7 @@ final class SentryDiagnosticsAdapter {
         guard outcome.result == .accepted, let envelope = outcome.debugEnvelope else {
             return outcome.result
         }
-        guard deliverySlots.wait(timeout: .now()) == .success else { return .queueFull }
-        deliveryQueue.async { [weak self, deliverySlots] in
-            defer { deliverySlots.signal() }
-            guard let self, self.mayDeliver else { return }
-            let gate = self.gate
-            guard gate.consent.isEnabled else { return }
-            guard (try? gate.queuedEnvelopes().contains(envelope)) == true else { return }
-            do {
-                try self.transport.send(envelope: envelope, failureStack: failureStack)
-                try gate.acknowledgeQueuedEnvelope(envelope)
-            } catch { return }
-        }
+        guard scheduleDelivery(envelope, failureStack: failureStack, acknowledge: true) else { return .queueFull }
         return outcome.result
     }
 
@@ -159,7 +156,14 @@ final class SentryDiagnosticsAdapter {
                 properties: ["session_status": status.rawValue]
             )), acknowledge: false)
         }
-        guard let envelope = try? gate.closeReleaseSession(status: status.rawValue) else { return .disabled }
+        let envelope: Data
+        do {
+            guard let terminal = try gate.closeReleaseSession(status: status.rawValue) else { return .disabled }
+            envelope = terminal
+        } catch {
+            recordDeliveryFailure()
+            return .disabled
+        }
         scheduleDelivery(envelope, failureStack: [], acknowledge: true)
         return .accepted
     }
@@ -197,11 +201,13 @@ final class SentryDiagnosticsAdapter {
             guard let self, self.mayDeliver else { return }
             let gate = self.gate
             guard gate.consent.isEnabled else { return }
-            guard (try? gate.queuedEnvelopes().contains(envelope)) == true else { return }
             do {
+                guard try gate.queuedEnvelopes().contains(envelope) else { return }
                 try self.transport.send(envelope: envelope, failureStack: failureStack)
                 if acknowledge { try gate.acknowledgeQueuedEnvelope(envelope) }
-            } catch { return }
+            } catch {
+                self.recordDeliveryFailure()
+            }
         }
         return true
     }
@@ -210,17 +216,31 @@ final class SentryDiagnosticsAdapter {
     /// Shutdown-time session updates and transient failures remain eventual without
     /// waiting for vendor networking during app termination.
     private func drainPersistedQueue() {
-        try? gate.recoverAbandonedReleaseSessions()
-        guard mayDeliver, gate.consent.isEnabled,
-              let envelopes = try? gate.queuedEnvelopesForDelivery()
-        else { return }
+        let envelopes: [Data]
+        do {
+            try gate.recoverAbandonedReleaseSessions()
+            guard mayDeliver, gate.consent.isEnabled else { return }
+            envelopes = try gate.queuedEnvelopesForDelivery()
+        } catch {
+            recordDeliveryFailure()
+            return
+        }
         for envelope in envelopes {
             guard mayDeliver, gate.consent.isEnabled else { return }
             do {
                 try transport.send(envelope: envelope, failureStack: [])
                 try gate.acknowledgeQueuedEnvelope(envelope)
-            } catch { return }
+            } catch {
+                recordDeliveryFailure()
+                return
+            }
         }
+    }
+
+    private func recordDeliveryFailure() {
+        diagnosticsLock.lock()
+        deliveryFailureCount += 1
+        diagnosticsLock.unlock()
     }
 
 }

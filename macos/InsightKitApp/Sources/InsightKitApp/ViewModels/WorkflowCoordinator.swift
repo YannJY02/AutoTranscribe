@@ -445,12 +445,11 @@ final class WorkflowCoordinator: ObservableObject {
             .sink { [weak self] message in
                 guard let self else { return }
                 if let message, !message.isEmpty {
-                    let category = Self.telemetryCategory(for: message)
                     captureTelemetryFailure(
                         workflow: .import,
                         phase: .running,
                         provider: .none,
-                        category: category,
+                        category: .unknown,
                         recovery: .notAttempted
                     )
                 }
@@ -464,7 +463,7 @@ final class WorkflowCoordinator: ObservableObject {
                     workflow: .import,
                     phase: .running,
                     provider: Self.telemetryProvider(for: transcriptionViewModel.analysisRuntimeState),
-                    category: Self.telemetryCategory(for: message),
+                    category: .unknown,
                     recovery: .notAttempted
                 )
             }
@@ -495,14 +494,6 @@ final class WorkflowCoordinator: ObservableObject {
 
     private static func telemetryProvider(for state: AnalysisRuntimeState) -> SentryDiagnosticsAdapter.ProviderClass {
         state == .missingConfig ? .none : .byok
-    }
-
-    private static func telemetryCategory(for message: String) -> SentryDiagnosticsAdapter.ErrorCategory {
-        let normalized = message.lowercased()
-        if normalized.contains("permission") || normalized.contains("权限") { return .permission }
-        if normalized.contains("config") || normalized.contains("配置") || normalized.contains("key") { return .configuration }
-        if normalized.contains("file") || normalized.contains("文件") || normalized.contains("存储") { return .storage }
-        return .runtime
     }
 
     private func bridgeChildObjectChanges() {

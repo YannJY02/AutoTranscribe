@@ -175,9 +175,16 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
     func testThrowingTransportDoesNotEscapeCaptureBoundary() throws {
         let fixture = try makeFixture()
-        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: ThrowingSentryTransport())
+        let transport = SignalingThrowingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForAttempt())
+        let deadline = Date().addingTimeInterval(1)
+        while adapter.localDeliveryFailureCount == 0, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertEqual(adapter.localDeliveryFailureCount, 1)
     }
 
     func testNewAdapterReplaysGateAuthorizedEnvelopeAfterTransportFailure() throws {
@@ -502,10 +509,6 @@ private final class StubSentryURLProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
-}
-
-private struct ThrowingSentryTransport: SentryDiagnosticsTransport {
-    func send(envelope: Data, failureStack: [UInt64]) throws { throw CocoaError(.fileWriteUnknown) }
 }
 
 private final class SignalingThrowingSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
