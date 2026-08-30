@@ -29,6 +29,20 @@ class TestProviderProbe(unittest.TestCase):
         result = self.probe.analysis_providers_status({"probe_active": True, "probe_timeout_sec": 2})
         self.assertTrue(result["active_probe_ok"])
 
+    @mock.patch("insightkit.ipc.provider_probe.providers_status", return_value={
+        "selected_vendor": "openai",
+        "active_ready": False,
+        "vendors": {"openai": {"configured": False, "model_id": "", "base_url": ""}},
+    })
+    def test_local_provider_status_is_ready_without_cloud_probe(self, _mock_ps):
+        with mock.patch.dict("os.environ", {"INSIGHTKIT_ANALYSIS_MODE": "local"}):
+            result = self.probe.analysis_providers_status({"probe_active": True})
+
+        self.assertTrue(result["active_ready"])
+        self.assertEqual(result["analysis_mode"], "local")
+        self.assertIsNone(result["active_probe_ok"])
+        self.service.probe_provider.assert_not_called()
+
     def test_provider_probe_calls_service(self):
         self.service.probe_provider.return_value = {"ok": True, "code": "", "message": ""}
         result = self.probe.analysis_provider_probe({

@@ -32,6 +32,11 @@ class ProviderProbe:
         status["active_probe_error_code"] = ""
         status["active_probe_message"] = ""
 
+        if os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":
+            status["active_ready"] = True
+            status["analysis_mode"] = "local"
+            return status
+
         if not probe_active:
             return status
 

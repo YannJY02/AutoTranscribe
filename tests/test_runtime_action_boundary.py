@@ -293,7 +293,7 @@ def test_smart_minutes_generate_contract_success_provider_fallback_and_empty_tra
         failed_server.shutdown()
 
 
-def test_no_network_local_smart_minutes_rpc_to_canonical_record(tmp_path, monkeypatch):
+def test_no_network_local_smart_minutes_live_rpc_to_canonical_record(tmp_path, monkeypatch):
     monkeypatch.setenv("INSIGHTKIT_RECORDS_ROOT", str(tmp_path / "Records"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -322,7 +322,7 @@ def test_no_network_local_smart_minutes_rpc_to_canonical_record(tmp_path, monkey
                 "insight_package": minutes["insight_package"],
                 "analysis_meta": {"provider": minutes["provider_vendor"]},
                 "media_type": "audio",
-                "record_source": "imported",
+                "record_source": "live",
                 "duration_sec": 4.0,
             })["result"]
 
@@ -331,7 +331,10 @@ def test_no_network_local_smart_minutes_rpc_to_canonical_record(tmp_path, monkey
         assert minutes["status"] == "available"
         assert (record / "minutes.json").exists()
         assert (record / "insight_package.json").exists()
-        assert json.loads((record / "metadata.json").read_text())["analysis"]["provider"] == "local"
+        metadata = json.loads((record / "metadata.json").read_text())
+        assert metadata["source"] == "live"
+        assert metadata["analysis"]["provider"] == "local"
+        assert json.loads((record / "insight_package.json").read_text()) == minutes["insight_package"]
     finally:
         server.shutdown()
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -31,6 +32,15 @@ MODULES = (
 )
 
 
+def _timestamp_ms(value: Any) -> int | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", value):
+        return None
+    parts = [int(part) for part in value.split(":")]
+    if parts[-1] >= 60 or (len(parts) == 3 and parts[-2] >= 60):
+        return None
+    return (parts[0] * 60 + parts[1]) * 1000 if len(parts) == 2 else (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000
+
+
 def evaluate_fixture() -> dict[str, Any]:
     service = InsightService()
     started = time.perf_counter()
@@ -40,15 +50,34 @@ def evaluate_fixture() -> dict[str, Any]:
     )
     latency_ms = round((time.perf_counter() - started) * 1000, 3)
 
-    evidenced = [
-        *package["highlight_insights"],
-        *package["decision_ledger"],
-        *package["action_tracks"],
+    item_spans = [
+        item.get("evidence_span", {})
+        for module in ("highlight_insights", "decision_ledger", "action_tracks")
+        for item in package[module]
     ]
-    linked = sum(
-        1 for item in evidenced
-        if item.get("evidence_span", {}).get("end_ms", 0) > item.get("evidence_span", {}).get("start_ms", 0)
+    perspective_spans = [perspective.get("evidence_spans", []) for perspective in package["speaker_perspectives"]]
+    chapter_links = [item.get("timestamp") for item in package["timeline_beats"]]
+    fixture_duration_ms = max(segment["end_ms"] for segment in FIXTURE)
+
+    def span_is_linked(span: dict[str, Any]) -> bool:
+        start_ms = span.get("start_ms")
+        end_ms = span.get("end_ms")
+        return isinstance(start_ms, (int, float)) and isinstance(end_ms, (int, float)) and 0 <= start_ms < end_ms <= fixture_duration_ms
+
+    linked_spans = sum(
+        1 for span in item_spans
+        if span_is_linked(span)
     )
+    linked_perspectives = sum(
+        1 for spans in perspective_spans
+        if spans and all(span_is_linked(span) for span in spans)
+    )
+    linked_chapters = sum(
+        1 for timestamp in chapter_links
+        if (timestamp_ms := _timestamp_ms(timestamp)) is not None and timestamp_ms <= fixture_duration_ms
+    )
+    linked = linked_spans + linked_perspectives + linked_chapters
+    evidenced_items = len(item_spans) + len(perspective_spans) + len(chapter_links)
 
     try:
         empty = service.build_final([], provider_vendor="local")
@@ -70,8 +99,12 @@ def evaluate_fixture() -> dict[str, Any]:
         },
         "evidence_linkage": {
             "linked_items": linked,
-            "evidenced_items": len(evidenced),
-            "ratio": linked / len(evidenced) if evidenced else 1.0,
+            "evidenced_items": evidenced_items,
+            "ratio": linked / evidenced_items if evidenced_items else 1.0,
+            "semantics": {
+                "speaker_perspectives": "each perspective must have at least one valid span and no invalid spans",
+                "timeline_beats": "timestamp is a direct media-timeline link",
+            },
         },
         "latency_ms": latency_ms,
         "failure_behavior": failure_behavior,
@@ -86,9 +119,9 @@ def evaluate_fixture() -> dict[str, Any]:
         },
         "evidence_linkage": {
             "gh_50_dimension": "generated items trace back to transcript evidence",
-            "expected_condition": "every extracted highlight, decision, and action has a non-empty evidence span and the package has meeting-specific transcript provenance",
+            "expected_condition": "every extracted highlight, speaker perspective, decision, and action has valid transcript evidence; every timeline beat has a media timestamp; and the package has meeting-specific transcript provenance",
             "observed": metrics["evidence_linkage"],
-            "outcome": linked == len(evidenced) and bool(package["provenance_links"]),
+            "outcome": linked == evidenced_items and bool(package["provenance_links"]),
             "release_threshold": None,
         },
         "latency_ms": {

@@ -29,12 +29,18 @@ logger = logging.getLogger(__name__)
 def attach_transcript_provenance(package: dict[str, Any], meeting_id: str) -> dict[str, Any]:
     """Attach the canonical meeting-specific transcript source representation."""
     enriched = dict(package)
-    existing = [
-        link for link in package.get("provenance_links", [])
-        if isinstance(link, dict) and str(link.get("url", "")).strip()
-    ]
+    existing = []
+    seen_urls = set()
+    for link in package.get("provenance_links", []):
+        if not isinstance(link, dict):
+            continue
+        url = str(link.get("url", "")).strip()
+        if not url or url in seen_urls:
+            continue
+        existing.append(link)
+        seen_urls.add(url)
     transcript_url = f"InsightKit SQLite segments: meeting_id={meeting_id}"
-    if not any(link.get("url") == transcript_url for link in existing):
+    if transcript_url not in seen_urls:
         existing.append({"label": "Transcript evidence", "url": transcript_url})
     enriched["provenance_links"] = existing
     validate_insight_package(enriched)
