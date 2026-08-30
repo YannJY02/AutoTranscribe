@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,7 @@ def source(**overrides):
         "owner_action": "Controller rechecks CI after push.",
         "recheck_source": "https://github.com/YannJY02/AutoTranscribe/actions/runs/101",
         "human_gate": "PR review remains required.",
-        "unknowns": ["remote-ci-unobserved"],
+        "unknowns": [],
     }
     value.update(overrides)
     return value
@@ -85,6 +86,15 @@ def test_promotion_id_is_stable_across_revision_changes(tmp_path: Path):
     assert ledger.promotions(second)[0]["promotion_id"] == first_id
 
 
+def test_distinct_transitions_have_distinct_promotion_ids(tmp_path: Path):
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    normalized = ledger._collect_normalized([
+        source(lifecycle_transition="preflight-passed"),
+        source(lifecycle_transition="handoff-ready"),
+    ])
+    assert len({item["promotion_id"] for item in ledger.promotions(normalized)}) == 2
+
+
 def test_same_revision_with_changed_claim_is_rejected(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     ledger._collect_normalized([source()])
@@ -114,33 +124,53 @@ def test_concurrent_collectors_do_not_lose_records(tmp_path: Path):
     assert len(EvidenceLedger(path)._load()["records"]) == 4
 
 
-def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_path: Path):
-    manifest = tmp_path / "proof.json"
-    manifest.write_text(json.dumps({"status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT, "transcript": "private"}))
+def test_timestamp_offsets_are_compared_as_instants(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
-    with pytest.raises(ValidationError, match="forbidden field"):
-        ledger.collect_repository_manifest(
-            manifest, repository_ref="logs/harness/GH-68/proof.json", source_id="harness-GH-68",
+    ledger._collect_normalized([source(observed_at="2026-08-30T09:30:00Z", revision="build-new")])
+    with pytest.raises(ValidationError, match="stale source observation"):
+        ledger._collect_normalized([source(observed_at="2026-08-30T10:00:00+02:00", revision="build-old")])
+
+
+def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_path: Path):
+    repository_root = Path(__file__).parents[1]
+    with tempfile.TemporaryDirectory(dir=repository_root / "logs/harness") as directory:
+        manifest = Path(directory) / "proof.json"
+        repository_ref = manifest.relative_to(repository_root).as_posix()
+        manifest.write_text(json.dumps({
+            "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+            "transcript": "private",
+        }))
+        ledger = EvidenceLedger(tmp_path / "ledger.json")
+        with pytest.raises(ValidationError, match="forbidden field"):
+            ledger.collect_repository_manifest(
+                manifest, repository_ref=repository_ref, source_id="harness-GH-68",
+                lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
+                environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
+                promotion_category="gate",
+            )
+        assert not ledger.path.exists()
+
+        manifest.write_text(json.dumps({
+            "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+            "workspace": "/Users/alice/private-workspace",
+        }))
+        with pytest.raises(ValidationError, match="match repository_ref"):
+            ledger.collect_repository_manifest(
+                manifest, repository_ref="logs/harness/different.json", source_id="harness-GH-68",
+                lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
+                environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
+                promotion_category="gate",
+            )
+        normalized = ledger.collect_repository_manifest(
+            manifest, repository_ref=repository_ref, source_id="harness-GH-68",
             lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
             environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
             promotion_category="gate",
         )
-    assert not ledger.path.exists()
-
-    manifest.write_text(json.dumps({
-        "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
-        "workspace": "/Users/alice/private-workspace",
-    }))
-    normalized = ledger.collect_repository_manifest(
-        manifest, repository_ref="logs/harness/GH-68/proof.json", source_id="harness-GH-68",
-        lifecycle_stage="verification", lifecycle_transition="full-harness-completed",
-        environment="local-macos", linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68",
-        promotion_category="gate",
-    )
-    record = normalized["records"][0]
-    assert record["revision"] == "abc123"
-    assert record["artifact_sha256"].startswith("sha256:")
-    assert "/Users/" not in json.dumps(normalized)
+        record = normalized["records"][0]
+        assert record["revision"] == "abc123"
+        assert record["artifact_sha256"].startswith("sha256:")
+        assert "/Users/" not in json.dumps(normalized)
 
 
 def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path):
@@ -152,6 +182,8 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         )])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="analytics:cohort-7")])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_type="analytics", source_ref="https://evil.example/readback")])
     accepted = ledger._collect_normalized([
         source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2")
     ])
@@ -161,6 +193,7 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
 @pytest.mark.parametrize("degraded", [
     {"revision": "unavailable", "result": "passed"},
     {"lifecycle_transition": "connector-unavailable", "result": "passed"},
+    {"lifecycle_transition": "source-unobserved", "result": "passed"},
     {"unknowns": ["connector-unavailable"], "result": "passed"},
 ])
 def test_unavailable_or_degraded_sources_never_pass(tmp_path: Path, degraded: dict):
@@ -177,6 +210,11 @@ def test_unavailable_repository_source_is_explicitly_unobserved(tmp_path: Path):
     assert record["result"] == "unobserved"
     assert record["revision"] == "unavailable"
     assert record["artifact_sha256"] is None
+
+
+def test_content_hash_cannot_be_used_as_source_id(tmp_path: Path):
+    with pytest.raises(ValidationError, match="stable metadata identifier"):
+        EvidenceLedger(tmp_path / "ledger.json")._collect_normalized([source(source_id="sha256:deadbeef")])
 
 
 def test_schema_matches_the_accepted_yan_43_record_contract():

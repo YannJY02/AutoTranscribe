@@ -28,7 +28,7 @@ PRIVACY_CLASSES = frozenset({"public-metadata", "repository-metadata", "approved
 SOURCES = frozenset({"linear", "github", "ci", "repository", "analytics", "diagnostics", "pilot"})
 SEVERE_EVENTS = frozenset({"security", "privacy", "data-loss"})
 FEEDBACK_EVENTS = SEVERE_EVENTS | {"review", "bug"}
-SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 REVISION = re.compile(r"^(?:(?:sha256:[0-9a-f]{6,64})|(?:[A-Za-z0-9][A-Za-z0-9._/-]{0,127})|unavailable)$")
 METADATA_CODE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 EVIDENCE_ID = re.compile(r"^ev_v1_[0-9a-f]{24}$")
@@ -43,6 +43,7 @@ FORBIDDEN_FIELDS = frozenset({
 })
 PRIVATE_PATH = re.compile(r"(?:/Users/[^/\s]+|/home/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)(?:[/\\][^\s]*)?")
 SECRET = re.compile(r"(?i)(?:bearer\s+[a-z0-9._-]+|(?:api[_-]?key|token|secret)\s*[:=]\s*\S+)")
+POSTHOG_HOSTS = frozenset({"app.posthog.com", "eu.posthog.com", "us.posthog.com"})
 REQUIRED = (
     "linear_issue_id", "github_issue_or_pr_id", "lifecycle_stage", "lifecycle_transition",
     "source_type", "source_id", "source_ref", "revision", "artifact_sha256", "observed_at",
@@ -99,6 +100,17 @@ def _https_ref(value: str, hosts: set[str] | None = None) -> bool:
     )
 
 
+def _approved_external_ref(source_type: str, value: str) -> bool:
+    if _is_repo_ref(value):
+        return True
+    hostname = urlsplit(value).hostname or ""
+    if source_type == "analytics":
+        return _https_ref(value) and hostname in POSTHOG_HOSTS
+    if source_type == "diagnostics":
+        return _https_ref(value) and (hostname == "sentry.io" or hostname.endswith(".sentry.io"))
+    return False
+
+
 def _valid_timestamp(value: Any) -> bool:
     if not isinstance(value, str) or len(value) > 64:
         return False
@@ -109,10 +121,18 @@ def _valid_timestamp(value: Any) -> bool:
     return parsed.tzinfo is not None
 
 
+def _timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _is_degraded(item: dict[str, Any]) -> bool:
     codes = [str(item.get("revision", "")), str(item.get("lifecycle_transition", ""))]
     codes.extend(str(value) for value in item.get("unknowns", []))
-    return any("unavailable" in value or "degraded" in value for value in codes)
+    return any(
+        marker in value
+        for value in codes
+        for marker in ("unavailable", "degraded", "unobserved", "blocked", "missing", "partial")
+    )
 
 
 def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
@@ -161,7 +181,7 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
     elif item["source_type"] == "repository":
         inspectable = _is_repo_ref(source_ref)
     else:
-        inspectable = _https_ref(source_ref) or _is_repo_ref(source_ref)
+        inspectable = _approved_external_ref(item["source_type"], source_ref)
     if not inspectable:
         raise ValidationError("source_ref is not an inspectable approved reference")
 
@@ -263,16 +283,13 @@ class EvidenceLedger:
 
     def _collect_normalized(self, inputs: Iterable[dict[str, Any]]) -> dict[str, Any]:
         """Validate one batch, then atomically merge it under the ledger lock."""
-        candidates = sorted(
-            (dict(item) for item in inputs),
-            key=lambda item: (
-                str(item.get("source_type", "")), str(item.get("source_id", "")),
-                str(item.get("lifecycle_transition", "")), str(item.get("observed_at", "")),
-                str(item.get("revision", "")),
-            ),
-        )
+        candidates = [dict(item) for item in inputs]
         for item in candidates:
             _validate(item)
+        candidates.sort(key=lambda item: (
+            item["source_type"], item["source_id"], item["lifecycle_transition"],
+            _timestamp(item["observed_at"]), item["revision"],
+        ))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+b") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -302,7 +319,9 @@ class EvidenceLedger:
                     and record["result"] != "superseded"
                 ), None)
                 if active is not None:
-                    if (item["observed_at"], item["revision"]) <= (active["observed_at"], active["revision"]):
+                    if (_timestamp(item["observed_at"]), item["revision"]) <= (
+                        _timestamp(active["observed_at"]), active["revision"],
+                    ):
                         raise ValidationError("stale source observation cannot supersede the active revision")
                     active["result"] = "superseded"
                     normalized["supersedes"] = active["evidence_id"]
@@ -344,8 +363,12 @@ class EvidenceLedger:
         path = Path(manifest)
         if not _is_repo_ref(repository_ref):
             raise ValidationError("repository_ref must be a safe repository-relative path")
+        repository_root = Path(__file__).resolve().parent.parent
+        if path.resolve() != (repository_root / repository_ref).resolve():
+            raise ValidationError("manifest path must match repository_ref")
         try:
-            payload = json.loads(path.read_text())
+            manifest_bytes = path.read_bytes()
+            payload = json.loads(manifest_bytes)
         except (OSError, json.JSONDecodeError) as error:
             raise ValidationError(f"manifest is unreadable or malformed: {error}") from error
         if not isinstance(payload, dict):
@@ -357,7 +380,7 @@ class EvidenceLedger:
             result = "unobserved"
         revision = str(payload.get("commit") or payload.get("source_revision") or payload.get("revision") or "unavailable")
         observed_at = payload.get("finished_at") or payload.get("observed_at") or payload.get("captured_at")
-        artifact_sha = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        artifact_sha = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
         unknowns = []
         if result == "unobserved":
             unknowns.append("manifest-status-unrecognized")
@@ -408,7 +431,10 @@ class EvidenceLedger:
             if category is None or record["result"] == "superseded":
                 continue
             target = record["linear_issue_id"] or record["github_issue_or_pr_id"]
-            promotion_id = _identifier("pr", str(target), record["source_type"], record["source_id"], category)
+            promotion_id = _identifier(
+                "pr", str(target), record["source_type"], record["source_id"],
+                record["lifecycle_transition"], category,
+            )
             promotions.append({
                 "promotion_id": promotion_id, "evidence_id": record["evidence_id"],
                 "promotion_category": category, "source_ref": record["source_ref"],

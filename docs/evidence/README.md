@@ -6,12 +6,12 @@ The versioned record contract is [`evidence-record.schema.json`](./evidence-reco
 
 ## Collectors
 
-- `collect_repository_manifest` privacy-scans a local JSON proof, Eval, issue-preflight, diagnostics, or Harness manifest, then persists only its repository-relative reference, source revision, artifact SHA-256, bounded result, and handoff fields.
+- `collect_repository_manifest` reads a repository-bound JSON artifact once, privacy-scans those bytes, and hashes the same bytes before persisting only its reference, source revision, artifact SHA-256, bounded result, and handoff fields.
 - `collect_external_reference` is the bounded adapter for Linear, GitHub, CI, approved analytics/diagnostics readbacks, and pilot manifests. It accepts stable identifiers, revisions, approved references, lifecycle/result enums, and unknowns; claim prose is templated and no provider response is accepted.
 - `collect` is the shared normalization sink used by the named adapters. It enforces stable metadata identifier and revision syntax, source-specific inspectable-reference formats, bounded claim fields, and privacy rejection before persistence.
 - `collect_unavailable` converts a missing integration into an explicit `unobserved` record. It cannot produce a pass.
 
-Inputs containing transcript or meeting content, prompts, provider payloads, credential-like fields, or secret-like strings are rejected before any write. Private paths are rejected from normalized inputs and deliberately omitted from repository manifests (including Harness `workspace`). Repository references reject URI schemes; external references require an inspectable HTTPS URL or repository artifact. Writers lock the ledger and atomically replace it after validating the whole batch.
+Inputs containing transcript or meeting content, prompts, provider payloads, credential-like fields, or secret-like strings are rejected before any write. Private paths are rejected from normalized inputs and deliberately omitted from repository manifests (including Harness `workspace`). Repository references reject URI schemes and must resolve to the file being hashed. Analytics HTTPS links are limited to PostHog and diagnostics links to Sentry; pilot evidence uses repository manifests. Writers lock the ledger and atomically replace it after validating the whole batch.
 
 ## Dry-run handoff
 
