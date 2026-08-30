@@ -131,11 +131,12 @@ stop_evidence_capture() {
 
 trap stop_evidence_capture EXIT
 
-LOG_PREDICATE="process == \"InsightKitApp\" AND processImagePath BEGINSWITH \"$DERIVED_DATA_PATH/\""
+printf '%s\n' '{"schema_version":1,"event":"capture-started","scope":"derived-test-app-errors"}' > "$UNIFIED_LOG"
+LOG_PREDICATE="process == \"InsightKitApp\" AND processImagePath BEGINSWITH \"$DERIVED_DATA_PATH/\" AND logType == error"
 /usr/bin/log stream \
     --style ndjson \
     --predicate "$LOG_PREDICATE" \
-    > "$UNIFIED_LOG" 2>&1 &
+    >> "$UNIFIED_LOG" 2>&1 &
 LOG_STREAM_PID=$!
 
 if [[ "$RECORD_VIDEO" == "1" ]]; then
@@ -209,7 +210,16 @@ else
     TEST_STATUS=$?
 fi
 ELAPSED_SECONDS=$((SECONDS - STARTED_SECONDS))
+LOG_STREAM_CAPTURED=0
+if [[ -n "$LOG_STREAM_PID" ]] && kill -0 "$LOG_STREAM_PID" 2>/dev/null; then
+    LOG_STREAM_CAPTURED=1
+fi
 stop_evidence_capture
+if [[ "$LOG_STREAM_CAPTURED" == "1" ]]; then
+    printf '%s\n' '{"schema_version":1,"event":"capture-completed","scope":"derived-test-app-errors"}' >> "$UNIFIED_LOG"
+else
+    printf '%s\n' '{"schema_version":1,"event":"capture-failed","scope":"derived-test-app-errors"}' >> "$UNIFIED_LOG"
+fi
 
 if [[ -d "$RESULT_BUNDLE" ]]; then
     xcrun xcresulttool export attachments \

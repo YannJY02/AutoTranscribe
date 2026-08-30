@@ -17,7 +17,7 @@ def test_finalize_proof_records_ui_logs_metrics_and_trace_without_log_contents(t
         encoding="utf-8",
     )
     unified_log = tmp_path / "unified.ndjson"
-    unified_log.write_text('{"message":"started"}\n', encoding="utf-8")
+    unified_log.write_text('{"event":"capture-completed"}\n', encoding="utf-8")
     attachments = tmp_path / "attachments"
     attachments.mkdir()
     (attachments / "after.png").write_bytes(b"png")
@@ -82,7 +82,7 @@ def test_finalize_proof_enforces_requested_video_and_trace(tmp_path):
     log_path = tmp_path / "xcodebuild.log"
     log_path.write_text("Test Case '-[InsightKitUITests.Flow testOne]' passed (0.100 seconds).\n", encoding="utf-8")
     unified_log = tmp_path / "unified.ndjson"
-    unified_log.write_text('{"message":"started"}\n', encoding="utf-8")
+    unified_log.write_text('{"event":"capture-completed"}\n', encoding="utf-8")
     result_bundle = tmp_path / "tests.xcresult"
     result_bundle.mkdir()
     attachments = tmp_path / "attachments"
@@ -145,7 +145,7 @@ def test_finalize_proof_records_identity_selected_tests_and_hashes_each_file(tmp
         encoding="utf-8",
     )
     unified_log = tmp_path / "unified.ndjson"
-    unified_log.write_text('{"message":"started"}\n', encoding="utf-8")
+    unified_log.write_text('{"event":"capture-completed"}\n', encoding="utf-8")
     result_bundle = tmp_path / "tests.xcresult"
     result_bundle.mkdir()
     (result_bundle / "Info.plist").write_bytes(b"result")
@@ -153,7 +153,13 @@ def test_finalize_proof_records_identity_selected_tests_and_hashes_each_file(tmp
     result_summary.write_text('{"result":"passed"}\n', encoding="utf-8")
     attachments = tmp_path / "attachments"
     attachments.mkdir()
-    (attachments / "home-window.png").write_bytes(b"png")
+    (attachments / "A1B2C3.png").write_bytes(b"png")
+    (attachments / "manifest.json").write_text(json.dumps([{
+        "attachments": [{
+            "exportedFileName": "A1B2C3.png",
+            "suggestedHumanReadableName": "target-window--[HomeViewTests testHome].png",
+        }]
+    }]), encoding="utf-8")
 
     proof = finalize_proof(
         output_root=tmp_path / "proof",
@@ -170,7 +176,7 @@ def test_finalize_proof_records_identity_selected_tests_and_hashes_each_file(tmp
         build="2026083001",
         scenario="home-visible-route",
         selected_tests=["HomeViewTests/testHome"],
-        expected_screenshots=["home-window"],
+        expected_screenshots=["target-window"],
     )
 
     assert proof["status"] == "passed"
@@ -190,7 +196,7 @@ def test_finalize_proof_records_identity_selected_tests_and_hashes_each_file(tmp
     files = {item["name"] for item in manifest["files"]}
     assert "xcresult-summary.json" in files
     assert "xcresult/Info.plist" not in files
-    assert "screenshots/home-window.png" in files
+    assert "screenshots/A1B2C3.png" in files
     assert all(len(item["sha256"]) == 64 for item in manifest["files"])
     artifacts = {item["name"]: item["path"] for item in proof["artifacts"]}
     assert artifacts["xcodebuild-log"] == "xcodebuild.log"
@@ -208,10 +214,16 @@ def test_finalize_proof_rejects_missing_selected_test_and_expected_screenshot(tm
     attachments = tmp_path / "attachments"
     attachments.mkdir()
     (attachments / "other.png").write_bytes(b"png")
+    (attachments / "manifest.json").write_text(json.dumps([{
+        "attachments": [{
+            "exportedFileName": "missing.png",
+            "suggestedHumanReadableName": "home-window.png",
+        }]
+    }]), encoding="utf-8")
     result_bundle = tmp_path / "tests.xcresult"
     result_bundle.mkdir()
     unified_log = tmp_path / "unified.ndjson"
-    unified_log.write_text('{"message":"started"}\n', encoding="utf-8")
+    unified_log.write_text('{"event":"capture-completed"}\n', encoding="utf-8")
 
     proof = finalize_proof(
         output_root=tmp_path / "proof",
@@ -290,7 +302,11 @@ def test_finalize_proof_redacts_personal_paths_and_tokens_in_in_place_logs(tmp_p
         encoding="utf-8",
     )
     unified_log = output_root / "unified.ndjson"
-    unified_log.write_text('{"path":"/Users/private-person/Documents/fixture"}\n', encoding="utf-8")
+    unified_log.write_text(
+        '{"path":"\\/Users\\/private-person\\/Documents\\/fixture"}\n'
+        '{"event":"capture-completed"}\n',
+        encoding="utf-8",
+    )
     result_bundle = tmp_path / "tests.xcresult"
     result_bundle.mkdir()
     attachments = output_root / "attachments"
@@ -311,6 +327,7 @@ def test_finalize_proof_redacts_personal_paths_and_tokens_in_in_place_logs(tmp_p
 
     retained = (output_root / "xcodebuild.log").read_text(encoding="utf-8") + unified_log.read_text(encoding="utf-8")
     assert "private-person" not in retained
+    assert "\\/Users\\/" not in retained
     assert "token-value" not in retained
     assert "sk-abcdefghijklmnop" not in retained
 

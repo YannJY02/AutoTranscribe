@@ -83,7 +83,7 @@ def _redact_text_file(path: Path) -> None:
     if not path.is_file() or path.suffix.casefold() not in {".json", ".log", ".ndjson", ".txt"}:
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = re.sub(r"/Users/[^/\s\"']+", "$HOME", text)
+    text = re.sub(r"(?:\\/|/)Users(?:\\/|/)[^/\\\s\"']+", "$HOME", text)
     text = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s\"']+", r"\1<redacted>", text)
     text = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", "<redacted-api-key>", text)
     path.write_text(text, encoding="utf-8")
@@ -246,18 +246,37 @@ def finalize_proof(
             if path.is_file() and path.suffix.casefold() in {".png", ".jpg", ".jpeg"}
         ]
         screenshots = len(screenshot_paths)
+        screenshot_file_names = {path.name for path in screenshot_paths}
         screenshot_names = [path.stem for path in screenshot_paths]
+        attachment_manifest = copied_attachments / "manifest.json"
+        if attachment_manifest.is_file():
+            try:
+                groups = json.loads(attachment_manifest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                groups = []
+            for group in groups if isinstance(groups, list) else []:
+                if not isinstance(group, dict):
+                    continue
+                for attachment in group.get("attachments", []):
+                    if isinstance(attachment, dict):
+                        exported_name = attachment.get("exportedFileName")
+                        name = attachment.get("suggestedHumanReadableName")
+                        if exported_name in screenshot_file_names and isinstance(name, str):
+                            screenshot_names.append(name)
     unified_lines = 0
     unified_json_lines = 0
+    unified_capture_completed = False
     if unified_log and unified_log.exists():
         with unified_log.open(encoding="utf-8", errors="replace") as handle:
             for line in handle:
                 unified_lines += 1
                 try:
-                    json.loads(line)
+                    event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
                 unified_json_lines += 1
+                if isinstance(event, dict) and event.get("event") == "capture-completed":
+                    unified_capture_completed = True
     metrics = {
         "command_exit_code": exit_code,
         "journey_duration_seconds": round(duration_seconds, 3),
@@ -267,6 +286,7 @@ def finalize_proof(
         "screenshots": screenshots,
         "unified_log_lines": unified_lines,
         "unified_log_json_lines": unified_json_lines,
+        "unified_log_capture_completed": unified_capture_completed,
     }
     missing_required_evidence = []
     if screenshots == 0:
@@ -275,7 +295,7 @@ def finalize_proof(
         missing_required_evidence.append("test-result")
     if result_bundle is None or not result_bundle.is_dir():
         missing_required_evidence.append("xcresult")
-    if unified_json_lines == 0:
+    if not unified_capture_completed:
         missing_required_evidence.append("unified-log")
     if require_video and (video is None or not video.is_file()):
         missing_required_evidence.append("video")
