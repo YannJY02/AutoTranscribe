@@ -79,7 +79,9 @@ final class SentryDiagnosticsAdapter {
     private let deliverySlots = DispatchSemaphore(value: 8)
     private let deliveryStateLock = NSLock()
     private let diagnosticsLock = NSLock()
+    private let releaseSessionLock = NSLock()
     private var acceptingDelivery: Bool
+    private var releaseSessionMayStart = true
     private var deliveryFailureCount = 0
     private var consentObservers: [NSObjectProtocol] = []
 
@@ -122,7 +124,24 @@ final class SentryDiagnosticsAdapter {
         deliveryStateLock.lock()
         acceptingDelivery = true
         deliveryStateLock.unlock()
-        _ = captureReleaseSession(.ok)
+        startReleaseSessionAfterDrainingQueue()
+    }
+
+    func startReleaseSessionAfterDrainingQueue() {
+        deliveryQueue.async { [weak self] in
+            guard let self else { return }
+            self.releaseSessionLock.lock()
+            defer { self.releaseSessionLock.unlock() }
+            guard self.releaseSessionMayStart else { return }
+            _ = self.captureReleaseSession(.ok)
+        }
+    }
+
+    func endReleaseSession(_ status: ReleaseSessionStatus) {
+        releaseSessionLock.lock()
+        releaseSessionMayStart = false
+        releaseSessionLock.unlock()
+        _ = captureReleaseSession(status)
     }
 
     private var mayDeliver: Bool {
@@ -155,7 +174,7 @@ final class SentryDiagnosticsAdapter {
             return deliver(gate.record(event: .init(
                 name: "release_session_started",
                 properties: ["session_status": status.rawValue]
-            )), acknowledge: false)
+            ), replacingOldestWhenFull: true), acknowledge: false)
         }
         let envelope: Data
         do {
@@ -588,13 +607,13 @@ final class SentryDiagnosticsRuntime {
             gate: gate,
             transport: transportOverride ?? SentryHTTPTransport(configuration: sentry)
         )
-        _ = adapter?.captureReleaseSession(.ok)
+        adapter?.startReleaseSessionAfterDrainingQueue()
         if environment["INSIGHTKIT_SENTRY_SYNTHETIC_FAILURE"] == "1" {
             _ = adapter?.capture(.syntheticFailure)
         }
     }
 
-    func applicationWillTerminate() { _ = adapter?.captureReleaseSession(.exited) }
+    func applicationWillTerminate() { adapter?.endReleaseSession(.exited) }
 
     func captureFailure(
         workflow: SentryDiagnosticsAdapter.Workflow,

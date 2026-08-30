@@ -73,6 +73,19 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(try sentryGate.queuedEnvelopes().isEmpty)
     }
 
+    func testInvalidConsentRevocationCancelsInFlightSentryDelivery() throws {
+        let fixture = try makeFixture()
+        let transport = BlockingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForAttempt())
+
+        try fixture.persistInvalidConsent()
+        XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
+
+        XCTAssertTrue(transport.waitForCancellation())
+    }
+
     func testQueuedDeliveryCannotStartWhileRevocationCancellationIsPaused() throws {
         let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
@@ -256,6 +269,94 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertFalse(transport.waitForEnvelope(timeout: 0.1))
         XCTAssertEqual(try fixture.gate.queuedEnvelopes().count, 1)
         _ = adapter
+    }
+
+    func testRuntimeStartsReleaseSessionAfterDrainingAFullPriorSessionQueue() throws {
+        let fixture = try makeFixture(maxQueueItems: 1)
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "review_opened",
+            properties: ["workflow": "live", "phase": "reviewing"]
+        )).result, .accepted)
+        XCTAssertEqual(try fixture.gate.queuedEnvelopes().count, 1)
+        let restartedGate = try fixture.restartedGate()
+        let transport = RecordingSentryTransport()
+        let runtime = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: restartedGate,
+            transportOverride: transport
+        )
+
+        XCTAssertTrue(transport.waitForEnvelope())
+        XCTAssertTrue(transport.waitForEnvelope())
+        runtime.applicationWillTerminate()
+        XCTAssertTrue(transport.waitForEnvelope())
+
+        let eventNames = try transport.envelopes.map {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])["event_name"] as? String
+        }
+        XCTAssertEqual(eventNames, ["review_opened", "release_session_started", "release_session_ended"])
+    }
+
+    func testFailedFullBacklogReplayStillPersistsTheCurrentReleaseSession() throws {
+        let fixture = try makeFixture(maxQueueItems: 1)
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "review_opened",
+            properties: ["workflow": "live", "phase": "reviewing"]
+        )).result, .accepted)
+        XCTAssertEqual(try fixture.gate.queuedEnvelopes().count, 1)
+        let restartedGate = try fixture.restartedGate()
+        let transport = SignalingThrowingSentryTransport()
+        let runtime = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: restartedGate,
+            transportOverride: transport
+        )
+        XCTAssertTrue(transport.waitForAttempt())
+
+        let startDeadline = Date().addingTimeInterval(1)
+        var queued = try restartedGate.queuedEnvelopes()
+        while !queued.contains(where: { String(decoding: $0, as: UTF8.self).contains("release_session_started") }),
+              Date() < startDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            queued = try restartedGate.queuedEnvelopes()
+        }
+        XCTAssertTrue(queued.contains { String(decoding: $0, as: UTF8.self).contains("release_session_started") })
+
+        runtime.applicationWillTerminate()
+        let terminal = try XCTUnwrap(restartedGate.queuedEnvelopes().first)
+        XCTAssertTrue(String(decoding: terminal, as: UTF8.self).contains("release_session_ended"))
+    }
+
+    func testTerminationSuppressesAReleaseStartWaitingBehindStartupDrain() throws {
+        let fixture = try makeFixture(maxQueueItems: 1)
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "review_opened",
+            properties: ["workflow": "live", "phase": "reviewing"]
+        )).result, .accepted)
+        XCTAssertEqual(try fixture.gate.queuedEnvelopes().count, 1)
+        let restartedGate = try fixture.restartedGate()
+        let transport = PausingSuccessfulSentryTransport()
+        let runtime = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: restartedGate,
+            transportOverride: transport
+        )
+        XCTAssertTrue(transport.waitForFirstAttempt())
+
+        runtime.applicationWillTerminate()
+        transport.releaseFirstAttempt()
+
+        XCTAssertFalse(transport.waitForSecondAttempt())
+        XCTAssertTrue(try restartedGate.queuedEnvelopes().isEmpty)
     }
 
     func testStartupDrainDoesNotRaceCurrentProcessCaptureDelivery() throws {
@@ -568,6 +669,31 @@ private final class PausedCancellationSentryTransport: SentryDiagnosticsTranspor
     func finishCancellation() { cancellationMayFinish.signal() }
 }
 
+private final class PausingSuccessfulSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var attemptCount = 0
+    private let firstAttempt = DispatchSemaphore(value: 0)
+    private let secondAttempt = DispatchSemaphore(value: 0)
+    private let releaseFirst = DispatchSemaphore(value: 0)
+
+    func send(envelope: Data, failureStack: [UInt64]) throws {
+        lock.lock()
+        attemptCount += 1
+        let attempt = attemptCount
+        lock.unlock()
+        if attempt == 1 {
+            firstAttempt.signal()
+            _ = releaseFirst.wait(timeout: .now() + 1)
+        } else {
+            secondAttempt.signal()
+        }
+    }
+
+    func waitForFirstAttempt() -> Bool { firstAttempt.wait(timeout: .now() + 1) == .success }
+    func waitForSecondAttempt() -> Bool { secondAttempt.wait(timeout: .now() + 0.1) == .success }
+    func releaseFirstAttempt() { releaseFirst.signal() }
+}
+
 private final class StubSentryURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static var requests = 0
@@ -680,6 +806,15 @@ private final class Fixture {
             saveQueueKey: { keyBox.data = $0 },
             deleteQueueKey: { keyBox.data = nil }
         )
+    }
+
+    func persistInvalidConsent() throws {
+        let malformed = try JSONEncoder().encode(ExternalTelemetryPrivacyGate.Consent(
+            isEnabled: true,
+            version: 99,
+            grantedAt: Date()
+        ))
+        defaults?.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
     }
 }
 

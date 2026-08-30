@@ -727,7 +727,11 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
-    func record(event: Event, onPersisted: ((Data) -> Void)? = nil) -> RecordOutcome {
+    func record(
+        event: Event,
+        replacingOldestWhenFull: Bool = false,
+        onPersisted: ((Data) -> Void)? = nil
+    ) -> RecordOutcome {
         let initialObservation = observeConsent(.recordInitial)
         let observedConsent = initialObservation.consent
         let invalidConsent = initialObservation.isInvalid
@@ -844,9 +848,14 @@ final class ExternalTelemetryPrivacyGate {
             }
             do {
                 var queue = try loadAndExpireQueue()
-                guard queue.count < configuration.maxQueueItems else {
-                    mutateDiagnostics { $0.queueFull += 1 }
-                    return
+                if queue.count >= configuration.maxQueueItems {
+                    guard replacingOldestWhenFull else {
+                        mutateDiagnostics { $0.queueFull += 1 }
+                        return
+                    }
+                    let removed = queue.count - configuration.maxQueueItems + 1
+                    queue.removeFirst(removed)
+                    mutateDiagnostics { $0.queueFull += removed }
                 }
                 queue.append(envelope)
                 try persist(queue)
@@ -1247,6 +1256,7 @@ final class ExternalTelemetryPrivacyGate {
             Self.revocationTasks = [token: task]
             Self.stateLock.unlock()
             Self.consentTransitionLock.unlock()
+            NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
             onRevocationAdmitted()
             return RevocationAdmission(generation: generation, token: token, task: task, didAdvanceGeneration: true)
         }
@@ -1274,6 +1284,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
+        NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
         onRevocationAdmitted()
         return RevocationAdmission(generation: invalidationGeneration, token: revocationToken, task: task, didAdvanceGeneration: true)
     }

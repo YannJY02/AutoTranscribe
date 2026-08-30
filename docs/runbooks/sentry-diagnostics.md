@@ -2,8 +2,9 @@
 
 InsightKit telemetry is default-off. The runtime transport is created only when
 `INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED=1` and a valid HTTPS `INSIGHTKIT_SENTRY_DSN`
-are present **and** the central privacy gate has an existing persisted opt-in. The
-environment never grants or restores consent, so a persisted opt-out wins. The DSN is environment-specific. `SENTRY_AUTH_TOKEN`, organization,
+are present. Delivery additionally requires the central privacy gate's persisted
+opt-in; the environment never grants or restores consent, so a persisted opt-out
+wins. The DSN is environment-specific. `SENTRY_AUTH_TOKEN`, organization,
 and project values are release-administration inputs and must never enter the app,
 repository, logs, or proof artifacts.
 
