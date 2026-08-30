@@ -30,12 +30,21 @@ except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
-    time.sleep(1)
+    time.sleep(0.1)
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
     process.wait()
+    group_wait_deadline = time.monotonic() + 1
+    while time.monotonic() < group_wait_deadline:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    else:
+        raise SystemExit(125)
     raise SystemExit(124)
 PY
 }
