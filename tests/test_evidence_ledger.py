@@ -184,6 +184,27 @@ def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_pat
         assert "/Users/" not in json.dumps(normalized)
 
 
+@pytest.mark.parametrize("field", [
+    "access_token", "client_secret", "private_key", "github_pat", "accessToken", "clientSecret",
+    "aws_access_key_id", "aws_secret_access_key",
+])
+def test_manifest_rejects_bare_credential_field_names(tmp_path: Path, field: str):
+    repository_root = Path(__file__).parents[1]
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
+        manifest = Path(directory) / "proof.json"
+        manifest.write_text(json.dumps({
+            "status": "passed", "commit": "abc123", "finished_at": OBSERVED_AT,
+            field: "ghp_abcdefghijklmnopqrstuvwxyz012345",
+        }))
+        with pytest.raises(ValidationError, match="forbidden field"):
+            EvidenceLedger(tmp_path / "ledger.json").collect_repository_manifest(
+                manifest, repository_ref=manifest.relative_to(repository_root).as_posix(),
+                source_id="harness-GH-68", lifecycle_stage="verification",
+                lifecycle_transition="full-harness-completed", environment="local-macos",
+                linear_issue_id="YAN-50", github_issue_or_pr_id="GH-68", promotion_category="gate",
+            )
+
+
 def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     with pytest.raises(ValidationError, match="inspectable approved reference"):
@@ -199,6 +220,50 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2")
     ])
     assert accepted["records"][0]["source_type"] == "analytics"
+
+
+def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc3339_timestamps(tmp_path: Path):
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_ref="https://github.com/" + "a" * 500)])
+    with pytest.raises(ValidationError, match="issue or PR identifier"):
+        ledger._collect_normalized([source(github_issue_or_pr_id=68)])
+    for observed_at in (
+        "2026-W35T09:00:00Z", "2026-08-30 09:00:00Z", "2026-08-30T09:00:00+00:00:01",
+        "2026-08-30T09:00:00+00:60", "2026-08-30T09:00:00+24:00",
+    ):
+        with pytest.raises(ValidationError, match="RFC 3339"):
+            ledger._collect_normalized([source(observed_at=observed_at)])
+
+
+def test_repository_backed_external_evidence_requires_a_real_privacy_safe_manifest(tmp_path: Path):
+    repository_root = Path(__file__).parents[1]
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    metadata = {
+        key: value for key, value in source(
+            source_type="pilot", source_id="pilot-1", source_ref="logs/pilot/missing.json",
+        ).items()
+        if key not in {"privacy_class", "fact", "gap_or_decision", "owner_action", "recheck_source", "human_gate"}
+    }
+    with pytest.raises(ValidationError, match="unreadable or malformed"):
+        ledger.collect_external_reference(**metadata)
+
+    with tempfile.TemporaryDirectory(dir=repository_root) as directory:
+        manifest = Path(directory) / "pilot.json"
+        repository_ref = manifest.relative_to(repository_root).as_posix()
+        manifest.write_text(json.dumps({"status": "passed", "access_token": "ghp_abcdefghijklmnopqrstuvwxyz012345"}))
+        with pytest.raises(ValidationError, match="forbidden field"):
+            ledger.collect_external_reference(**{**metadata, "source_ref": repository_ref})
+
+        manifest.write_text(json.dumps({
+            "status": "failed", "revision": "pilot-rev-1", "observed_at": OBSERVED_AT,
+            "run_id": "pilot-1",
+        }))
+        record = ledger.collect_external_reference(**{**metadata, "source_ref": repository_ref})["records"][0]
+        assert record["artifact_sha256"].startswith("sha256:")
+        assert record["result"] == "failed"
+        assert record["revision"] == "pilot-rev-1"
+        assert record["fact"] == "Pilot reference metadata reports failed."
 
 
 @pytest.mark.parametrize("degraded", [
@@ -308,6 +373,21 @@ def test_adapter_rejects_claim_prose_and_non_array_cli_input(tmp_path: Path):
     script = Path(__file__).parents[1] / "scripts" / "evidence_ledger.py"
     completed = subprocess.run(
         [sys.executable, str(script), "--ledger", str(tmp_path / "cli.json"), "--input", str(input_path)],
+        text=True, capture_output=True, check=False,
+    )
+    assert completed.returncode == 2
+    assert "array" in completed.stderr
+
+
+@pytest.mark.parametrize("payload", ["null", "0", "true"])
+def test_cli_rejects_every_non_array_json_value(tmp_path: Path, payload: str):
+    input_path = tmp_path / "input.json"
+    input_path.write_text(payload)
+    completed = subprocess.run(
+        [
+            sys.executable, str(Path(__file__).parents[1] / "scripts" / "evidence_ledger.py"),
+            "--ledger", str(tmp_path / "ledger.json"), "--input", str(input_path),
+        ],
         text=True, capture_output=True, check=False,
     )
     assert completed.returncode == 2

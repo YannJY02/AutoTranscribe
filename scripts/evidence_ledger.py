@@ -43,7 +43,15 @@ FORBIDDEN_FIELDS = frozenset({
     "provider_payload", "payload", "credential", "credentials", "secret", "token",
 })
 PRIVATE_PATH = re.compile(r"(?:/Users/[^/\s]+|/home/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)(?:[/\\][^\s]*)?")
-SECRET = re.compile(r"(?i)(?:bearer\s+[a-z0-9._-]+|(?:api[_-]?key|token|secret)\s*[:=]\s*\S+)")
+SECRET = re.compile(
+    r"(?i)(?:bearer\s+[a-z0-9._-]+|(?:api[_-]?key|token|secret)\s*[:=]\s*\S+|"
+    r"(?:gh[pousr]_|github_pat_|sk-)[a-z0-9_-]{20,})"
+)
+CREDENTIAL_FIELD = re.compile(
+    r"(?i)(?:^|_)(?:(?:token|secret|password|credential|authorization|pat)s?|"
+    r"(?:api|private|access|secret)_key(?:_id)?)$"
+)
+RFC3339 = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$")
 POSTHOG_HOSTS = frozenset({"app.posthog.com", "eu.posthog.com", "us.posthog.com"})
 REQUIRED = (
     "linear_issue_id", "github_issue_or_pr_id", "lifecycle_stage", "lifecycle_transition",
@@ -70,7 +78,8 @@ def _identifier(prefix: str, *parts: str) -> str:
 def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            if str(key).casefold() in FORBIDDEN_FIELDS:
+            normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(key)).replace("-", "_")
+            if normalized_key.casefold() in FORBIDDEN_FIELDS or CREDENTIAL_FIELD.search(normalized_key):
                 raise ValidationError(f"forbidden field: {path}.{key}")
             _walk(child, f"{path}.{key}", redact_private_paths=redact_private_paths)
     elif isinstance(value, list):
@@ -96,7 +105,8 @@ def _is_repo_ref(value: str) -> bool:
 def _https_ref(value: str, hosts: set[str] | None = None) -> bool:
     parsed = urlsplit(value)
     return bool(
-        parsed.scheme == "https" and parsed.netloc and not parsed.username and not parsed.password
+        len(value) <= 500 and parsed.scheme == "https" and parsed.netloc
+        and not parsed.username and not parsed.password
         and (hosts is None or parsed.hostname in hosts)
     )
 
@@ -113,7 +123,9 @@ def _approved_external_ref(source_type: str, value: str) -> bool:
 
 
 def _valid_timestamp(value: Any) -> bool:
-    if not isinstance(value, str) or len(value) > 64:
+    if not isinstance(value, str) or len(value) > 64 or not RFC3339.fullmatch(value):
+        return False
+    if not value.endswith("Z") and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
         return False
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -158,9 +170,14 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
         raise ValidationError("source_id must be a stable metadata identifier")
     if not REVISION.fullmatch(str(item["revision"])):
         raise ValidationError("revision must be a stable metadata revision")
-    if item["linear_issue_id"] is not None and not LINEAR_ISSUE.fullmatch(str(item["linear_issue_id"])):
+    if item["linear_issue_id"] is not None and (
+        not isinstance(item["linear_issue_id"], str) or not LINEAR_ISSUE.fullmatch(item["linear_issue_id"])
+    ):
         raise ValidationError("linear_issue_id must be a stable issue identifier")
-    if item["github_issue_or_pr_id"] is not None and not GITHUB_ISSUE.fullmatch(str(item["github_issue_or_pr_id"])):
+    if item["github_issue_or_pr_id"] is not None and (
+        not isinstance(item["github_issue_or_pr_id"], str)
+        or not GITHUB_ISSUE.fullmatch(item["github_issue_or_pr_id"])
+    ):
         raise ValidationError("github_issue_or_pr_id must be a stable issue or PR identifier")
     if item["promotion_category"] is not None and not (item["linear_issue_id"] or item["github_issue_or_pr_id"]):
         raise ValidationError("promoted evidence requires an issue linkage")
@@ -169,7 +186,7 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
     if item["source_type"] == "repository" and item["artifact_sha256"] is None and item["revision"] != "unavailable":
         raise ValidationError("repository evidence requires artifact_sha256")
     if not _valid_timestamp(item["observed_at"]):
-        raise ValidationError("observed_at must be a timezone-aware ISO-8601 timestamp")
+        raise ValidationError("observed_at must be an RFC 3339 timestamp")
     for field in ("lifecycle_stage", "lifecycle_transition", "environment"):
         if not METADATA_CODE.fullmatch(str(item[field])):
             raise ValidationError(f"{field} must be bounded metadata")
@@ -412,9 +429,35 @@ class EvidenceLedger:
         privacy = "approved-aggregate" if source_type in {"analytics", "diagnostics", "pilot"} else "public-metadata"
         label = source_type.upper() if source_type == "ci" else source_type.title()
         item = dict(metadata)
+        source_ref = item.get("source_ref")
+        if source_type in {"analytics", "diagnostics", "pilot"} and isinstance(source_ref, str) and _is_repo_ref(source_ref):
+            repository_root = Path(__file__).resolve().parent.parent
+            path = (repository_root / source_ref).resolve()
+            if not path.is_relative_to(repository_root):
+                raise ValidationError("repository evidence path must resolve inside the repository")
+            try:
+                artifact = path.read_bytes()
+                payload = json.loads(artifact)
+            except (OSError, json.JSONDecodeError) as error:
+                raise ValidationError(f"repository evidence is unreadable or malformed: {error}") from error
+            if not isinstance(payload, dict):
+                raise ValidationError("repository evidence must be a JSON object")
+            _walk(payload, "repository evidence", redact_private_paths=True)
+            manifest_result = payload.get("status", payload.get("result"))
+            manifest_revision = payload.get("commit") or payload.get("source_revision") or payload.get("revision")
+            manifest_observed_at = payload.get("finished_at") or payload.get("observed_at") or payload.get("captured_at")
+            if not all(isinstance(value, str) for value in (manifest_result, manifest_revision, manifest_observed_at)):
+                raise ValidationError("repository evidence must bind status, revision, and observed_at")
+            item["result"] = manifest_result
+            item["revision"] = manifest_revision
+            item["observed_at"] = manifest_observed_at
+            artifact_sha256 = "sha256:" + hashlib.sha256(artifact).hexdigest()
+            if item.get("artifact_sha256") not in {None, artifact_sha256}:
+                raise ValidationError("repository evidence hash does not match source_ref")
+            item["artifact_sha256"] = artifact_sha256
         item.update({
             "privacy_class": privacy,
-            "fact": f"{label} reference metadata reports {metadata.get('result')}.",
+            "fact": f"{label} reference metadata reports {item.get('result')}.",
             "gap_or_decision": "Only approved reference metadata was observed; no raw payload was collected.",
             "owner_action": f"Inspect the linked {source_type} source before accepting the transition.",
             "recheck_source": str(metadata.get("source_ref", "")),
@@ -544,8 +587,12 @@ class EvidenceLedger:
     def collect_adapter_items(self, items: Iterable[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(items, (str, bytes, dict)):
             raise ValidationError("CLI input must be a JSON array")
+        try:
+            raw_items = list(items)
+        except TypeError as error:
+            raise ValidationError("CLI input must be a JSON array") from error
         records = []
-        for raw in list(items):
+        for raw in raw_items:
             if not isinstance(raw, dict):
                 raise ValidationError("CLI input array items must be objects")
             item = dict(raw)
