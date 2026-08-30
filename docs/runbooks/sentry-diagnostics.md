@@ -37,6 +37,11 @@ distinguish a crash from force-quit, so a vendor crash-free-rate claim remains
 blocked until an owner-approved crash-safe Sentry SDK/session integration is
 configured and read back remotely.
 
+Startup drains the prior-session queue before recording the current release
+session. If a full backlog cannot be delivered, the bounded queue replaces only
+its oldest item so the current session remains closable; the local `queueFull`
+diagnostic records that replacement.
+
 ## Local synthetic proof
 
 Run:
