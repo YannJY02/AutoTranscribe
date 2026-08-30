@@ -1,5 +1,19 @@
 import Foundation
 
+enum AnalysisMode: String, CaseIterable, Codable, Identifiable {
+    case local
+    case cloud
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .local: return "本地（离线）"
+        case .cloud: return "云端"
+        }
+    }
+}
+
 enum ProviderVendor: String, CaseIterable, Codable, Identifiable {
     case openai
     case gemini

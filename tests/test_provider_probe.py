@@ -55,6 +55,21 @@ class TestProviderProbe(unittest.TestCase):
         self.assertIn("checks", result)
         self.assertTrue(len(result["checks"]) >= 3)
 
+    @mock.patch("insightkit.ipc.provider_probe.providers_status")
+    @mock.patch("insightkit.ipc.provider_probe.runtime_status", return_value={"ready": True, "engine": "funasr", "model": {"name": "base"}})
+    def test_local_diagnostics_skip_cloud_provider(self, _mock_rt, mock_providers_status):
+        with mock.patch.dict("os.environ", {"INSIGHTKIT_ANALYSIS_MODE": "local"}):
+            result = self.probe.diagnostics_quick_check(
+                {},
+                sidecar_status_fn=lambda: {"ready": True, "pid": 1},
+            )
+
+        analysis = next(item for item in result["checks"] if item["id"] == "analysis_provider")
+        self.assertEqual(analysis["status"], "pass")
+        self.assertNotIn("analysis_provider_probe", {item["id"] for item in result["checks"]})
+        mock_providers_status.assert_not_called()
+        self.service.probe_provider.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

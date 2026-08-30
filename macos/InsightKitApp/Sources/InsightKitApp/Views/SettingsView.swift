@@ -70,6 +70,10 @@ struct SettingsView: View {
         sharedSidecarManager.stop()
     }
 
+    static func shouldProbeCloudAnalysis(for mode: AnalysisMode) -> Bool {
+        mode == .cloud
+    }
+
     // MARK: - Computed helpers
 
     private var currentPresets: [String] {
@@ -142,12 +146,31 @@ struct SettingsView: View {
     @ViewBuilder
     private var vendorSection: some View {
         Section("智能分析服务") {
+            Picker(
+                "分析方式",
+                selection: Binding(
+                    get: { configStore.config.analysis.mode },
+                    set: { selectAnalysisMode($0) }
+                )
+            ) {
+                ForEach(AnalysisMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .accessibilityIdentifier("settings_analysis_mode_picker")
+            Text(configStore.config.analysis.mode == .local
+                 ? "Smart Minutes 在设备上生成，不需要 API Key 或网络连接。"
+                 : "Smart Minutes 使用下方选择的云端服务；语音识别引擎单独配置。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             // Vendor picker
             Picker("服务提供商", selection: $selectedVendor) {
                 ForEach(ProviderVendor.allCases) { vendor in
                     Text(vendor.displayName).tag(vendor)
                 }
             }
+            .disabled(configStore.config.analysis.mode == .local)
             .onChange(of: selectedVendor) { oldVendor, newVendor in
                 guard !isLoadingVendorFields else { return }
                 switchVendor(from: oldVendor, to: newVendor)
@@ -249,7 +272,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .disabled(isRunningTask)
+                .disabled(isRunningTask || !Self.shouldProbeCloudAnalysis(for: configStore.config.analysis.mode))
             }
 
             if let warning = selectedVendorKeyWarning {
@@ -748,6 +771,12 @@ struct SettingsView: View {
         loadedVendor = newVendor
     }
 
+    private func selectAnalysisMode(_ mode: AnalysisMode) {
+        guard configStore.config.analysis.mode != mode else { return }
+        configStore.updateAnalysisMode(mode)
+        runAsync { try await ensureSidecarInSyncIfNeeded() }
+    }
+
     // MARK: - Initial sync
 
     private func syncFromStore() {
@@ -804,6 +833,14 @@ struct SettingsView: View {
         flushVendorToStore()
         saveCurrentVendorAPIKey()
         try await ensureSidecarInSyncIfNeeded()
+        guard Self.shouldProbeCloudAnalysis(for: configStore.config.analysis.mode) else {
+            await MainActor.run {
+                providerProbeResult = nil
+                providerProbeAt = nil
+                statusMessage = "本地 Smart Minutes 已就绪，无需云端服务检查。"
+            }
+            return
+        }
         let status = try rpc.providersStatus(probeActive: false)
         let active = status.vendors.first(where: { $0.vendor == selectedVendor })
         let probe = try rpc.providerProbe(
@@ -851,27 +888,35 @@ struct SettingsView: View {
         try await ensureSidecarInSyncIfNeeded()
         try await refreshASRRuntimeStatus()
         let report = try rpc.diagnosticsQuickCheck(probeTimeoutSec: 6)
-        let status = try rpc.providersStatus(probeActive: false)
-        let active = status.vendors.first(where: { $0.vendor == selectedVendor })
-        let providerProbe = try rpc.providerProbe(
-            vendor: selectedVendor,
-            model: active?.modelID ?? vendorModelID,
-            baseURL: active?.baseURL ?? vendorBaseURL,
-            forceRefresh: true
-        )
+        let shouldProbeCloud = Self.shouldProbeCloudAnalysis(for: configStore.config.analysis.mode)
+        let providerProbe: ProviderProbeResult?
+        if shouldProbeCloud {
+            let status = try rpc.providersStatus(probeActive: false)
+            let active = status.vendors.first(where: { $0.vendor == selectedVendor })
+            providerProbe = try rpc.providerProbe(
+                vendor: selectedVendor,
+                model: active?.modelID ?? vendorModelID,
+                baseURL: active?.baseURL ?? vendorBaseURL,
+                forceRefresh: true
+            )
+        } else {
+            providerProbe = nil
+        }
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         let micReady = micStatus == .authorized
         let screenReady = CGPreflightScreenCaptureAccess()
-        let overall = report.overall == .pass && micReady && screenReady && providerProbe.ok ? "通过" : "需处理"
+        let overall = report.overall == .pass && micReady && screenReady && (providerProbe?.ok ?? true) ? "通过" : "需处理"
         let lines = report.checks.map {
             "\($0.title): \($0.status.rawValue)\($0.timedOut ? "(timeout)" : "") (\($0.details))"
         }
         let permissionLine = "权限检查: 麦克风=\(micReady ? "pass" : "fail"), 屏幕录制=\(screenReady ? "pass" : "fail")"
-        let providerLine = "厂商探测: \(providerProbe.vendor.displayName)=\(providerProbe.ok ? "pass" : "fail") (\(providerProbe.model))"
+        let providerLine = providerProbe.map {
+            "厂商探测: \($0.vendor.displayName)=\($0.ok ? "pass" : "fail") (\($0.model))"
+        } ?? "智能分析: 本地 Smart Minutes=pass（无需云端厂商探测）"
         let hasTimeout = report.checks.contains(where: { $0.timedOut })
         await MainActor.run {
             providerProbeResult = providerProbe
-            providerProbeAt = Date()
+            providerProbeAt = providerProbe == nil ? nil : Date()
             let suffix = hasTimeout ? "（部分检查超时）" : ""
             statusMessage = "快速自检 \(overall)\(suffix)\n" + ([permissionLine, providerLine] + lines).joined(separator: "\n")
         }

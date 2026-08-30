@@ -31,6 +31,10 @@ class TestInsightCoordinator(unittest.TestCase):
         result = self.coord.insight_build_final({"meeting_id": "m-1"})
         self.assertEqual(result["mode"], "final")
         self.assertIn("needs_review_count", result)
+        self.assertEqual(
+            result["insight_package"]["provenance_links"][-1]["url"],
+            "InsightKit SQLite segments: meeting_id=m-1",
+        )
 
     def test_document_export_markdown(self):
         self.store.upsert_meeting("m-1", "test", "mic", status="stopped")
@@ -82,6 +86,25 @@ class TestInsightCoordinator(unittest.TestCase):
         self.assertIn("媒体回放", content)
         self.assertIn("file://", content)
         self.assertNotIn("交互占位提示", content)
+
+    def test_document_export_honors_explicit_local_analysis(self):
+        self.store.upsert_meeting("m-local-export", "offline export", "file", status="stopped")
+        self.store.insert_segment(
+            "m-local-export", start_ms=0, end_ms=1200, speaker="Speaker 1",
+            text="We decided to keep exports local.", confidence=0.9, source="file",
+        )
+
+        for export_format in ("markdown", "pdf"):
+            result = self.coord.document_export({
+                "meeting_id": "m-local-export",
+                "format": export_format,
+                "output_dir": str(Path(self.tmp) / "local-export"),
+                "provider_vendor": "local",
+            })
+
+            self.assertEqual(self.service.last_call_meta["vendor"], "local")
+            self.assertEqual(result["format"], export_format)
+            self.assertTrue(Path(result["path"]).exists())
 
     def test_document_export_keeps_related_links_without_source_path(self):
         self.store.upsert_meeting("m-related", "no media source", "live", status="stopped")

@@ -393,6 +393,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
         }
         if requireProvider {
             let configStore = AppConfigStore.shared
+            if configStore.config.analysis.mode == .local {
+                DispatchQueue.main.async { self.analysisRuntimeState = .ready }
+                return
+            }
             let selectedVendor = configStore.config.analysis.selectedVendor
             let selectedProfile = configStore.profile(for: selectedVendor)
             let providers: AnalysisProvidersStatus
@@ -478,7 +482,16 @@ final class TranscriptionSessionViewModel: ObservableObject {
             || lower.contains("probe_timeout")
     }
 
-    private func refreshProviderStateNonBlocking() {
+    func refreshProviderStateNonBlocking(
+        analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
+    ) {
+        if analysisMode == .local {
+            DispatchQueue.main.async {
+                self.analysisRuntimeState = .ready
+                self.inlineError = nil
+            }
+            return
+        }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
             if providers.activeReady {

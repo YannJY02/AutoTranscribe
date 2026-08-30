@@ -103,7 +103,10 @@ def main():
     elif action == \"insight.refresh_live\":
         result = rpc_call(\"insight.refresh_live\", {
             \"meeting_id\": meeting_id,
-            \"window_sec\": int(ext_payload.get(\"window_sec\", 120))
+            \"window_sec\": int(ext_payload.get(\"window_sec\", 120)),
+            \"provider_vendor\": ext_payload.get(\"provider_vendor\", \"\"),
+            \"provider_model\": ext_payload.get(\"provider_model\", \"\"),
+            \"strict_mode\": ext_payload.get(\"strict_mode\")
         })
     elif action == \"record.save\":
         params = dict(ext_payload)
@@ -126,17 +129,28 @@ def main():
             \"segments\": ext_payload.get(\"segments\", [])
         })
     elif action == \"smart_minutes.generate\":
-        result = rpc_call(\"smart_minutes.generate\", {\"meeting_id\": meeting_id})
+        result = rpc_call(\"smart_minutes.generate\", {
+            \"meeting_id\": meeting_id,
+            \"provider_vendor\": ext_payload.get(\"provider_vendor\", \"\"),
+            \"provider_model\": ext_payload.get(\"provider_model\", \"\"),
+            \"strict_mode\": ext_payload.get(\"strict_mode\")
+        })
     elif action == \"document.export\":
         result = rpc_call(\"document.export\", {
             \"meeting_id\": meeting_id,
             \"format\": ext_payload.get(\"format\", \"markdown\"),
-            \"output_dir\": ext_payload.get(\"output_dir\", \"\")
+            \"output_dir\": ext_payload.get(\"output_dir\", \"\"),
+            \"provider_vendor\": ext_payload.get(\"provider_vendor\", \"\"),
+            \"provider_model\": ext_payload.get(\"provider_model\", \"\"),
+            \"strict_mode\": ext_payload.get(\"strict_mode\")
         })
     elif action == \"transcription.import_file\":
         result = rpc_call(\"transcription.import_file\", {
             \"file_path\": ext_payload.get(\"file_path\", \"\"),
-            \"title\": ext_payload.get(\"title\", \"\")
+            \"title\": ext_payload.get(\"title\", \"\"),
+            \"provider_vendor\": ext_payload.get(\"provider_vendor\", \"\"),
+            \"provider_model\": ext_payload.get(\"provider_model\", \"\"),
+            \"strict_mode\": ext_payload.get(\"strict_mode\")
         })
     elif action == \"transcription.watch.start\":
         result = rpc_call(\"transcription.watch.start\", {

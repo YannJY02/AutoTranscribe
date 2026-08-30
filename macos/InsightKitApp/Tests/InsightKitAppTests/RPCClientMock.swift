@@ -31,6 +31,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionStatusError: Error?
     var transcriptionCancelError: Error?
     var providersStatusError: Error?
+    var providersStatusCalls = 0
     var providerProbeError: Error?
     var transcriptListStub: [TranscriptSegment] = []
     var buildFinalDelaySec: TimeInterval = 0
@@ -287,6 +288,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
 
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus {
         _ = probeActive
+        providersStatusCalls += 1
         if let providersStatusError {
             throw providersStatusError
         }

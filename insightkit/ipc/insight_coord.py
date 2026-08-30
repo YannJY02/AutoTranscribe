@@ -10,7 +10,7 @@ from typing import Any
 
 from insightkit.data.store import InsightStore
 from insightkit.insights.render import render_insight_markdown, write_insight_pdf
-from insightkit.insights.service import InsightService
+from insightkit.insights.service import InsightService, attach_transcript_provenance
 
 
 class InsightCoordinator:
@@ -39,6 +39,7 @@ class InsightCoordinator:
             provider_model=provider_model,
             strict_mode=strict_mode,
         )
+        package = attach_transcript_provenance(package, meeting_id)
         call_meta = self.insight_service.last_call_meta
         return {
             "meeting_id": meeting_id,
@@ -78,6 +79,7 @@ class InsightCoordinator:
             else:
                 package = self.insight_service.build_local_extractive(segments)
         call_meta = self.insight_service.last_call_meta
+        package = attach_transcript_provenance(package, meeting_id)
         updated_at = datetime.now(timezone.utc).isoformat()
         self.store.upsert_insight_package(meeting_id, package, updated_at)
         return {
@@ -94,6 +96,10 @@ class InsightCoordinator:
 
     def document_export(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = params["meeting_id"]
+        provider_vendor = str(params.get("provider_vendor", "") or "").strip() or None
+        provider_model = str(params.get("provider_model", "") or "").strip() or None
+        strict_mode_raw = params.get("strict_mode")
+        strict_mode = None if strict_mode_raw is None else bool(strict_mode_raw)
         export_format = params.get("format", "markdown")
         output_dir = self._resolve_output_dir(params.get("output_dir", ""))
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -103,10 +109,16 @@ class InsightCoordinator:
         job = self.store.get_latest_transcription_job_for_meeting(meeting_id)
         source_path = str(job.get("source_path", "") if job else "")
         try:
-            package = self.insight_service.build_final(segments)
+            package = self.insight_service.build_final(
+                segments,
+                provider_vendor=provider_vendor,
+                provider_model=provider_model,
+                strict_mode=strict_mode,
+            )
         except Exception:
             stored = self.store.get_insight_package(meeting_id)
             package = stored["payload"] if stored is not None else self.insight_service.build_local_extractive(segments)
+        package = attach_transcript_provenance(package, meeting_id)
         self.store.upsert_insight_package(meeting_id, package, datetime.now(timezone.utc).isoformat())
         rendered = render_insight_markdown(
             package,

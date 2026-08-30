@@ -633,6 +633,9 @@ class InsightRPCServer:
                 "meeting_id": meeting_id,
                 "format": payload.get("format", "markdown"),
                 "output_dir": payload.get("output_dir", ""),
+                "provider_vendor": payload.get("provider_vendor", ""),
+                "provider_model": payload.get("provider_model", ""),
+                "strict_mode": payload.get("strict_mode"),
             })
         if action == "sidecar.status":
             return self._sidecar_status({})
@@ -709,6 +712,9 @@ class InsightRPCServer:
                 "file_path": payload.get("file_path", ""),
                 "title": payload.get("title", ""),
                 "meeting_id": meeting_id or payload.get("meeting_id", ""),
+                "provider_vendor": payload.get("provider_vendor", ""),
+                "provider_model": payload.get("provider_model", ""),
+                "strict_mode": payload.get("strict_mode"),
             })
         if action == "transcription.watch.start":
             return self._transcription_watch_start({

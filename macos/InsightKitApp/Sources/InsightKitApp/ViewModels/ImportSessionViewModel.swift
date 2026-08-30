@@ -310,7 +310,15 @@ final class ImportSessionViewModel: ObservableObject {
         analysisStatusMessage = providers.activeReady ? nil : Self.analysisFallbackMessage(for: providers)
     }
 
-    private func refreshAnalysisStatusForImport() {
+    func refreshAnalysisStatusForImport(
+        analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
+    ) {
+        if analysisMode == .local {
+            DispatchQueue.main.async {
+                self.analysisStatusMessage = nil
+            }
+            return
+        }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
             DispatchQueue.main.async {

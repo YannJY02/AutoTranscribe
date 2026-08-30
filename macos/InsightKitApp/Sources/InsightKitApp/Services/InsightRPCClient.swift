@@ -221,11 +221,15 @@ final class InsightRPCClient {
     }
 
     func documentExport(meetingID: String, format: String = "markdown", outputDir: String = "") throws -> DocumentExportResult {
-        let result = try callWithRetry(method: "document.export", params: [
+        var params: [String: Any] = [
             "meeting_id": meetingID,
             "format": format,
             "output_dir": outputDir,
-        ])
+        ]
+        for (key, value) in AppConfigStore.shared.activeProviderParams() {
+            params[key] = value
+        }
+        let result = try callWithRetry(method: "document.export", params: params)
         let path = (result["path"] as? String) ?? ""
         let resolvedFormat = (result["format"] as? String) ?? format
         guard !path.isEmpty else {
@@ -235,10 +239,14 @@ final class InsightRPCClient {
     }
 
     func transcriptionImport(filePath: String, title: String = "") throws -> TranscriptionImportResult {
-        let result = try callWithRetry(method: "transcription.import_file", params: [
+        var params: [String: Any] = [
             "file_path": filePath,
             "title": title,
-        ])
+        ]
+        for (key, value) in AppConfigStore.shared.activeProviderParams() {
+            params[key] = value
+        }
+        let result = try callWithRetry(method: "transcription.import_file", params: params)
         let jobID = (result["job_id"] as? String) ?? ""
         let meetingID = (result["meeting_id"] as? String) ?? ""
         let stateRaw = (result["state"] as? String) ?? "queued"

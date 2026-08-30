@@ -64,6 +64,9 @@ class JobQueue:
             "id": job_id, "meeting_id": meeting_id, "source_path": str(resolved),
             "title": title, "state": "queued", "progress": 0, "stage": "queued",
             "error": "", "reason": "", "started_at": now, "ended_at": "",
+            "provider_vendor": str(params.get("provider_vendor", "") or "").strip(),
+            "provider_model": str(params.get("provider_model", "") or "").strip(),
+            "strict_mode": params.get("strict_mode"),
         }
 
         with self._lock:
@@ -182,6 +185,9 @@ class JobQueue:
                     store=self.store, insight_service=self.insight_service,
                     cancel_event=cancel_event,
                     on_progress=lambda p, s, jid=job["id"]: self._update_progress(jid, p, s),
+                    provider_vendor=job.get("provider_vendor") or None,
+                    provider_model=job.get("provider_model") or None,
+                    strict_mode=job.get("strict_mode"),
                 )
                 with self._lock:
                     j = self._jobs.get(job["id"], job)
