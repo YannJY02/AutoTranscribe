@@ -750,7 +750,7 @@ final class ExternalTelemetryPrivacyGate {
     }
 
     private static func isValidAppVersion(_ value: String) -> Bool {
-        value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$"#, options: .regularExpression) != nil
+        value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?$"#, options: .regularExpression) != nil
     }
 
     private static func isValidAppBuild(_ value: String) -> Bool {
