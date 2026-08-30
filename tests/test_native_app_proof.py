@@ -155,6 +155,7 @@ def test_finalize_proof_records_identity_selected_tests_and_hashes_each_file(tmp
     attachments.mkdir()
     (attachments / "A1B2C3.png").write_bytes(b"png")
     (attachments / "manifest.json").write_text(json.dumps([{
+        "testIdentifier": "HomeViewTests/testHome()",
         "attachments": [{
             "exportedFileName": "A1B2C3.png",
             "suggestedHumanReadableName": "target-window--[HomeViewTests testHome].png",
@@ -247,6 +248,46 @@ def test_finalize_proof_rejects_missing_selected_test_and_expected_screenshot(tm
     assert proof["failure"]["classification"] == "test-defect"
 
 
+def test_finalize_proof_requires_target_window_screenshot_for_each_selected_test(tmp_path):
+    log_path = tmp_path / "xcodebuild.log"
+    log_path.write_text(
+        "Test Case '-[InsightKitUITests.HomeViewTests testHome]' passed (0.100 seconds).\n"
+        "Test Case '-[InsightKitUITests.LiveViewTests testLive]' passed (0.100 seconds).\n",
+        encoding="utf-8",
+    )
+    attachments = tmp_path / "attachments"
+    attachments.mkdir()
+    (attachments / "home.png").write_bytes(b"png")
+    (attachments / "manifest.json").write_text(json.dumps([{
+        "testIdentifier": "HomeViewTests/testHome()",
+        "attachments": [{
+            "exportedFileName": "home.png",
+            "suggestedHumanReadableName": "target-window--[HomeViewTests testHome].png",
+        }],
+    }]), encoding="utf-8")
+    result_bundle = tmp_path / "tests.xcresult"
+    result_bundle.mkdir()
+    unified_log = tmp_path / "unified.ndjson"
+    unified_log.write_text('{"event":"capture-completed"}\n', encoding="utf-8")
+
+    proof = finalize_proof(
+        output_root=tmp_path / "proof",
+        exit_code=0,
+        duration_seconds=1.0,
+        xcodebuild_log=log_path,
+        unified_log=unified_log,
+        result_bundle=result_bundle,
+        attachments_dir=attachments,
+        video=None,
+        trace=None,
+        selected_tests=["HomeViewTests/testHome", "LiveViewTests/testLive"],
+        expected_screenshots=["target-window"],
+    )
+
+    assert proof["status"] == "failed"
+    assert "selected-test-screenshot:LiveViewTests/testLive" in proof["missing_required_evidence"]
+
+
 def test_finalize_proof_classifies_xcode_macro_server_failure_as_test_defect(tmp_path):
     log_path = tmp_path / "xcodebuild.log"
     log_path.write_text(
@@ -323,9 +364,14 @@ def test_finalize_proof_redacts_personal_paths_and_tokens_in_in_place_logs(tmp_p
         attachments_dir=attachments,
         video=None,
         trace=None,
+        source_revision="/Users/private-person/revision",
+        scenario="Authorization: Bearer token-value sk-abcdefghijklmnop",
     )
 
-    retained = (output_root / "xcodebuild.log").read_text(encoding="utf-8") + unified_log.read_text(encoding="utf-8")
+    retained = "".join(
+        path.read_text(encoding="utf-8")
+        for path in (output_root / "xcodebuild.log", unified_log, output_root / "proof.json", output_root / "manifest.json")
+    )
     assert "private-person" not in retained
     assert "\\/Users\\/" not in retained
     assert "token-value" not in retained

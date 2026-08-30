@@ -79,14 +79,17 @@ def _copy_evidence(source: Path | None, destination: Path) -> Path | None:
     return destination
 
 
+def _redact_text(text: str) -> str:
+    text = re.sub(r"(?:\\/|/)Users(?:\\/|/)[^/\\\s\"']+", "$HOME", text)
+    text = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s\"']+", r"\1<redacted>", text)
+    return re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", "<redacted-api-key>", text)
+
+
 def _redact_text_file(path: Path) -> None:
     if not path.is_file() or path.suffix.casefold() not in {".json", ".log", ".ndjson", ".txt"}:
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = re.sub(r"(?:\\/|/)Users(?:\\/|/)[^/\\\s\"']+", "$HOME", text)
-    text = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s\"']+", r"\1<redacted>", text)
-    text = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", "<redacted-api-key>", text)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(_redact_text(text), encoding="utf-8")
 
 
 def _sanitize_text_artifacts(output_root: Path) -> None:
@@ -240,6 +243,7 @@ def finalize_proof(
     copied_trace = _copy_evidence(trace, output_root / "journey.trace")
     screenshots = 0
     screenshot_names: list[str] = []
+    screenshot_names_by_test: dict[str, list[str]] = {}
     if copied_attachments and copied_attachments.exists():
         screenshot_paths = [
             path for path in copied_attachments.rglob("*")
@@ -257,12 +261,17 @@ def finalize_proof(
             for group in groups if isinstance(groups, list) else []:
                 if not isinstance(group, dict):
                     continue
+                test_identifier = group.get("testIdentifier")
+                if isinstance(test_identifier, str):
+                    test_identifier = test_identifier.removesuffix("()")
                 for attachment in group.get("attachments", []):
                     if isinstance(attachment, dict):
                         exported_name = attachment.get("exportedFileName")
                         name = attachment.get("suggestedHumanReadableName")
                         if exported_name in screenshot_file_names and isinstance(name, str):
                             screenshot_names.append(name)
+                            if isinstance(test_identifier, str):
+                                screenshot_names_by_test.setdefault(test_identifier, []).append(name)
     unified_lines = 0
     unified_json_lines = 0
     unified_capture_completed = False
@@ -308,6 +317,13 @@ def finalize_proof(
     for test in selected_tests:
         if test_results.get(test) != "passed":
             missing_required_evidence.append(f"selected-test:{test}")
+        else:
+            names = screenshot_names_by_test.get(test, [])
+            if not names or (
+                expected_screenshots
+                and not any(expected in name for expected in expected_screenshots for name in names)
+            ):
+                missing_required_evidence.append(f"selected-test-screenshot:{test}")
     for expected in expected_screenshots:
         if not any(expected in name for name in screenshot_names):
             missing_required_evidence.append(f"expected-screenshot:{expected}")
@@ -328,9 +344,12 @@ def finalize_proof(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "passed" if exit_code == 0 and not failed and not missing_required_evidence else "failed",
         "privacy_safe": copied_video is None and copied_trace is None,
-        "source": {"revision": source_revision, "build": build},
-        "scenario": scenario,
-        "selected_tests": [{"name": name, "status": test_results.get(name, "missing")} for name in selected_tests],
+        "source": {"revision": _redact_text(source_revision), "build": _redact_text(build)},
+        "scenario": _redact_text(scenario),
+        "selected_tests": [
+            {"name": _redact_text(name), "status": test_results.get(name, "missing")}
+            for name in selected_tests
+        ],
         "capture": {
             "screenshots": {
                 "scope": "target-window", "pixels": "original", "cursor": "excluded", "other_apps": "excluded"
@@ -347,7 +366,7 @@ def finalize_proof(
             "trace": "instruments-xctrace",
         },
         "metrics": metrics,
-        "missing_required_evidence": missing_required_evidence,
+        "missing_required_evidence": [_redact_text(item) for item in missing_required_evidence],
         "artifacts": artifacts,
     }
     if proof["status"] == "failed":
@@ -363,7 +382,7 @@ def finalize_proof(
     manifest = {
         "schema_version": 1,
         "source": proof["source"],
-        "scenario": scenario,
+        "scenario": proof["scenario"],
         "result": proof["status"],
         "files": _manifest_files(output_root),
     }
