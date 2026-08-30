@@ -16,12 +16,12 @@ extension SentryDiagnosticsTransport {
 
 final class SentryDiagnosticsAdapter {
     enum ReleaseSessionStatus: String { case ok, exited, crashed, abnormal }
-    enum Workflow: String { case live, `import`, recordReview = "record-review" }
-    enum Phase: String { case preparing, running, analysis, finalizing, reviewing, exporting }
-    enum EngineClass: String { case local, system, remote }
-    enum ProviderClass: String { case local, none, byok, managed }
-    enum ErrorCategory: String { case configuration, permission, runtime, storage, unknown }
-    enum RecoveryResult: String { case succeeded, failed, notAttempted = "not-attempted" }
+    typealias Workflow = ExternalTelemetryWorkflow
+    typealias Phase = ExternalTelemetryPhase
+    typealias EngineClass = ExternalTelemetryEngineClass
+    typealias ProviderClass = ExternalTelemetryProviderClass
+    typealias ErrorCategory = ExternalTelemetryErrorCategory
+    typealias RecoveryResult = ExternalTelemetryRecoveryResult
 
     struct Failure {
         let workflow: Workflow
@@ -71,34 +71,6 @@ final class SentryDiagnosticsAdapter {
             recoveryResult: .succeeded
         )
 
-        static func productAnalytics(
-            workflow: String,
-            path: ProductAnalyticsPath,
-            phase: String,
-            errorCode: String
-        ) -> Failure? {
-            guard let workflow = Workflow(rawValue: workflow),
-                  let phase = Phase(rawValue: phase),
-                  let provider = ProviderClass(rawValue: path.providerClass)
-            else { return nil }
-            let category: ErrorCategory
-            switch errorCode {
-            case "configuration": category = .configuration
-            case "permission-denied": category = .permission
-            case "runtime-unavailable", "provider-unavailable": category = .runtime
-            case "storage": category = .storage
-            case "unknown": category = .unknown
-            default: return nil
-            }
-            return Failure(
-                workflow: workflow,
-                phase: phase,
-                engineClass: .local,
-                providerClass: provider,
-                errorCategory: category,
-                recoveryResult: .notAttempted
-            )
-        }
     }
 
     private let gate: ExternalTelemetryPrivacyGate
@@ -210,6 +182,17 @@ final class SentryDiagnosticsAdapter {
             "phase": phase.rawValue,
             "duration_bucket_ms": bounded,
             "outcome": "succeeded",
+        ])))
+    }
+
+    @discardableResult
+    func captureRecovery(_ recovery: ExternalTelemetryWorkflowRecoveryContext) -> ExternalTelemetryPrivacyGate.RecordResult {
+        deliver(gate.record(event: .init(name: "recovery_completed", properties: [
+            "workflow": recovery.workflow.rawValue,
+            "phase": recovery.phase.rawValue,
+            "engine_class": recovery.engineClass.rawValue,
+            "provider_class": recovery.providerClass.rawValue,
+            "recovery_result": recovery.result.rawValue,
         ])))
     }
 
@@ -616,19 +599,20 @@ final class SentryDiagnosticsRuntime {
         ))
     }
 
-    func captureFailure(
-        workflow: String,
-        path: ProductAnalyticsPath,
-        phase: String,
-        errorCode: String
-    ) {
-        guard let failure = SentryDiagnosticsAdapter.Failure.productAnalytics(
-            workflow: workflow,
-            path: path,
-            phase: phase,
-            errorCode: errorCode
-        ) else { return }
-        _ = adapter?.capture(failure)
+    func capture(_ signal: ExternalTelemetryWorkflowSignal) {
+        switch signal {
+        case .failure(let context):
+            _ = adapter?.capture(.init(
+                workflow: context.workflow,
+                phase: context.phase,
+                engineClass: context.engineClass,
+                providerClass: context.providerClass,
+                errorCategory: context.errorCategory,
+                recoveryResult: context.recoveryResult
+            ))
+        case .recovery(let context):
+            _ = adapter?.captureRecovery(context)
+        }
     }
 
     func capturePerformance(workflow: SentryDiagnosticsAdapter.Workflow, phase: SentryDiagnosticsAdapter.Phase, milliseconds: Int) {

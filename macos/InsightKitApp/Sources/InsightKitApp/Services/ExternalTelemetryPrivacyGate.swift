@@ -16,6 +16,35 @@ enum TelemetryEnvironment: String, CaseIterable, Codable {
     case release
 }
 
+enum ExternalTelemetryWorkflow: String { case live, `import`, recordReview = "record-review" }
+enum ExternalTelemetryPhase: String { case preparing, running, analysis, finalizing, reviewing, exporting }
+enum ExternalTelemetryEngineClass: String { case local, system, remote }
+enum ExternalTelemetryProviderClass: String { case local, none, byok, managed }
+enum ExternalTelemetryErrorCategory: String { case configuration, permission, runtime, storage, unknown }
+enum ExternalTelemetryRecoveryResult: String { case succeeded, failed, notAttempted = "not-attempted" }
+
+struct ExternalTelemetryWorkflowFailureContext {
+    let workflow: ExternalTelemetryWorkflow
+    let phase: ExternalTelemetryPhase
+    let engineClass: ExternalTelemetryEngineClass
+    let providerClass: ExternalTelemetryProviderClass
+    let errorCategory: ExternalTelemetryErrorCategory
+    let recoveryResult: ExternalTelemetryRecoveryResult
+}
+
+struct ExternalTelemetryWorkflowRecoveryContext {
+    let workflow: ExternalTelemetryWorkflow
+    let phase: ExternalTelemetryPhase
+    let engineClass: ExternalTelemetryEngineClass
+    let providerClass: ExternalTelemetryProviderClass
+    let result: ExternalTelemetryRecoveryResult
+}
+
+enum ExternalTelemetryWorkflowSignal {
+    case failure(ExternalTelemetryWorkflowFailureContext)
+    case recovery(ExternalTelemetryWorkflowRecoveryContext)
+}
+
 struct ExternalTelemetryConfiguration: Equatable {
     let environment: TelemetryEnvironment
     let retentionDays: Int

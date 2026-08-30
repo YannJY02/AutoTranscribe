@@ -315,20 +315,59 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         ]))
     }
 
-    func testProductAnalyticsFailureUsesOriginDimensions() throws {
-        let failure = try XCTUnwrap(SentryDiagnosticsAdapter.Failure.productAnalytics(
-            workflow: "import",
-            path: ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok"),
-            phase: "exporting",
-            errorCode: "storage"
-        ))
+    func testProductAnalyticsSignalsKeepOriginDimensionsWhenItsQueueIsFull() throws {
+        let fixture = try makeFixture(maxQueueItems: 1)
+        var signals: [ExternalTelemetryWorkflowSignal] = []
+        let analytics = ProductAnalytics(gate: fixture.gate, onWorkflowSignal: { signals.append($0) })
+        let path = ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
 
+        analytics.workflowFailed("import", phase: "exporting", errorCode: "storage", recoveryAction: "retry", explicitPath: path)
+        analytics.workflowFailed("import", phase: "exporting", errorCode: "storage", recoveryAction: "retry", explicitPath: path)
+        analytics.recoveryCompleted("import", phase: "exporting", succeeded: true, explicitPath: path)
+        analytics.workflowFailed(
+            "import",
+            phase: "exporting",
+            errorCode: "storage",
+            recoveryAction: "retry",
+            explicitPath: path,
+            completingRecovery: true
+        )
+
+        XCTAssertGreaterThan(fixture.gate.localDiagnostics.queueFull, 0)
+        XCTAssertEqual(signals.count, 5)
+        guard case .failure(let failure) = signals[1] else { return XCTFail("expected failure signal") }
         XCTAssertEqual(failure.workflow, .import)
         XCTAssertEqual(failure.phase, .exporting)
         XCTAssertEqual(failure.engineClass, .local)
         XCTAssertEqual(failure.providerClass, .byok)
         XCTAssertEqual(failure.errorCategory, .storage)
         XCTAssertEqual(failure.recoveryResult, .notAttempted)
+        guard case .recovery(let recovery) = signals[2] else { return XCTFail("expected recovery signal") }
+        XCTAssertEqual(recovery.result, .succeeded)
+        guard case .recovery(let failedRecovery) = signals[3] else { return XCTFail("expected failed recovery signal") }
+        XCTAssertEqual(failedRecovery.result, .failed)
+        guard case .failure(let retriedFailure) = signals[4] else { return XCTFail("expected retried failure signal") }
+        XCTAssertEqual(retriedFailure.recoveryResult, .failed)
+    }
+
+    func testRecoverySignalProducesSentryEnvelope() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(adapter.captureRecovery(.init(
+            workflow: .live,
+            phase: .reviewing,
+            engineClass: .local,
+            providerClass: .byok,
+            result: .failed
+        )), .accepted)
+
+        XCTAssertTrue(transport.waitForEnvelope())
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: transport.envelopes[0]) as? [String: Any])
+        XCTAssertEqual(object["event_name"] as? String, "recovery_completed")
+        let properties = try XCTUnwrap(object["properties"] as? [String: Any])
+        XCTAssertEqual(properties["recovery_result"] as? String, "failed")
     }
 
     func testEnabledRuntimeUsesSharedDefaultEnvironmentAndStartsReleaseSession() throws {
