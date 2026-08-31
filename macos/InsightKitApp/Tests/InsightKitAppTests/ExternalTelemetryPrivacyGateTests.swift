@@ -1372,12 +1372,14 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         }
         wait(for: [removalStarted], timeout: 2)
 
-        let disablingGate = makeGate()
+        let revocationAdmitted = expectation(description: "disable admitted")
+        let disablingGate = makeGate(onRevocationAdmitted: { revocationAdmitted.fulfill() })
         let disableFinished = expectation(description: "disable finished")
         DispatchQueue.global().async {
             _ = disablingGate.disableAndPurge()
             disableFinished.fulfill()
         }
+        wait(for: [revocationAdmitted], timeout: 2)
         permitRemoval.signal()
         wait(for: [enableFinished, disableFinished], timeout: 2)
 
