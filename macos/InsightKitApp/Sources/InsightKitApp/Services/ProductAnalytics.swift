@@ -206,8 +206,10 @@ struct ProductAnalyticsPath: Equatable {
         }
     }
 
-    init(providers: AnalysisProvidersStatus?) {
-        self = providers?.activeReady == true
+    init(providers: AnalysisProvidersStatus?, analysisMode: AnalysisMode? = nil) {
+        self = analysisMode == .local
+            ? .local
+            : providers?.activeReady == true
             ? ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
             : .unavailable
     }

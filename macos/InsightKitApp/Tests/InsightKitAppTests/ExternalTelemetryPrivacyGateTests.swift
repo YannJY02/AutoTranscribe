@@ -482,6 +482,69 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         viewModel.shutdown()
     }
 
+    func testLiveSavedReviewEmitsReviewEventAfterRecordSaved() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+        viewModel.sessionPhase = .reviewing
+
+        viewModel.saveToRecords(
+            meetingID: "live-review-event",
+            transcriptSegmentsOverride: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "speaker", source: "mic", text: "fixture")
+            ]
+        )
+        let completed = expectation(description: "live record saved")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["workflow_started", "record_saved", "smart_minutes_review_opened"])
+    }
+
+    func testLocalAnalysisModeOverridesReadyCloudProviderPath() {
+        let providers = RPCClientMock().providersStatusStub
+
+        XCTAssertEqual(
+            ProductAnalyticsPath(providers: providers, analysisMode: .local),
+            .local
+        )
+    }
+
+    func testQueuedArtifactBuildRetainsEachAnalyticsContext() throws {
+        let gate = makeGate(maxQueueItems: 30)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let first = ProductAnalyticsAttemptContext(workflow: "import")
+        let second = ProductAnalyticsAttemptContext(workflow: "import")
+        analytics.beginWorkflow(first, provisionalPath: .local)
+        analytics.beginWorkflow(second, provisionalPath: .local)
+        let rpc = RPCClientMock()
+        rpc.buildFinalDelaySec = 0.05
+        let viewModel = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.loadArtifactsForMeeting("meeting-1", analyticsContext: first)
+        viewModel.loadArtifactsForMeeting("meeting-2", analyticsContext: second)
+        let completed = expectation(description: "queued artifact builds complete")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names.filter { $0 == "record_saved" }.count, 2)
+        XCTAssertEqual(names.filter { $0 == "smart_minutes_review_opened" }.count, 2)
+    }
+
     func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("匿名"))

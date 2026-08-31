@@ -433,7 +433,8 @@ final class LiveSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
                 let analyticsPath = ProductAnalyticsPath(
-                    providers: try? self.rpcClient.providersStatus(probeActive: false)
+                    providers: try? self.rpcClient.providersStatus(probeActive: false),
+                    analysisMode: AppConfigStore.shared.config.analysis.mode
                 )
                 self.analyticsSubmit { $0.resolveWorkflow("live", path: analyticsPath) }
                 self.updateMain {

@@ -70,7 +70,7 @@ extension LiveSessionViewModel {
                     finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
-                ProductAnalytics.submit { analytics in
+                self.analyticsSubmit { analytics in
                     analytics.recordSaved(
                         "live",
                         path: ProductAnalyticsPath(provider: capturedAnalysisMeta?["provider"] as? String)
@@ -101,9 +101,10 @@ extension LiveSessionViewModel {
                         ? "本次记录已保存媒体和笔记；可从已保存媒体恢复逐字稿。"
                         : nil
                     self.isFinalizingLiveSession = false
+                    self.recordLiveReviewOpenedIfSaved()
                 }
             } catch let saveError {
-                ProductAnalytics.submit { analytics in
+                self.analyticsSubmit { analytics in
                     analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
                 }
                 if let finalizationLeaseToken {
@@ -131,6 +132,13 @@ extension LiveSessionViewModel {
                 self.publishError(saveError)
             }
         }
+    }
+
+    func recordLiveReviewOpenedIfSaved() {
+        guard sessionPhase == .reviewing,
+              !lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        analyticsSubmit { $0.reviewOpened("live") }
     }
 
     private func copyCaptureTimelineSidecar(from sourceURL: URL, toRecordPath recordPath: String) {

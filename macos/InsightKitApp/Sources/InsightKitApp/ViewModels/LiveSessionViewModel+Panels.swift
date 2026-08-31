@@ -72,6 +72,7 @@ extension LiveSessionViewModel: CenterStageDataSource {
 
     func onSkipMinutes() {
         sessionPhase = .reviewing
+        recordLiveReviewOpenedIfSaved()
     }
 
     func onExportDocument(format: String) {

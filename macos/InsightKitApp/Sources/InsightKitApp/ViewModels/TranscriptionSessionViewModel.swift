@@ -51,7 +51,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var fetchInFlight = false
     private var pendingSidecarMutationCount = 0
     private var buildingFinalMeetingID: String?
-    private var pendingArtifactMeetingIDs: [String] = []
+    private var pendingArtifactBuilds: [(meetingID: String, analyticsContext: ProductAnalyticsAttemptContext?)] = []
     /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
     /// cooperative thread pool which would stall all async/SwiftUI work.
     private let rpcQueue = DispatchQueue(label: "InsightKit.TranscriptionSession.RPC", qos: .userInitiated)
@@ -857,8 +857,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
         analyticsContext: ProductAnalyticsAttemptContext? = nil
     ) {
         if isBuildingFinalInsight {
-            if buildingFinalMeetingID != meetingID, !pendingArtifactMeetingIDs.contains(meetingID) {
-                pendingArtifactMeetingIDs.append(meetingID)
+            if buildingFinalMeetingID != meetingID,
+               !pendingArtifactBuilds.contains(where: { $0.meetingID == meetingID }) {
+                pendingArtifactBuilds.append((meetingID, analyticsContext))
             }
             return
         }
@@ -868,7 +869,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
         rpcQueue.async { [weak self] in
             guard let self else { return }
             if let analyticsContext {
-                ProductAnalytics.submit { $0.recoveryAttempted(analyticsContext, phase: "analysis") }
+                self.analyticsSubmit { $0.recoveryAttempted(analyticsContext, phase: "analysis") }
             }
             let analysisStartedAt = DispatchTime.now().uptimeNanoseconds
             do {
@@ -881,7 +882,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     self.finishFinalInsightBuild()
                 }
                 if let analyticsContext {
-                    ProductAnalytics.submit { analytics in
+                    self.analyticsSubmit { analytics in
                         analytics.resolveWorkflow(
                             analyticsContext,
                             path: ProductAnalyticsPath(provider: result.provider),
@@ -895,7 +896,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             } catch {
                 let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 if let analyticsContext {
-                    ProductAnalytics.submit {
+                    self.analyticsSubmit {
                         $0.workflowFailed(
                             analyticsContext,
                             phase: "analysis",
@@ -924,11 +925,11 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     private func finishFinalInsightBuild() {
-        let nextMeetingID = pendingArtifactMeetingIDs.isEmpty ? nil : pendingArtifactMeetingIDs.removeFirst()
+        let nextBuild = pendingArtifactBuilds.isEmpty ? nil : pendingArtifactBuilds.removeFirst()
         isBuildingFinalInsight = false
         buildingFinalMeetingID = nil
-        if let nextMeetingID {
-            loadArtifactsForMeeting(nextMeetingID)
+        if let nextBuild {
+            loadArtifactsForMeeting(nextBuild.meetingID, analyticsContext: nextBuild.analyticsContext)
         }
         endSidecarMutation()
     }
