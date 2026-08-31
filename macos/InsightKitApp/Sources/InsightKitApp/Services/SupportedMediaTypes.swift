@@ -82,8 +82,8 @@ enum SupportedMediaTypes {
         return .success(url)
     }
 
-    static func configureOpenPanel(_ panel: NSOpenPanel, allowsMultipleSelection: Bool = false) {
-        panel.allowsMultipleSelection = allowsMultipleSelection
+    static func configureOpenPanel(_ panel: NSOpenPanel) {
+        panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         // Keep system filtering broad, then validate exact extensions in app code.

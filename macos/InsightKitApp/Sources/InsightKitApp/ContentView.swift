@@ -357,7 +357,7 @@ struct ContentView: View {
 
     private func openTranscriptionImportPicker() {
         let panel = NSOpenPanel()
-        SupportedMediaTypes.configureOpenPanel(panel, allowsMultipleSelection: true)
+        SupportedMediaTypes.configureOpenPanel(panel)
         guard panel.runModal() == .OK else { return }
         let unsupported = panel.urls.filter { !SupportedMediaTypes.isSupportedFile($0) }
         if !unsupported.isEmpty {

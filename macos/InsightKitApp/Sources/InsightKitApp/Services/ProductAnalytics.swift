@@ -949,22 +949,22 @@ final class ProductAnalytics {
         stateLock.unlock()
     }
 
-    func workflowCancelled(_ workflow: String) {
-        workflowCancelled(key: workflow, workflow: workflow)
+    func workflowCancelled(_ workflow: String, phase: String = "running") {
+        workflowCancelled(key: workflow, workflow: workflow, phase: phase)
     }
 
-    func workflowCancelled(_ context: ProductAnalyticsAttemptContext) {
-        workflowCancelled(key: context.key, workflow: context.workflow)
+    func workflowCancelled(_ context: ProductAnalyticsAttemptContext, phase: String = "running") {
+        workflowCancelled(key: context.key, workflow: context.workflow, phase: phase)
     }
 
-    private func workflowCancelled(key: String, workflow: String) {
+    private func workflowCancelled(key: String, workflow: String, phase: String) {
         guard let context = context(for: key) else { return }
         stateLock.lock()
         let shouldEmitTerminal = attempts[key]?.terminalEmitted == false
         let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
         if shouldEmitTerminal {
-            var values = terminalProperties(workflow: workflow, context: context, phase: "running", outcome: "cancelled")
+            var values = terminalProperties(workflow: workflow, context: context, phase: phase, outcome: "cancelled")
             values["recovery_action"] = "none"
             _ = emit("workflow_failed", properties: values)
         }

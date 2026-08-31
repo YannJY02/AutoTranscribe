@@ -55,8 +55,7 @@ WITH event_source AS (
 ), quality AS (
   SELECT
     (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_attempts,
-    (SELECT countIf(starts<>1 OR completions>1) FROM attempts) +
-    (SELECT countIf(event_name='workflow_completed' AND attempt_index=0) FROM ordered) duplicate_attempt_groups
+    (SELECT countIf(starts<>1 OR completions>1) FROM attempts) duplicate_attempt_groups
 )
 SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,missing_event_sequence) missing_event_sequence,

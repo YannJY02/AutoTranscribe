@@ -36,7 +36,6 @@ eligible AS (
  SELECT SUM(CASE WHEN schema_version<>1 THEN 1 ELSE 0 END) +
   SUM(CASE WHEN event_sequence IS NULL OR event_sequence<=0 THEN 1 ELSE 0 END) +
   (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) +
-  (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_completed' AND attempt_index=0) +
   (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) AS issues
  FROM events WHERE environment=:environment AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
 )

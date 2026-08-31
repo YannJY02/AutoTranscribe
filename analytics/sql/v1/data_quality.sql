@@ -41,8 +41,7 @@ WITH eligible AS (
 ), quality AS (
  SELECT
   (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) overlapping_attempts,
-  (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) +
-  (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_completed' AND attempt_index=0) duplicate_attempt_groups
+  (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) duplicate_attempt_groups
 )
 SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,
  CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups=0 THEN 'complete' ELSE 'incomplete' END evidence_state

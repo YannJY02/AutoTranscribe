@@ -49,8 +49,7 @@ WITH event_source AS (
 ), attempt_quality AS (
   SELECT countIf(starts<>1 OR completions>1) AS grouped_issues FROM attempts
 ), order_quality AS (
-  SELECT countIf(event_name='workflow_completed' AND attempt_index=0) +
-    countIf(event_name='workflow_started' AND prior_starts>prior_terminals) AS ordering_issues
+  SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) AS ordering_issues
   FROM ordered
 ), quality AS (
   SELECT event_issues+grouped_issues+ordering_issues AS issues

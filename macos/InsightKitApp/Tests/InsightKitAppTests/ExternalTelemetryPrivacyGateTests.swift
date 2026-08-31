@@ -633,6 +633,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         )
 
         analytics.beginWorkflow("import", provisionalPath: .local)
+        viewModel.sessionPhase = .reviewing
         viewModel.resetToSelecting()
         analytics.beginWorkflow("import", provisionalPath: .local)
         analytics.workflowCompleted(
@@ -654,6 +655,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         )
         let cancelled = try XCTUnwrap(events[1]["properties"] as? [String: Any])
         XCTAssertEqual(cancelled["outcome"] as? String, "cancelled")
+        XCTAssertEqual(cancelled["phase"] as? String, "reviewing")
     }
 
     func testNewLiveSessionResetClosesAnUnfinishedAttempt() throws {
@@ -666,6 +668,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         )
 
         analytics.beginWorkflow("live", provisionalPath: .local)
+        viewModel.sessionPhase = .postSession
         viewModel.resetForNewSession()
 
         let events = try queuedObjects(gate)
@@ -675,6 +678,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         )
         let cancelled = try XCTUnwrap(events[1]["properties"] as? [String: Any])
         XCTAssertEqual(cancelled["outcome"] as? String, "cancelled")
+        XCTAssertEqual(cancelled["phase"] as? String, "finalizing")
         viewModel.shutdown()
     }
 

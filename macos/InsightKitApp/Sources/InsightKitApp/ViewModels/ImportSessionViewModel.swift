@@ -148,7 +148,6 @@ final class ImportSessionViewModel: ObservableObject {
                     } else {
                         message = "导入已取消。你可以重新选择文件。"
                     }
-                    self.analyticsSubmit { $0.workflowCancelled("import") }
                     self.resetToSelecting()
                     self.importStatusMessage = message
                 }
@@ -170,7 +169,8 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func resetToSelecting() {
-        analyticsSubmit { $0.workflowCancelled("import") }
+        let analyticsPhase = sessionPhase == .reviewing ? "reviewing" : "running"
+        analyticsSubmit { $0.workflowCancelled("import", phase: analyticsPhase) }
         pollTask?.cancel()
         pollTask = nil
         sessionPhase = .selecting
@@ -358,7 +358,6 @@ final class ImportSessionViewModel: ObservableObject {
             let message = job.state == .pausedByLive
                 ? "导入已暂停，以优先处理实时录制。你可以稍后重新导入或在转写队列中查看。"
                 : "导入已取消。你可以重新选择文件。"
-            analyticsSubmit { $0.workflowCancelled("import") }
             resetToSelecting()
             importStatusMessage = message
         } else {
