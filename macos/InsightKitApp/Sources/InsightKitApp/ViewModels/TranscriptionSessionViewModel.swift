@@ -936,6 +936,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
     /// Called from DispatchQueue.main – no @MainActor needed.
     private func updateArtifactsSync(result: InsightRefreshResult, transcript: [TranscriptSegment]) {
         updateWorkbenchSync(result)
+        errorMessage = nil
+        inlineError = nil
         transcriptSegments = transcript.sorted(by: { $0.startMs < $1.startMs })
         metrics.provider = result.provider
         metrics.needsReviewCount = result.needsReviewCount

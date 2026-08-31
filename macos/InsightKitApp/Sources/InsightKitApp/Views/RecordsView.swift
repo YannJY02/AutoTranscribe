@@ -170,7 +170,8 @@ struct RecordsView: View {
                 metadata: updated,
                 rootDirectory: recordsService.rootDirectory,
                 recordPath: recordsService.recordFolderURL(for: record.id),
-                transcriptRecoveryService: transcriptRecoveryService
+                transcriptRecoveryService: transcriptRecoveryService,
+                analyticsContext: reviewDataSource?.analyticsContext
             )
         }
         recordRenameTarget = nil

@@ -222,7 +222,7 @@ struct ProductAnalyticsPath: Equatable {
     }
 }
 
-struct ProductAnalyticsContext {
+struct ProductAnalyticsContext: Equatable {
     let workflow: String
     let path: ProductAnalyticsPath
     fileprivate let key: String

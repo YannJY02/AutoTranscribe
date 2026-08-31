@@ -89,6 +89,24 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.inlineError)
     }
 
+    func testSuccessfulFinalInsightRetryClearsStaleError() {
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: RPCClientMock(),
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        vm.currentMeetingID = "retry-meeting"
+        vm.errorMessage = "previous analysis failure"
+
+        vm.buildFinalInsight()
+
+        let completed = expectation(description: "final insight retry succeeded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+        XCTAssertNil(vm.errorMessage)
+    }
+
     func testPreemptForLiveCancelsRunningJobAndStopsWatcher() throws {
         let rpc = RPCClientMock()
         let vm = TranscriptionSessionViewModel(

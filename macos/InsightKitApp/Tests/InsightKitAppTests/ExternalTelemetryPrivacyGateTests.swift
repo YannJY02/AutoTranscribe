@@ -484,8 +484,10 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
+        XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("匿名"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("远端原始数据最多保留 30 天"))
         XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("本地加密待发队列最多保留 30 天"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("跨会话稳定的随机安装标识"))
     }
 
     func testFailedExportRecoveryEmitsClosedFailedPair() throws {

@@ -466,6 +466,27 @@ final class RecordsIndexServiceTests: XCTestCase {
         XCTAssertTrue(dataSource.didTrackOpenAnalytics)
     }
 
+    func testRecordReviewReplacementCanPreserveAnalyticsContext() {
+        let metadata = RecordMetadata(
+            id: "analytics-record",
+            createdAt: Date(),
+            duration: 1,
+            mediaType: .audio,
+            source: .imported,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: "Analytics fixture"
+        )
+        let original = RecordReviewDataSource(metadata: metadata, rootDirectory: tempRoot)
+        let replacement = RecordReviewDataSource(
+            metadata: metadata,
+            rootDirectory: tempRoot,
+            analyticsContext: original.analyticsContext
+        )
+
+        XCTAssertEqual(replacement.analyticsContext, original.analyticsContext)
+    }
+
     func testSpeakerRenamePresentationBuildsVisibleActionsForKnownSpeakers() throws {
         let presentation = RecordSpeakerRenamePresentation.make(
             editableSpeakers: ["SPEAKER_00"],

@@ -3,7 +3,7 @@ import CoreGraphics
 import SwiftUI
 
 struct SettingsView: View {
-    static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收匿名产品流程事件，只使用允许列表中的低基数属性；本地加密待发队列最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止上传并清除本地队列；远端保留与删除遵循 PostHog 项目配置。"
+    static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收产品流程事件、允许列表中的低基数属性，以及用于跨会话归因的跨会话稳定的随机安装标识；本地加密待发队列最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止上传并清除本地队列；远端保留与删除遵循 PostHog 项目配置。"
 
     private struct VendorDraft {
         var baseURL: String
@@ -114,7 +114,7 @@ struct SettingsView: View {
             asrSection
             storageSection
             Section("外部遥测") {
-                Toggle("共享匿名产品与诊断数据", isOn: Binding(
+                Toggle("共享产品流程数据", isOn: Binding(
                     get: { telemetryEnabled },
                     set: { enabled in
                         telemetryEnabled = enabled

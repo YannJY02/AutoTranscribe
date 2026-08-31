@@ -23,7 +23,7 @@ final class RecordReviewDataSource: ObservableObject {
 
     let metadata: RecordMetadata
     let recordPath: URL
-    private let analyticsContext: ProductAnalyticsContext
+    let analyticsContext: ProductAnalyticsContext
     private(set) var didTrackOpenAnalytics = false
     private var exportNeedsRecovery = false
     private let rpcQueue = DispatchQueue(label: "InsightKit.RecordReview.RPC", qos: .userInitiated)
@@ -35,7 +35,8 @@ final class RecordReviewDataSource: ObservableObject {
         rootDirectory: URL,
         recordPath: URL? = nil,
         rpcClient: InsightRPCClientProtocol? = nil,
-        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil,
+        analyticsContext: ProductAnalyticsContext? = nil
     ) {
         self.metadata = metadata
         self.rpcClient = rpcClient
@@ -44,7 +45,7 @@ final class RecordReviewDataSource: ObservableObject {
         self.recordPath = recordPath
             ?? RecordsIndexService.recordFolderURL(for: metadata.id, rootDirectory: rootDirectory)
             ?? rootDirectory.appendingPathComponent(metadata.id)
-        self.analyticsContext = ProductAnalyticsContext(
+        self.analyticsContext = analyticsContext ?? ProductAnalyticsContext(
             workflow: metadata.source == .live ? "live" : "import",
             path: ProductAnalyticsPath.persistedRecord(at: self.recordPath)
         )
