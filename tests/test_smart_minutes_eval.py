@@ -2,6 +2,7 @@ import json
 import math
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.smart_minutes_eval import evaluate_package, load_eval_contract, run_eval
 
@@ -51,6 +52,165 @@ def test_local_run_is_reproducible_and_external_leg_is_unknown(tmp_path: Path):
         "generated_actions": 1,
         "all_generated_claims_need_review": True,
     }
+
+
+def test_langfuse_sync_uploads_only_allowlisted_synthetic_metadata(monkeypatch, tmp_path: Path):
+    class FakeDataset:
+        def __init__(self, client):
+            self.client = client
+
+        def run_experiment(self, **kwargs):
+            item_results = []
+            for item in self.client.items:
+                output = kwargs["task"](item=item)
+                evaluations = [
+                    evaluator(
+                        input=item.input,
+                        output=output,
+                        expected_output=item.expected_output,
+                        metadata=item.metadata,
+                    )
+                    for evaluator in kwargs["evaluators"]
+                ]
+                self.client.calls.append({"output": output, "evaluations": evaluations})
+                flattened = [value for evaluation in evaluations for value in (evaluation if isinstance(evaluation, list) else [evaluation])]
+                trace_id = f"trace-{item.input['case_id']}"
+                scores = [
+                    SimpleNamespace(trace_id=trace_id, name=value["name"], value=float(value["value"]))
+                    for value in flattened
+                ]
+                self.client.pending_scores.extend(scores)
+                if not self.client.drop_scores:
+                    self.client.remote_scores.extend(scores)
+                item_results.append(SimpleNamespace(evaluations=flattened))
+            self.client.calls.append({"experiment": {key: value for key, value in kwargs.items() if key not in {"task", "evaluators"}}})
+            return SimpleNamespace(
+                dataset_run_id="synthetic-run-id",
+                dataset_run_url="https://example.invalid/run/synthetic-run-id",
+                item_results=item_results,
+            )
+
+    class FakeLangfuse:
+        def __init__(self):
+            self.calls = []
+            self.items = []
+            self.created = False
+            self.remote_scores = []
+            self.pending_scores = []
+            self.drop_scores = False
+            self.release_scores_after = None
+            self.score_reads = 0
+            self.release_run_items_after = None
+            self.run_reads = 0
+            self.api = SimpleNamespace(scores_v3=SimpleNamespace(get_many_v3=self.get_scores))
+
+        def create_dataset(self, **kwargs):
+            self.calls.append({"dataset": kwargs})
+            self.created = True
+
+        def create_dataset_item(self, **kwargs):
+            self.calls.append({"item": kwargs})
+            self.items = [item for item in self.items if item.id != kwargs["id"]]
+            self.items.append(SimpleNamespace(
+                id=kwargs["id"],
+                input=kwargs["input"],
+                expected_output=kwargs["expected_output"],
+                metadata=kwargs["metadata"],
+            ))
+
+        def get_dataset(self, _name):
+            if not self.created:
+                raise LookupError("dataset not found")
+            return FakeDataset(self)
+
+        def flush(self):
+            self.calls.append({"flush": True})
+
+        def get_dataset_run(self, **kwargs):
+            self.calls.append({"readback": kwargs})
+            self.run_reads += 1
+            if self.release_run_items_after and self.run_reads < self.release_run_items_after:
+                return SimpleNamespace(dataset_run_items=[])
+            return SimpleNamespace(dataset_run_items=[
+                SimpleNamespace(dataset_item_id=item.id, trace_id=f"trace-{item.input['case_id']}")
+                for item in self.items
+            ])
+
+        def get_scores(self, **kwargs):
+            self.calls.append({"score_readback": kwargs})
+            self.score_reads += 1
+            if self.release_scores_after == self.score_reads:
+                self.remote_scores.extend(self.pending_scores)
+                self.pending_scores.clear()
+            return SimpleNamespace(data=[score for score in self.remote_scores if score.trace_id == kwargs["trace_id"]])
+
+    client = FakeLangfuse()
+    report = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path,
+        langfuse=True,
+        langfuse_client=client,
+    )
+
+    leg = report["legs"]["langfuse"]
+    assert leg["status"] == "observed"
+    assert leg["dataset_item_count"] == leg["dataset_run_item_count"] == 4
+    assert leg["remote_score_count"] == 9
+    assert leg["remote_score_names"] == ["failure_behavior", "latency", "source_evidence_linkage"]
+    serialized = json.dumps(client.calls, ensure_ascii=False)
+    for private_value in ("星河项目", "Project Cedar", "Aurora onboarding", "sound check"):
+        assert private_value not in serialized
+    assert set(client.items[0].input) == {"case_id"}
+    assert set(client.items[0].expected_output) == {"expected_behavior"}
+
+    clock = [0]
+    monkeypatch.setattr("scripts.smart_minutes_eval.time.monotonic", lambda: clock.__setitem__(0, clock[0] + 1) or clock[0])
+    monkeypatch.setattr("scripts.smart_minutes_eval.time.sleep", lambda _seconds: None)
+    delayed_client = FakeLangfuse()
+    delayed_client.drop_scores = True
+    delayed_client.release_run_items_after = 2
+    delayed_client.release_scores_after = 3
+    delayed = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path / "delayed-scores",
+        langfuse=True,
+        langfuse_client=delayed_client,
+    )
+    assert delayed["legs"]["langfuse"]["status"] == "observed"
+    assert delayed_client.run_reads == 2
+    assert delayed_client.score_reads == 8
+
+    clock[0] = 0
+    missing_client = FakeLangfuse()
+    missing_client.drop_scores = True
+    failed = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path / "missing-scores",
+        langfuse=True,
+        langfuse_client=missing_client,
+    )
+    assert failed["legs"]["langfuse"] == {
+        "status": "failed",
+        "failure": "Langfuse sync raised RuntimeError",
+    }
+
+
+def test_requested_langfuse_failure_is_explicit_and_sanitized(monkeypatch, tmp_path: Path):
+    import scripts.smart_minutes_eval as eval_module
+
+    def missing_client():
+        raise ModuleNotFoundError("private credential /Users/private sk-secret")
+
+    monkeypatch.setattr(eval_module, "_new_langfuse_client", missing_client)
+    report = run_eval(ROOT / "evals/smart_minutes/v1", tmp_path, langfuse=True)
+
+    assert report["legs"]["langfuse"] == {
+        "status": "unobserved",
+        "missing_prerequisite": "langfuse optional dependency is not installed",
+    }
+    serialized = (tmp_path / "smart-minutes-eval.json").read_text(encoding="utf-8")
+    assert "/Users/private" not in serialized
+    assert "sk-secret" not in serialized
 
 
 def test_cli_runs_from_clean_checkout_without_credentials(tmp_path: Path):

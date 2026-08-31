@@ -8,8 +8,10 @@ import hashlib
 import importlib
 import json
 import math
+import os
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -22,10 +24,15 @@ from insightkit.insights.schema_validator import validate_insight_package
 from insightkit.insights.service import InsightService
 
 DEFAULT_DATASET = ROOT / "evals/smart_minutes/v1"
+LANGFUSE_DATASET = "insightkit-smart-minutes-v1-metadata"
 
 
 class BoundedFailureError(Exception):
     """Deliberate adapter signal that a bounded-failure case was rejected safely."""
+
+
+class LangfusePrerequisiteError(Exception):
+    """Langfuse was requested but its local setup is incomplete."""
 
 
 def _canonical_hash(values: list[dict[str, Any]]) -> str:
@@ -241,6 +248,7 @@ def _markdown_diagnostics(diagnostics: dict[str, Any]) -> list[str]:
 def _markdown(report: dict[str, Any]) -> str:
     external = report["legs"]["external"]
     semantic = report["legs"]["semantic"]
+    langfuse = report["legs"]["langfuse"]
     lines = [
         "# Smart Minutes evaluation report", "",
         f"- Dataset: `{report['dataset']['version']}` (`{report['dataset']['sha256']}`)",
@@ -248,6 +256,7 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- Local baseline: {report['legs']['local']['status']} (`local-extractive` / `heuristic-v1`)",
         f"- External baseline: {'Unobserved' if external['status'] == 'unobserved' else external['status']}",
         f"- Semantic evaluation: {semantic['status']}",
+        f"- Langfuse experiment: {langfuse['status']}",
     ]
     if external.get("missing_prerequisite"):
         lines.append(f"- External prerequisite: {external['missing_prerequisite']}")
@@ -274,7 +283,162 @@ def _markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | None = None, semantic_adapter: str | Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+def _new_langfuse_client() -> Any:
+    if not os.getenv("LANGFUSE_PUBLIC_KEY") or not os.getenv("LANGFUSE_SECRET_KEY"):
+        raise LangfusePrerequisiteError("Langfuse credentials are not configured")
+    if not os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+        raise LangfusePrerequisiteError("Langfuse base URL is not configured")
+    from langfuse import Langfuse
+
+    return Langfuse(environment="owner-pilot")
+
+
+def _sync_langfuse(contract: dict[str, Any], report: dict[str, Any], client: Any) -> dict[str, Any]:
+    try:
+        client.get_dataset(LANGFUSE_DATASET)
+    except Exception:
+        client.create_dataset(
+            name=LANGFUSE_DATASET,
+            description="Synthetic Smart Minutes gate metadata; no meeting content.",
+            metadata={
+                "dataset_version": contract["dataset_version"],
+                "dataset_sha256": contract["dataset_sha256"],
+                "rubric_version": contract["rubric"]["rubric_version"],
+                "synthetic": True,
+            },
+            input_schema={
+                "type": "object",
+                "properties": {"case_id": {"type": "string"}},
+                "required": ["case_id"],
+                "additionalProperties": False,
+            },
+            expected_output_schema={
+                "type": "object",
+                "properties": {"expected_behavior": {"enum": ["success", "bounded_failure"]}},
+                "required": ["expected_behavior"],
+                "additionalProperties": False,
+            },
+        )
+
+    case_by_item_id = {}
+    for case in contract["cases"]:
+        item_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LANGFUSE_DATASET}:{case['id']}"))
+        case_by_item_id[item_id] = case["id"]
+        client.create_dataset_item(
+            dataset_name=LANGFUSE_DATASET,
+            id=item_id,
+            input={"case_id": case["id"]},
+            expected_output={"expected_behavior": case["expected_behavior"]},
+            metadata={
+                "dataset_version": contract["dataset_version"],
+                "language": case["language"],
+                "synthetic": True,
+            },
+        )
+
+    results_by_case = {item["case"]: item for item in report["cases"]}
+
+    def task(*, item: Any, **_kwargs: Any) -> dict[str, Any]:
+        result = results_by_case[item.input["case_id"]]
+        return {
+            "case_id": result["case"],
+            "gate_result": result["gate_result"],
+            "failed_metrics": sorted({failure["metric"] for failure in result["failures"]}),
+            "latency_ms": result["diagnostics"]["latency_ms"],
+        }
+
+    def source_evidence_linkage(*, output: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        return {"name": "source_evidence_linkage", "value": "source_evidence_linkage" not in output["failed_metrics"], "data_type": "BOOLEAN"}
+
+    def failure_behavior(*, output: dict[str, Any], expected_output: dict[str, Any], **_kwargs: Any) -> Any:
+        if expected_output["expected_behavior"] != "bounded_failure":
+            return []
+        return {"name": "failure_behavior", "value": "failure_behavior" not in output["failed_metrics"], "data_type": "BOOLEAN"}
+
+    def latency(*, output: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        return {"name": "latency", "value": output["latency_ms"], "data_type": "NUMERIC"}
+
+    run_name = f"{contract['dataset_version']}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
+    experiment = client.get_dataset(LANGFUSE_DATASET).run_experiment(
+        name="Smart Minutes synthetic metadata gate",
+        run_name=run_name,
+        description="Owner-pilot replay of deterministic Smart Minutes gates without meeting content.",
+        task=task,
+        evaluators=[source_evidence_linkage, failure_behavior, latency],
+        max_concurrency=1,
+        metadata={
+            "dataset_version": contract["dataset_version"],
+            "dataset_sha256": contract["dataset_sha256"],
+            "rubric_version": contract["rubric"]["rubric_version"],
+            "provider": "local-extractive",
+            "model": "heuristic-v1",
+            "synthetic": True,
+        },
+    )
+    client.flush()
+    run_deadline = time.monotonic() + 35
+    while True:
+        readback = client.get_dataset_run(dataset_name=LANGFUSE_DATASET, run_name=run_name)
+        run_item_count = len(readback.dataset_run_items)
+        if run_item_count == len(contract["cases"]):
+            break
+        remaining = run_deadline - time.monotonic()
+        if run_item_count > len(contract["cases"]) or remaining <= 0:
+            raise RuntimeError("Langfuse readback did not reconcile with the local report")
+        time.sleep(min(2, remaining))
+
+    expected_scores = {}
+    for run_item in readback.dataset_run_items:
+        case_id = case_by_item_id.get(run_item.dataset_item_id)
+        if case_id is None:
+            raise RuntimeError("Langfuse readback contained an unexpected dataset item")
+        result = results_by_case[case_id]
+        failed_metrics = {failure["metric"] for failure in result["failures"]}
+        expected_scores[(run_item.trace_id, "source_evidence_linkage")] = float("source_evidence_linkage" not in failed_metrics)
+        expected_scores[(run_item.trace_id, "latency")] = float(result["diagnostics"]["latency_ms"])
+        if next(case for case in contract["cases"] if case["id"] == case_id)["expected_behavior"] == "bounded_failure":
+            expected_scores[(run_item.trace_id, "failure_behavior")] = float("failure_behavior" not in failed_metrics)
+
+    remote_scores = []
+    score_deadline = time.monotonic() + 35
+    while True:
+        remote_scores = [
+            (run_item.trace_id, score)
+            for run_item in readback.dataset_run_items
+            for score in client.api.scores_v3.get_many_v3(trace_id=run_item.trace_id, limit=10).data
+        ]
+        remote_values = {(trace_id, score.name): float(score.value) for trace_id, score in remote_scores}
+        if (
+            len(remote_scores) == len(expected_scores)
+            and remote_values.keys() == expected_scores.keys()
+            and all(math.isclose(remote_values[key], value) for key, value in expected_scores.items())
+        ):
+            break
+        remaining = score_deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("Langfuse score readback did not reconcile with the local report")
+        time.sleep(min(2, remaining))
+    return {
+        "status": "observed",
+        "dataset": LANGFUSE_DATASET,
+        "dataset_item_count": len(contract["cases"]),
+        "dataset_run_id": experiment.dataset_run_id,
+        "dataset_run_url": experiment.dataset_run_url,
+        "dataset_run_item_count": run_item_count,
+        "remote_score_count": len(remote_scores),
+        "remote_score_names": sorted({score.name for _trace_id, score in remote_scores}),
+    }
+
+
+def run_eval(
+    dataset_dir: Path,
+    output_dir: Path,
+    external: dict[str, Any] | None = None,
+    semantic_adapter: str | Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    *,
+    langfuse: bool = False,
+    langfuse_client: Any = None,
+) -> dict[str, Any]:
     contract = load_eval_contract(dataset_dir)
     metric_ids = {metric["id"] for metric in contract["rubric"]["metrics"]}
     adapter = None
@@ -399,9 +563,35 @@ def run_eval(dataset_dir: Path, output_dir: Path, external: dict[str, Any] | Non
         "dataset": {"version": contract["dataset_version"], "sha256": contract["dataset_sha256"]},
         "rubric": {"version": contract["rubric"]["rubric_version"], "policy": contract["rubric"]["policy"]},
         "gate_result": "fail" if any(item["gate_result"] == "fail" for item in results) or external_leg.get("gate_result") == "fail" else "pass",
-        "legs": {"local": {"status": "observed", "provider": "local-extractive", "model": "heuristic-v1", "implementation_version": "InsightService.build_local_extractive"}, "external": external_leg, "semantic": semantic_leg},
+        "legs": {
+            "local": {"status": "observed", "provider": "local-extractive", "model": "heuristic-v1", "implementation_version": "InsightService.build_local_extractive"},
+            "external": external_leg,
+            "semantic": semantic_leg,
+            "langfuse": {
+                "status": "unobserved",
+                "missing_prerequisite": "explicit --langfuse upload was not requested",
+            },
+        },
         "cases": results,
     }
+    if langfuse:
+        try:
+            client = langfuse_client if langfuse_client is not None else _new_langfuse_client()
+            report["legs"]["langfuse"] = _sync_langfuse(contract, report, client)
+        except (LangfusePrerequisiteError, ModuleNotFoundError) as exc:
+            report["legs"]["langfuse"] = {
+                "status": "unobserved",
+                "missing_prerequisite": (
+                    str(exc)
+                    if isinstance(exc, LangfusePrerequisiteError)
+                    else "langfuse optional dependency is not installed"
+                ),
+            }
+        except Exception as exc:
+            report["legs"]["langfuse"] = {
+                "status": "failed",
+                "failure": f"Langfuse sync raised {type(exc).__name__}",
+            }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "smart-minutes-eval.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     (output_dir / "smart-minutes-eval.md").write_text(_markdown(report), encoding="utf-8")
@@ -415,11 +605,19 @@ def main() -> int:
     parser.add_argument("--external-vendor")
     parser.add_argument("--external-model", default="")
     parser.add_argument("--semantic-adapter", help="approved synthetic-only evaluator as module:function")
+    parser.add_argument("--langfuse", action="store_true", help="upload allowlisted synthetic metadata and read back the dataset run")
     args = parser.parse_args()
     external = {"vendor": args.external_vendor, "model": args.external_model} if args.external_vendor else None
-    report = run_eval(args.dataset_dir, args.output_dir, external=external, semantic_adapter=args.semantic_adapter)
-    print(json.dumps({"gate_result": report["gate_result"], "dataset": report["dataset"], "output_dir": str(args.output_dir)}, ensure_ascii=False))
-    return 0 if report["gate_result"] == "pass" else 1
+    report = run_eval(
+        args.dataset_dir,
+        args.output_dir,
+        external=external,
+        semantic_adapter=args.semantic_adapter,
+        langfuse=args.langfuse,
+    )
+    print(json.dumps({"gate_result": report["gate_result"], "dataset": report["dataset"], "langfuse": report["legs"]["langfuse"]["status"], "output_dir": str(args.output_dir)}, ensure_ascii=False))
+    langfuse_ok = not args.langfuse or report["legs"]["langfuse"]["status"] == "observed"
+    return 0 if report["gate_result"] == "pass" and langfuse_ok else 1
 
 
 if __name__ == "__main__":
