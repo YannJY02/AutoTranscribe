@@ -185,6 +185,35 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         wait(for: [accepted], timeout: 1)
     }
 
+    func testCancellingExplicitImportReleasesAdmissionWithoutStatusEcho() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionImportResults = [
+            .init(jobID: "job-cancel", meetingID: "meeting-cancel", state: .queued),
+        ]
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false,
+            analyticsSubmit: { _ in }
+        )
+
+        vm.importFile(path: "/tmp/cancel.wav")
+        let accepted = expectation(description: "explicit import accepted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertFalse(vm.canStartExplicitImport)
+            rpc.transcriptionStatusError = nil
+            vm.cancelJob(jobID: "job-cancel")
+            accepted.fulfill()
+        }
+        wait(for: [accepted], timeout: 1)
+
+        let cancelled = expectation(description: "cancellation releases admission")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertTrue(vm.canStartExplicitImport)
+            cancelled.fulfill()
+        }
+        wait(for: [cancelled], timeout: 1)
+    }
+
     func testCompletedExplicitJobsAreAllBuiltAndFailedLastCompletedIsSkipped() {
         let rpc = RPCClientMock()
         rpc.transcriptionImportResults = [

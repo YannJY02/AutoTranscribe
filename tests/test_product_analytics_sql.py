@@ -103,6 +103,8 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     assert "timestamp_utc >= toDateTime({variables.window_start})" in retention
     assert "observable_7d_flag" in retention
     assert "observable_28d_flag" in retention
+    assert "addDays(toDateTime(c.cohort_day,'UTC'),7)" in retention
+    assert "addDays(toDateTime(c.cohort_day,'UTC'),28)" in retention
     assert "dateDiff('millisecond',first_start,first_success)" in (
         POSTHOG_SQL_ROOT / "activation.hogql"
     ).read_text()
@@ -119,6 +121,8 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
         query = (POSTHOG_SQL_ROOT / name).read_text()
         assert "pre_window" in query
         assert "is_boundary_terminal" in query
+        assert "is_record_context_terminal" in query
+        assert "schema_version=1 AND event_name IN ('workflow_started','record_reopened')" in query
         assert "orphan_boundary_terminals" in query
     assert "funnel_index" in (POSTHOG_SQL_ROOT / "funnel.hogql").read_text()
 
@@ -218,14 +222,20 @@ def test_activation_excludes_installations_started_before_the_window():
 
 def test_retention_counts_only_cohorts_with_fully_observable_return_windows():
     connection = database()
+    connection.execute(
+        "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
+        "VALUES('telemetry_consent_changed','2025-12-31T23:59:00Z',1,'development','i1')"
+    )
     connection.executemany(
         "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
-        "VALUES('workflow_completed',?,1,'development',?)",
+        "VALUES(?,?,1,'development',?)",
         [
-            ("2025-12-27T00:00:00Z", "returning"),
-            ("2026-01-03T00:00:00Z", "returning"),
-            ("2025-12-01T00:00:00Z", "unobserved"),
-            ("2025-12-08T00:00:00Z", "unobserved"),
+            ("telemetry_consent_changed", "2025-12-26T23:59:00Z", "returning"),
+            ("workflow_completed", "2025-12-27T00:00:00Z", "returning"),
+            ("workflow_completed", "2026-01-03T00:00:00Z", "returning"),
+            ("telemetry_consent_changed", "2025-11-30T23:59:00Z", "unobserved"),
+            ("workflow_completed", "2025-12-01T00:00:00Z", "unobserved"),
+            ("workflow_completed", "2025-12-08T00:00:00Z", "unobserved"),
         ],
     )
     cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), PARAMS)
@@ -239,8 +249,12 @@ def test_d28_retention_is_observable_inside_the_thirty_day_raw_window():
     connection.execute("DELETE FROM events")
     connection.executemany(
         "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
-        "VALUES('workflow_completed',?,1,'development','d28')",
-        [("2026-01-01T00:00:00Z",), ("2026-01-29T00:00:00Z",)],
+        "VALUES(?,?,1,'development','d28')",
+        [
+            ("telemetry_consent_changed", "2026-01-01T00:00:00Z"),
+            ("workflow_completed", "2026-01-01T00:01:00Z"),
+            ("workflow_completed", "2026-01-29T00:01:00Z"),
+        ],
     )
     cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), {
         **PARAMS,
@@ -250,6 +264,24 @@ def test_d28_retention_is_observable_inside_the_thirty_day_raw_window():
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
     assert result["mature_28d_cohort_installations"] == 1
     assert result["retained_28d"] == 1
+
+
+def test_retention_does_not_recohort_a_surviving_success_without_its_consent_anchor():
+    connection = database()
+    connection.execute("DELETE FROM events")
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
+        "VALUES('workflow_completed',?,1,'development','expired-cohort')",
+        [("2026-01-02T00:00:00Z",), ("2026-01-10T00:00:00Z",)],
+    )
+
+    cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["unproven_cohort_installations"] == 1
+    assert result["mature_7d_cohort_installations"] == 0
+    assert result["retained_7d"] == 0
+    assert result["evidence_state"] == "insufficient-window/data"
 
 
 def test_recovery_does_not_cross_analysis_mode_or_window_end():
@@ -276,7 +308,7 @@ def test_reopened_record_recovery_pairs_without_polluting_maswr_quality():
         """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
         app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
         provider_class,phase,outcome,error_code,recovery_action,duration_bucket_ms,latency_bucket_ms)
-        VALUES(?,?,?,1,'development','1.0','1','i1','s1','live',2,'local','local','reviewing',?,?,?,300000,1000)""",
+        VALUES(?,?,?,1,'development','1.0','1','reopened-only','reopened-only-session','live',1,'local','local','reviewing',?,?,?,300000,1000)""",
         [
             ("record_reopened", "2026-01-04T00:00:00Z", 6, None, None, None),
             ("workflow_failed", "2026-01-04T00:00:01Z", 7, "failed", "storage", "retry"),
@@ -291,6 +323,59 @@ def test_reopened_record_recovery_pairs_without_polluting_maswr_quality():
     rows = [dict(zip([item[0] for item in maswr.description], row)) for row in maswr.fetchall()]
     assert all(row["evidence_state"] != "incomplete" for row in rows)
 
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["orphan_boundary_terminals"] == 0
+    assert quality_result["evidence_state"] == "complete"
+
+    funnel = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    funnel_result = dict(zip([item[0] for item in funnel.description], funnel.fetchone()))
+    assert funnel_result["evidence_state"] != "incomplete"
+
+
+def test_retention_excludes_returns_before_exact_window_start():
+    connection = database()
+    connection.executemany(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
+        provider_class,phase,outcome,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES(?,?,?,1,'development','1.0','1','exact-window','retention-session','live',1,'local',
+        'local','finalizing','succeeded','none',300000,1000)""",
+        [
+            ("telemetry_consent_changed", "2025-12-25T00:00:00Z", 1),
+            ("workflow_completed", "2025-12-25T00:01:00Z", 2),
+            ("workflow_completed", "2026-01-01T09:00:00Z", 3),
+        ],
+    )
+    params = {**PARAMS, "window_start": "2026-01-01T12:00:00Z"}
+
+    cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), params)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["mature_7d_cohort_installations"] == 0
+    assert result["retained_7d"] == 0
+
+
+def test_failure_without_any_context_fails_closed():
+    connection = database()
+    connection.execute(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,analysis_mode,provider_class,
+        phase,outcome,error_code,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES('workflow_failed','2026-01-06T00:00:00Z',1,1,'development','1.0','1',
+        'orphan-failure','orphan-failure-session','live','local','local','analysis','failed','unknown','retry',300000,1000)"""
+    )
+
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["orphan_boundary_terminals"] == 1
+    assert quality_result["evidence_state"] == "incomplete"
+
+    for query_name in ["maswr.sql", "funnel.sql"]:
+        cursor = connection.execute((SQL_ROOT / query_name).read_text(), PARAMS)
+        rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
+        assert all(row["evidence_state"] == "incomplete" for row in rows)
+
 
 def test_funnel_does_not_join_different_workflows_in_one_session():
     connection = database()
@@ -304,6 +389,28 @@ def test_funnel_does_not_join_different_workflows_in_one_session():
     assert result["record_saved"] == 0
 
 
+def test_funnel_orders_same_second_stages_by_event_sequence():
+    connection = database()
+    connection.executemany(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,analysis_mode,provider_class,phase,outcome)
+        VALUES(?,?,?,1,'development','1.0','1','same-second','same-second-session','live','local','local','reviewing',?)""",
+        [
+            ("workflow_started", "2026-01-03T00:00:00Z", 1, None),
+            ("record_saved", "2026-01-03T00:01:00Z", 2, None),
+            ("export_completed", "2026-01-03T00:02:00Z", 3, "succeeded"),
+            ("smart_minutes_review_opened", "2026-01-03T00:02:00Z", 4, None),
+        ],
+    )
+
+    cursor = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["started"] == 3
+    assert result["review_opened"] == 2
+    assert result["export_completed"] == 1
+
+
 def test_empty_funnel_recovery_and_latency_are_insufficient_data():
     connection = database()
     connection.execute("DELETE FROM events")
@@ -311,6 +418,23 @@ def test_empty_funnel_recovery_and_latency_are_insufficient_data():
         cursor = connection.execute((SQL_ROOT / name).read_text(), PARAMS)
         result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
         assert result["evidence_state"] == "insufficient-data"
+
+
+def test_orphan_only_funnel_preserves_incomplete_quality_state():
+    connection = database()
+    connection.execute("DELETE FROM events")
+    connection.execute(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_session_id,workflow,analysis_mode,provider_class,phase,outcome)
+        VALUES('workflow_completed','2026-01-03T00:00:00Z',1,1,'development',
+        'orphan-only','live','local','local','finalizing','succeeded')"""
+    )
+
+    cursor = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["started"] == 0
+    assert result["evidence_state"] == "incomplete"
 
 
 def test_data_quality_reports_duplicate_and_unknown_schema_as_incomplete():

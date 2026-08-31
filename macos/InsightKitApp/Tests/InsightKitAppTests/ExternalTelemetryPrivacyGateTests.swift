@@ -875,6 +875,100 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(names.filter { $0 == "smart_minutes_review_opened" }.count, 2)
     }
 
+    func testImportReviewEventWaitsForReviewPhase() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("import", provisionalPath: .local)
+        let rpc = RPCClientMock()
+        rpc.buildFinalDelaySec = 0.5
+        let recordsRoot = root.appendingPathComponent("Records", isDirectory: true)
+        try RecordExportTestFixture.seedRecord(root: recordsRoot, recordID: "review-timing")
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = recordsRoot
+        let viewModel = ImportSessionViewModel(
+            rpcClient: rpc,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+        viewModel.recordsService = recordsService
+
+        viewModel.loadCompletedArtifacts(meetingID: "review-timing")
+        let stillProcessing = expectation(description: "review event waits for review surface")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            XCTAssertEqual(viewModel.sessionPhase, .selecting)
+            XCTAssertFalse(
+                (try? self.queuedObjects(gate))?.contains {
+                    $0["event_name"] as? String == "smart_minutes_review_opened"
+                } ?? true
+            )
+            stillProcessing.fulfill()
+        }
+        wait(for: [stillProcessing], timeout: 1)
+
+        let reviewing = expectation(description: "review surface opens")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+            XCTAssertTrue(
+                (try? self.queuedObjects(gate))?.contains {
+                    $0["event_name"] as? String == "smart_minutes_review_opened"
+                } ?? false
+            )
+            reviewing.fulfill()
+        }
+        wait(for: [reviewing], timeout: 1)
+    }
+
+    func testImportInsightRetryEmitsReviewOnlyAfterReviewPhase() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let rpc = RPCClientMock()
+        let recordsRoot = root.appendingPathComponent("RetryRecords", isDirectory: true)
+        try RecordExportTestFixture.seedRecord(root: recordsRoot, recordID: "retry-review")
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = recordsRoot
+        let viewModel = ImportSessionViewModel(
+            rpcClient: rpc,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+        viewModel.recordsService = recordsService
+
+        viewModel.loadCompletedArtifacts(meetingID: "retry-review")
+        let retryStarted = expectation(description: "accepted import starts insight retry")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+            analytics.beginWorkflow("import", provisionalPath: .local)
+            rpc.buildFinalDelaySec = 0.5
+            viewModel.buildFinalInsight()
+            retryStarted.fulfill()
+        }
+        wait(for: [retryStarted], timeout: 1)
+
+        let stillProcessing = expectation(description: "retry review waits for review surface")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            XCTAssertEqual(viewModel.sessionPhase, .processing)
+            XCTAssertFalse(
+                (try? self.queuedObjects(gate))?.contains {
+                    $0["event_name"] as? String == "smart_minutes_review_opened"
+                } ?? true
+            )
+            stillProcessing.fulfill()
+        }
+        wait(for: [stillProcessing], timeout: 1)
+
+        let reviewing = expectation(description: "retry enters review")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+            XCTAssertTrue(
+                (try? self.queuedObjects(gate))?.contains {
+                    $0["event_name"] as? String == "smart_minutes_review_opened"
+                } ?? false
+            )
+            reviewing.fulfill()
+        }
+        wait(for: [reviewing], timeout: 1)
+    }
+
     func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("匿名"))

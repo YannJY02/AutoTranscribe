@@ -226,7 +226,12 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 let result = try self.rpcClient.transcriptionCancel(jobID: jobID, reason: reason)
                 if let analyticsContext, result.state == .cancelled || result.state == .pausedByLive {
                     ProductAnalytics.submit { $0.workflowCancelled(analyticsContext) }
-                    DispatchQueue.main.async { self.analyticsTerminalJobIDs.insert(jobID) }
+                    DispatchQueue.main.async {
+                        self.analyticsTerminalJobIDs.insert(jobID)
+                        if self.activeExplicitImportJobID == jobID {
+                            self.activeExplicitImportJobID = nil
+                        }
+                    }
                 }
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()

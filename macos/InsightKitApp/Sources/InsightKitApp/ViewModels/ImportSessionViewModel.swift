@@ -207,6 +207,7 @@ final class ImportSessionViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.applyInsightResult(result, analyticsLatencyMilliseconds: analysisLatencyMS)
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
                 self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
             } catch {
@@ -223,6 +224,7 @@ final class ImportSessionViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
             }
         }
@@ -375,7 +377,6 @@ final class ImportSessionViewModel: ObservableObject {
                 analysisLatencyMilliseconds: analyticsLatencyMilliseconds
             )
             analytics.recordSaved("import", path: ProductAnalyticsPath(provider: result.provider))
-            analytics.reviewOpened("import")
         }
     }
 
@@ -468,7 +469,6 @@ final class ImportSessionViewModel: ObservableObject {
                             "import",
                             path: ProductAnalyticsPath.persistedRecord(at: recordPath)
                         )
-                        analytics.reviewOpened("import")
                     }
                 }
                 if !self.notes.isEmpty {
@@ -489,6 +489,7 @@ final class ImportSessionViewModel: ObservableObject {
                     self.applyInsightResult(insightResult, analyticsLatencyMilliseconds: analysisLatencyMS)
                     self.recordsService?.refreshIndex()
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
                 self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
             } catch {
@@ -505,6 +506,7 @@ final class ImportSessionViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = "智能纪要生成失败：\(error.localizedDescription)"
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
             }
         }
