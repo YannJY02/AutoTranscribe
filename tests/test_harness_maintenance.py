@@ -734,14 +734,16 @@ def test_symphony_launcher_rejects_github_preflight_exec_failure(tmp_path):
 
 
 def test_symphony_launcher_stops_an_unhealthy_child_for_launchd_restart(tmp_path):
+    started_at = time.monotonic()
     completed, _root = _run_test_symphony_launcher(
         tmp_path,
         symphony_body=(
             "#!/bin/sh\n"
             "trap '' TERM INT\n"
-            "while :; do sleep 1; done\n"
+            "exec sleep 60\n"
         ),
         curl_body="#!/bin/sh\nexit 22\n",
+        ps_body="#!/bin/sh\nprintf 'S\\n'\n",
         SYMPHONY_HEALTH_STARTUP_SECONDS="0",
         SYMPHONY_HEALTH_INTERVAL_SECONDS="1",
         SYMPHONY_HEALTH_FAILURE_LIMIT="2",
@@ -749,6 +751,7 @@ def test_symphony_launcher_stops_an_unhealthy_child_for_launchd_restart(tmp_path
     )
 
     assert completed.returncode != 0
+    assert time.monotonic() - started_at < 10
     assert "health probe failed 2 consecutive times" in completed.stderr
 
 
