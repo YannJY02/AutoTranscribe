@@ -5,6 +5,8 @@ import Foundation
 protocol InsightRPCClientProtocol {
     func sessionStart(meetingID: String, title: String, source: String) throws
     func sessionStop(meetingID: String) throws
+    func sessionStopForFinalization(meetingID: String, leaseToken: String) throws
+    func sessionFinalizationAbort(meetingID: String, leaseToken: String) throws
     func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int
     func transcriptReplace(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int
     func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment]
@@ -39,7 +41,8 @@ protocol InsightRPCClientProtocol {
         durationSec: Double,
         analysisMeta: [String: Any]?,
         notesMD: String,
-        presentationStatus: LivePresentationCaptureStatus?
+        presentationStatus: LivePresentationCaptureStatus?,
+        finalizationLeaseToken: String?
     ) throws -> String  // returns record_path
 }
 

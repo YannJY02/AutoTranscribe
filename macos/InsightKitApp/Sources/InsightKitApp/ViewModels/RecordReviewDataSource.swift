@@ -24,6 +24,7 @@ final class RecordReviewDataSource: ObservableObject {
     let metadata: RecordMetadata
     let recordPath: URL
     private let analyticsContext: ProductAnalyticsContext
+    private(set) var didTrackOpenAnalytics = false
     private var exportNeedsRecovery = false
     private let rpcQueue = DispatchQueue(label: "InsightKit.RecordReview.RPC", qos: .userInitiated)
     private let rpcClient: InsightRPCClientProtocol?
@@ -49,6 +50,11 @@ final class RecordReviewDataSource: ObservableObject {
         )
         self.recordingDuration = metadata.duration
         loadMeetingAsset()
+    }
+
+    func trackOpenAnalytics() {
+        guard !didTrackOpenAnalytics else { return }
+        didTrackOpenAnalytics = true
         ProductAnalytics.submit { analytics in
             analytics.observeRecord(self.analyticsContext)
         }

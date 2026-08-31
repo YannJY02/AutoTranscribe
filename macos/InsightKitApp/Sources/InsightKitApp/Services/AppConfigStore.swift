@@ -156,6 +156,12 @@ final class AppConfigStore: ObservableObject {
         persist()
     }
 
+    func updateAnalysisMode(_ mode: AnalysisMode) {
+        if config.analysis.mode == mode { return }
+        config.analysis.mode = mode
+        persist()
+    }
+
     func updateProfile(vendor: ProviderVendor, baseURL: String, modelID: String) {
         guard let idx = config.analysis.providers.firstIndex(where: { $0.vendor == vendor }) else {
             return
@@ -227,8 +233,15 @@ final class AppConfigStore: ObservableObject {
         let activeVendor = config.analysis.selectedVendor
         let activeProfile = profilesByVendor[activeVendor] ?? Self.defaultConfig().analysis.providers.first(where: { $0.vendor == activeVendor })!
         env["INSIGHTKIT_PROVIDER_VENDOR"] = activeVendor.rawValue
+        env["INSIGHTKIT_ANALYSIS_MODE"] = config.analysis.mode.rawValue
         env["INSIGHTKIT_PROVIDER_MODEL"] = activeProfile.modelID
         env["INSIGHTKIT_STRICT_MODE"] = config.strict.strictMode ? "1" : "0"
+
+        if config.analysis.mode == .local {
+            for key in ["OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "DOUBAO_API_KEY"] {
+                env[key] = ""
+            }
+        }
 
         env["INSIGHTKIT_ASR_ENGINE"] = config.asr.engine.rawValue
         env["INSIGHTKIT_ASR_MODEL"] = Self.currentASRModel(from: config)
@@ -261,31 +274,31 @@ final class AppConfigStore: ObservableObject {
             case .openai:
                 env["OPENAI_BASE_URL"] = profile.baseURL
                 env["OPENAI_MODEL"] = profile.modelID
-                if activeVendor == .openai {
+                if config.analysis.mode == .cloud && activeVendor == .openai {
                     env["OPENAI_API_KEY"] = providerAPIKey(.openai, envName: "OPENAI_API_KEY")
                 }
             case .gemini:
                 env["GEMINI_BASE_URL"] = profile.baseURL
                 env["GEMINI_MODEL"] = profile.modelID
-                if activeVendor == .gemini {
+                if config.analysis.mode == .cloud && activeVendor == .gemini {
                     env["GEMINI_API_KEY"] = providerAPIKey(.gemini, envName: "GEMINI_API_KEY")
                 }
             case .deepseek:
                 env["DEEPSEEK_BASE_URL"] = profile.baseURL
                 env["DEEPSEEK_MODEL"] = profile.modelID
-                if activeVendor == .deepseek {
+                if config.analysis.mode == .cloud && activeVendor == .deepseek {
                     env["DEEPSEEK_API_KEY"] = providerAPIKey(.deepseek, envName: "DEEPSEEK_API_KEY")
                 }
             case .qwen:
                 env["QWEN_BASE_URL"] = profile.baseURL
                 env["QWEN_MODEL"] = profile.modelID
-                if activeVendor == .qwen {
+                if config.analysis.mode == .cloud && activeVendor == .qwen {
                     env["QWEN_API_KEY"] = providerAPIKey(.qwen, envName: "QWEN_API_KEY")
                 }
             case .doubao:
                 env["DOUBAO_BASE_URL"] = profile.baseURL
                 env["DOUBAO_MODEL"] = profile.modelID
-                if activeVendor == .doubao {
+                if config.analysis.mode == .cloud && activeVendor == .doubao {
                     env["DOUBAO_API_KEY"] = providerAPIKey(.doubao, envName: "DOUBAO_API_KEY")
                 }
             }
@@ -301,6 +314,13 @@ final class AppConfigStore: ObservableObject {
     }
 
     func activeProviderParams() -> [String: Any] {
+        if config.analysis.mode == .local {
+            return [
+                "provider_vendor": "local",
+                "provider_model": "extractive-v1",
+                "strict_mode": false,
+            ]
+        }
         let vendor = config.analysis.selectedVendor
         let profile = profile(for: vendor)
         return [

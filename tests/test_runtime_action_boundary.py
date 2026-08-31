@@ -4,6 +4,7 @@ from unittest import mock
 
 from insightkit.data.store import InsightStore
 from insightkit.ipc.server import InsightRPCServer
+from insightkit.insights.service import InsightService
 
 
 SAMPLE_PACKAGE = {
@@ -290,3 +291,77 @@ def test_smart_minutes_generate_contract_success_provider_fallback_and_empty_tra
         )
     finally:
         failed_server.shutdown()
+
+
+def test_no_network_local_smart_minutes_live_rpc_to_canonical_record(tmp_path, monkeypatch):
+    monkeypatch.setenv("INSIGHTKIT_RECORDS_ROOT", str(tmp_path / "Records"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    source = tmp_path / "synthetic.m4a"
+    source.write_bytes(b"synthetic audio fixture")
+    server = make_server(tmp_path, insight_service=InsightService())
+    try:
+        server._session_handler.transcript_delta({
+            "meeting_id": "offline-e2e",
+            "segments": [
+                {"start_ms": 0, "end_ms": 2000, "speaker": "Speaker 1", "text": "We decided on a local launch."},
+                {"start_ms": 2000, "end_ms": 4000, "speaker": "Speaker 2", "text": "Speaker 2 owns the review by Friday."},
+            ],
+        })
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("network disabled")), \
+                mock.patch("socket.create_connection", side_effect=AssertionError("network disabled")):
+            minutes = dispatch(server, "smart_minutes.generate", {
+                "meeting_id": "offline-e2e",
+                "provider_vendor": "local",
+            })["result"]
+            saved = dispatch(server, "record.save", {
+                "meeting_id": "offline-e2e",
+                "title": "Offline E2E",
+                "source_path": str(source),
+                "segments": server.store.list_segments("offline-e2e"),
+                "insight_package": minutes["insight_package"],
+                "analysis_meta": {"provider": minutes["provider_vendor"]},
+                "media_type": "audio",
+                "record_source": "live",
+                "duration_sec": 4.0,
+            })["result"]
+
+        record = Path(saved["record_path"])
+        assert minutes["provider_vendor"] == "local"
+        assert minutes["status"] == "available"
+        assert (record / "minutes.json").exists()
+        assert (record / "insight_package.json").exists()
+        metadata = json.loads((record / "metadata.json").read_text())
+        assert metadata["source"] == "live"
+        assert metadata["analysis"]["provider"] == "local"
+        assert json.loads((record / "insight_package.json").read_text()) == minutes["insight_package"]
+    finally:
+        server.shutdown()
+
+
+def test_module_export_forwards_explicit_analysis_choice(tmp_path):
+    server = make_server(tmp_path)
+    try:
+        with mock.patch.object(server, "_document_export", return_value={"path": "minutes.md"}) as export:
+            result = server._module_run({
+                "action": "document.export",
+                "meeting_id": "module-local-export",
+                "payload": {
+                    "format": "markdown",
+                    "provider_vendor": "local",
+                    "provider_model": "extractive-v1",
+                    "strict_mode": False,
+                },
+            })
+
+        assert result == {"path": "minutes.md"}
+        export.assert_called_once_with({
+            "meeting_id": "module-local-export",
+            "format": "markdown",
+            "output_dir": "",
+            "provider_vendor": "local",
+            "provider_model": "extractive-v1",
+            "strict_mode": False,
+        })
+    finally:
+        server.shutdown()

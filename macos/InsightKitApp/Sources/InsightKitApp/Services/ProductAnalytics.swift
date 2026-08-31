@@ -225,7 +225,13 @@ struct ProductAnalyticsPath: Equatable {
 struct ProductAnalyticsContext {
     let workflow: String
     let path: ProductAnalyticsPath
-    fileprivate let key = UUID().uuidString.lowercased()
+    fileprivate let key: String
+
+    init(workflow: String, path: ProductAnalyticsPath, key: String = UUID().uuidString.lowercased()) {
+        self.workflow = workflow
+        self.path = path
+        self.key = key
+    }
 }
 
 struct ProductAnalyticsAttemptContext: Hashable {
@@ -532,6 +538,7 @@ final class ProductAnalytics {
 
     func observeRecord(_ context: ProductAnalyticsContext) {
         stateLock.lock()
+        guard observedRecordSequences[context.key] == nil else { stateLock.unlock(); return }
         let epoch = uploadEpoch
         let attemptSequence = (nextAttemptSequenceByWorkflow[context.workflow] ?? 0) + 1
         nextAttemptSequenceByWorkflow[context.workflow] = attemptSequence

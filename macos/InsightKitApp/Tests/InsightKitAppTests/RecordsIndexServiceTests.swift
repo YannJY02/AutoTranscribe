@@ -447,6 +447,25 @@ final class RecordsIndexServiceTests: XCTestCase {
         XCTAssertFalse(markdown.contains("SPEAKER_00"))
     }
 
+    func testRecordReviewInitializationDoesNotPretendNavigationOccurred() {
+        let metadata = RecordMetadata(
+            id: "analytics-record",
+            createdAt: Date(),
+            duration: 1,
+            mediaType: .audio,
+            source: .imported,
+            userTags: [],
+            autoTags: [],
+            summaryPreview: "Analytics fixture"
+        )
+        let dataSource = RecordReviewDataSource(metadata: metadata, rootDirectory: tempRoot)
+
+        XCTAssertFalse(dataSource.didTrackOpenAnalytics)
+        dataSource.trackOpenAnalytics()
+        dataSource.trackOpenAnalytics()
+        XCTAssertTrue(dataSource.didTrackOpenAnalytics)
+    }
+
     func testSpeakerRenamePresentationBuildsVisibleActionsForKnownSpeakers() throws {
         let presentation = RecordSpeakerRenamePresentation.make(
             editableSpeakers: ["SPEAKER_00"],

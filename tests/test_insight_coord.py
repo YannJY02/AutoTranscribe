@@ -7,7 +7,7 @@ from unittest import mock
 from insightkit.data.store import InsightStore
 from insightkit.insights.provider import RuleBasedProvider
 from insightkit.insights.render import write_insight_pdf
-from insightkit.insights.service import InsightService
+from insightkit.insights.service import InsightService, attach_transcript_provenance
 from insightkit.ipc.insight_coord import InsightCoordinator
 
 
@@ -31,6 +31,24 @@ class TestInsightCoordinator(unittest.TestCase):
         result = self.coord.insight_build_final({"meeting_id": "m-1"})
         self.assertEqual(result["mode"], "final")
         self.assertIn("needs_review_count", result)
+        self.assertEqual(
+            result["insight_package"]["provenance_links"][-1]["url"],
+            "InsightKit SQLite segments: meeting_id=m-1",
+        )
+
+    def test_transcript_provenance_deduplicates_the_canonical_url(self):
+        package = self.service.build_local_extractive([
+            {"start_ms": 0, "end_ms": 1000, "speaker": "spk0", "text": "Keep one transcript source."}
+        ])
+        transcript_url = "InsightKit SQLite segments: meeting_id=m-1"
+        package["provenance_links"] = [
+            {"label": "文字记录", "url": transcript_url},
+            {"label": "Transcript evidence", "url": transcript_url},
+        ]
+
+        enriched = attach_transcript_provenance(package, "m-1")
+
+        self.assertEqual(enriched["provenance_links"], [{"label": "文字记录", "url": transcript_url}])
 
     def test_document_export_markdown(self):
         self.store.upsert_meeting("m-1", "test", "mic", status="stopped")
@@ -83,6 +101,25 @@ class TestInsightCoordinator(unittest.TestCase):
         self.assertIn("file://", content)
         self.assertNotIn("交互占位提示", content)
 
+    def test_document_export_honors_explicit_local_analysis(self):
+        self.store.upsert_meeting("m-local-export", "offline export", "file", status="stopped")
+        self.store.insert_segment(
+            "m-local-export", start_ms=0, end_ms=1200, speaker="Speaker 1",
+            text="We decided to keep exports local.", confidence=0.9, source="file",
+        )
+
+        for export_format in ("markdown", "pdf"):
+            result = self.coord.document_export({
+                "meeting_id": "m-local-export",
+                "format": export_format,
+                "output_dir": str(Path(self.tmp) / "local-export"),
+                "provider_vendor": "local",
+            })
+
+            self.assertEqual(self.service.last_call_meta["vendor"], "local")
+            self.assertEqual(result["format"], export_format)
+            self.assertTrue(Path(result["path"]).exists())
+
     def test_document_export_keeps_related_links_without_source_path(self):
         self.store.upsert_meeting("m-related", "no media source", "live", status="stopped")
         self.store.insert_segment(
@@ -105,6 +142,7 @@ class TestInsightCoordinator(unittest.TestCase):
         self.assertIn("## 相关链接", content)
         self.assertIn("- 原始记录: InsightKit 本地会话: m-related", content)
         self.assertIn("- 文字记录: InsightKit SQLite segments: meeting_id=m-related", content)
+        self.assertEqual(content.count("InsightKit SQLite segments: meeting_id=m-related"), 1)
         self.assertIn("- 媒体回放: 请在 InsightKit 记录详情页打开本地记录", content)
         self.assertNotIn("当前导出未附加原始记录、文字记录或媒体回放链接", content)
 

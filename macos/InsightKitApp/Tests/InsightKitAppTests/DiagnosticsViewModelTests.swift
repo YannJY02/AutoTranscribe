@@ -9,4 +9,9 @@ final class DiagnosticsViewModelTests: XCTestCase {
         XCTAssertFalse(report.checks.isEmpty)
         XCTAssertEqual(report.checks.first?.id, "sidecar")
     }
+
+    func testSettingsOnlyProbeCloudAnalysis() {
+        XCTAssertFalse(SettingsView.shouldProbeCloudAnalysis(for: .local))
+        XCTAssertTrue(SettingsView.shouldProbeCloudAnalysis(for: .cloud))
+    }
 }

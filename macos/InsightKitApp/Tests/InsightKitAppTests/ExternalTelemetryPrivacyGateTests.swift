@@ -335,6 +335,46 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         })
     }
 
+    func testRepeatedRecordObservationKeepsOneSequenceAndAllowsTranscriptSearch() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let context = ProductAnalyticsContext(workflow: "import", path: .local, key: "stable-record")
+
+        analytics.observeRecord(context)
+        analytics.observeRecord(context)
+        analytics.transcriptSearchCompleted(context, resultCount: 3)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["record_reopened", "smart_minutes_review_opened", "transcript_search_completed"])
+    }
+
+    func testImportSubmissionFailureStillClosesStartedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let rpc = RPCClientMock()
+        rpc.transcriptionImportError = NSError(domain: "test", code: 1)
+        let viewModel = ImportSessionViewModel(
+            rpcClient: rpc,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.importFile(url: root.appendingPathComponent("fixture.wav"))
+        let completed = expectation(description: "import failure published")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["workflow_started", "workflow_failed"])
+    }
+
+    func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {
+        XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
+        XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("远端原始数据最多保留 30 天"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("本地加密待发队列最多保留 30 天"))
+    }
+
     func testFailedExportRecoveryEmitsClosedFailedPair() throws {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 1)

@@ -530,6 +530,7 @@ final class LiveSessionViewModel: ObservableObject {
             guard let self else { return }
             let shouldFlushTail = self.asrWarmStatus.ready
             var drainedSegments: [TranscriptSegment] = []
+            var finalizationLeaseToken: String?
             do {
                 let pendingChunks = self.queuedChunks
                 self.queuedChunks.removeAll(keepingCapacity: false)
@@ -550,7 +551,12 @@ final class LiveSessionViewModel: ObservableObject {
                     }
                 }
                 if let meetingID = activeMeetingID {
-                    try? self.rpcClient.sessionStop(meetingID: meetingID)
+                    let leaseToken = UUID().uuidString
+                    finalizationLeaseToken = leaseToken
+                    try self.rpcClient.sessionStopForFinalization(
+                        meetingID: meetingID,
+                        leaseToken: leaseToken
+                    )
                     _ = self.prepareTemporaryRecordingForSave(
                         meetingID: meetingID,
                         expectedVisualMedia: expectedVisualMedia
@@ -572,7 +578,6 @@ final class LiveSessionViewModel: ObservableObject {
                 self.metrics.queueDepth = 0
                 self.captureState = finalState
                 self.sessionPhase = .postSession
-                self.isFinalizingLiveSession = false
             }
             // Save record folder after session ends
             if let meetingID = activeMeetingID {
@@ -580,8 +585,13 @@ final class LiveSessionViewModel: ObservableObject {
                     .sorted { $0.startMs < $1.startMs }
                 self.saveToRecords(
                     meetingID: meetingID,
-                    transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride
+                    transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride,
+                    finalizationLeaseToken: finalizationLeaseToken
                 )
+            } else {
+                self.updateMain {
+                    self.isFinalizingLiveSession = false
+                }
             }
         }
     }
