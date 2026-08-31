@@ -25,37 +25,44 @@ WITH event_source AS (
     sum(if(event_name='workflow_started',1,0)) OVER (
       PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    ) attempt_index
+    ) attempt_index,
+    sum(if(event_name IN ('workflow_completed','workflow_failed'),1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) terminal_index
   FROM eligible e
+), classified AS (
+  SELECT i.*,coalesce(p.open_attempts,0) pre_window_open_attempts,
+    event_name IN ('workflow_completed','workflow_failed')
+      AND terminal_index<=coalesce(p.open_attempts,0) is_boundary_terminal
+  FROM indexed i LEFT JOIN pre_window p USING(app_session_id,workflow)
 ), ordered AS (
-  SELECT i.*,
+  SELECT c.*,
     sum(if(event_name='workflow_started',1,0)) OVER (
       PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
       ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
     ) prior_starts,
-    sum(if(event_name IN ('workflow_completed','workflow_failed') AND attempt_index>0,1,0)) OVER (
+    sum(if(event_name IN ('workflow_completed','workflow_failed') AND NOT is_boundary_terminal,1,0)) OVER (
       PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
       ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
     ) prior_terminals
-  FROM indexed i
+  FROM classified c
 ), ranked AS (
   SELECT o.*,ROW_NUMBER() OVER (
     PARTITION BY app_session_id,workflow,attempt_index ORDER BY
       multiIf(event_name='workflow_completed',0,event_name='workflow_failed',1,event_name='workflow_started',2,3),
       event_sequence DESC
-  ) path_rank FROM ordered o WHERE attempt_index>0
+  ) path_rank FROM ordered o WHERE attempt_index>0 AND NOT is_boundary_terminal
 ), attempts AS (
   SELECT app_session_id,workflow,attempt_index,
     maxIf(analysis_mode,path_rank=1) analysis_mode,
     countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
   FROM ranked GROUP BY app_session_id,workflow,attempt_index
-), boundary_terminals AS (
-  SELECT app_session_id,workflow,count() terminals
-  FROM ordered WHERE attempt_index=0 AND event_name IN ('workflow_completed','workflow_failed')
-  GROUP BY app_session_id,workflow
 ), boundary_quality AS (
-  SELECT coalesce(sum(greatest(b.terminals-coalesce(p.open_attempts,0),0)),0) orphan_boundary_terminals
-  FROM boundary_terminals b LEFT JOIN pre_window p USING(app_session_id,workflow)
+  SELECT
+    countIf(event_name IN ('workflow_completed','workflow_failed') AND attempt_index=0 AND NOT is_boundary_terminal) orphan_boundary_terminals,
+    countIf(event_name='workflow_started' AND terminal_index<pre_window_open_attempts) ambiguous_boundary_starts
+  FROM classified
 ), counts AS (
   SELECT workflow,analysis_mode,SUM(starts) starts,SUM(completions) completions
   FROM attempts GROUP BY workflow,analysis_mode
@@ -68,7 +75,7 @@ WITH event_source AS (
   SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) AS ordering_issues
   FROM ordered
 ), quality AS (
-  SELECT event_issues+grouped_issues+ordering_issues+orphan_boundary_terminals AS issues
+  SELECT event_issues+grouped_issues+ordering_issues+orphan_boundary_terminals+ambiguous_boundary_starts AS issues
   FROM event_quality CROSS JOIN attempt_quality CROSS JOIN order_quality CROSS JOIN boundary_quality
 )
 SELECT s.workflow,s.analysis_mode,coalesce(c.starts,0) AS eligible_attempts,

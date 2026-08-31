@@ -118,7 +118,9 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     for name in ["maswr.hogql", "data_quality.hogql", "funnel.hogql"]:
         query = (POSTHOG_SQL_ROOT / name).read_text()
         assert "pre_window" in query
+        assert "is_boundary_terminal" in query
         assert "orphan_boundary_terminals" in query
+    assert "funnel_index" in (POSTHOG_SQL_ROOT / "funnel.hogql").read_text()
 
 
 def test_maswr_exposes_all_four_segments_and_missing_segments():
@@ -410,8 +412,8 @@ def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
         'local',?,?, 'none',300000,1000)""",
         [
             ("workflow_started", "2025-12-31T23:59:00Z", 1, "preparing", None),
-            ("workflow_completed", "2026-01-01T00:00:30Z", 2, "finalizing", "succeeded"),
-            ("workflow_started", "2026-01-01T00:01:00Z", 3, "preparing", None),
+            ("workflow_started", "2026-01-01T00:01:00Z", 2, "preparing", None),
+            ("workflow_completed", "2026-01-01T00:01:30Z", 3, "finalizing", "succeeded"),
             ("workflow_started", "2026-01-01T00:02:00Z", 4, "preparing", None),
             ("workflow_completed", "2026-01-01T00:03:00Z", 5, "finalizing", "succeeded"),
         ],
@@ -421,6 +423,7 @@ def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
     quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
     assert quality_result["overlapping_attempts"] == 1
     assert quality_result["orphan_boundary_terminals"] == 0
+    assert quality_result["ambiguous_boundary_starts"] == 1
     assert quality_result["evidence_state"] == "incomplete"
 
     cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
@@ -429,6 +432,31 @@ def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
 
     funnel = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
     assert dict(zip([item[0] for item in funnel.description], funnel.fetchone()))["evidence_state"] == "incomplete"
+
+
+def test_reopened_record_stages_do_not_complete_an_older_funnel_attempt():
+    connection = database()
+    connection.executemany(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
+        provider_class,phase,outcome,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES(?,?,?,1,'development','1.0','1','reopen','reopen-session','live',1,'local',
+        'local','reviewing',?,'none',300000,1000)""",
+        [
+            ("workflow_started", "2026-01-05T00:00:00Z", 1, None),
+            ("record_saved", "2026-01-05T00:01:00Z", 2, None),
+            ("smart_minutes_review_opened", "2026-01-05T00:02:00Z", 3, None),
+            ("record_reopened", "2026-01-05T00:03:00Z", 4, None),
+            ("export_completed", "2026-01-05T00:04:00Z", 5, "succeeded"),
+        ],
+    )
+
+    funnel = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in funnel.description], funnel.fetchone()))
+    assert result["started"] == 3
+    assert result["record_saved"] == 2
+    assert result["review_opened"] == 2
+    assert result["export_completed"] == 1
 
 
 def test_sequential_live_attempts_in_one_app_session_are_not_duplicates():

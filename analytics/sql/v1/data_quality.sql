@@ -13,19 +13,28 @@ WITH eligible AS (
   SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-  ) attempt_index
+  ) attempt_index,
+  SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') THEN 1 ELSE 0 END) OVER (
+   PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) terminal_index
  FROM eligible e
+), classified AS (
+ SELECT i.*,COALESCE(p.open_attempts,0) pre_window_open_attempts,
+  event_name IN ('workflow_completed','workflow_failed')
+   AND terminal_index<=COALESCE(p.open_attempts,0) is_boundary_terminal
+ FROM indexed i LEFT JOIN pre_window p USING(app_session_id,workflow)
 ), ordered AS (
- SELECT i.*,
+ SELECT c.*,
   COALESCE(SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
   ),0) prior_starts,
-  COALESCE(SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') AND attempt_index>0 THEN 1 ELSE 0 END) OVER (
+  COALESCE(SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') AND NOT is_boundary_terminal THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
   ),0) prior_terminals
- FROM indexed i
+ FROM classified c
 ), diagnostics AS (
  SELECT SUM(CASE WHEN schema_version<>1 THEN 1 ELSE 0 END) unknown_schema,
  SUM(CASE WHEN event_sequence IS NULL OR event_sequence<=0 THEN 1 ELSE 0 END) missing_event_sequence,
@@ -46,20 +55,19 @@ WITH eligible AS (
 ), attempts AS (
  SELECT app_session_id,workflow,attempt_index,
   SUM(event_name='workflow_started') starts,SUM(event_name='workflow_completed') completions
- FROM ordered WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
-), boundary_terminals AS (
- SELECT app_session_id,workflow,COUNT(*) terminals
- FROM ordered WHERE attempt_index=0 AND event_name IN ('workflow_completed','workflow_failed')
- GROUP BY app_session_id,workflow
+ FROM ordered WHERE attempt_index>0 AND NOT is_boundary_terminal GROUP BY app_session_id,workflow,attempt_index
 ), boundary_quality AS (
- SELECT COALESCE(SUM(MAX(b.terminals-COALESCE(p.open_attempts,0),0)),0) orphan_boundary_terminals
- FROM boundary_terminals b LEFT JOIN pre_window p USING(app_session_id,workflow)
+ SELECT
+  COALESCE(SUM(event_name IN ('workflow_completed','workflow_failed') AND attempt_index=0 AND NOT is_boundary_terminal),0) orphan_boundary_terminals,
+  COALESCE(SUM(event_name='workflow_started' AND terminal_index<pre_window_open_attempts),0) ambiguous_boundary_starts
+ FROM classified
 ), quality AS (
  SELECT
   (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) overlapping_attempts,
   (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) duplicate_attempt_groups,
-  (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals
+  (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals,
+  (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
 )
-SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,quality.orphan_boundary_terminals,
- CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals=0 THEN 'complete' ELSE 'incomplete' END evidence_state
+SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,quality.orphan_boundary_terminals,quality.ambiguous_boundary_starts,
+ CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals+ambiguous_boundary_starts=0 THEN 'complete' ELSE 'incomplete' END evidence_state
 FROM diagnostics CROSS JOIN quality;
