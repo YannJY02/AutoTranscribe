@@ -1932,6 +1932,43 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(replace.segments.map(\.text), ["media transcript used for final minutes"])
     }
 
+    func testSuccessfulFinalInsightRetryClearsStaleError() throws {
+        let socketPath = "/tmp/insightkit-live-final-retry-\(UUID().uuidString).sock"
+        let sidecarSocket = ConnectableSidecarSocket(socketPath: socketPath)
+        try sidecarSocket.start()
+        defer { sidecarSocket.stop() }
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(socketPath: socketPath, startupTimeoutSec: 3),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.errorMessage = "previous analysis failure"
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "Speaker", source: "mic", text: "final retry transcript")
+        ]
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = "live-final-retry-test"
+        }
+
+        let completed = expectation(description: "final insight retry succeeded")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$sessionPhase
+            .dropFirst()
+            .sink { phase in
+                if phase == .reviewing { completed.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        viewModel.buildFinalInsight()
+
+        wait(for: [completed], timeout: 5)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testLiveSmartMinutesSpeakerRenameUpdatesRuntimeMinutesPackageAndPersistedRecord() throws {
         let root = RecordExportTestFixture.makeRoot(prefix: "InsightKitLiveSpeakerRename")
         let recordID = "live-speaker-rename"

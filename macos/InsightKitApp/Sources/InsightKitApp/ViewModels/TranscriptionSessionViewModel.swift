@@ -31,6 +31,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
     private let bootstrapSidecar: Bool
+    private let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
     var recordsService: RecordsIndexService?
 
     private var pollTask: Task<Void, Never>?
@@ -60,11 +61,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
         sidecarManager: SidecarManager = SidecarManager(),
         autoRefresh: Bool = true,
         autoPolling: Bool = true,
-        bootstrapSidecar: Bool = true
+        bootstrapSidecar: Bool = true,
+        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
         self.bootstrapSidecar = bootstrapSidecar
+        self.analyticsSubmit = analyticsSubmit
         if autoRefresh {
             refreshStatus()
         }
@@ -105,6 +108,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func importFile(path: String, title: String = "") {
+        let analyticsContext = ProductAnalyticsAttemptContext(workflow: "import")
+        analyticsSubmit { $0.beginWorkflow(analyticsContext, provisionalPath: .unavailable) }
         beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
@@ -113,8 +118,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
                 let analyticsPath = self.refreshProviderStateNonBlocking()
                 let result = try self.rpcClient.transcriptionImport(filePath: path, title: title)
-                let analyticsContext = ProductAnalyticsAttemptContext(workflow: "import")
-                ProductAnalytics.submit { $0.beginWorkflow(analyticsContext, provisionalPath: analyticsPath) }
+                self.analyticsSubmit { $0.resolveWorkflow(analyticsContext, path: analyticsPath) }
                 DispatchQueue.main.async {
                     self.analyticsContextsByJobID[result.jobID] = analyticsContext
                     self.currentAnalyticsContext = analyticsContext
@@ -127,12 +131,28 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     self.endSidecarMutation()
                 }
             } catch {
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        analyticsContext,
+                        phase: "preparing",
+                        errorCode: "runtime-unavailable",
+                        recoveryAction: "retry"
+                    )
+                }
                 DispatchQueue.main.async {
                     self.publishErrorSync(error)
                     self.endSidecarMutation()
                 }
             }
         }
+    }
+
+    func transcriptAnalyticsContext(fallbackKey: String) -> ProductAnalyticsContext {
+        let path = ProductAnalyticsPath(provider: metrics.provider)
+        guard let currentAnalyticsContext else {
+            return ProductAnalyticsContext(workflow: "import", path: path, key: fallbackKey)
+        }
+        return ProductAnalyticsContext(attempt: currentAnalyticsContext, path: path)
     }
 
     func startWatcher(dirs: [String]) {

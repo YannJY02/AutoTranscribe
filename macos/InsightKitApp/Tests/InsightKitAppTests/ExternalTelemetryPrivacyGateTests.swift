@@ -349,6 +349,66 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(names, ["record_reopened", "smart_minutes_review_opened", "transcript_search_completed"])
     }
 
+    func testSearchContextReusesStartedAttemptWithoutEmittingFakeRecordReopen() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let attempt = ProductAnalyticsAttemptContext(workflow: "import")
+        analytics.beginWorkflow(attempt, provisionalPath: .local)
+        let context = ProductAnalyticsContext(attempt: attempt, path: .local)
+
+        analytics.registerSearchContext(context)
+        analytics.transcriptSearchCompleted(context, resultCount: 3)
+
+        let events = try queuedObjects(gate)
+        XCTAssertEqual(events.compactMap { $0["event_name"] as? String }, [
+            "workflow_started", "transcript_search_completed",
+        ])
+        XCTAssertTrue(events.allSatisfy {
+            ($0["properties"] as? [String: Any])?["attempt_sequence"] as? Int == 1
+        })
+    }
+
+    func testRequiredTransportBlocksConsentInsteadOfQueueingEventsLocallyForever() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        let analytics = ProductAnalytics(gate: gate, requiresTransportForConsent: true)
+
+        XCTAssertFalse(analytics.isAvailable)
+        XCTAssertFalse(analytics.isEnabled)
+        XCTAssertThrowsError(try analytics.setConsent(enabled: true))
+        XCTAssertFalse(analytics.isEnabled)
+        XCTAssertEqual(try gate.queuedEnvelopes(), [])
+    }
+
+    func testPostHogRuntimeConfigurationUsesBundleDefaultsAndEnvironmentOverrides() throws {
+        let bundled = try XCTUnwrap(ProductAnalytics.configuredPostHogValues(
+            process: [:],
+            bundleInfo: [
+                "InsightKitPostHogHost": "https://bundled.example",
+                "InsightKitPostHogProjectKey": "phc_bundled",
+            ],
+            environment: .release
+        ))
+        XCTAssertEqual(bundled.host, "https://bundled.example")
+        XCTAssertEqual(bundled.projectKey, "phc_bundled")
+
+        let overridden = try XCTUnwrap(ProductAnalytics.configuredPostHogValues(
+            process: [
+                "POSTHOG_RELEASE_HOST": "https://override.example",
+                "POSTHOG_RELEASE_PROJECT_KEY": "phc_override",
+            ],
+            bundleInfo: [
+                "InsightKitPostHogHost": "https://bundled.example",
+                "InsightKitPostHogProjectKey": "phc_bundled",
+            ],
+            environment: .release
+        ))
+        XCTAssertEqual(overridden.host, "https://override.example")
+        XCTAssertEqual(overridden.projectKey, "phc_override")
+    }
+
     func testImportSubmissionFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 1)
@@ -367,6 +427,59 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
         let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
         XCTAssertEqual(names, ["workflow_started", "workflow_failed"])
+    }
+
+    func testQueuedImportSubmissionFailureStillClosesStartedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let rpc = RPCClientMock()
+        rpc.transcriptionImportError = NSError(domain: "test", code: 1)
+        let viewModel = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.importFile(path: "/tmp/fixture.wav")
+        let completed = expectation(description: "queued import failure published")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["workflow_started", "workflow_failed"])
+    }
+
+    func testLiveStartupFailureStillClosesStartedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let socketPath = "/tmp/insightkit-missing-sidecar-\(UUID().uuidString).sock"
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(
+                pythonBinary: "/definitely/missing-python",
+                socketPath: socketPath,
+                startupTimeoutSec: 3
+            ),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.startLiveSession()
+        let completed = expectation(description: "live startup failure published")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { completed.fulfill() }
+        wait(for: [completed], timeout: 5)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["workflow_started", "workflow_failed"])
+        viewModel.shutdown()
     }
 
     func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {

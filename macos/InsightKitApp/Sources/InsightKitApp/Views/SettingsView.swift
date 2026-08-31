@@ -50,6 +50,7 @@ struct SettingsView: View {
     @State private var statusMessage: String = ""
     @State private var telemetryEnabled = false
     @State private var telemetryReadbackCompleted = false
+    @State private var telemetryAvailable = false
     @State private var isRunningTask = false
     @State private var providerProbeResult: ProviderProbeResult?
     @State private var providerProbeAt: Date?
@@ -123,17 +124,23 @@ struct SettingsView: View {
                                 case .success(let readback): telemetryEnabled = readback
                                 case .failure:
                                     statusMessage = "外部遥测设置未能保存。"
-                                    ExternalTelemetryConsentController.read { readback in
-                                        DispatchQueue.main.async { telemetryEnabled = readback }
+                                    ExternalTelemetryConsentController.read { readback, available in
+                                        DispatchQueue.main.async {
+                                            telemetryEnabled = readback
+                                            telemetryAvailable = available
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 ))
+                .disabled(!telemetryReadbackCompleted || !telemetryAvailable)
                 .accessibilityIdentifier("settings_external_telemetry_toggle")
                 Text(telemetryReadbackCompleted
-                    ? (telemetryEnabled ? "当前状态：已启用" : "当前状态：关闭")
+                    ? (!telemetryAvailable
+                        ? "当前状态：不可用（未配置 PostHog）"
+                        : (telemetryEnabled ? "当前状态：已启用" : "当前状态：关闭"))
                     : "当前状态：读取中")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -170,9 +177,10 @@ struct SettingsView: View {
         .padding(16)
         .frame(minWidth: 600, idealWidth: 680)
         .onAppear {
-            ExternalTelemetryConsentController.read { enabled in
+            ExternalTelemetryConsentController.read { enabled, available in
                 DispatchQueue.main.async {
                     telemetryEnabled = enabled
+                    telemetryAvailable = available
                     telemetryReadbackCompleted = true
                 }
             }

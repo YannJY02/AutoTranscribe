@@ -232,6 +232,10 @@ struct ProductAnalyticsContext {
         self.path = path
         self.key = key
     }
+
+    init(attempt: ProductAnalyticsAttemptContext, path: ProductAnalyticsPath) {
+        self.init(workflow: attempt.workflow, path: path, key: attempt.key)
+    }
 }
 
 struct ProductAnalyticsAttemptContext: Hashable {
@@ -240,8 +244,8 @@ struct ProductAnalyticsAttemptContext: Hashable {
 }
 
 enum ExternalTelemetryConsentController {
-    static func read(_ completion: @escaping (Bool) -> Void) {
-        ProductAnalytics.submit { completion($0.isEnabled) }
+    static func read(_ completion: @escaping (_ enabled: Bool, _ available: Bool) -> Void) {
+        ProductAnalytics.submit { completion($0.isEnabled, $0.isAvailable) }
     }
 
     static func setEnabled(_ enabled: Bool, completion: @escaping (Result<Bool, Error>) -> Void) {
@@ -259,6 +263,11 @@ enum ExternalTelemetryConsentController {
 /// Privacy-safe product behavior emitter. All data still passes through the sole
 /// ExternalTelemetryPrivacyGate; failures are intentionally local and non-blocking.
 final class ProductAnalytics {
+    enum ConfigurationError: LocalizedError {
+        case transportUnavailable
+
+        var errorDescription: String? { "PostHog 尚未配置，无法启用外部遥测。" }
+    }
     private struct Attempt {
         var path: ProductAnalyticsPath
         let startedAt: Date
@@ -283,7 +292,28 @@ final class ProductAnalytics {
         }
     }
 
-    var isEnabled: Bool { gate.consent.isEnabled }
+    var isEnabled: Bool { gate.consent.isEnabled && isAvailable }
+    var isAvailable: Bool { !requiresTransportForConsent || transport != nil }
+
+    static func configuredPostHogValues(
+        process: [String: String],
+        bundleInfo: [String: Any],
+        environment: TelemetryEnvironment
+    ) -> (host: String, projectKey: String)? {
+        let environmentKey = environment.rawValue.uppercased().replacingOccurrences(of: "-", with: "_")
+        func value(_ environmentKey: String, _ bundleKey: String) -> String? {
+            for raw in [process[environmentKey], bundleInfo[bundleKey] as? String] {
+                let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !trimmed.isEmpty { return trimmed }
+            }
+            return nil
+        }
+        guard let host = value("POSTHOG_\(environmentKey)_HOST", "InsightKitPostHogHost"),
+              let projectKey = value("POSTHOG_\(environmentKey)_PROJECT_KEY", "InsightKitPostHogProjectKey")
+        else { return nil }
+        return (host, projectKey)
+    }
+
     static let shared: ProductAnalytics = {
         let bundle = Bundle.main
         let process = ProcessInfo.processInfo.environment
@@ -338,16 +368,26 @@ final class ProductAnalytics {
                 storageDirectory: storage
             )
         }
-        let environmentKey = environment.rawValue.uppercased().replacingOccurrences(of: "-", with: "_")
-        let transport = isUITest ? nil : process["POSTHOG_\(environmentKey)_HOST"].flatMap { host in
-            process["POSTHOG_\(environmentKey)_PROJECT_KEY"].flatMap { PostHogProductAnalyticsTransport(host: host, projectKey: $0) }
+        let postHog = configuredPostHogValues(
+            process: process,
+            bundleInfo: bundle.infoDictionary ?? [:],
+            environment: environment
+        )
+        let transport = isUITest ? nil : postHog.flatMap {
+            PostHogProductAnalyticsTransport(host: $0.host, projectKey: $0.projectKey)
         }
         let ledger = ProductAnalyticsEvidenceLedger(url: storage.appendingPathComponent("local-evidence-ledger-v1.json"))
-        return ProductAnalytics(gate: gate, transport: transport, ledger: ledger)
+        return ProductAnalytics(
+            gate: gate,
+            transport: transport,
+            ledger: ledger,
+            requiresTransportForConsent: !isUITest
+        )
     }()
 
     private let gate: ExternalTelemetryPrivacyGate
     private let transport: ProductAnalyticsTransport?
+    private let requiresTransportForConsent: Bool
     private let ledger: ProductAnalyticsEvidenceLedger?
     private let flushQueue = DispatchQueue(label: "com.yannjy.insightkit.product-analytics-flush", qos: .utility)
     private let stateLock = NSLock()
@@ -367,13 +407,24 @@ final class ProductAnalytics {
         gate: ExternalTelemetryPrivacyGate,
         transport: ProductAnalyticsTransport? = nil,
         ledger: ProductAnalyticsEvidenceLedger? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        requiresTransportForConsent: Bool = false
     ) {
         self.gate = gate
         self.transport = transport
+        self.requiresTransportForConsent = requiresTransportForConsent
         self.ledger = ledger
         self.now = now
-        self.acceptingEvents = gate.consent.isEnabled
+        self.acceptingEvents = gate.consent.isEnabled && (!requiresTransportForConsent || transport != nil)
+        if gate.consent.isEnabled && !acceptingEvents {
+            NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+            let evidence = gate.disableAndPurge()
+            ledger?.update(
+                offlinePending: evidence.remainingItems,
+                optedOut: true,
+                deletionPending: !evidence.failureCodes.isEmpty || evidence.remainingItems > 0
+            )
+        }
         if acceptingEvents, transport != nil {
             flushQueue.async { [weak self] in self?.flush() }
         }
@@ -450,6 +501,7 @@ final class ProductAnalytics {
 
     func setConsent(enabled: Bool) throws {
         if enabled {
+            guard isAvailable else { throw ConfigurationError.transportUnavailable }
             try gate.setConsent(enabled: true, consentVersion: 1)
             stateLock.lock()
             attempts.removeAll()
@@ -555,6 +607,19 @@ final class ProductAnalytics {
         observedRecordSequences[context.key] = attemptSequence
         stateLock.unlock()
         _ = emit("smart_minutes_review_opened", properties: values)
+    }
+
+    func registerSearchContext(_ context: ProductAnalyticsContext) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard observedRecordSequences[context.key] == nil else { return }
+        if let sequence = attempts[context.key]?.sequence {
+            observedRecordSequences[context.key] = sequence
+        } else {
+            let sequence = (nextAttemptSequenceByWorkflow[context.workflow] ?? 0) + 1
+            nextAttemptSequenceByWorkflow[context.workflow] = sequence
+            observedRecordSequences[context.key] = sequence
+        }
     }
 
     func recordSaved(_ workflow: String, path: ProductAnalyticsPath? = nil) {

@@ -53,6 +53,7 @@ final class LiveSessionViewModel: ObservableObject {
     let mediaAssetInspector: MediaAssetInspecting
     let finalMediaTranscriber: FinalMediaTranscribing
     let transcriptRecoveryService: TranscriptRecoveryServicing
+    let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
 
     // Queues — internal so extensions can access them
     let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
@@ -137,7 +138,8 @@ final class LiveSessionViewModel: ObservableObject {
         reviewMediaComposer: ReviewMediaComposing = AVFoundationReviewMediaComposer(),
         mediaAssetInspector: MediaAssetInspecting = AVFoundationMediaAssetInspector(),
         finalMediaTranscriber: FinalMediaTranscribing? = nil,
-        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil,
+        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
@@ -150,6 +152,7 @@ final class LiveSessionViewModel: ObservableObject {
         self.mediaAssetInspector = mediaAssetInspector
         self.finalMediaTranscriber = finalMediaTranscriber ?? FinalMediaTranscriptionRouter(rpcClient: rpcClient)
         self.transcriptRecoveryService = transcriptRecoveryService ?? TranscriptRecoveryService(rpcClient: rpcClient)
+        self.analyticsSubmit = analyticsSubmit
         self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
             runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
         )
@@ -374,6 +377,7 @@ final class LiveSessionViewModel: ObservableObject {
         let meetingID = "live-\(UUID().uuidString)"
         let source = rpcSource(for: selectedMode)
         let startupAt = Date()
+        analyticsSubmit { $0.beginWorkflow("live", provisionalPath: .unavailable) }
 
         stateQueue.sync {
             _isRunningLock.lock()
@@ -431,6 +435,7 @@ final class LiveSessionViewModel: ObservableObject {
                 let analyticsPath = ProductAnalyticsPath(
                     providers: try? self.rpcClient.providersStatus(probeActive: false)
                 )
+                self.analyticsSubmit { $0.resolveWorkflow("live", path: analyticsPath) }
                 self.updateMain {
                     self.captureState = .warmingModel
                     self.liveWarmup = LiveWarmupSnapshot(
@@ -457,9 +462,6 @@ final class LiveSessionViewModel: ObservableObject {
                             }
                             try await self.systemAudioCapture.start(sourceID: sourceID)
                         }
-                        ProductAnalytics.submit {
-                            $0.beginWorkflow("live", provisionalPath: analyticsPath)
-                        }
                         self.startVisualRecordingIfNeeded(meetingID: meetingID)
                         self.permissionState = .granted
                         self.startRecordingDurationTimer()
@@ -470,11 +472,27 @@ final class LiveSessionViewModel: ObservableObject {
                             model: selectedModel
                         )
                     } catch {
+                        self.analyticsSubmit {
+                            $0.workflowFailed(
+                                "live",
+                                phase: "preparing",
+                                errorCode: "runtime-unavailable",
+                                recoveryAction: "retry"
+                            )
+                        }
                         self.publishError(error)
                         self.stopLiveSession(finalState: .error(error.localizedDescription))
                     }
                 }
             } catch {
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        "live",
+                        phase: "preparing",
+                        errorCode: "runtime-unavailable",
+                        recoveryAction: "retry"
+                    )
+                }
                 self.publishError(error)
                 self.stopLiveSession(finalState: .error(error.localizedDescription))
             }
@@ -635,6 +653,7 @@ final class LiveSessionViewModel: ObservableObject {
                 ProductAnalytics.submit { $0.recoveryCompleted("live", phase: "analysis", succeeded: true) }
                 self.updateMain {
                     self.lastInsightPackage = result.package
+                    self.errorMessage = nil
                     self.captureState = .idle
                     self.sessionPhase = .reviewing
                 }

@@ -59,10 +59,8 @@ struct TranscriptionWorkspaceView: View {
                 }
 
                 if !viewModel.transcriptSegments.isEmpty {
-                    let analyticsContext = ProductAnalyticsContext(
-                        workflow: "import",
-                        path: ProductAnalyticsPath(provider: viewModel.metrics.provider),
-                        key: transcriptAnalyticsKey
+                    let analyticsContext = viewModel.transcriptAnalyticsContext(
+                        fallbackKey: transcriptAnalyticsKey
                     )
                     Divider()
                     TranscriptStreamView(
@@ -73,7 +71,7 @@ struct TranscriptionWorkspaceView: View {
                     )
                     .id(transcriptAnalyticsKey)
                     .onAppear {
-                        ProductAnalytics.submit { $0.observeRecord(analyticsContext) }
+                        ProductAnalytics.submit { $0.registerSearchContext(analyticsContext) }
                     }
                 }
             }
