@@ -277,8 +277,13 @@ final class ProductAnalytics {
         var recordSavedEmitted = false
         var reviewOpenedEmitted = false
         var completionEmitted = false
-        var recoverablePhase: String?
         var analysisLatencyMS: Int?
+    }
+    private struct PendingRecovery {
+        let path: ProductAnalyticsPath
+        let sequence: Int
+        let phase: String
+        var attemptedEmitted = false
     }
 
     private static let submissionQueue = DispatchQueue(
@@ -401,6 +406,7 @@ final class ProductAnalytics {
     private let maxRetryAttempts = 5
     private var flushRequested = false
     private var attempts: [String: Attempt] = [:]
+    private var pendingRecoveries: [String: PendingRecovery] = [:]
     private var observedRecordSequences: [String: Int] = [:]
     private var nextAttemptSequenceByWorkflow: [String: Int] = [:]
     private let now: () -> Date
@@ -507,6 +513,7 @@ final class ProductAnalytics {
             try gate.setConsent(enabled: true, consentVersion: 1)
             stateLock.lock()
             attempts.removeAll()
+            pendingRecoveries.removeAll()
             observedRecordSequences.removeAll()
             uploadEpoch &+= 1
             acceptingEvents = true
@@ -516,6 +523,7 @@ final class ProductAnalytics {
             stateLock.lock()
             acceptingEvents = false
             attempts.removeAll()
+            pendingRecoveries.removeAll()
             observedRecordSequences.removeAll()
             uploadEpoch &+= 1
             uploadInFlight = false
@@ -561,6 +569,12 @@ final class ProductAnalytics {
         guard acceptingEvents, uploadEpoch == epoch else { stateLock.unlock(); return }
         attempts[key] = Attempt(path: provisionalPath, startedAt: startedAt, sequence: attemptSequence)
         stateLock.unlock()
+        stateLock.lock()
+        let recoveryPhase = pendingRecoveries[key]?.phase
+        stateLock.unlock()
+        if let recoveryPhase {
+            recoveryAttempted(key: key, workflow: workflow, phase: recoveryPhase)
+        }
     }
 
     func resolveWorkflow(
@@ -767,7 +781,11 @@ final class ProductAnalytics {
         guard emit("workflow_completed", properties: values) == .accepted else { return }
         stateLock.lock()
         attempts[key]?.completionEmitted = true
+        let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
+        if let recoveryPhase {
+            recoveryCompleted(key: key, workflow: workflow, phase: recoveryPhase, succeeded: true)
+        }
     }
 
     func workflowFailed(
@@ -854,17 +872,19 @@ final class ProductAnalytics {
         }
         guard let context = context(for: key) else { return }
         stateLock.lock()
-        let pendingRecovery = attempts[key]?.recoverablePhase == phase
+        let pendingRecoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
-        if pendingRecovery {
-            recoveryCompleted(key: key, workflow: workflow, phase: phase, succeeded: false)
+        if let pendingRecoveryPhase {
+            recoveryCompleted(key: key, workflow: workflow, phase: pendingRecoveryPhase, succeeded: false)
         }
         var values = terminalProperties(workflow: workflow, context: context, phase: phase, outcome: "failed")
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
         guard emit("workflow_failed", properties: values) == .accepted else { return }
         stateLock.lock()
-        attempts[key]?.recoverablePhase = recoveryAction == "none" ? nil : phase
+        pendingRecoveries[key] = recoveryAction == "none"
+            ? nil
+            : PendingRecovery(path: context.path, sequence: context.sequence, phase: phase)
         stateLock.unlock()
     }
 
@@ -881,6 +901,12 @@ final class ProductAnalytics {
         var values = terminalProperties(workflow: workflow, context: context, phase: "running", outcome: "cancelled")
         values["recovery_action"] = "none"
         _ = emit("workflow_failed", properties: values)
+        stateLock.lock()
+        let recoveryPhase = pendingRecoveries[key]?.phase
+        stateLock.unlock()
+        if let recoveryPhase {
+            recoveryCompleted(key: key, workflow: workflow, phase: recoveryPhase, succeeded: false)
+        }
     }
 
     func recoveryAttempted(_ workflow: String, phase: String, explicitPath: ProductAnalyticsPath? = nil) {
@@ -911,17 +937,24 @@ final class ProductAnalytics {
 
     private func recoveryAttempted(key: String, workflow: String, phase: String) {
         stateLock.lock()
-        let pending = attempts[key]?.recoverablePhase == phase
+        guard let recovery = pendingRecoveries[key], recovery.phase == phase, !recovery.attemptedEmitted else {
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
-        guard pending, let context = context(for: key) else { return }
         var values = properties(
             workflow: workflow,
-            path: context.path,
+            path: recovery.path,
             phase: phase,
-            attemptSequence: context.sequence
+            attemptSequence: recovery.sequence
         )
         values["recovery_action"] = "retry"
-        _ = emit("recovery_attempted", properties: values)
+        guard emit("recovery_attempted", properties: values) == .accepted else { return }
+        stateLock.lock()
+        if pendingRecoveries[key]?.sequence == recovery.sequence {
+            pendingRecoveries[key]?.attemptedEmitted = true
+        }
+        stateLock.unlock()
     }
 
     func recoveryCompleted(
@@ -958,20 +991,24 @@ final class ProductAnalytics {
 
     private func recoveryCompleted(key: String, workflow: String, phase: String, succeeded: Bool) {
         stateLock.lock()
-        let pending = attempts[key]?.recoverablePhase == phase
+        guard let recovery = pendingRecoveries[key], recovery.phase == phase else {
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
-        guard pending, let context = context(for: key) else { return }
         var values = properties(
             workflow: workflow,
-            path: context.path,
+            path: recovery.path,
             phase: phase,
             outcome: succeeded ? "succeeded" : "failed",
-            attemptSequence: context.sequence
+            attemptSequence: recovery.sequence
         )
         values["recovery_action"] = "retry"
         guard emit("recovery_completed", properties: values) == .accepted else { return }
         stateLock.lock()
-        attempts[key]?.recoverablePhase = nil
+        if pendingRecoveries[key]?.sequence == recovery.sequence {
+            pendingRecoveries[key] = nil
+        }
         stateLock.unlock()
     }
 

@@ -752,11 +752,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
             observedJobs.append(completed)
         }
         for job in observedJobs where analyticsContextsByJobID[job.id] == nil {
-            let isActive = job.state == .queued || job.state == .running
             let isCurrentWatcherJob = watcherAnalyticsStartedAt.map { watcherStartedAt in
                 job.startedAt.map { $0 >= watcherStartedAt } ?? false
             } ?? false
-            if isActive || isCurrentWatcherJob {
+            if isCurrentWatcherJob {
                 let context = ProductAnalyticsAttemptContext(workflow: "import")
                 analyticsContextsByJobID[job.id] = context
                 let provisionalPath = watcherAnalyticsPath

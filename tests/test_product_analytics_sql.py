@@ -100,6 +100,8 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     assert "first_start >= toDateTime({variables.window_start})" in activation
     assert "timestamp >= toDateTime({variables.window_start})" not in retention
     assert "timestamp_utc >= toDateTime({variables.window_start})" in retention
+    assert "observable_7d_flag" in retention
+    assert "observable_28d_flag" in retention
     assert "tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence)" in (
         POSTHOG_SQL_ROOT / "activation.hogql"
     ).read_text()
@@ -189,18 +191,21 @@ def test_activation_excludes_installations_started_before_the_window():
     assert result["activated_installations"] == 1
 
 
-def test_retention_uses_historical_cohort_and_windowed_returns():
+def test_retention_counts_only_cohorts_with_fully_observable_return_windows():
     connection = database()
     connection.executemany(
         "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
-        "VALUES('workflow_completed',?,1,'development','returning')",
+        "VALUES('workflow_completed',?,1,'development',?)",
         [
-            ("2025-12-20T00:00:00Z",),
-            ("2026-01-01T00:00:00Z",),
+            ("2025-12-27T00:00:00Z", "returning"),
+            ("2026-01-03T00:00:00Z", "returning"),
+            ("2025-12-01T00:00:00Z", "unobserved"),
+            ("2025-12-08T00:00:00Z", "unobserved"),
         ],
     )
     cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), PARAMS)
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["mature_7d_cohort_installations"] == 2
     assert result["retained_7d"] == 1
 
 

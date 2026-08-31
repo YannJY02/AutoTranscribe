@@ -3,19 +3,28 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
-    func testWatcherSkipsHistoricalJobWithUnknownStartTime() {
+    func testWatcherSkipsRestoredJobsWithUnknownStartTime() {
         let rpc = RPCClientMock()
         rpc.transcriptionStatusStub = TranscriptionStatusResult(
             watcher: .init(isRunning: true, dirs: ["/tmp"], queueSize: 0, activeJobID: nil),
             queue: [],
-            activeJob: nil,
+            activeJob: TranscriptionJob(
+                id: "restored-active", meetingID: "meeting-active", sourcePath: "/tmp/active.wav", title: "active",
+                state: .running, progress: 50, stage: "running", error: "", reason: "",
+                startedAt: nil, endedAt: nil
+            ),
             lastCompleted: nil,
             jobs: [
                 TranscriptionJob(
                     id: "historical", meetingID: "meeting", sourcePath: "/tmp/old.wav", title: "old",
                     state: .completed, progress: 100, stage: "completed", error: "", reason: "",
                     startedAt: nil, endedAt: Date()
-                )
+                ),
+                TranscriptionJob(
+                    id: "restored-active", meetingID: "meeting-active", sourcePath: "/tmp/active.wav", title: "active",
+                    state: .running, progress: 50, stage: "running", error: "", reason: "",
+                    startedAt: nil, endedAt: nil
+                ),
             ]
         )
         let lock = NSLock()
@@ -37,7 +46,7 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         vm.$jobs
             .dropFirst()
             .sink { jobs in
-                if jobs.contains(where: { $0.id == "historical" }) {
+                if Set(jobs.map(\.id)) == ["historical", "restored-active"] {
                     refreshed.fulfill()
                 }
             }

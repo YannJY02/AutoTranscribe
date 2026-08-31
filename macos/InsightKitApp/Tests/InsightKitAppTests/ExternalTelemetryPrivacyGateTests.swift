@@ -456,6 +456,9 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 1)
         let analytics = ProductAnalytics(gate: gate)
+        let originalAnalysisMode = AppConfigStore.shared.config.analysis.mode
+        AppConfigStore.shared.updateAnalysisMode(.cloud)
+        defer { AppConfigStore.shared.updateAnalysisMode(originalAnalysisMode) }
         let socketPath = "/tmp/insightkit-missing-sidecar-\(UUID().uuidString).sock"
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
@@ -477,8 +480,12 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { completed.fulfill() }
         wait(for: [completed], timeout: 5)
 
-        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        let events = try queuedObjects(gate)
+        let names = events.compactMap { $0["event_name"] as? String }
         XCTAssertEqual(names, ["workflow_started", "workflow_failed"])
+        XCTAssertTrue(events.allSatisfy {
+            ($0["properties"] as? [String: Any])?["analysis_mode"] as? String == "cloud"
+        })
         viewModel.shutdown()
     }
 
@@ -639,6 +646,31 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
         let start = try XCTUnwrap(queuedObjects(gate).first { $0["event_name"] as? String == "workflow_started" })
         XCTAssertEqual((start["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 2)
+    }
+
+    func testRestartedWorkflowCompletesPriorRecoveryWithOriginalAttemptSequence() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowFailed("live", phase: "preparing", errorCode: "runtime-unavailable", recoveryAction: "retry")
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowCompleted("live", evaluation: MeetingAssetWorkflowSuccess(
+            recordReopenable: true,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        ))
+
+        let events = try queuedObjects(gate)
+        let recoveryAttempted = try XCTUnwrap(events.first { $0["event_name"] as? String == "recovery_attempted" })
+        let recoveryCompleted = try XCTUnwrap(events.first { $0["event_name"] as? String == "recovery_completed" })
+        let workflowCompleted = try XCTUnwrap(events.first { $0["event_name"] as? String == "workflow_completed" })
+        XCTAssertEqual((recoveryAttempted["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 1)
+        XCTAssertEqual((recoveryCompleted["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 1)
+        XCTAssertEqual((recoveryCompleted["properties"] as? [String: Any])?["outcome"] as? String, "succeeded")
+        XCTAssertEqual((workflowCompleted["properties"] as? [String: Any])?["attempt_sequence"] as? Int, 2)
     }
 
     func testReopenedRecordRecoveryUsesOneNonPrivateAttemptOrdinal() throws {

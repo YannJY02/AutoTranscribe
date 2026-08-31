@@ -15,14 +15,18 @@ WITH event_source AS (
   SELECT installation_id,MIN(day) cohort_day FROM success_history GROUP BY installation_id
 ), cohort_retention AS (
   SELECT c.installation_id,c.cohort_day,
+    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14
+      AND dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_start}), 'UTC')))<=7 observable_7d_flag,
+    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35
+      AND dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_start}), 'UTC')))<=28 observable_28d_flag,
     countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 7 AND 13)>0 retained_7d_flag,
     countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 28 AND 34)>0 retained_28d_flag
   FROM cohorts c LEFT JOIN observed_successes s ON s.installation_id=c.installation_id
   GROUP BY c.installation_id,c.cohort_day
 )
-SELECT if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14)) mature_7d_cohort_installations,
-  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35)) mature_28d_cohort_installations,
-  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14 AND retained_7d_flag)) retained_7d,
-  if(COUNT(*)=0,NULL,countIf(dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35 AND retained_28d_flag)) retained_28d,
+SELECT if(COUNT(*)=0,NULL,countIf(observable_7d_flag)) mature_7d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(observable_28d_flag)) mature_28d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(observable_7d_flag AND retained_7d_flag)) retained_7d,
+  if(COUNT(*)=0,NULL,countIf(observable_28d_flag AND retained_28d_flag)) retained_28d,
   if(COUNT(*)<2 OR mature_28d_cohort_installations<2,'insufficient-window/data','requires-reconciliation') evidence_state
 FROM cohort_retention c;

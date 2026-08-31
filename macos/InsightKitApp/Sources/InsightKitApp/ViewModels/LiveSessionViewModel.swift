@@ -377,7 +377,11 @@ final class LiveSessionViewModel: ObservableObject {
         let meetingID = "live-\(UUID().uuidString)"
         let source = rpcSource(for: selectedMode)
         let startupAt = Date()
-        analyticsSubmit { $0.beginWorkflow("live", provisionalPath: .unavailable) }
+        let selectedAnalysisMode = AppConfigStore.shared.config.analysis.mode
+        let provisionalAnalyticsPath = selectedAnalysisMode == .local
+            ? ProductAnalyticsPath.local
+            : ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+        analyticsSubmit { $0.beginWorkflow("live", provisionalPath: provisionalAnalyticsPath) }
 
         stateQueue.sync {
             _isRunningLock.lock()
@@ -434,7 +438,7 @@ final class LiveSessionViewModel: ObservableObject {
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
                 let analyticsPath = ProductAnalyticsPath(
                     providers: try? self.rpcClient.providersStatus(probeActive: false),
-                    analysisMode: AppConfigStore.shared.config.analysis.mode
+                    analysisMode: selectedAnalysisMode
                 )
                 self.analyticsSubmit { $0.resolveWorkflow("live", path: analyticsPath) }
                 self.updateMain {
