@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import subprocess
 from functools import partial
 from pathlib import Path
@@ -225,6 +226,29 @@ def test_cli_runs_from_clean_checkout_without_credentials(tmp_path: Path):
 
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout)["gate_result"] == "pass"
+
+
+def test_cli_fails_when_requested_external_leg_is_unobserved(tmp_path: Path):
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    completed = subprocess.run(
+        [
+            "python3.11",
+            "scripts/smart_minutes_eval.py",
+            "--output-dir",
+            str(tmp_path),
+            "--external-vendor",
+            "openai",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert json.loads(completed.stdout)["external"] == "unobserved"
 
 
 def test_gate_failure_names_contract_actual_and_evidence_reference():
@@ -705,6 +729,32 @@ def test_external_leg_records_resolved_provider_and_model(monkeypatch, tmp_path:
     assert report["legs"]["external"]["model"] == "resolved-model-v2"
 
 
+def test_external_leg_fails_when_service_resolves_to_local(monkeypatch, tmp_path: Path):
+    import scripts.smart_minutes_eval as eval_module
+
+    class ResolvingLocalService:
+        def __init__(self, **_kwargs):
+            self.last_call_meta = {}
+
+        def build_local_extractive(self, transcript):
+            return _valid_package({"transcript": transcript})
+
+        def build_final(self, transcript):
+            self.last_call_meta = {"vendor": "local", "model": "extractive-v1"}
+            return _valid_package({"transcript": transcript})
+
+    monkeypatch.setattr(eval_module, "InsightService", ResolvingLocalService)
+
+    report = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path,
+        external={"vendor": "configured-cloud", "model": ""},
+    )
+
+    assert report["gate_result"] == "fail"
+    assert report["legs"]["external"]["provider"] == "local"
+
+
 def test_external_service_leg_ignores_local_mode_override(monkeypatch, tmp_path: Path):
     import scripts.smart_minutes_eval as eval_module
 
@@ -738,6 +788,19 @@ def test_external_service_leg_ignores_local_mode_override(monkeypatch, tmp_path:
     assert report["legs"]["external"]["model"] == "cloud-v1"
     assert report["legs"]["external"]["gate_result"] == "pass"
     assert eval_module.os.environ["INSIGHTKIT_ANALYSIS_MODE"] == "local"
+
+
+def test_local_provider_cannot_be_recorded_as_external(tmp_path: Path):
+    report = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path,
+        external={"vendor": "local", "model": "extractive-v1"},
+    )
+
+    assert report["gate_result"] == "fail"
+    assert report["legs"]["external"]["status"] == "failed"
+    assert report["legs"]["external"]["gate_result"] == "fail"
+    assert report["legs"]["external"]["cases"] == []
 
 
 def _valid_package(case=None):

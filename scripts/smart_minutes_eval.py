@@ -25,6 +25,7 @@ from insightkit.insights.service import InsightService
 
 DEFAULT_DATASET = ROOT / "evals/smart_minutes/v1"
 LANGFUSE_DATASET = "insightkit-smart-minutes-v1-metadata"
+LOCAL_PROVIDER_VENDORS = {"local", "local-extractive"}
 
 
 class BoundedFailureError(Exception):
@@ -490,6 +491,16 @@ def run_eval(
         "status": "unobserved",
         "missing_prerequisite": "explicit adapter configuration (--external-vendor) was not provided",
     }
+    if external and str(external["vendor"]).strip().lower() in LOCAL_PROVIDER_VENDORS:
+        external_leg = {
+            "status": "failed",
+            "provider": external["vendor"],
+            "model": external.get("model", ""),
+            "gate_result": "fail",
+            "cases": [],
+            "failures": [_failure("<configuration>", "external_provider", "a non-local provider", "local provider requested", "external.provider")],
+        }
+        external = None
     if external:
         implementation_version = external.get("implementation_version") or (
             _callable_identity(external["builder"])
@@ -525,6 +536,14 @@ def run_eval(
                 if uses_service_builder:
                     external_leg["provider"] = cloud_service.last_call_meta.get("vendor") or external_leg["provider"]
                     external_leg["model"] = cloud_service.last_call_meta.get("model") or external_leg["model"]
+                    if str(external_leg["provider"]).strip().lower() in LOCAL_PROVIDER_VENDORS:
+                        external_leg["cases"].append({
+                            "case": case["id"],
+                            "gate_result": "fail",
+                            "failures": [_failure(case["id"], "external_provider", "a non-local resolved provider", "service resolved to a local provider", "external.provider")],
+                            "diagnostics": {"latency_ms": round((time.perf_counter() - started) * 1000, 3)},
+                        })
+                        continue
                 case_result = evaluate_package(case, package, (time.perf_counter() - started) * 1000)
                 semantic_failure = _apply_semantic_adapter(adapter, leg="external", case=case, package=package, result=case_result, metric_ids=metric_ids)
                 if semantic_failure:
@@ -627,9 +646,10 @@ def main() -> int:
         semantic_adapter=args.semantic_adapter,
         langfuse=args.langfuse,
     )
-    print(json.dumps({"gate_result": report["gate_result"], "dataset": report["dataset"], "langfuse": report["legs"]["langfuse"]["status"], "output_dir": str(args.output_dir)}, ensure_ascii=False))
+    print(json.dumps({"gate_result": report["gate_result"], "dataset": report["dataset"], "external": report["legs"]["external"]["status"], "langfuse": report["legs"]["langfuse"]["status"], "output_dir": str(args.output_dir)}, ensure_ascii=False))
+    external_ok = not args.external_vendor or report["legs"]["external"]["status"] == "observed"
     langfuse_ok = not args.langfuse or report["legs"]["langfuse"]["status"] == "observed"
-    return 0 if report["gate_result"] == "pass" and langfuse_ok else 1
+    return 0 if report["gate_result"] == "pass" and external_ok and langfuse_ok else 1
 
 
 if __name__ == "__main__":
