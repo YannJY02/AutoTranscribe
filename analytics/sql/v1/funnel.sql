@@ -56,6 +56,7 @@ WITH eligible AS (
 ), quality AS (
  SELECT
   (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) overlapping_starts,
+  (SELECT COUNT(*) FROM ordered WHERE event_name='record_reopened' AND prior_starts>prior_terminals) reopens_during_active_attempts,
   (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals,
   (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
 )
@@ -63,7 +64,7 @@ SELECT COUNT(CASE WHEN started IS NOT NULL THEN 1 END) started,
  COUNT(CASE WHEN saved>=started THEN 1 END) record_saved,
  COUNT(CASE WHEN reviewed>=saved AND saved>=started THEN 1 END) review_opened,
  COUNT(CASE WHEN exported>=reviewed AND reviewed>=saved AND saved>=started THEN 1 END) export_completed,
- CASE WHEN quality.overlapping_starts+quality.orphan_boundary_terminals+quality.ambiguous_boundary_starts>0 THEN 'incomplete'
+ CASE WHEN quality.overlapping_starts+quality.reopens_during_active_attempts+quality.orphan_boundary_terminals+quality.ambiguous_boundary_starts>0 THEN 'incomplete'
   WHEN COUNT(CASE WHEN started IS NOT NULL THEN 1 END)=0 THEN 'insufficient-data'
   ELSE 'requires-reconciliation' END evidence_state
 FROM sessions CROSS JOIN quality;

@@ -64,6 +64,7 @@ WITH event_source AS (
 ), quality AS (
   SELECT
     (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_starts,
+    (SELECT countIf(event_name='record_reopened' AND prior_starts>prior_terminals) FROM ordered) reopens_during_active_attempts,
     (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals,
     (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
 )
@@ -71,5 +72,5 @@ SELECT countIf(started IS NOT NULL) started,
   countIf(saved>=started) record_saved,
   countIf(reviewed>=saved AND saved>=started) review_opened,
   countIf(exported>=reviewed AND reviewed>=saved AND saved>=started) export_completed,
-  multiIf(overlapping_starts+orphan_boundary_terminals+ambiguous_boundary_starts>0,'incomplete',started=0,'insufficient-data','requires-reconciliation') evidence_state
+  multiIf(overlapping_starts+reopens_during_active_attempts+orphan_boundary_terminals+ambiguous_boundary_starts>0,'incomplete',started=0,'insufficient-data','requires-reconciliation') evidence_state
 FROM sessions CROSS JOIN quality;

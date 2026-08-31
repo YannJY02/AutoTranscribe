@@ -457,6 +457,7 @@ def test_reopened_record_stages_do_not_complete_an_older_funnel_attempt():
     assert result["record_saved"] == 2
     assert result["review_opened"] == 2
     assert result["export_completed"] == 1
+    assert result["evidence_state"] == "incomplete"
 
 
 def test_sequential_live_attempts_in_one_app_session_are_not_duplicates():
