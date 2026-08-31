@@ -165,7 +165,14 @@ def _approved_external_ref(source_type: str, value: str) -> bool:
     if _is_repo_ref(value):
         return True
     if source_type == "analytics":
-        return _https_ref(value, POSTHOG_HOSTS)
+        if not _https_ref(value, POSTHOG_HOSTS):
+            return False
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return (
+            len(parts) >= 4
+            and parts[0] == "project"
+            and parts[2] in {"insights", "dashboard", "dashboards"}
+        )
     if source_type == "diagnostics":
         if not _https_ref(value):
             return False
@@ -466,8 +473,10 @@ class EvidenceLedger:
                             github_issue_or_pr_id: str | None = None) -> dict[str, Any]:
         if source_type == "linear":
             source_ref = f"https://linear.app/yannjy/issue/{source_id}"
-        elif source_type in {"github", "ci"}:
+        elif source_type == "github":
             source_ref = f"https://github.com/YannJY02/AutoTranscribe/issues/{source_id.split('-')[-1]}"
+        elif source_type == "ci":
+            source_ref = f"https://github.com/YannJY02/AutoTranscribe/actions/runs/{source_id.split('-')[-1]}"
         else:
             source_ref = f"logs/evidence/unavailable/{source_type}-{source_id}.json"
         return self._collect_normalized([{

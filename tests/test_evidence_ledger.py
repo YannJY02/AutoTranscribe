@@ -311,6 +311,8 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://evil.example/readback")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_type="analytics", source_ref="https://us.posthog.com")])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_ref="https://[broken")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://[broken")])
@@ -428,6 +430,16 @@ def test_unavailable_repository_source_is_explicitly_unobserved(tmp_path: Path):
     assert record["result"] == "unobserved"
     assert record["revision"] == "unavailable"
     assert record["artifact_sha256"] is None
+
+
+def test_unavailable_ci_source_links_to_the_check_run(tmp_path: Path):
+    record = EvidenceLedger(tmp_path / "ledger.json").collect_unavailable(
+        "ci", "check-101", "check-unavailable", observed_at=OBSERVED_AT,
+        environment="github-actions", lifecycle_stage="verification", linear_issue_id="YAN-50",
+        github_issue_or_pr_id="GH-68",
+    )["records"][0]
+    assert record["source_ref"] == "https://github.com/YannJY02/AutoTranscribe/actions/runs/101"
+    assert record["result"] == "unobserved"
 
 
 def test_content_hash_cannot_be_used_as_source_id(tmp_path: Path):
