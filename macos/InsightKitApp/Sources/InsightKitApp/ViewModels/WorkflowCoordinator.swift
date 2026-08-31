@@ -83,6 +83,17 @@ final class WorkflowCoordinator: ObservableObject {
         transcriptionViewModel.canExportDocument && (transcriptionViewModel.hasPersistedRecordForExport || supports("document.export"))
     }
 
+    var hasActiveSidecarWork: Bool {
+        liveViewModel.isRunning
+            || liveViewModel.isFinalizingRecording
+            || liveViewModel.captureState == .refreshing
+            || liveViewModel.sessionHandle.activeMeetingID != nil
+            || importViewModel.sessionPhase == .processing
+            || transcriptionViewModel.hasPendingSidecarMutation
+            || transcriptionViewModel.watcherState.isRunning
+            || transcriptionViewModel.jobs.contains(where: { $0.state == .running || $0.state == .queued })
+    }
+
     var supportsSystemAudioPicker: Bool {
         supportsLiveActions
     }

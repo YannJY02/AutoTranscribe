@@ -178,16 +178,19 @@ final class ImportSessionViewModel: ObservableObject {
 
     func buildFinalInsight() {
         guard let meetingID = currentMeetingID else { return }
+        sessionPhase = .processing
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 DispatchQueue.main.async {
                     self.applyInsightResult(result)
+                    self.sessionPhase = .reviewing
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
+                    self.sessionPhase = .reviewing
                 }
             }
         }
@@ -282,7 +285,6 @@ final class ImportSessionViewModel: ObservableObject {
             pollTask = nil
             currentJobID = nil
             importStatusMessage = nil
-            sessionPhase = .reviewing
             loadCompletedArtifacts(meetingID: job.meetingID)
         } else if job.state == .failed {
             pollTask?.cancel()
@@ -310,7 +312,15 @@ final class ImportSessionViewModel: ObservableObject {
         analysisStatusMessage = providers.activeReady ? nil : Self.analysisFallbackMessage(for: providers)
     }
 
-    private func refreshAnalysisStatusForImport() {
+    func refreshAnalysisStatusForImport(
+        analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
+    ) {
+        if analysisMode == .local {
+            DispatchQueue.main.async {
+                self.analysisStatusMessage = nil
+            }
+            return
+        }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
             DispatchQueue.main.async {
@@ -394,6 +404,7 @@ final class ImportSessionViewModel: ObservableObject {
                     self.applyInsightResult(result)
                     self.recordsService?.refreshIndex()
                 }
+                self.sessionPhase = .reviewing
             }
         }
     }

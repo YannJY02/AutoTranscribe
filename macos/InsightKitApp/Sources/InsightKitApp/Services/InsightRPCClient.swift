@@ -141,8 +141,21 @@ final class InsightRPCClient {
     }
 
     func sessionStop(meetingID: String) throws {
+        _ = try callWithRetry(method: "session.stop", params: ["meeting_id": meetingID])
+    }
+
+    func sessionStopForFinalization(meetingID: String, leaseToken: String) throws {
         _ = try callWithRetry(method: "session.stop", params: [
             "meeting_id": meetingID,
+            "await_record_save": true,
+            "finalization_lease_token": leaseToken,
+        ])
+    }
+
+    func sessionFinalizationAbort(meetingID: String, leaseToken: String) throws {
+        _ = try callWithRetry(method: "session.finalization.abort", params: [
+            "meeting_id": meetingID,
+            "finalization_lease_token": leaseToken,
         ])
     }
 
@@ -221,11 +234,15 @@ final class InsightRPCClient {
     }
 
     func documentExport(meetingID: String, format: String = "markdown", outputDir: String = "") throws -> DocumentExportResult {
-        let result = try callWithRetry(method: "document.export", params: [
+        var params: [String: Any] = [
             "meeting_id": meetingID,
             "format": format,
             "output_dir": outputDir,
-        ])
+        ]
+        for (key, value) in AppConfigStore.shared.activeProviderParams() {
+            params[key] = value
+        }
+        let result = try callWithRetry(method: "document.export", params: params)
         let path = (result["path"] as? String) ?? ""
         let resolvedFormat = (result["format"] as? String) ?? format
         guard !path.isEmpty else {
@@ -235,10 +252,14 @@ final class InsightRPCClient {
     }
 
     func transcriptionImport(filePath: String, title: String = "") throws -> TranscriptionImportResult {
-        let result = try callWithRetry(method: "transcription.import_file", params: [
+        var params: [String: Any] = [
             "file_path": filePath,
             "title": title,
-        ])
+        ]
+        for (key, value) in AppConfigStore.shared.activeProviderParams() {
+            params[key] = value
+        }
+        let result = try callWithRetry(method: "transcription.import_file", params: params)
         let jobID = (result["job_id"] as? String) ?? ""
         let meetingID = (result["meeting_id"] as? String) ?? ""
         let stateRaw = (result["state"] as? String) ?? "queued"
@@ -531,7 +552,8 @@ final class InsightRPCClient {
         durationSec: Double,
         analysisMeta: [String: Any]? = nil,
         notesMD: String,
-        presentationStatus: LivePresentationCaptureStatus? = nil
+        presentationStatus: LivePresentationCaptureStatus? = nil,
+        finalizationLeaseToken: String? = nil
     ) throws -> String {
         var params: [String: Any] = [
             "meeting_id": meetingID,
@@ -551,6 +573,9 @@ final class InsightRPCClient {
         }
         if let presentationStatus {
             params["presentation_status"] = presentationStatus.rawValue
+        }
+        if let finalizationLeaseToken {
+            params["finalization_lease_token"] = finalizationLeaseToken
         }
         let result = try callProductAction(method: "record.save", legacyMethod: "records.save", params: params)
         return (result["record_path"] as? String) ?? ""

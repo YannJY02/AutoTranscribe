@@ -52,6 +52,10 @@ extension LiveSessionViewModel {
 
         if requireProvider {
             let configStore = AppConfigStore.shared
+            if configStore.config.analysis.mode == .local {
+                updateMain { self.analysisRuntimeState = .ready }
+                return
+            }
             let selectedVendor = configStore.config.analysis.selectedVendor
             let selectedProfile = configStore.profile(for: selectedVendor)
             let providers: AnalysisProvidersStatus

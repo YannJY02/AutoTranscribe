@@ -32,6 +32,11 @@ class ProviderProbe:
         status["active_probe_error_code"] = ""
         status["active_probe_message"] = ""
 
+        if os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":
+            status["active_ready"] = True
+            status["analysis_mode"] = "local"
+            return status
+
         if not probe_active:
             return status
 
@@ -123,39 +128,48 @@ class ProviderProbe:
             "timed_out": False,
         })
 
-        providers = providers_status(probe_active=False)
-        active_vendor = providers.get("selected_vendor", "openai")
-        checks.append({
-            "id": "analysis_provider", "title": "智能分析服务",
-            "status": "pass" if providers.get("active_ready") else "fail",
-            "action_hint": "检查模型名称和 API Key",
-            "details": f"vendor={active_vendor} ready={providers.get('active_ready')}",
-            "timed_out": False,
-        })
-
-        active_vendor_payload = providers.get("vendors", {}).get(active_vendor, {})
-        if bool(active_vendor_payload.get("configured", False)):
-            probe, timed_out = self._probe_with_timeout(
-                vendor=str(active_vendor),
-                model=str(active_vendor_payload.get("model_id", "")),
-                base_url=str(active_vendor_payload.get("base_url", "")),
-                force_refresh=False, timeout_sec=probe_timeout_sec,
-            )
+        if os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":
             checks.append({
-                "id": "analysis_provider_probe", "title": "智能分析鉴权探测",
-                "status": "warn" if timed_out else ("pass" if probe.get("ok") else "fail"),
-                "action_hint": "网络较慢，可先开始转写，稍后重试探测。" if timed_out else (str(probe.get("hint", "")) or "检查 API Key 与模型名称"),
-                "details": f"vendor={active_vendor} code={probe.get('code', '')} message={probe.get('message', '')}",
-                "timed_out": timed_out,
-            })
-        else:
-            checks.append({
-                "id": "analysis_provider_probe", "title": "智能分析鉴权探测",
-                "status": "fail",
-                "action_hint": "请先在设置中填写 API Key 与模型名称",
-                "details": f"vendor={active_vendor} code=missing_configuration",
+                "id": "analysis_provider", "title": "本地智能分析",
+                "status": "pass",
+                "action_hint": "",
+                "details": "mode=local ready=True",
                 "timed_out": False,
             })
+        else:
+            providers = providers_status(probe_active=False)
+            active_vendor = providers.get("selected_vendor", "openai")
+            checks.append({
+                "id": "analysis_provider", "title": "智能分析服务",
+                "status": "pass" if providers.get("active_ready") else "fail",
+                "action_hint": "检查模型名称和 API Key",
+                "details": f"vendor={active_vendor} ready={providers.get('active_ready')}",
+                "timed_out": False,
+            })
+
+            active_vendor_payload = providers.get("vendors", {}).get(active_vendor, {})
+            if bool(active_vendor_payload.get("configured", False)):
+                probe, timed_out = self._probe_with_timeout(
+                    vendor=str(active_vendor),
+                    model=str(active_vendor_payload.get("model_id", "")),
+                    base_url=str(active_vendor_payload.get("base_url", "")),
+                    force_refresh=False, timeout_sec=probe_timeout_sec,
+                )
+                checks.append({
+                    "id": "analysis_provider_probe", "title": "智能分析鉴权探测",
+                    "status": "warn" if timed_out else ("pass" if probe.get("ok") else "fail"),
+                    "action_hint": "网络较慢，可先开始转写，稍后重试探测。" if timed_out else (str(probe.get("hint", "")) or "检查 API Key 与模型名称"),
+                    "details": f"vendor={active_vendor} code={probe.get('code', '')} message={probe.get('message', '')}",
+                    "timed_out": timed_out,
+                })
+            else:
+                checks.append({
+                    "id": "analysis_provider_probe", "title": "智能分析鉴权探测",
+                    "status": "fail",
+                    "action_hint": "请先在设置中填写 API Key 与模型名称",
+                    "details": f"vendor={active_vendor} code=missing_configuration",
+                    "timed_out": False,
+                })
 
         overall = "pass"
         if any(item["status"] == "fail" for item in checks):

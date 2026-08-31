@@ -101,8 +101,24 @@ struct RuntimeConfigV2: Codable, Equatable {
     }
 
     struct Analysis: Codable, Equatable {
+        var mode: AnalysisMode
         var selectedVendor: ProviderVendor
         var providers: [ProviderProfile]
+
+        init(mode: AnalysisMode = .cloud, selectedVendor: ProviderVendor, providers: [ProviderProfile]) {
+            self.mode = mode
+            self.selectedVendor = selectedVendor
+            self.providers = providers
+        }
+
+        private enum CodingKeys: String, CodingKey { case mode, selectedVendor, providers }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            mode = try container.decodeIfPresent(AnalysisMode.self, forKey: .mode) ?? .cloud
+            selectedVendor = try container.decode(ProviderVendor.self, forKey: .selectedVendor)
+            providers = try container.decode([ProviderProfile].self, forKey: .providers)
+        }
     }
 
     struct Strict: Codable, Equatable {
