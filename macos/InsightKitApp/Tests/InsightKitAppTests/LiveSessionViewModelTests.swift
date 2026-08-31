@@ -2037,7 +2037,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(replace.segments.map(\.speaker), ["Alice"])
     }
 
-    func testSaveToRecordsPersistsGeneratedLiveInsightPackageForRecovery() throws {
+    func testSaveToRecordsPersistsGeneratedLocalLiveInsightPackageForRecovery() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveFinalSave_\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -2058,7 +2058,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         viewModel.temporaryRecordingURL = recordingURL
         viewModel.recordingDuration = 90
         viewModel.notes = [TimestampedNote(text: "note survives final minutes", timestamp: 86)]
-        viewModel.metrics.provider = "deepseek:deepseek-v4-flash"
+        viewModel.metrics.provider = "local:extractive-v1"
         let package = InsightPackageV1(
             sessionOverview: .init(title: "直播洞察", overview: "未提供会议转写数据", topics: ["实时录制", "本地降级"]),
             highlightInsights: [],
@@ -2091,8 +2091,9 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(overview["topics"] as? [String], ["实时录制", "本地降级"])
         XCTAssertEqual(call.sourcePath, recordingURL.path)
         XCTAssertEqual(call.durationSec, 90)
-        XCTAssertEqual(call.analysisMeta?["provider"] as? String, "deepseek")
-        XCTAssertEqual(call.analysisMeta?["model"] as? String, "deepseek-v4-flash")
+        XCTAssertEqual(call.recordSource, "live")
+        XCTAssertEqual(call.analysisMeta?["provider"] as? String, "local")
+        XCTAssertEqual(call.analysisMeta?["model"] as? String, "extractive-v1")
         XCTAssertEqual(call.analysisMeta?["analysis_state"] as? String, AnalysisRuntimeState.ready.rawValue)
         XCTAssertTrue(call.notesMD.contains("01:26 note survives final minutes"))
     }

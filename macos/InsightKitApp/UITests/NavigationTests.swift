@@ -40,6 +40,10 @@ final class NavigationTests: InsightKitUITests {
         app.buttons["home_open_settings"].firstMatch.click()
         let settingsWindow = app.windows["InsightKit 设置"].firstMatch
         XCTAssertTrue(waitForElement(settingsWindow, timeout: 5))
+        XCTAssertTrue(
+            waitForElement(settingsWindow.popUpButtons["settings_analysis_mode_picker"].firstMatch, timeout: 5),
+            "Settings must expose an analysis choice separate from the ASR engine"
+        )
         let anonymousModelPath = settingsWindow.textFields.matching(
             NSPredicate(format: "value == %@", "/tmp/InsightKit/models")
         ).firstMatch

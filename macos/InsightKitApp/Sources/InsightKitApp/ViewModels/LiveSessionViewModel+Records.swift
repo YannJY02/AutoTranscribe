@@ -9,7 +9,8 @@ extension LiveSessionViewModel {
     func saveToRecords(
         meetingID: String,
         insightPackageOverride: InsightPackageV1? = nil,
-        transcriptSegmentsOverride: [TranscriptSegment]? = nil
+        transcriptSegmentsOverride: [TranscriptSegment]? = nil,
+        finalizationLeaseToken: String? = nil
     ) {
         // Capture @Published state on the calling thread to avoid data races.
         // These properties are mutated on main; reading them here (pipelineQueue)
@@ -39,6 +40,12 @@ extension LiveSessionViewModel {
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
+                if let finalizationLeaseToken {
+                    try self.rpcClient.sessionStopForFinalization(
+                        meetingID: meetingID,
+                        leaseToken: finalizationLeaseToken
+                    )
+                }
                 let durationSec = capturedRecordingURL
                     .flatMap { self.mediaAssetInspector.durationSec(url: $0) }
                     ?? capturedDuration
@@ -59,7 +66,8 @@ extension LiveSessionViewModel {
                     notes: capturedNotes,
                     analysisMeta: capturedAnalysisMeta,
                     cachedFinalTranscript: capturedCachedFinalTranscript,
-                    presentationStatus: capturedPresentationStatus
+                    presentationStatus: capturedPresentationStatus,
+                    finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
                 if !recordPath.isEmpty {
@@ -88,11 +96,30 @@ extension LiveSessionViewModel {
                         : nil
                     self.isFinalizingLiveSession = false
                 }
-            } catch {
+            } catch let saveError {
+                if let finalizationLeaseToken {
+                    do {
+                        try self.rpcClient.sessionStopForFinalization(
+                            meetingID: meetingID,
+                            leaseToken: finalizationLeaseToken
+                        )
+                        try self.rpcClient.sessionFinalizationAbort(
+                            meetingID: meetingID,
+                            leaseToken: finalizationLeaseToken
+                        )
+                    } catch {
+                        self.publishError(NSError(
+                            domain: "InsightKit.FinalizationLease",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "记录保存失败，且本地服务未能确认释放保存保护：\(error.localizedDescription)"]
+                        ))
+                        return
+                    }
+                }
                 self.updateMain {
                     self.isFinalizingLiveSession = false
                 }
-                self.publishError(error)
+                self.publishError(saveError)
             }
         }
     }

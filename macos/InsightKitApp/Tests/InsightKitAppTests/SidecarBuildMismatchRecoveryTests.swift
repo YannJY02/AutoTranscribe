@@ -12,6 +12,12 @@ final class SidecarBuildMismatchRecoveryTests: XCTestCase {
         XCTAssertFalse(SidecarManager.shouldRebootstrapForBuildMismatch(sidecarBuild: "202603040002", appBuild: ""))
     }
 
+    func testGuardedShutdownRequiresCapabilityEvidence() {
+        XCTAssertTrue(SidecarManager.acceptsGuardedShutdownResponse(["idle_shutdown_guard": "accepted-v1"]))
+        XCTAssertTrue(SidecarManager.acceptsGuardedShutdownResponse(["idle_guard": "accepted-v1"]))
+        XCTAssertFalse(SidecarManager.acceptsGuardedShutdownResponse(["ok": true, "shutting_down": true]))
+    }
+
     func testBestEffortShutdownMissingSocketReturnsQuickly() {
         let missingSocket = "/tmp/insightkit-test-missing-\(UUID().uuidString).sock"
         let start = Date()

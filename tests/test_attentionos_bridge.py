@@ -96,6 +96,23 @@ class TestAttentionOSBridge(unittest.TestCase):
             self.assertEqual(output["result"]["forwarded_method"], "smart_minutes.generate")
             self.assertIn("insight.build_final -> smart_minutes.generate", output["summary"])
 
+    def test_exported_entry_forwards_explicit_analysis_choice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = (export_module(Path(tmp) / "module") / "index.py").read_text(encoding="utf-8")
+
+            for action in (
+                "insight.refresh_live",
+                "smart_minutes.generate",
+                "document.export",
+                "transcription.import_file",
+            ):
+                start = index.index(f'elif action == "{action}"')
+                end = index.find('    elif action == "', start + 1)
+                block = index[start:end if end >= 0 else None]
+                self.assertIn('"provider_vendor": ext_payload.get("provider_vendor", "")', block)
+                self.assertIn('"provider_model": ext_payload.get("provider_model", "")', block)
+                self.assertIn('"strict_mode": ext_payload.get("strict_mode")', block)
+
 
 if __name__ == "__main__":
     unittest.main()

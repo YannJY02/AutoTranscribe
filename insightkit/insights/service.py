@@ -26,6 +26,27 @@ FINAL_PROMPT = (PROMPT_DIR / "final_insight_prompt.md").read_text(encoding="utf-
 logger = logging.getLogger(__name__)
 
 
+def attach_transcript_provenance(package: dict[str, Any], meeting_id: str) -> dict[str, Any]:
+    """Attach the canonical meeting-specific transcript source representation."""
+    enriched = dict(package)
+    existing = []
+    seen_urls = set()
+    for link in package.get("provenance_links", []):
+        if not isinstance(link, dict):
+            continue
+        url = str(link.get("url", "")).strip()
+        if not url or url in seen_urls:
+            continue
+        existing.append(link)
+        seen_urls.add(url)
+    transcript_url = f"InsightKit SQLite segments: meeting_id={meeting_id}"
+    if transcript_url not in seen_urls:
+        existing.append({"label": "Transcript evidence", "url": transcript_url})
+    enriched["provenance_links"] = existing
+    validate_insight_package(enriched)
+    return enriched
+
+
 class InsightService:
     def __init__(
         self,
@@ -37,7 +58,10 @@ class InsightService:
         # provider 参数仅用于测试/兼容场景。生产默认走 resolve_provider。
         self.provider = provider
         self.model = (model or "").strip()
-        self.default_vendor = (default_vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "deepseek")).strip().lower()
+        configured_vendor = default_vendor or os.getenv("INSIGHTKIT_PROVIDER_VENDOR", "deepseek")
+        if default_vendor is None and os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":
+            configured_vendor = "local"
+        self.default_vendor = configured_vendor.strip().lower()
         if strict_mode is None:
             if provider is not None:
                 strict_mode = False
@@ -50,13 +74,18 @@ class InsightService:
             "strict_mode": self.strict_mode,
         }
 
+    def _effective_vendor(self, provider_vendor: str | None) -> str:
+        if os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":
+            return "local"
+        return (provider_vendor or self.default_vendor).strip().lower()
+
     def probe_provider(
         self,
         provider_vendor: str | None = None,
         provider_model: str | None = None,
         base_url: str | None = None,
     ) -> dict[str, Any]:
-        effective_vendor = (provider_vendor or self.default_vendor).strip().lower()
+        effective_vendor = self._effective_vendor(provider_vendor)
         effective_model = (provider_model or self.model).strip() or None
         return provider_probe(
             vendor=effective_vendor,
@@ -71,6 +100,8 @@ class InsightService:
         provider_model: str | None = None,
         strict_mode: bool | None = None,
     ) -> dict[str, Any]:
+        if self._effective_vendor(provider_vendor) == "local":
+            return self._build_local(transcript_window, vendor="local", model="extractive-v1")
         user_prompt = LIVE_PROMPT.replace(
             "{{TRANSCRIPT_WINDOW_JSON}}", json.dumps(transcript_window, ensure_ascii=False)
         )
@@ -90,6 +121,8 @@ class InsightService:
         provider_model: str | None = None,
         strict_mode: bool | None = None,
     ) -> dict[str, Any]:
+        if self._effective_vendor(provider_vendor) == "local":
+            return self._build_local(full_transcript, vendor="local", model="extractive-v1")
         user_prompt = FINAL_PROMPT.replace(
             "{{FULL_TRANSCRIPT_JSON}}", json.dumps(full_transcript, ensure_ascii=False)
         )
@@ -104,12 +137,21 @@ class InsightService:
 
     def build_local_extractive(self, full_transcript: list[dict[str, Any]]) -> dict[str, Any]:
         """Build a privacy-preserving local draft when no analysis provider is configured."""
+        return self._build_local(full_transcript, vendor="local-extractive", model="heuristic-v1")
+
+    def _build_local(
+        self,
+        full_transcript: list[dict[str, Any]],
+        *,
+        vendor: str,
+        model: str,
+    ) -> dict[str, Any]:
         payload = self._extractive_payload(full_transcript)
         payload = postprocess_insight_package(payload, full_transcript=full_transcript)
         validate_insight_package(payload)
         self.last_call_meta = {
-            "vendor": "local-extractive",
-            "model": "heuristic-v1",
+            "vendor": vendor,
+            "model": model,
             "strict_mode": False,
         }
         return payload
@@ -124,7 +166,7 @@ class InsightService:
         transcript_context: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         effective_strict = self.strict_mode if strict_mode is None else bool(strict_mode)
-        effective_vendor = (provider_vendor or self.default_vendor).strip().lower()
+        effective_vendor = self._effective_vendor(provider_vendor)
         effective_model = (provider_model or self.model).strip()
 
         provider = self.provider

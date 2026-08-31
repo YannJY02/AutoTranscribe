@@ -70,8 +70,9 @@ final class SidecarManager {
                 return
             } catch {
                 // A running old sidecar can keep the socket alive but miss newly introduced RPCs.
-                // Reset socket path and spawn bundled sidecar to self-heal on upgrades.
+                // Only replace it after the sidecar proves that no work is active.
                 if shouldResetForHandshakeError(error) {
+                    _ = try requestRemoteShutdown(timeoutSec: 1, requireIdle: true)
                     resetSocketPath()
                 } else {
                     throw error
@@ -173,12 +174,16 @@ final class SidecarManager {
         manager.removeStaleSocketIfNeeded()
     }
 
-    func rebootstrap(ensureReady: (() throws -> Void)? = nil) throws {
+    func rebootstrap(ensureReady: (() throws -> Void)? = nil, requireIdle: Bool = true) throws {
         lifecycleLock.lock()
         defer { lifecycleLock.unlock() }
 
         // Force detach any stale socket owner and relaunch bundled/runtime sidecar.
-        _ = try? requestRemoteShutdown(timeoutSec: 1)
+        if requireIdle, canConnectToSocket() {
+            _ = try requestRemoteShutdown(timeoutSec: 1, requireIdle: true)
+        } else {
+            _ = try? requestRemoteShutdown(timeoutSec: 1)
+        }
         resetSocketPath()
         try startIfNeeded(ensureReady: ensureReady)
     }
@@ -207,8 +212,8 @@ final class SidecarManager {
         if didAttemptBuildRecovery {
             return false
         }
+        _ = try requestRemoteShutdown(timeoutSec: 1, requireIdle: true)
         didAttemptBuildRecovery = true
-        _ = try? requestRemoteShutdown(timeoutSec: 1)
         resetSocketPath()
         try startIfNeeded(ensureReady: ensureReady)
         return true
@@ -341,12 +346,27 @@ final class SidecarManager {
         return connectResult == 0
     }
 
-    private func requestRemoteShutdown(timeoutSec: Int) throws -> [String: Any] {
-        try callSocketMethod(
+    private func requestRemoteShutdown(timeoutSec: Int, requireIdle: Bool = false) throws -> [String: Any] {
+        if requireIdle {
+            let version = try callSocketMethod(method: "sidecar.version", params: [:], timeoutSec: timeoutSec)
+            guard Self.acceptsGuardedShutdownResponse(version) else {
+                throw SidecarError.failedToStart("sidecar does not support guarded restart")
+            }
+        }
+        let response = try callSocketMethod(
             method: "sidecar.shutdown",
-            params: [:],
+            params: requireIdle ? ["require_idle": true] : [:],
             timeoutSec: timeoutSec
         )
+        if requireIdle, !Self.acceptsGuardedShutdownResponse(response) {
+            throw SidecarError.failedToStart("sidecar does not support guarded restart")
+        }
+        return response
+    }
+
+    static func acceptsGuardedShutdownResponse(_ response: [String: Any]) -> Bool {
+        (response["idle_shutdown_guard"] as? String) == "accepted-v1"
+            || (response["idle_guard"] as? String) == "accepted-v1"
     }
 
     private func callSocketMethod(method: String, params: [String: Any], timeoutSec: Int) throws -> [String: Any] {

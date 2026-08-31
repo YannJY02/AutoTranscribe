@@ -2,6 +2,65 @@ import XCTest
 @testable import InsightKitApp
 
 final class AppConfigStoreTests: XCTestCase {
+    func testLocalAnalysisModeIsIndependentFromASREngineAndCloudCredentials() throws {
+        var config = makeRuntimeConfig(
+            selectedVendor: .deepseek,
+            providers: [
+                .init(vendor: .deepseek, baseURL: "https://api.deepseek.com", modelID: "deepseek-v4-flash", apiKeyRef: "vendor.deepseek.api_key", extraHeaders: [:]),
+            ]
+        )
+        config.asr.engine = .qwenmlx
+        config.analysis.mode = .local
+
+        let env = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: ["DEEPSEEK_API_KEY": "must-not-be-forwarded"]
+        ) { _, _ in "must-not-be-read" }
+
+        XCTAssertEqual(config.asr.engine, .qwenmlx)
+        XCTAssertEqual(env["INSIGHTKIT_ASR_ENGINE"], LocalASREngine.qwenmlx.rawValue)
+        XCTAssertEqual(env["INSIGHTKIT_ANALYSIS_MODE"], "local")
+        XCTAssertEqual(env["OPENAI_API_KEY"], "")
+        XCTAssertEqual(env["GEMINI_API_KEY"], "")
+        XCTAssertEqual(env["DEEPSEEK_API_KEY"], "")
+        XCTAssertEqual(env["QWEN_API_KEY"], "")
+        XCTAssertEqual(env["DOUBAO_API_KEY"], "")
+    }
+
+    func testLocalToCloudTransitionBumpsSidecarRevisionAndReloadsCloudCredential() throws {
+        let suiteName = "AppConfigStoreTests-analysis-mode-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let snapshot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(suiteName)
+            .appendingPathComponent("runtime_config_v1.json")
+        let store = AppConfigStore(defaults: defaults, configSnapshotURL: snapshot)
+        let initialRevision = store.configRevision
+
+        store.updateAnalysisMode(.local)
+        let localRevision = store.configRevision
+        store.updateAnalysisMode(.cloud)
+
+        XCTAssertGreaterThan(localRevision, initialRevision)
+        XCTAssertGreaterThan(store.configRevision, localRevision)
+
+        var config = store.config
+        config.analysis.selectedVendor = .deepseek
+        config.analysis.mode = .local
+        let localEnvironment = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: [:]
+        ) { _, _ in "cloud-secret" }
+        config.analysis.mode = .cloud
+        let cloudEnvironment = AppConfigStore.buildSidecarEnvironment(
+            config: config,
+            processEnvironment: [:]
+        ) { _, _ in "cloud-secret" }
+
+        XCTAssertEqual(localEnvironment["DEEPSEEK_API_KEY"], "")
+        XCTAssertEqual(cloudEnvironment["DEEPSEEK_API_KEY"], "cloud-secret")
+    }
+
     func testRepairRestoresSingleProviderCopiedFromAnotherVendorDefault() {
         let config = makeRuntimeConfig(
             selectedVendor: .openai,
