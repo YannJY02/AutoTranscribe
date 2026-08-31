@@ -694,7 +694,11 @@ class EvidenceLedger:
         if missing:
             raise ValidationError(f"Friday update is missing linked evidence: {', '.join(sorted(missing))}")
         linear_ids = {evidence_id for evidence_id in requested if by_id[evidence_id]["source_type"] == "linear"}
-        if any(by_id[evidence_id]["source_type"] != "linear" for evidence_id in live_linear_evidence_ids) or any(
+        live_linear_issue_ids = {by_id[evidence_id]["linear_issue_id"] for evidence_id in live_linear_evidence_ids}
+        requested_linear_issue_ids = {by_id[evidence_id]["linear_issue_id"] for evidence_id in requested}
+        if not requested_linear_issue_ids.issubset(live_linear_issue_ids) or any(
+            by_id[evidence_id]["source_type"] != "linear" for evidence_id in live_linear_evidence_ids
+        ) or any(
             by_id[evidence_id]["claim_class"] != "observed"
             or by_id[evidence_id]["result"] == "unobserved"
             or by_id[evidence_id]["revision"] == "unavailable"

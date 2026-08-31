@@ -610,6 +610,24 @@ def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
     )
     assert "Friday Project Update" in update and "Focused regressions passed" in update
 
+    cross_issue = ledger._collect_normalized([
+        source(
+            source_type="repository", source_id="harness-GH-69",
+            source_ref="logs/harness/GH-69/manifest.json", linear_issue_id="YAN-51",
+            github_issue_or_pr_id="GH-69", revision="def456",
+            artifact_sha256="sha256:" + "b" * 64,
+        )
+    ])
+    cross_issue_id = next(
+        record["evidence_id"] for record in cross_issue["records"]
+        if record["source_id"] == "harness-GH-69"
+    )
+    with pytest.raises(ValidationError, match="live Linear evidence"):
+        ledger.friday_update(
+            "2026-W35", cross_issue,
+            live_linear_evidence_ids={linear_id}, linked_evidence_ids={cross_issue_id},
+        )
+
     unavailable_ledger = EvidenceLedger(tmp_path / "unavailable.json")
     unavailable = unavailable_ledger.collect_unavailable(
         "linear", "YAN-50", "linear-unavailable", observed_at=OBSERVED_AT,
