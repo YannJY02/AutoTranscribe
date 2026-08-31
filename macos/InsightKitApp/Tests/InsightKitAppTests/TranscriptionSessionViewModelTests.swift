@@ -3,6 +3,55 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
+    func testWatcherBeginsAnalyticsOnlyWhenAQueuedJobStartsRunning() {
+        let rpc = RPCClientMock()
+        let startedAt = Date().addingTimeInterval(1)
+        let running = TranscriptionJob(
+            id: "running", meetingID: "meeting-running", sourcePath: "/tmp/running.wav", title: "running",
+            state: .running, progress: 20, stage: "running", error: "", reason: "",
+            startedAt: startedAt, endedAt: nil
+        )
+        let queued = TranscriptionJob(
+            id: "queued", meetingID: "meeting-queued", sourcePath: "/tmp/queued.wav", title: "queued",
+            state: .queued, progress: 0, stage: "queued", error: "", reason: "",
+            startedAt: startedAt, endedAt: nil
+        )
+        rpc.transcriptionStatusStub = TranscriptionStatusResult(
+            watcher: .init(isRunning: true, dirs: ["/tmp"], queueSize: 1, activeJobID: running.id),
+            queue: [queued], activeJob: running, lastCompleted: nil, jobs: [running, queued]
+        )
+        let lock = NSLock()
+        var analyticsSubmissions = 0
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { _ in
+                lock.lock()
+                analyticsSubmissions += 1
+                lock.unlock()
+            }
+        )
+
+        let refreshed = expectation(description: "watcher batch refreshed")
+        var cancellables = Set<AnyCancellable>()
+        vm.$jobs
+            .dropFirst()
+            .sink { jobs in
+                if Set(jobs.map(\.id)) == ["running", "queued"] { refreshed.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        vm.startWatcher(dirs: ["/tmp"])
+
+        wait(for: [refreshed], timeout: 1)
+        lock.lock()
+        let count = analyticsSubmissions
+        lock.unlock()
+        XCTAssertEqual(count, 1)
+    }
+
     func testWatcherSkipsRestoredJobsWithUnknownStartTime() {
         let rpc = RPCClientMock()
         rpc.transcriptionStatusStub = TranscriptionStatusResult(

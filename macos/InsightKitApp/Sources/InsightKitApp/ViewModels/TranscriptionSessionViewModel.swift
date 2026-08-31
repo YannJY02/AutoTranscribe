@@ -754,7 +754,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
         if let completed = status.lastCompleted?.job, !observedJobs.contains(where: { $0.id == completed.id }) {
             observedJobs.append(completed)
         }
-        for job in observedJobs where analyticsContextsByJobID[job.id] == nil {
+        for job in observedJobs where job.state == .running && analyticsContextsByJobID[job.id] == nil {
             let isCurrentWatcherJob = watcherAnalyticsStartedAt.map { watcherStartedAt in
                 job.startedAt.map { $0 >= watcherStartedAt } ?? false
             } ?? false
