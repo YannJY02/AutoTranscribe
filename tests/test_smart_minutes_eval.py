@@ -759,7 +759,9 @@ def test_external_service_leg_ignores_local_mode_override(monkeypatch, tmp_path:
     import scripts.smart_minutes_eval as eval_module
 
     class ModeSensitiveService:
-        def __init__(self, default_vendor=None, model=None):
+        def __init__(self, default_vendor=None, model=None, strict_mode=None):
+            if default_vendor is not None:
+                assert strict_mode is True
             self.default_vendor = default_vendor
             self.model = model
             self.last_call_meta = {}

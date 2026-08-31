@@ -515,7 +515,7 @@ def run_eval(
             "gate_result": "pass",
             "cases": [],
         }
-        cloud_service = InsightService(default_vendor=external["vendor"], model=external.get("model"))
+        cloud_service = InsightService(default_vendor=external["vendor"], model=external.get("model"), strict_mode=True)
         builder = external.get("builder")
         uses_service_builder = builder is None
         if builder is None:
