@@ -94,6 +94,12 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     assert "if(started_installations=0,NULL,countIf(first_success" in (
         POSTHOG_SQL_ROOT / "activation.hogql"
     ).read_text()
+    activation = (POSTHOG_SQL_ROOT / "activation.hogql").read_text()
+    retention = (POSTHOG_SQL_ROOT / "retention.hogql").read_text()
+    assert "timestamp >= toDateTime({variables.window_start})" not in activation
+    assert "first_start >= toDateTime({variables.window_start})" in activation
+    assert "timestamp >= toDateTime({variables.window_start})" not in retention
+    assert "timestamp_utc >= toDateTime({variables.window_start})" in retention
     assert "tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence)" in (
         POSTHOG_SQL_ROOT / "activation.hogql"
     ).read_text()
@@ -164,6 +170,38 @@ def test_activation_keeps_null_bucket_from_the_earliest_completion():
     assert result["activated_installations"] == 2
     assert result["success_under_1m"] == 0
     assert result["success_1_to_5m"] == 1
+
+
+def test_activation_excludes_installations_started_before_the_window():
+    connection = database()
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
+        "VALUES(?,?,?,1,'development','returning',300000)",
+        [
+            ("workflow_started", "2025-12-31T00:00:00Z", 1),
+            ("workflow_started", "2026-01-03T00:00:00Z", 2),
+            ("workflow_completed", "2026-01-03T00:01:00Z", 3),
+        ],
+    )
+    cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["started_installations"] == 2
+    assert result["activated_installations"] == 1
+
+
+def test_retention_uses_historical_cohort_and_windowed_returns():
+    connection = database()
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
+        "VALUES('workflow_completed',?,1,'development','returning')",
+        [
+            ("2025-12-20T00:00:00Z",),
+            ("2026-01-01T00:00:00Z",),
+        ],
+    )
+    cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["retained_7d"] == 1
 
 
 def test_recovery_does_not_cross_analysis_mode_or_window_end():

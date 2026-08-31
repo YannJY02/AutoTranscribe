@@ -1,14 +1,14 @@
 -- query_version: 1; event_schema_version: 1
 WITH eligible AS (
   SELECT * FROM events WHERE schema_version = 1 AND environment = :environment
-    AND timestamp_utc >= :window_start AND timestamp_utc < :window_end
+    AND timestamp_utc < :window_end
 ), ranked_starts AS (
   SELECT installation_id,timestamp_utc,event_sequence,ROW_NUMBER() OVER (
     PARTITION BY installation_id ORDER BY timestamp_utc,event_sequence
   ) start_rank FROM eligible WHERE event_name='workflow_started'
 ), starts AS (
   SELECT installation_id,timestamp_utc AS first_start,event_sequence AS first_start_sequence
-  FROM ranked_starts WHERE start_rank=1
+  FROM ranked_starts WHERE start_rank=1 AND timestamp_utc >= :window_start
 ), installs AS (
   SELECT s.installation_id,s.first_start,
     (SELECT e.timestamp_utc FROM eligible e WHERE e.installation_id=s.installation_id

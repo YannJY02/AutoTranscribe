@@ -6,7 +6,6 @@ WITH event_source AS (
     toInt(properties.duration_bucket_ms) AS duration_bucket_ms
   FROM events
   WHERE properties.environment = {variables.environment}
-    AND timestamp >= toDateTime({variables.window_start})
     AND timestamp < toDateTime({variables.window_end})
 ), eligible AS (
   SELECT * FROM event_source WHERE schema_version = 1
@@ -17,6 +16,8 @@ WITH event_source AS (
 ), starts AS (
   SELECT installation_id,timestamp_utc AS first_start,event_sequence AS first_start_sequence
   FROM ranked_starts WHERE start_rank=1
+), cohort_starts AS (
+  SELECT * FROM starts WHERE first_start >= toDateTime({variables.window_start})
 ), installs AS (
   SELECT s.installation_id,s.first_start,
     minOrNullIf(e.timestamp_utc,e.event_name='workflow_completed' AND (e.timestamp_utc>s.first_start
@@ -24,7 +25,7 @@ WITH event_source AS (
     tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence),
       e.event_name='workflow_completed' AND (e.timestamp_utc>s.first_start
         OR (e.timestamp_utc=s.first_start AND e.event_sequence>s.first_start_sequence))),1) AS first_success_duration_bucket
-  FROM starts s LEFT JOIN eligible e ON e.installation_id=s.installation_id
+  FROM cohort_starts s LEFT JOIN eligible e ON e.installation_id=s.installation_id
   GROUP BY s.installation_id,s.first_start,s.first_start_sequence
 )
 SELECT countIf(first_start IS NOT NULL) AS started_installations,

@@ -3,6 +3,55 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
+    func testWatcherSkipsHistoricalJobWithUnknownStartTime() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusStub = TranscriptionStatusResult(
+            watcher: .init(isRunning: true, dirs: ["/tmp"], queueSize: 0, activeJobID: nil),
+            queue: [],
+            activeJob: nil,
+            lastCompleted: nil,
+            jobs: [
+                TranscriptionJob(
+                    id: "historical", meetingID: "meeting", sourcePath: "/tmp/old.wav", title: "old",
+                    state: .completed, progress: 100, stage: "completed", error: "", reason: "",
+                    startedAt: nil, endedAt: Date()
+                )
+            ]
+        )
+        let lock = NSLock()
+        var analyticsSubmissions = 0
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { _ in
+                lock.lock()
+                analyticsSubmissions += 1
+                lock.unlock()
+            }
+        )
+
+        let refreshed = expectation(description: "watcher status refreshed")
+        var cancellables = Set<AnyCancellable>()
+        vm.$jobs
+            .dropFirst()
+            .sink { jobs in
+                if jobs.contains(where: { $0.id == "historical" }) {
+                    refreshed.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        vm.startWatcher(dirs: ["/tmp"])
+
+        wait(for: [refreshed], timeout: 1)
+        lock.lock()
+        let count = analyticsSubmissions
+        lock.unlock()
+        XCTAssertEqual(count, 0)
+    }
+
     func testNewCompletionKeepsMeetingSelectionStableWhileAnotherJobIsActive() {
         let rpc = RPCClientMock()
         let completed = TranscriptionJob(

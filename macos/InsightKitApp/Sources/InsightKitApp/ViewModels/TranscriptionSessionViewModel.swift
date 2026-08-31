@@ -754,13 +754,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
         for job in observedJobs where analyticsContextsByJobID[job.id] == nil {
             let isActive = job.state == .queued || job.state == .running
             let isCurrentWatcherJob = watcherAnalyticsStartedAt.map { watcherStartedAt in
-                job.startedAt.map { $0 >= watcherStartedAt } ?? true
+                job.startedAt.map { $0 >= watcherStartedAt } ?? false
             } ?? false
             if isActive || isCurrentWatcherJob {
                 let context = ProductAnalyticsAttemptContext(workflow: "import")
                 analyticsContextsByJobID[job.id] = context
                 let provisionalPath = watcherAnalyticsPath
-                ProductAnalytics.submit { $0.beginWorkflow(context, provisionalPath: provisionalPath) }
+                analyticsSubmit { $0.beginWorkflow(context, provisionalPath: provisionalPath) }
             }
         }
         for job in observedJobs where !analyticsTerminalJobIDs.contains(job.id) {
@@ -768,7 +768,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             switch job.state {
             case .failed:
                 analyticsTerminalJobIDs.insert(job.id)
-                ProductAnalytics.submit {
+                analyticsSubmit {
                     $0.workflowFailed(
                         context,
                         phase: "running",
@@ -778,7 +778,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 }
             case .cancelled, .pausedByLive:
                 analyticsTerminalJobIDs.insert(job.id)
-                ProductAnalytics.submit { $0.workflowCancelled(context) }
+                analyticsSubmit { $0.workflowCancelled(context) }
             default:
                 break
             }
