@@ -217,17 +217,17 @@ def _reference_identifies(item: dict[str, Any], value: str) -> bool:
         expected = linked.split("-")[-1].lstrip("#")
         expected_kind = "pull" if linked.startswith("PR-") else "issues"
         return (
-            len(parts) >= 4
-            and parts[-4:-2] == ["YannJY02", "AutoTranscribe"]
-            and parts[-2] == expected_kind
-            and parts[-1] == expected
+            len(parts) == 4
+            and parts[:2] == ["YannJY02", "AutoTranscribe"]
+            and parts[2] == expected_kind
+            and parts[3] == expected
         )
     if item["source_type"] == "ci":
         match = re.search(r"([0-9]+)$", item["source_id"])
         return bool(
-            match and len(parts) >= 5
-            and parts[-5:-2] == ["YannJY02", "AutoTranscribe", "actions"]
-            and parts[-2:] == ["runs", match.group(1)]
+            match and len(parts) == 5
+            and parts[:3] == ["YannJY02", "AutoTranscribe", "actions"]
+            and parts[3:] == ["runs", match.group(1)]
         )
     return True
 
@@ -466,7 +466,7 @@ class EvidenceLedger:
                     expected = {field: normalized[field] for field in REQUIRED}
                     actual = {field: existing[field] for field in REQUIRED}
                     if existing["result"] == "superseded":
-                        actual["result"] = expected["result"]
+                        raise ValidationError("superseded source revision cannot be replayed")
                     if actual != expected:
                         raise ValidationError("stable source revision changed content")
                     continue

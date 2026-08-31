@@ -118,6 +118,15 @@ def test_same_revision_with_changed_claim_is_rejected(tmp_path: Path):
         ledger._collect_normalized([source(fact="Tampered claim")])
 
 
+def test_superseded_revision_cannot_be_replayed_with_a_changed_result(tmp_path: Path):
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    ledger._collect_normalized([source(revision="build-a")])
+    ledger._collect_normalized([source(revision="build-b", result="failed")])
+
+    with pytest.raises(ValidationError, match="superseded source revision cannot be replayed"):
+        ledger._collect_normalized([source(revision="build-a", result="failed")])
+
+
 def test_batch_is_validated_before_any_write(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     with pytest.raises(ValidationError, match="private path"):
@@ -348,8 +357,16 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         source_ref="https://github.com/YannJY02/AutoTranscribe/issues/69",
     ),
     source(
+        source_type="github", source_id="GH-68",
+        source_ref="https://github.com/extra/YannJY02/AutoTranscribe/issues/68",
+    ),
+    source(
         source_type="ci", source_id="check-101",
         source_ref="https://github.com/YannJY02/AutoTranscribe/actions/runs/102",
+    ),
+    source(
+        source_type="ci", source_id="check-101",
+        source_ref="https://github.com/extra/YannJY02/AutoTranscribe/actions/runs/101",
     ),
     source(
         source_type="linear", source_id="not-a-linear-id", linear_issue_id=None,
