@@ -104,7 +104,7 @@ extension LiveSessionViewModel {
                     self.recordLiveReviewOpenedIfSaved()
                 }
             } catch let saveError {
-                self.analyticsSubmit { analytics in
+                ProductAnalytics.submit { analytics in
                     analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
                 }
                 if let finalizationLeaseToken {

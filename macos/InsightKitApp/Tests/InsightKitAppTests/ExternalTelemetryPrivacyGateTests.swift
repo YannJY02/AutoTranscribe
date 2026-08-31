@@ -526,18 +526,21 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         analytics.beginWorkflow(second, provisionalPath: .local)
         let rpc = RPCClientMock()
         rpc.buildFinalDelaySec = 0.05
+        let completed = expectation(description: "both artifact analytics contexts complete")
+        completed.expectedFulfillmentCount = 4
         let viewModel = TranscriptionSessionViewModel(
             rpcClient: rpc,
             autoRefresh: false,
             autoPolling: false,
             bootstrapSidecar: false,
-            analyticsSubmit: { operation in operation(analytics) }
+            analyticsSubmit: { operation in
+                operation(analytics)
+                completed.fulfill()
+            }
         )
 
         viewModel.loadArtifactsForMeeting("meeting-1", analyticsContext: first)
         viewModel.loadArtifactsForMeeting("meeting-2", analyticsContext: second)
-        let completed = expectation(description: "queued artifact builds complete")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { completed.fulfill() }
         wait(for: [completed], timeout: 1)
 
         let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
