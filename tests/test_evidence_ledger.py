@@ -313,6 +313,8 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://us.posthog.com")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
+        ledger._collect_normalized([source(source_type="diagnostics", source_ref="https://sentry.io")])
+    with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_ref="https://[broken")])
     with pytest.raises(ValidationError, match="inspectable approved reference"):
         ledger._collect_normalized([source(source_type="analytics", source_ref="https://[broken")])
@@ -327,9 +329,13 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
         with pytest.raises(ValidationError, match="inspectable approved reference"):
             ledger._collect_normalized([item])
     accepted = ledger._collect_normalized([
-        source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2")
+        source(source_type="analytics", source_ref="https://eu.posthog.com/project/1/insights/2"),
+        source(
+            source_type="diagnostics", source_id="sentry-issue-1",
+            source_ref="https://example.sentry.io/issues/1/", lifecycle_transition="diagnostics-readback",
+        ),
     ])
-    assert accepted["records"][0]["source_type"] == "analytics"
+    assert {record["source_type"] for record in accepted["records"]} == {"analytics", "diagnostics"}
 
 
 @pytest.mark.parametrize("item", [
@@ -344,6 +350,14 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
     source(
         source_type="ci", source_id="check-101",
         source_ref="https://github.com/YannJY02/AutoTranscribe/actions/runs/102",
+    ),
+    source(
+        source_type="linear", source_id="not-a-linear-id", linear_issue_id=None,
+        source_ref="https://linear.app/yannjy/issue/not-a-linear-id",
+    ),
+    source(
+        source_type="github", source_id="PR-68", github_issue_or_pr_id="PR-68",
+        source_ref="https://github.com/YannJY02/AutoTranscribe/issues/68",
     ),
 ])
 def test_task_and_ci_references_must_identify_the_linked_evidence(tmp_path: Path, item: dict):
@@ -442,6 +456,15 @@ def test_unavailable_ci_source_links_to_the_check_run(tmp_path: Path):
     assert record["result"] == "unobserved"
 
 
+def test_unavailable_github_pr_source_links_to_the_pull_request(tmp_path: Path):
+    record = EvidenceLedger(tmp_path / "ledger.json").collect_unavailable(
+        "github", "PR-68", "github-unavailable", observed_at=OBSERVED_AT,
+        environment="github-actions", lifecycle_stage="verification", linear_issue_id="YAN-50",
+        github_issue_or_pr_id="PR-68",
+    )["records"][0]
+    assert record["source_ref"] == "https://github.com/YannJY02/AutoTranscribe/pull/68"
+
+
 def test_content_hash_cannot_be_used_as_source_id(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     for source_id in ("sha256:deadbeef", "a" * 64):
@@ -503,6 +526,13 @@ def test_repeated_feedback_requires_independent_runs_but_severe_event_routes_onc
             run_ids=["review-1", "review-2"], event_class="review",
             available_surfaces=["docs/agents/harness.md"],
         )
+    for host_only in ("https://github.com", "https://linear.app"):
+        with pytest.raises(ValidationError, match="feedback evidence"):
+            ledger.route_repeated_feedback(
+                "missing-remote-proof", evidence_refs=[host_only, host_only],
+                run_ids=["review-1", "review-2"], event_class="review",
+                available_surfaces=["docs/agents/harness.md"],
+            )
 
 
 def test_handoff_requires_explicit_linked_evidence_and_validates_supplied_ledger(tmp_path: Path):

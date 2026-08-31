@@ -177,24 +177,49 @@ def _approved_external_ref(source_type: str, value: str) -> bool:
         if not _https_ref(value):
             return False
         hostname = urlsplit(value).hostname or ""
-        return hostname == "sentry.io" or hostname.endswith(".sentry.io")
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return (
+            (hostname == "sentry.io" or hostname.endswith(".sentry.io"))
+            and any(part in {"issues", "events", "replays", "discover"} and index + 1 < len(parts)
+                    for index, part in enumerate(parts))
+        )
+    return False
+
+
+def _feedback_ref(value: str) -> bool:
+    if _https_ref(value, {"github.com"}):
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return (
+            len(parts) >= 4
+            and parts[:2] == ["YannJY02", "AutoTranscribe"]
+            and parts[2] in {"issues", "pull"}
+            and parts[3].isdigit()
+        )
+    if _https_ref(value, {"linear.app"}):
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return any(part == "issue" and index + 1 < len(parts) and LINEAR_ISSUE.fullmatch(parts[index + 1])
+                   for index, part in enumerate(parts))
     return False
 
 
 def _reference_identifies(item: dict[str, Any], value: str) -> bool:
     parts = [part for part in urlsplit(value).path.split("/") if part]
     if item["source_type"] == "linear":
-        expected = item["linear_issue_id"] or item["source_id"]
+        expected = item["linear_issue_id"]
+        if expected is None:
+            return False
         return (
             (len(parts) >= 3 and parts[-2:] == ["issue", expected])
             or (len(parts) >= 4 and parts[-3:-1] == ["issue", expected])
         )
     if item["source_type"] == "github":
-        expected = str(item["github_issue_or_pr_id"] or "").split("-")[-1].lstrip("#")
+        linked = str(item["github_issue_or_pr_id"] or "")
+        expected = linked.split("-")[-1].lstrip("#")
+        expected_kind = "pull" if linked.startswith("PR-") else "issues"
         return (
             len(parts) >= 4
             and parts[-4:-2] == ["YannJY02", "AutoTranscribe"]
-            and parts[-2] in {"issues", "pull"}
+            and parts[-2] == expected_kind
             and parts[-1] == expected
         )
     if item["source_type"] == "ci":
@@ -474,7 +499,9 @@ class EvidenceLedger:
         if source_type == "linear":
             source_ref = f"https://linear.app/yannjy/issue/{source_id}"
         elif source_type == "github":
-            source_ref = f"https://github.com/YannJY02/AutoTranscribe/issues/{source_id.split('-')[-1]}"
+            linked = github_issue_or_pr_id or source_id
+            kind = "pull" if linked.startswith("PR-") else "issues"
+            source_ref = f"https://github.com/YannJY02/AutoTranscribe/{kind}/{linked.split('-')[-1].lstrip('#')}"
         elif source_type == "ci":
             source_ref = f"https://github.com/YannJY02/AutoTranscribe/actions/runs/{source_id.split('-')[-1]}"
         else:
@@ -691,7 +718,7 @@ class EvidenceLedger:
             raise ValidationError("feedback invariant and event class must be bounded metadata")
         if len(evidence_refs) != len(run_ids) or not evidence_refs:
             raise ValidationError("feedback evidence and run IDs must be paired")
-        if any(not (_https_ref(ref, {"github.com", "linear.app"}) or _is_repo_ref(ref)) for ref in evidence_refs):
+        if any(not (_feedback_ref(ref) or _is_repo_ref(ref)) for ref in evidence_refs):
             raise ValidationError("feedback evidence must use inspectable approved references")
         repository_root = Path(__file__).resolve().parent.parent
         for ref in evidence_refs:
