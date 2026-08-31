@@ -1,0 +1,12 @@
+{
+  "rubric_version": "smart-minutes-rubric-v1",
+  "policy": "Scores are diagnostic. No numeric semantic or latency threshold is accepted as a production gate.",
+  "metrics": [
+    {"id": "completeness", "kind": "diagnostic", "description": "Required Smart Minutes modules are populated when source evidence supports them."},
+    {"id": "source_evidence_linkage", "kind": "deterministic_gate", "description": "Every generated evidence span overlaps a source transcript segment."},
+    {"id": "decision_action_fidelity", "kind": "diagnostic", "description": "Decisions and actions preserve source meaning, owner, and due-date claims."},
+    {"id": "hallucination", "kind": "diagnostic", "description": "Output avoids unsupported or explicitly forbidden claims."},
+    {"id": "latency", "kind": "diagnostic", "unit": "milliseconds", "description": "Wall-clock generation latency; no accepted threshold."},
+    {"id": "failure_behavior", "kind": "deterministic_gate", "description": "Bounded failure cases return review-marked fallback output or an explicit named error."}
+  ]
+}
