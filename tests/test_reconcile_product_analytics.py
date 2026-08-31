@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from scripts.reconcile_product_analytics import reconcile
 
 
@@ -46,3 +48,9 @@ def test_reconciliation_rejects_missing_contract_and_adapts_sql_rows():
         "analysis_mode": "local", "remote_count": 2,
     }]
     assert reconcile(manifest(), rows)["evidence_state"] == "complete"
+
+
+def test_reconciliation_reports_an_expired_local_retention_epoch():
+    local = manifest(retention_expires_at="2026-01-31T00:00:00Z")
+    result = reconcile(local, remote(), now=datetime(2026, 1, 31, tzinfo=timezone.utc))
+    assert result["evidence_state"] == "retention-window-expired"

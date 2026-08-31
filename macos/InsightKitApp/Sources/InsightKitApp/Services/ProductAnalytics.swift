@@ -33,23 +33,27 @@ private final class InMemoryUserDefaults: UserDefaults {
 
 final class ProductAnalyticsEvidenceLedger {
     private let url: URL
+    private let retentionDays: Int
     private let queue = DispatchQueue(label: "com.yannjy.insightkit.product-analytics-ledger", qos: .utility)
     private var counts: [String: Int] = [:]
     private var environment: String?
     private var windowStart: String?
     private var windowEnd: String?
+    private var retentionExpiresAt: String?
     private var offlinePending = 0
     private var optedOut = false
     private var deletionPending = false
 
-    init(url: URL) {
+    init(url: URL, retentionDays: Int = 30) {
         self.url = url
+        self.retentionDays = retentionDays
         if let data = try? Data(contentsOf: url),
            let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             counts = saved["event_counts"] as? [String: Int] ?? [:]
             environment = saved["environment"] as? String
             windowStart = saved["window_start"] as? String
             windowEnd = saved["window_end"] as? String
+            retentionExpiresAt = saved["retention_expires_at"] as? String
             offlinePending = saved["offline_pending"] as? Int ?? 0
             optedOut = saved["opted_out"] as? Bool ?? false
             deletionPending = saved["deletion_pending"] as? Bool ?? false
@@ -61,25 +65,28 @@ final class ProductAnalyticsEvidenceLedger {
             guard let object = try? JSONSerialization.jsonObject(with: envelope) as? [String: Any],
                   let name = object["event_name"] as? String,
                   let environment = object["environment"] as? String,
-                  let timestamp = object["timestamp_utc"] as? String
+                  let timestamp = object["timestamp_utc"] as? String,
+                  let timestampDate = ISO8601DateFormatter().date(from: timestamp)
             else { return }
             let properties = object["properties"] as? [String: Any] ?? [:]
             let key = [name, properties["workflow"] as? String ?? "none", properties["analysis_mode"] as? String ?? "none"].joined(separator: "|")
-            if self.optedOut {
-                self.counts.removeAll()
-                self.windowStart = nil
-                self.windowEnd = nil
-                self.offlinePending = 0
-                self.deletionPending = false
+            let formatter = ISO8601DateFormatter()
+            let expiry = self.retentionExpiresAt.flatMap(formatter.date(from:))
+                ?? self.windowStart.flatMap(formatter.date(from:)).map {
+                    $0.addingTimeInterval(Double(self.retentionDays) * 86_400)
+                }
+            if self.optedOut || self.environment.map({ $0 != environment }) == true
+                || expiry.map({ timestampDate >= $0 }) == true {
+                self.resetWindow()
             }
             self.counts[key, default: 0] += 1
             self.offlinePending += 1
             self.environment = environment
             self.windowStart = min(self.windowStart ?? timestamp, timestamp)
-            if let date = ISO8601DateFormatter().date(from: timestamp) {
-                let end = ISO8601DateFormatter().string(from: date.addingTimeInterval(1))
-                self.windowEnd = max(self.windowEnd ?? end, end)
-            }
+            let end = formatter.string(from: timestampDate.addingTimeInterval(1))
+            self.windowEnd = max(self.windowEnd ?? end, end)
+            self.retentionExpiresAt = self.retentionExpiresAt
+                ?? formatter.string(from: timestampDate.addingTimeInterval(Double(self.retentionDays) * 86_400))
             self.optedOut = false
             self.persist()
         }
@@ -101,12 +108,22 @@ final class ProductAnalyticsEvidenceLedger {
         }
     }
 
+    private func resetWindow() {
+        counts.removeAll()
+        windowStart = nil
+        windowEnd = nil
+        retentionExpiresAt = nil
+        offlinePending = 0
+        deletionPending = false
+    }
+
     private func persist() {
         guard let environment, let windowStart, let windowEnd else { return }
         let manifest: [String: Any] = [
             "schema_version": 1, "environment": environment, "window_start": windowStart,
             "window_end": windowEnd, "event_counts": counts, "offline_pending": offlinePending,
             "opted_out": optedOut, "deletion_pending": deletionPending,
+            "retention_expires_at": retentionExpiresAt ?? "",
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -160,18 +177,10 @@ final class PostHogProductAnalyticsTransport: ProductAnalyticsTransport {
 
     func send(envelopes: [Data], completion: @escaping (Bool) -> Void) {
         do {
-            let events = try envelopes.map { data -> [String: Any] in
-                let envelope = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-                var properties = envelope["properties"] as? [String: Any] ?? [:]
-                for key in ["schema_version", "app_version", "app_build", "environment", "consent_version", "installation_id", "app_session_id", "event_sequence"] { properties[key] = envelope[key] }
-                properties["distinct_id"] = envelope["installation_id"]
-                properties["$process_person_profile"] = false
-                return ["event": envelope["event_name"] as Any, "properties": properties, "timestamp": envelope["timestamp_utc"] as Any]
-            }
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["api_key": projectKey, "batch": events])
+            request.httpBody = try Self.makeBatch(envelopes: envelopes, projectKey: projectKey)
             var task: URLSessionDataTask!
             task = session.dataTask(with: request) { [weak self] _, response, _ in
                 self?.lock.lock(); self?.tasks.removeAll { $0 === task }; self?.lock.unlock()
@@ -180,6 +189,28 @@ final class PostHogProductAnalyticsTransport: ProductAnalyticsTransport {
             lock.lock(); tasks.append(task); lock.unlock()
             task.resume()
         } catch { DispatchQueue.global(qos: .utility).async { completion(false) } }
+    }
+
+    static func makeBatch(envelopes: [Data], projectKey: String) throws -> Data {
+        let events = try envelopes.map { data -> [String: Any] in
+            guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let name = envelope["event_name"] as? String,
+                  let timestamp = envelope["timestamp_utc"] as? String,
+                  let installationID = envelope["installation_id"] as? String,
+                  let appSessionID = envelope["app_session_id"] as? String,
+                  let eventSequence = envelope["event_sequence"] as? Int
+            else { throw CocoaError(.fileReadCorruptFile) }
+            var properties = envelope["properties"] as? [String: Any] ?? [:]
+            for key in ["schema_version", "app_version", "app_build", "environment", "consent_version", "installation_id", "app_session_id", "event_sequence"] {
+                properties[key] = envelope[key]
+            }
+            properties["distinct_id"] = installationID
+            properties["$insert_id"] = "\(appSessionID):\(eventSequence)"
+            properties["$geoip_disable"] = true
+            properties["$process_person_profile"] = false
+            return ["event": name, "properties": properties, "timestamp": timestamp]
+        }
+        return try JSONSerialization.data(withJSONObject: ["api_key": projectKey, "batch": events])
     }
 
     func cancelAll() {
@@ -206,7 +237,7 @@ struct ProductAnalyticsPath: Equatable {
             .first.map(String.init)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
-        if vendor == "local-extractive" || vendor == "stored" || vendor.isEmpty {
+        if vendor == "local" || vendor == "local-extractive" || vendor == "stored" || vendor.isEmpty {
             self = vendor.isEmpty ? .unavailable : .local
         } else {
             self.init(analysisMode: "cloud", providerClass: "byok")
@@ -408,7 +439,10 @@ final class ProductAnalytics {
         let transport = isUITest ? nil : postHog.flatMap {
             PostHogProductAnalyticsTransport(host: $0.host, projectKey: $0.projectKey)
         }
-        let ledger = ProductAnalyticsEvidenceLedger(url: storage.appendingPathComponent("local-evidence-ledger-v1.json"))
+        let ledger = ProductAnalyticsEvidenceLedger(
+            url: storage.appendingPathComponent("local-evidence-ledger-v1.json"),
+            retentionDays: configuration.retentionDays
+        )
         return ProductAnalytics(
             gate: gate,
             transport: transport,
@@ -468,11 +502,10 @@ final class ProductAnalytics {
         guard Self.isAllowedProductEvent(name, properties: properties) else { return .rejected }
         stateLock.lock()
         guard acceptingEvents else { stateLock.unlock(); return .disabled }
-        let outcome = gate.record(event: .init(name: name, properties: properties))
-        let result = outcome.result
-        if let envelope = outcome.debugEnvelope {
-            ledger?.record(envelope)
+        let outcome = gate.record(event: .init(name: name, properties: properties)) { [weak self] envelope in
+            self?.ledger?.record(envelope)
         }
+        let result = outcome.result
         stateLock.unlock()
         if result == .accepted { flush() }
         return result

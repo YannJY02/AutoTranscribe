@@ -27,6 +27,35 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         func complete(_ success: Bool) { completion?(success) }
     }
 
+    func testPostHogBatchDisablesGeoIPAndUsesStableRetryDeduplication() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let envelope = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
+
+        let first = try PostHogProductAnalyticsTransport.makeBatch(
+            envelopes: [envelope], projectKey: "phc_test"
+        )
+        let second = try PostHogProductAnalyticsTransport.makeBatch(
+            envelopes: [envelope], projectKey: "phc_test"
+        )
+        let firstObject = try XCTUnwrap(JSONSerialization.jsonObject(with: first) as? [String: Any])
+        let secondObject = try XCTUnwrap(JSONSerialization.jsonObject(with: second) as? [String: Any])
+        let firstProperties = try XCTUnwrap(
+            (firstObject["batch"] as? [[String: Any]])?.first?["properties"] as? [String: Any]
+        )
+        let secondProperties = try XCTUnwrap(
+            (secondObject["batch"] as? [[String: Any]])?.first?["properties"] as? [String: Any]
+        )
+
+        XCTAssertEqual(firstProperties["$geoip_disable"] as? Bool, true)
+        XCTAssertEqual(firstProperties["$process_person_profile"] as? Bool, false)
+        XCTAssertEqual(firstProperties["$insert_id"] as? String, secondProperties["$insert_id"] as? String)
+        XCTAssertEqual(
+            firstProperties["$insert_id"] as? String,
+            "\(try XCTUnwrap(firstProperties["app_session_id"] as? String)):1"
+        )
+    }
+
     func testProductAnalyticsAllowsOnlyOneBatchInFlightAndCancelsBeforeOptOutPurge() throws {
         let gate = makeGate()
         try gate.setConsent(enabled: true, consentVersion: 1)
@@ -245,6 +274,101 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertNil(counts["workflow_started|live|local"])
         XCTAssertEqual(counts["record_saved|import|cloud"], 1)
         XCTAssertEqual(manifest["opted_out"] as? Bool, false)
+    }
+
+    func testLedgerRotatesBeforeRemoteRetentionCanDropItsCounts() throws {
+        var now = Date(timeIntervalSince1970: 1_788_000_000)
+        let gate = makeGate(now: { now }, maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("retention-ledger.json")
+        let analytics = ProductAnalytics(
+            gate: gate,
+            ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL, retentionDays: 1)
+        )
+        XCTAssertEqual(
+            analytics.emit("workflow_started", properties: [
+                "workflow": "live", "analysis_mode": "local",
+            ]),
+            .accepted
+        )
+        now.addTimeInterval(86_400)
+        XCTAssertEqual(
+            analytics.emit("record_saved", properties: [
+                "workflow": "import", "analysis_mode": "cloud",
+            ]),
+            .accepted
+        )
+
+        let deadline = Date().addingTimeInterval(2)
+        var manifest: [String: Any] = [:]
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: ledgerURL),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               (value["event_counts"] as? [String: Int])?["record_saved|import|cloud"] == 1 {
+                manifest = value
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        let counts = try XCTUnwrap(manifest["event_counts"] as? [String: Int])
+        XCTAssertNil(counts["workflow_started|live|local"])
+        XCTAssertEqual(counts["record_saved|import|cloud"], 1)
+        XCTAssertNotNil(manifest["retention_expires_at"])
+    }
+
+    func testLedgerResetsWhenTelemetryEnvironmentChanges() throws {
+        let ledgerURL = root.appendingPathComponent("environment-ledger.json")
+        let ledger = ProductAnalyticsEvidenceLedger(url: ledgerURL)
+        let development = makeGate(storageDirectory: root.appendingPathComponent("development"))
+        try development.setConsent(enabled: true, consentVersion: 1)
+        ledger.record(try XCTUnwrap(development.record(event: .init(
+            name: "workflow_started",
+            properties: ["workflow": "live", "analysis_mode": "local"]
+        )).debugEnvelope))
+        let ownerPilot = makeGate(
+            environment: .ownerPilot,
+            storageDirectory: root.appendingPathComponent("owner-pilot")
+        )
+        ledger.record(try XCTUnwrap(ownerPilot.record(event: .init(
+            name: "record_saved",
+            properties: ["workflow": "import", "analysis_mode": "cloud"]
+        )).debugEnvelope))
+
+        let deadline = Date().addingTimeInterval(2)
+        var manifest: [String: Any] = [:]
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: ledgerURL),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               value["environment"] as? String == "owner-pilot" {
+                manifest = value
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        let counts = try XCTUnwrap(manifest["event_counts"] as? [String: Int])
+        XCTAssertNil(counts["workflow_started|live|local"])
+        XCTAssertEqual(counts["record_saved|import|cloud"], 1)
+    }
+
+    func testEvidenceLedgerIgnoresEventsThatNeverBecomeDurable() throws {
+        let gate = makeGate(writeData: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let ledgerURL = root.appendingPathComponent("non-durable-ledger.json")
+        let analytics = ProductAnalytics(
+            gate: gate,
+            ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL)
+        )
+
+        XCTAssertEqual(
+            analytics.emit("workflow_started", properties: ["workflow": "live"]),
+            .accepted
+        )
+        XCTAssertEqual(try gate.queuedEnvelopes(), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ledgerURL.path))
+    }
+
+    func testProviderPathTreatsLocalProviderAsLocal() {
+        XCTAssertEqual(ProductAnalyticsPath(provider: "local"), .local)
     }
 
     func testProductAnalyticsFlushesAcceptedEnvelopeAndAcknowledgesIt() throws {

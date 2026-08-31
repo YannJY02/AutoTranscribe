@@ -2,8 +2,7 @@
 WITH event_source AS (
   SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
     toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
-    properties.environment AS environment, properties.installation_id AS installation_id,
-    toInt(properties.duration_bucket_ms) AS duration_bucket_ms
+    properties.environment AS environment, properties.installation_id AS installation_id
   FROM events
   WHERE properties.environment = {variables.environment}
     AND timestamp < toDateTime({variables.window_end})
@@ -21,19 +20,18 @@ WITH event_source AS (
 ), installs AS (
   SELECT s.installation_id,s.first_start,
     minOrNullIf(e.timestamp_utc,e.event_name='workflow_completed' AND (e.timestamp_utc>s.first_start
-      OR (e.timestamp_utc=s.first_start AND e.event_sequence>s.first_start_sequence))) AS first_success,
-    tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence),
-      e.event_name='workflow_completed' AND (e.timestamp_utc>s.first_start
-        OR (e.timestamp_utc=s.first_start AND e.event_sequence>s.first_start_sequence))),1) AS first_success_duration_bucket
+      OR (e.timestamp_utc=s.first_start AND e.event_sequence>s.first_start_sequence))) AS first_success
   FROM cohort_starts s LEFT JOIN eligible e ON e.installation_id=s.installation_id
   GROUP BY s.installation_id,s.first_start,s.first_start_sequence
+), timed AS (
+  SELECT *,dateDiff('millisecond',first_start,first_success) AS first_success_latency_ms FROM installs
 )
 SELECT countIf(first_start IS NOT NULL) AS started_installations,
   countIf(first_start IS NOT NULL AND first_success >= first_start) AS activated_installations,
   if(started_installations=0,NULL,activated_installations/started_installations) AS activation_rate,
   if(started_installations=0,'insufficient-data','requires-reconciliation') AS evidence_state,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_duration_bucket<=60000)) AS success_under_1m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_duration_bucket>60000 AND first_success_duration_bucket<=300000)) AS success_1_to_5m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_duration_bucket>300000 AND first_success_duration_bucket<=1800000)) AS success_5_to_30m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_duration_bucket>1800000)) AS success_30m_plus
-FROM installs;
+  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms<=60000)) AS success_under_1m,
+  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>60000 AND first_success_latency_ms<=300000)) AS success_1_to_5m,
+  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>300000 AND first_success_latency_ms<=1800000)) AS success_5_to_30m,
+  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>1800000)) AS success_30m_plus
+FROM timed;

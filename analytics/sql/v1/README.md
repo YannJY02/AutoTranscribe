@@ -9,7 +9,7 @@ These repository-owned queries answer the PM questions accepted in issue #53. Th
 | `funnel.sql` | ordered start → save → review → export events, paired by each start sequence within an app session | prioritize actionable drop-off |
 | `recovery.sql` | actionable failures followed by recovery in the same sequential workflow or reopened-record context | improve prevention, guidance, or retry |
 | `latency_guardrails.sql` | success and measured provider-analysis latency-bucket distribution by release/provider/mode | investigate path regressions |
-| `retention.sql` | later successful workflows at 7 and 28 days | future diagnostic; reports insufficient window/data honestly |
+| `retention.sql` | later successful workflows at days 7–13 and day 28 | future diagnostic; D28 stays inside the 30-day raw-retention boundary |
 | `data_quality.sql` | unknown schema/event/enum, missing terminal dimensions, and excess-completion diagnostics | reject incomplete or ambiguous evidence |
 | `reconciliation.sql` | remote aggregate event counts for comparison with the local evidence manifest | prove ingestion readback without uploading private attempt IDs |
 
@@ -19,6 +19,6 @@ The root `*.sql` files execute against the normalized relation `events(event_nam
 
 `duration_bucket_ms` measures the full accepted workflow. `latency_bucket_ms` measures the provider/build analysis call only; queries exclude missing latency rather than substituting total meeting or user-wait time. Multiple sequential attempts in one app session are valid and are paired with window functions instead of being treated as duplicate data.
 
-Run `scripts/reconcile_product_analytics.py` against the local aggregate manifest and saved remote readback. Its versioned output preserves `partial-ingestion`, `opt-out`, `deletion-pending`, `late-offline-delivery`, and `query-failure` instead of manufacturing a complete metric.
+Run `scripts/reconcile_product_analytics.py` against the local aggregate manifest and saved remote readback. Its versioned output preserves `partial-ingestion`, `opt-out`, `deletion-pending`, `late-offline-delivery`, `retention-window-expired`, and `query-failure` instead of manufacturing a complete metric. D28 must be read while the first success is still inside the 30-day raw-event window; older cohorts remain insufficient rather than being re-cohorted.
 
 PostHog must be configured with autocapture, screen/lifecycle capture, person profiles/identify, surveys, replay, and tracing headers disabled. Remote ingestion, saved-query IDs, retention/deletion readback, and dashboard links remain owner-controlled verification when credentials are available.

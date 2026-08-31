@@ -17,10 +17,10 @@ WITH event_source AS (
   SELECT c.installation_id,c.cohort_day,
     dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14
       AND dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_start}), 'UTC')))<=7 observable_7d_flag,
-    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=35
+    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=29
       AND dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_start}), 'UTC')))<=28 observable_28d_flag,
     countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 7 AND 13)>0 retained_7d_flag,
-    countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 28 AND 34)>0 retained_28d_flag
+    countIf(dateDiff('day',c.cohort_day,s.day)=28)>0 retained_28d_flag
   FROM cohorts c LEFT JOIN observed_successes s ON s.installation_id=c.installation_id
   GROUP BY c.installation_id,c.cohort_day
 )

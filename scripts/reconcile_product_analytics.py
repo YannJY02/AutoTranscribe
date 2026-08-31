@@ -3,6 +3,7 @@
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -22,8 +23,14 @@ def normalize_remote(remote):
     return {**{key: first.get(key) for key in CONTRACT_KEYS}, "event_counts": counts}
 
 
-def reconcile(local: dict, remote: dict) -> dict:
+def reconcile(local: dict, remote: dict, now: datetime | None = None) -> dict:
     remote = normalize_remote(remote)
+    now = now or datetime.now(timezone.utc)
+    expiry = local.get("retention_expires_at")
+    try:
+        retention_expired = bool(expiry) and now >= datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        retention_expired = bool(expiry)
     contract_matches = all(
         key in local and local.get(key) is not None and key in remote and remote.get(key) is not None
         and remote[key] == local[key]
@@ -33,6 +40,8 @@ def reconcile(local: dict, remote: dict) -> dict:
         state = "query-failure"
     elif not contract_matches:
         state = "readback-contract-mismatch"
+    elif retention_expired:
+        state = "retention-window-expired"
     elif local.get("opted_out"):
         state = "opt-out"
     elif local.get("deletion_pending"):
@@ -48,6 +57,7 @@ def reconcile(local: dict, remote: dict) -> dict:
         "environment": local.get("environment"),
         "window_start": local.get("window_start"),
         "window_end": local.get("window_end"),
+        "retention_expires_at": expiry,
         "evidence_state": state,
         "local_event_counts": local.get("event_counts", {}),
         "remote_event_counts": remote.get("event_counts", {}),

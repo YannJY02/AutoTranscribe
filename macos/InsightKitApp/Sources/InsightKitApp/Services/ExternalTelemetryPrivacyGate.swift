@@ -670,7 +670,7 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
-    func record(event: Event) -> RecordOutcome {
+    func record(event: Event, onPersisted: ((Data) -> Void)? = nil) -> RecordOutcome {
         let initialObservation = observeConsent(.recordInitial)
         let observedConsent = initialObservation.consent
         let invalidConsent = initialObservation.isInvalid
@@ -791,6 +791,7 @@ final class ExternalTelemetryPrivacyGate {
                 }
                 queue.append(envelope)
                 try persist(queue)
+                onPersisted?(debugEnvelope)
             } catch {
                 mutateDiagnostics { $0.serializationFailed += 1 }
             }

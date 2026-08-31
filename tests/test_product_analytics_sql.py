@@ -103,7 +103,7 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     assert "timestamp_utc >= toDateTime({variables.window_start})" in retention
     assert "observable_7d_flag" in retention
     assert "observable_28d_flag" in retention
-    assert "tupleElement(argMinIf(tuple(e.duration_bucket_ms),tuple(e.timestamp_utc,e.event_sequence)" in (
+    assert "dateDiff('millisecond',first_start,first_success)" in (
         POSTHOG_SQL_ROOT / "activation.hogql"
     ).read_text()
     assert "if(actionable_failures=0,NULL,countIf(is_recovered))" in (
@@ -154,10 +154,11 @@ def test_activation_ignores_completion_before_first_start():
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
     assert result["started_installations"] == 3
     assert result["activated_installations"] == 2
-    assert result["success_1_to_5m"] == 2
+    assert result["success_1_to_5m"] == 1
+    assert result["success_30m_plus"] == 1
 
 
-def test_activation_keeps_null_bucket_from_the_earliest_completion():
+def test_activation_derives_latency_even_when_the_completion_bucket_is_null():
     connection = database()
     connection.executemany(
         "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
@@ -171,8 +172,25 @@ def test_activation_keeps_null_bucket_from_the_earliest_completion():
     cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
     assert result["activated_installations"] == 2
-    assert result["success_under_1m"] == 0
+    assert result["success_under_1m"] == 1
     assert result["success_1_to_5m"] == 1
+
+
+def test_activation_latency_starts_at_the_installations_first_attempt():
+    connection = database()
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
+        "VALUES(?,?,?,1,'development','retrying',?)",
+        [
+            ("workflow_started", "2026-01-03T00:00:00Z", 1, None),
+            ("workflow_failed", "2026-01-03T00:01:00Z", 2, None),
+            ("workflow_started", "2026-01-03T01:00:00Z", 3, None),
+            ("workflow_completed", "2026-01-03T01:01:00Z", 4, 60_000),
+        ],
+    )
+    cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["success_30m_plus"] == 1
 
 
 def test_activation_excludes_installations_started_before_the_window():
@@ -208,6 +226,24 @@ def test_retention_counts_only_cohorts_with_fully_observable_return_windows():
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
     assert result["mature_7d_cohort_installations"] == 2
     assert result["retained_7d"] == 1
+
+
+def test_d28_retention_is_observable_inside_the_thirty_day_raw_window():
+    connection = database()
+    connection.execute("DELETE FROM events")
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
+        "VALUES('workflow_completed',?,1,'development','d28')",
+        [("2026-01-01T00:00:00Z",), ("2026-01-29T00:00:00Z",)],
+    )
+    cursor = connection.execute((SQL_ROOT / "retention.sql").read_text(), {
+        **PARAMS,
+        "window_start": "2026-01-01T00:00:00Z",
+        "window_end": "2026-01-30T00:00:00Z",
+    })
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["mature_28d_cohort_installations"] == 1
+    assert result["retained_28d"] == 1
 
 
 def test_recovery_does_not_cross_analysis_mode_or_window_end():
