@@ -39,9 +39,6 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var analyticsContextsByJobID: [String: ProductAnalyticsAttemptContext] = [:]
     private var analyticsTerminalJobIDs: Set<String> = []
     private var currentAnalyticsContext: ProductAnalyticsAttemptContext?
-    private var watcherAnalyticsPath: ProductAnalyticsPath = .unavailable
-    private var watcherAnalyticsStartedAt: Date?
-    private var retireWatcherAnalyticsAfterRefresh = false
     private var pollFailureStreak = 0
     private var pollIntervalSec: UInt64 = 2
     private var sidecarReadyInSession = false
@@ -165,14 +162,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
-                let analyticsPath = self.refreshProviderStateNonBlocking()
-                let analyticsStartedAt = Date()
+                _ = self.refreshProviderStateNonBlocking()
                 _ = try self.rpcClient.transcriptionWatchStart(dirs: dirs)
-                DispatchQueue.main.async {
-                    self.watcherAnalyticsPath = analyticsPath
-                    self.watcherAnalyticsStartedAt = analyticsStartedAt
-                    self.retireWatcherAnalyticsAfterRefresh = false
-                }
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
                 DispatchQueue.main.async {
@@ -195,7 +186,6 @@ final class TranscriptionSessionViewModel: ObservableObject {
             do {
                 try self.ensureSidecarReady()
                 _ = try self.rpcClient.transcriptionWatchStop()
-                DispatchQueue.main.async { self.retireWatcherAnalyticsAfterRefresh = true }
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
                 DispatchQueue.main.async {
@@ -754,17 +744,6 @@ final class TranscriptionSessionViewModel: ObservableObject {
         if let completed = status.lastCompleted?.job, !observedJobs.contains(where: { $0.id == completed.id }) {
             observedJobs.append(completed)
         }
-        for job in observedJobs where job.state == .running && analyticsContextsByJobID[job.id] == nil {
-            let isCurrentWatcherJob = watcherAnalyticsStartedAt.map { watcherStartedAt in
-                job.startedAt.map { $0 >= watcherStartedAt } ?? false
-            } ?? false
-            if isCurrentWatcherJob {
-                let context = ProductAnalyticsAttemptContext(workflow: "import")
-                analyticsContextsByJobID[job.id] = context
-                let provisionalPath = watcherAnalyticsPath
-                analyticsSubmit { $0.beginWorkflow(context, provisionalPath: provisionalPath) }
-            }
-        }
         for job in observedJobs where !analyticsTerminalJobIDs.contains(job.id) {
             guard let context = analyticsContextsByJobID[job.id] else { continue }
             switch job.state {
@@ -847,10 +826,6 @@ final class TranscriptionSessionViewModel: ObservableObject {
         }
 
         let hasActiveWork = watcherState.isRunning || jobs.contains(where: { $0.state == .running || $0.state == .queued })
-        if retireWatcherAnalyticsAfterRefresh, !watcherState.isRunning {
-            watcherAnalyticsStartedAt = nil
-            retireWatcherAnalyticsAfterRefresh = false
-        }
         return hasActiveWork
     }
 

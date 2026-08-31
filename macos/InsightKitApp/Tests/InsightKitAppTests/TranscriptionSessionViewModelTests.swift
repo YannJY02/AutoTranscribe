@@ -3,7 +3,7 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
-    func testWatcherBeginsAnalyticsOnlyWhenAQueuedJobStartsRunning() {
+    func testWatcherBatchDoesNotEmitEligibleImportAnalytics() {
         let rpc = RPCClientMock()
         let startedAt = Date().addingTimeInterval(1)
         let running = TranscriptionJob(
@@ -49,7 +49,7 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         lock.lock()
         let count = analyticsSubmissions
         lock.unlock()
-        XCTAssertEqual(count, 1)
+        XCTAssertEqual(count, 0)
     }
 
     func testWatcherSkipsRestoredJobsWithUnknownStartTime() {

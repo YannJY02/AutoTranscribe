@@ -15,6 +15,8 @@ These repository-owned queries answer the PM questions accepted in issue #53. Th
 
 The root `*.sql` files execute against the normalized relation `events(event_name, timestamp_utc, event_sequence, schema_version, environment, app_version, app_build, installation_id, app_session_id, workflow, analysis_mode, provider_class, phase, outcome, error_code, recovery_action, duration_bucket_ms, latency_bucket_ms, retry_count, result_count, module_count)`. The matching `posthog/*.hogql` files are the dashboard-ready forms: each maps PostHog's native `event`, `timestamp`, and `properties.*` fields into that relation and uses the saved SQL variables `environment`, `window_start`, and `window_end`. Dashboard views must save the matching HogQL file without changing its formula.
 
+Automatic watcher admissions are not v1 eligible Import attempts: they are not explicit Import actions and a batch can overlap within one app session. Adding watcher analytics requires the new privacy/correlation decision reserved by YAN-42.
+
 `event_sequence` preserves order within the short-lived app session. Queries derive sequential workflow groups from accepted `workflow_started` events and fail closed when attempts overlap. No workflow, Meeting, record, job, or attempt identifier/ordinal is uploaded; supporting concurrent attempts requires a new privacy decision.
 
 `duration_bucket_ms` measures the full accepted workflow. `latency_bucket_ms` measures the provider/build analysis call only; queries exclude missing latency rather than substituting total meeting or user-wait time. Multiple sequential attempts in one app session are valid and are paired with window functions instead of being treated as duplicate data.
