@@ -79,16 +79,17 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
         assert "EXISTS(" not in query
 
         for field in {
-            "event_sequence", "schema_version", "attempt_sequence", "duration_bucket_ms",
+            "event_sequence", "schema_version", "duration_bucket_ms",
             "latency_bucket_ms", "retry_count", "result_count", "module_count",
         }:
             if f"properties.{field}" in query:
                 assert f"toInt(properties.{field}) AS {field}" in query
         if "properties.quality_score" in query:
             assert "toFloat(properties.quality_score) AS quality_score" in query
+        assert "properties.attempt_sequence" not in query
 
     assert "minOrNullIf" in (POSTHOG_SQL_ROOT / "funnel.hogql").read_text()
-    assert "HAVING countIf(event_name='workflow_started')>0 AND" in (
+    assert "overlapping_attempts" in (
         POSTHOG_SQL_ROOT / "data_quality.hogql"
     ).read_text()
     assert "if(started_installations=0,NULL,countIf(first_success" in (
@@ -356,7 +357,7 @@ def test_terminal_actual_path_owns_attempt_segment_after_local_fallback():
     assert (live_cloud["eligible_attempts"], live_cloud["successful_attempts"]) == (0, 0)
 
 
-def test_attempt_sequence_separates_overlapping_jobs_and_failure_path_owns_segment():
+def test_overlapping_attempts_fail_closed_without_remote_attempt_correlation():
     connection = database()
     connection.execute(
         "UPDATE events SET analysis_mode='cloud',provider_class='byok' WHERE app_session_id='s1'"
@@ -371,9 +372,11 @@ def test_attempt_sequence_separates_overlapping_jobs_and_failure_path_owns_segme
             ("workflow_failed", "2026-01-01T00:04:00Z", 7, "local", "local", "failed", "unknown"),
         ],
     )
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["overlapping_attempts"] == 1
+    assert quality_result["evidence_state"] == "incomplete"
+
     cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
     rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
-    live_local = next(row for row in rows if row["workflow"] == "live" and row["analysis_mode"] == "local")
-    live_cloud = next(row for row in rows if row["workflow"] == "live" and row["analysis_mode"] == "cloud")
-    assert (live_local["eligible_attempts"], live_local["successful_attempts"]) == (1, 0)
-    assert (live_cloud["eligible_attempts"], live_cloud["successful_attempts"]) == (1, 1)
+    assert all(row["evidence_state"] == "incomplete" for row in rows)

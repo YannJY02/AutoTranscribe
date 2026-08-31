@@ -4,7 +4,7 @@ WITH event_source AS (
     toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
     properties.environment AS environment, properties.installation_id AS installation_id,
     properties.app_session_id AS app_session_id, properties.workflow AS workflow,
-    toInt(properties.attempt_sequence) AS attempt_sequence, properties.analysis_mode AS analysis_mode
+    properties.analysis_mode AS analysis_mode
   FROM events
   WHERE properties.environment = {variables.environment}
     AND timestamp >= toDateTime({variables.window_start})
@@ -14,32 +14,47 @@ WITH event_source AS (
   SELECT 'live','cloud' UNION ALL SELECT 'import','local' UNION ALL SELECT 'import','cloud'
 ), eligible AS (
   SELECT * FROM event_source WHERE schema_version=1
-), started_attempts AS (
-  SELECT DISTINCT app_session_id,workflow,attempt_sequence FROM eligible
-  WHERE event_name='workflow_started' AND attempt_sequence>0
+), ordered AS (
+  SELECT e.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) attempt_index,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_starts,
+    sum(if(event_name IN ('workflow_completed','workflow_failed'),1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_terminals
+  FROM eligible e
 ), ranked AS (
-  SELECT e.*,ROW_NUMBER() OVER (
-    PARTITION BY app_session_id,workflow,attempt_sequence ORDER BY
+  SELECT o.*,ROW_NUMBER() OVER (
+    PARTITION BY app_session_id,workflow,attempt_index ORDER BY
       multiIf(event_name='workflow_completed',0,event_name='workflow_failed',1,event_name='workflow_started',2,3),
       event_sequence DESC
-  ) path_rank FROM eligible e JOIN started_attempts USING(app_session_id,workflow,attempt_sequence)
+  ) path_rank FROM ordered o WHERE attempt_index>0
 ), attempts AS (
-  SELECT app_session_id,workflow,attempt_sequence,
+  SELECT app_session_id,workflow,attempt_index,
     maxIf(analysis_mode,path_rank=1) analysis_mode,
     countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
-  FROM ranked GROUP BY app_session_id,workflow,attempt_sequence
+  FROM ranked GROUP BY app_session_id,workflow,attempt_index
 ), counts AS (
   SELECT workflow,analysis_mode,SUM(starts) starts,SUM(completions) completions
   FROM attempts GROUP BY workflow,analysis_mode
 ), event_quality AS (
-  SELECT countIf(schema_version<>1) + countIf(event_sequence IS NULL OR event_sequence<=0) +
-    countIf(event_name IN ('workflow_started','workflow_completed') AND (attempt_sequence IS NULL OR attempt_sequence<=0)) +
-    countIf(event_name='workflow_completed' AND (attempt_sequence IS NULL OR attempt_sequence<=0)) AS event_issues
+  SELECT countIf(schema_version<>1) + countIf(event_sequence IS NULL OR event_sequence<=0) AS event_issues
   FROM event_source
 ), attempt_quality AS (
-  SELECT countIf(starts<>1 OR completions>1) AS attempt_issues FROM attempts
+  SELECT countIf(starts<>1 OR completions>1) AS grouped_issues FROM attempts
+), order_quality AS (
+  SELECT countIf(event_name='workflow_completed' AND attempt_index=0) +
+    countIf(event_name='workflow_started' AND prior_starts>prior_terminals) AS ordering_issues
+  FROM ordered
 ), quality AS (
-  SELECT event_issues+attempt_issues AS issues FROM event_quality CROSS JOIN attempt_quality
+  SELECT event_issues+grouped_issues+ordering_issues AS issues
+  FROM event_quality CROSS JOIN attempt_quality CROSS JOIN order_quality
 )
 SELECT s.workflow,s.analysis_mode,coalesce(c.starts,0) AS eligible_attempts,
   coalesce(c.completions,0) AS successful_attempts,

@@ -3,7 +3,7 @@ import Foundation
 extension LiveSessionViewModel {
     func updateWorkbench(_ result: InsightRefreshResult, analyticsLatencyMilliseconds: Int? = nil) {
         let package = result.package
-        ProductAnalytics.submit {
+        analyticsSubmit {
             $0.resolveWorkflow(
                 "live",
                 path: ProductAnalyticsPath(provider: result.provider),

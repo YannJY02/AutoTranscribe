@@ -3,9 +3,9 @@ WITH event_source AS (
   SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
     toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
     properties.environment AS environment, properties.app_session_id AS app_session_id,
-    properties.workflow AS workflow, toInt(properties.attempt_sequence) AS attempt_sequence,
-    properties.analysis_mode AS analysis_mode, properties.provider_class AS provider_class,
-    properties.phase AS phase, properties.outcome AS outcome, properties.error_code AS error_code,
+    properties.workflow AS workflow, properties.analysis_mode AS analysis_mode,
+    properties.provider_class AS provider_class, properties.phase AS phase,
+    properties.outcome AS outcome, properties.error_code AS error_code,
     properties.recovery_action AS recovery_action, toInt(properties.duration_bucket_ms) AS duration_bucket_ms,
     toInt(properties.latency_bucket_ms) AS latency_bucket_ms, toInt(properties.retry_count) AS retry_count,
     toInt(properties.result_count) AS result_count, toInt(properties.module_count) AS module_count,
@@ -16,10 +16,24 @@ WITH event_source AS (
     AND timestamp < toDateTime({variables.window_end})
 ), eligible AS (
   SELECT * FROM event_source WHERE schema_version=1
+), ordered AS (
+  SELECT e.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) attempt_index,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_starts,
+    sum(if(event_name IN ('workflow_completed','workflow_failed'),1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_terminals
+  FROM eligible e
 ), diagnostics AS (
   SELECT COUNT(*) event_count,countIf(schema_version<>1) unknown_schema,
     countIf(event_sequence IS NULL OR event_sequence<=0) missing_event_sequence,
-    countIf(event_name IN ('workflow_started','workflow_completed') AND (attempt_sequence IS NULL OR attempt_sequence<=0)) missing_attempt_sequence,
     countIf(event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed')) unknown_event,
     countIf(workflow IS NOT NULL AND workflow NOT IN ('live','import')) unknown_workflow,
     countIf(analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud')) unknown_analysis_mode,
@@ -34,23 +48,18 @@ WITH event_source AS (
     countIf(event_name IN ('workflow_completed','workflow_failed') AND provider_class IS NULL
       OR event_name='workflow_completed' AND latency_bucket_ms IS NULL) missing_terminal_dimensions
   FROM event_source
-), bad_attempt_groups AS (
-  SELECT app_session_id,workflow,attempt_sequence FROM eligible WHERE attempt_sequence>0
-  GROUP BY app_session_id,workflow,attempt_sequence
-  HAVING countIf(event_name='workflow_started')>0 AND
-    (countIf(event_name='workflow_started')<>1 OR countIf(event_name='workflow_completed')>1)
-), grouped_duplicates AS (
-  SELECT COUNT(*) grouped_duplicate_attempts FROM bad_attempt_groups
-), invalid_completions AS (
-  SELECT countIf(event_name='workflow_completed' AND (attempt_sequence IS NULL OR attempt_sequence<=0)) invalid_completion_attempts
-  FROM eligible
-), duplicates AS (
-  SELECT grouped_duplicate_attempts+invalid_completion_attempts duplicate_attempt_groups
-  FROM grouped_duplicates CROSS JOIN invalid_completions
+), attempts AS (
+  SELECT app_session_id,workflow,attempt_index,
+    countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
+  FROM ordered WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), quality AS (
+  SELECT
+    (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_attempts,
+    (SELECT countIf(starts<>1 OR completions>1) FROM attempts) +
+    (SELECT countIf(event_name='workflow_completed' AND attempt_index=0) FROM ordered) duplicate_attempt_groups
 )
 SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,missing_event_sequence) missing_event_sequence,
-  if(event_count=0,NULL,missing_attempt_sequence) missing_attempt_sequence,
   if(event_count=0,NULL,unknown_event) unknown_event,
   if(event_count=0,NULL,unknown_workflow) unknown_workflow,
   if(event_count=0,NULL,unknown_analysis_mode) unknown_analysis_mode,
@@ -63,9 +72,9 @@ SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,unknown_duration_bucket) unknown_duration_bucket,
   if(event_count=0,NULL,unknown_latency_bucket) unknown_latency_bucket,
   if(event_count=0,NULL,missing_terminal_dimensions) missing_terminal_dimensions,
-  duplicate_attempt_groups,
-  multiIf(event_count=0,'incomplete',unknown_schema+missing_event_sequence+missing_attempt_sequence+unknown_event+unknown_workflow+
+  overlapping_attempts,duplicate_attempt_groups,
+  multiIf(event_count=0,'incomplete',unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+
     unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+
     unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+
-    missing_terminal_dimensions+duplicate_attempt_groups=0,'complete','incomplete') evidence_state
-FROM diagnostics CROSS JOIN duplicates;
+    missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups=0,'complete','incomplete') evidence_state
+FROM diagnostics CROSS JOIN quality;

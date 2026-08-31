@@ -378,9 +378,7 @@ final class LiveSessionViewModel: ObservableObject {
         let source = rpcSource(for: selectedMode)
         let startupAt = Date()
         let selectedAnalysisMode = AppConfigStore.shared.config.analysis.mode
-        let provisionalAnalyticsPath = selectedAnalysisMode == .local
-            ? ProductAnalyticsPath.local
-            : ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+        let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(analysisMode: selectedAnalysisMode)
         analyticsSubmit { $0.beginWorkflow("live", provisionalPath: provisionalAnalyticsPath) }
 
         stateQueue.sync {

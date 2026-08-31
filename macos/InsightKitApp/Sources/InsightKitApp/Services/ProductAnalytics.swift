@@ -65,6 +65,13 @@ final class ProductAnalyticsEvidenceLedger {
             else { return }
             let properties = object["properties"] as? [String: Any] ?? [:]
             let key = [name, properties["workflow"] as? String ?? "none", properties["analysis_mode"] as? String ?? "none"].joined(separator: "|")
+            if self.optedOut {
+                self.counts.removeAll()
+                self.windowStart = nil
+                self.windowEnd = nil
+                self.offlinePending = 0
+                self.deletionPending = false
+            }
             self.counts[key, default: 0] += 1
             self.offlinePending += 1
             self.environment = environment
@@ -222,6 +229,12 @@ struct ProductAnalyticsPath: Equatable {
         else { return .unavailable }
         return ProductAnalyticsPath(provider: analysis["provider"] as? String)
     }
+
+    static func provisional(analysisMode: AnalysisMode) -> ProductAnalyticsPath {
+        analysisMode == .local
+            ? .local
+            : ProductAnalyticsPath(analysisMode: "cloud", providerClass: "byok")
+    }
 }
 
 struct ProductAnalyticsContext: Equatable {
@@ -308,15 +321,27 @@ final class ProductAnalytics {
         environment: TelemetryEnvironment
     ) -> (host: String, projectKey: String)? {
         let environmentKey = environment.rawValue.uppercased().replacingOccurrences(of: "-", with: "_")
-        func value(_ environmentKey: String, _ bundleKey: String) -> String? {
-            for raw in [process[environmentKey], bundleInfo[bundleKey] as? String] {
+        let bundleEnvironment = environment.rawValue
+            .split(separator: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined()
+        let bundlePrefix = "InsightKitPostHog\(bundleEnvironment)"
+        func value(_ processKey: String, _ bundleKey: String) -> String? {
+            for raw in [process[processKey], bundleInfo[bundleKey] as? String] {
                 let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !trimmed.isEmpty { return trimmed }
             }
             return nil
         }
-        guard let host = value("POSTHOG_\(environmentKey)_HOST", "InsightKitPostHogHost"),
-              let projectKey = value("POSTHOG_\(environmentKey)_PROJECT_KEY", "InsightKitPostHogProjectKey")
+        let retentionVerified: Bool = {
+            if let raw = process["POSTHOG_\(environmentKey)_RETENTION_VERIFIED"] {
+                return ["1", "true", "yes"].contains(raw.lowercased())
+            }
+            return bundleInfo["\(bundlePrefix)RetentionVerified"] as? Bool ?? false
+        }()
+        guard retentionVerified,
+              let host = value("POSTHOG_\(environmentKey)_HOST", "\(bundlePrefix)Host"),
+              let projectKey = value("POSTHOG_\(environmentKey)_PROJECT_KEY", "\(bundlePrefix)ProjectKey")
         else { return nil }
         return (host, projectKey)
     }
@@ -1039,7 +1064,6 @@ final class ProductAnalytics {
             "phase": phase,
         ]
         if let outcome { values["outcome"] = outcome }
-        if let attemptSequence { values["attempt_sequence"] = attemptSequence }
         return values
     }
 
@@ -1051,7 +1075,6 @@ final class ProductAnalytics {
     ) -> [String: Any] {
         let elapsedMS = max(0, Int(now().timeIntervalSince(context.startedAt) * 1_000))
         var values = properties(workflow: workflow, path: context.path, phase: phase, outcome: outcome)
-        values["attempt_sequence"] = context.sequence
         values["duration_bucket_ms"] = Self.bucket(elapsedMS, allowed: [1_000, 5_000, 15_000, 30_000, 60_000, 300_000, 900_000, 1_800_000, 3_600_000])
         if let analysisLatencyMS = context.analysisLatencyMS {
             values["latency_bucket_ms"] = Self.bucket(analysisLatencyMS, allowed: [100, 250, 500, 1_000, 5_000, 15_000, 30_000, 60_000, 300_000])
@@ -1076,7 +1099,7 @@ final class ProductAnalytics {
     private static let workflowProperties: Set<String> = [
         "workflow", "analysis_mode", "provider_class", "phase", "outcome",
         "error_code", "recovery_action", "duration_bucket_ms", "latency_bucket_ms",
-        "attempt_sequence", "retry_count", "result_count", "module_count", "quality_score",
+        "retry_count", "result_count", "module_count", "quality_score",
     ]
 
     private static let productSchema: [String: Set<String>] = [

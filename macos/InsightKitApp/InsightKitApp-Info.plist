@@ -33,10 +33,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>InsightKitPostHogHost</key>
+	<key>InsightKitPostHogOwnerPilotHost</key>
 	<string>https://us.i.posthog.com</string>
-	<key>InsightKitPostHogProjectKey</key>
+	<key>InsightKitPostHogOwnerPilotProjectKey</key>
 	<string>phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo</string>
+	<key>InsightKitPostHogOwnerPilotRetentionVerified</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>InsightKit 需要摄像头权限用于视频捕获。</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -87,7 +87,10 @@ final class ImportSessionViewModel: ObservableObject {
         importStatusMessage = "正在提交导入任务…"
         analysisStatusMessage = nil
         currentJobID = nil
-        analyticsSubmit { $0.beginWorkflow("import", provisionalPath: .unavailable) }
+        let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(
+            analysisMode: AppConfigStore.shared.config.analysis.mode
+        )
+        analyticsSubmit { $0.beginWorkflow("import", provisionalPath: provisionalAnalyticsPath) }
 
         rpcQueue.async { [weak self] in
             guard let self else { return }

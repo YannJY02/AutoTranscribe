@@ -70,12 +70,7 @@ extension LiveSessionViewModel {
                     finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
-                self.analyticsSubmit { analytics in
-                    analytics.recordSaved(
-                        "live",
-                        path: ProductAnalyticsPath(provider: capturedAnalysisMeta?["provider"] as? String)
-                    )
-                }
+                self.analyticsSubmit { $0.recordSaved("live") }
                 if !recordPath.isEmpty {
                     self.copyCaptureTimelineSidecar(
                         from: capturedTimelineSidecarURL,

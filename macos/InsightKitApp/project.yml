@@ -46,8 +46,9 @@ targets:
         CFBundleName: InsightKit
         CFBundleDisplayName: InsightKit
         CFBundleIconFile: InsightKit.icns
-        InsightKitPostHogHost: "https://us.i.posthog.com"
-        InsightKitPostHogProjectKey: "phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo"
+        InsightKitPostHogOwnerPilotHost: "https://us.i.posthog.com"
+        InsightKitPostHogOwnerPilotProjectKey: "phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo"
+        InsightKitPostHogOwnerPilotRetentionVerified: false
         CFBundleURLTypes:
           - CFBundleURLName: com.yannjy.insightkit.import
             CFBundleURLSchemes:

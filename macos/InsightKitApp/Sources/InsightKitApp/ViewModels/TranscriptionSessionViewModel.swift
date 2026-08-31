@@ -109,7 +109,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
 
     func importFile(path: String, title: String = "") {
         let analyticsContext = ProductAnalyticsAttemptContext(workflow: "import")
-        analyticsSubmit { $0.beginWorkflow(analyticsContext, provisionalPath: .unavailable) }
+        let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(
+            analysisMode: AppConfigStore.shared.config.analysis.mode
+        )
+        analyticsSubmit { $0.beginWorkflow(analyticsContext, provisionalPath: provisionalAnalyticsPath) }
         beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }

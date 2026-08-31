@@ -2,11 +2,24 @@
 WITH eligible AS (
  SELECT * FROM events WHERE schema_version=1 AND environment=:environment
  AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
+), ordered AS (
+ SELECT e.*,
+  SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
+   PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) attempt_index,
+  COALESCE(SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
+   PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+  ),0) prior_starts,
+  COALESCE(SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') THEN 1 ELSE 0 END) OVER (
+   PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+  ),0) prior_terminals
+ FROM eligible e
 ), diagnostics AS (
  SELECT SUM(CASE WHEN schema_version<>1 THEN 1 ELSE 0 END) unknown_schema,
  SUM(CASE WHEN event_sequence IS NULL OR event_sequence<=0 THEN 1 ELSE 0 END) missing_event_sequence,
- SUM(CASE WHEN event_name IN ('workflow_started','workflow_completed')
-          AND (attempt_sequence IS NULL OR attempt_sequence<=0) THEN 1 ELSE 0 END) missing_attempt_sequence,
  SUM(CASE WHEN event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed') THEN 1 ELSE 0 END) unknown_event,
  SUM(CASE WHEN workflow IS NOT NULL AND workflow NOT IN ('live','import') THEN 1 ELSE 0 END) unknown_workflow,
  SUM(CASE WHEN analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud') THEN 1 ELSE 0 END) unknown_analysis_mode,
@@ -21,13 +34,16 @@ WITH eligible AS (
  SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') AND provider_class IS NULL THEN 1
           WHEN event_name='workflow_completed' AND latency_bucket_ms IS NULL THEN 1 ELSE 0 END) missing_terminal_dimensions
  FROM events WHERE environment=:environment AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
-), duplicates AS (
- SELECT (SELECT COUNT(*) FROM (
-  SELECT app_session_id,workflow,attempt_sequence FROM eligible WHERE attempt_sequence>0
-  GROUP BY app_session_id,workflow,attempt_sequence
-  HAVING SUM(event_name='workflow_started')>0 AND (SUM(event_name='workflow_started')<>1 OR SUM(event_name='workflow_completed')>1)
- )) + (SELECT COUNT(*) FROM eligible WHERE event_name='workflow_completed' AND (attempt_sequence IS NULL OR attempt_sequence<=0)) duplicate_attempt_groups
+), attempts AS (
+ SELECT app_session_id,workflow,attempt_index,
+  SUM(event_name='workflow_started') starts,SUM(event_name='workflow_completed') completions
+ FROM ordered WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), quality AS (
+ SELECT
+  (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) overlapping_attempts,
+  (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) +
+  (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_completed' AND attempt_index=0) duplicate_attempt_groups
 )
-SELECT diagnostics.*,duplicate_attempt_groups,
- CASE WHEN unknown_schema+missing_event_sequence+missing_attempt_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+duplicate_attempt_groups=0 THEN 'complete' ELSE 'incomplete' END evidence_state
-FROM diagnostics CROSS JOIN duplicates;
+SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,
+ CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups=0 THEN 'complete' ELSE 'incomplete' END evidence_state
+FROM diagnostics CROSS JOIN quality;

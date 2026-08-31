@@ -278,7 +278,6 @@ final class ExternalTelemetryPrivacyGate {
         "recovery_result": .enumStrings(["succeeded", "failed", "not-attempted"]),
         "duration_bucket_ms": .enumIntegers([1_000, 5_000, 15_000, 30_000, 60_000, 300_000, 900_000, 1_800_000, 3_600_000]),
         "latency_bucket_ms": .enumIntegers([100, 250, 500, 1_000, 5_000, 15_000, 30_000, 60_000, 300_000]),
-        "attempt_sequence": .boundedInteger(1 ... 10_000),
         "retry_count": .boundedInteger(0 ... 10),
         "result_count": .boundedInteger(0 ... 10_000),
         "module_count": .boundedInteger(0 ... 100),

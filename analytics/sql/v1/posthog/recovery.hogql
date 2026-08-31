@@ -3,9 +3,9 @@ WITH event_source AS (
   SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
     toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
     properties.environment AS environment, properties.app_session_id AS app_session_id,
-    properties.workflow AS workflow, toInt(properties.attempt_sequence) AS attempt_sequence,
-    properties.analysis_mode AS analysis_mode, properties.phase AS phase,
-    properties.outcome AS outcome, properties.recovery_action AS recovery_action
+    properties.workflow AS workflow, properties.analysis_mode AS analysis_mode,
+    properties.phase AS phase, properties.outcome AS outcome,
+    properties.recovery_action AS recovery_action
   FROM events
   WHERE properties.environment = {variables.environment}
     AND timestamp >= toDateTime({variables.window_start})
@@ -13,16 +13,20 @@ WITH event_source AS (
 ), eligible AS (
   SELECT * FROM event_source WHERE schema_version=1
 ), failures AS (
-  SELECT app_session_id,workflow,analysis_mode,phase,timestamp_utc,event_sequence,attempt_sequence
-  FROM eligible WHERE event_name='workflow_failed' AND recovery_action<>'none' AND attempt_sequence>0
+  SELECT app_session_id,workflow,analysis_mode,phase,timestamp_utc,event_sequence,
+    leadInFrame(event_sequence,1,0) OVER (
+      PARTITION BY app_session_id,workflow,analysis_mode,phase ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) next_failure_sequence
+  FROM eligible WHERE event_name='workflow_failed' AND recovery_action<>'none'
 ), failure_recovery AS (
-  SELECT f.app_session_id,f.workflow,f.analysis_mode,f.phase,f.timestamp_utc,f.event_sequence,f.attempt_sequence,
+  SELECT f.app_session_id,f.workflow,f.analysis_mode,f.phase,f.timestamp_utc,f.event_sequence,
     countIf(r.event_name='recovery_completed' AND r.outcome='succeeded'
-      AND (r.timestamp_utc>f.timestamp_utc OR (r.timestamp_utc=f.timestamp_utc AND r.event_sequence>f.event_sequence)))>0 AS is_recovered
+      AND (r.timestamp_utc>f.timestamp_utc OR (r.timestamp_utc=f.timestamp_utc AND r.event_sequence>f.event_sequence))
+      AND (f.next_failure_sequence=0 OR r.event_sequence<f.next_failure_sequence))>0 AS is_recovered
   FROM failures f LEFT JOIN eligible r ON r.app_session_id=f.app_session_id
-    AND r.workflow=f.workflow AND r.attempt_sequence=f.attempt_sequence
-    AND r.analysis_mode=f.analysis_mode AND r.phase=f.phase
-  GROUP BY f.app_session_id,f.workflow,f.analysis_mode,f.phase,f.timestamp_utc,f.event_sequence,f.attempt_sequence
+    AND r.workflow=f.workflow AND r.analysis_mode=f.analysis_mode AND r.phase=f.phase
+  GROUP BY f.app_session_id,f.workflow,f.analysis_mode,f.phase,f.timestamp_utc,f.event_sequence,f.next_failure_sequence
 )
 SELECT COUNT(*) actionable_failures,
   if(actionable_failures=0,NULL,countIf(is_recovered)) recovered_failures,
