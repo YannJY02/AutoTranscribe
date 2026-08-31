@@ -10,6 +10,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["numpy", "pytest", "pytest-cov", "pytest-asyncio"]
+observability = ["langfuse==4.15.1"]
 
 [tool.setuptools.packages.find]
 where = ["."]
