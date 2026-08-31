@@ -31,10 +31,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
     private let bootstrapSidecar: Bool
+    private let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
     var recordsService: RecordsIndexService?
 
     private var pollTask: Task<Void, Never>?
     private var knownCompletedJobIDs: Set<String> = []
+    private var analyticsContextsByJobID: [String: ProductAnalyticsAttemptContext] = [:]
+    private var analyticsTerminalJobIDs: Set<String> = []
+    private var activeExplicitImportJobID: String?
+    private var currentAnalyticsContext: ProductAnalyticsAttemptContext?
     private var pollFailureStreak = 0
     private var pollIntervalSec: UInt64 = 2
     private var sidecarReadyInSession = false
@@ -44,7 +49,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var fetchInFlight = false
     private var pendingSidecarMutationCount = 0
     private var buildingFinalMeetingID: String?
-    private var pendingArtifactMeetingIDs: [String] = []
+    private var pendingArtifactBuilds: [(meetingID: String, analyticsContext: ProductAnalyticsAttemptContext?)] = []
     /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
     /// cooperative thread pool which would stall all async/SwiftUI work.
     private let rpcQueue = DispatchQueue(label: "InsightKit.TranscriptionSession.RPC", qos: .userInitiated)
@@ -54,11 +59,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
         sidecarManager: SidecarManager = SidecarManager(),
         autoRefresh: Bool = true,
         autoPolling: Bool = true,
-        bootstrapSidecar: Bool = true
+        bootstrapSidecar: Bool = true,
+        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
         self.bootstrapSidecar = bootstrapSidecar
+        self.analyticsSubmit = analyticsSubmit
         if autoRefresh {
             refreshStatus()
         }
@@ -90,6 +97,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
         jobs.first(where: { $0.state == .running })
     }
 
+    var canStartExplicitImport: Bool {
+        !hasPendingSidecarMutation && activeExplicitImportJobID == nil
+    }
+
     func refreshStatus() {
         guard beginFetchIfNeeded() else { return }
         rpcQueue.async { [weak self] in
@@ -99,27 +110,64 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func importFile(path: String, title: String = "") {
+        guard canStartExplicitImport else {
+            errorMessage = "请先完成或取消当前导入，再导入下一个文件。"
+            return
+        }
+        let analyticsContext = ProductAnalyticsAttemptContext(workflow: "import")
+        let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(
+            analysisMode: AppConfigStore.shared.config.analysis.mode
+        )
+        analyticsSubmit { $0.beginWorkflow(analyticsContext, provisionalPath: provisionalAnalyticsPath) }
         beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
-                self.refreshProviderStateNonBlocking()
-                _ = try self.rpcClient.transcriptionImport(filePath: path, title: title)
-                let status = try self.rpcClient.transcriptionStatus(limit: 100)
-                let sidecar = try? self.rpcClient.sidecarStatus()
+                let analyticsPath = self.refreshProviderStateNonBlocking()
+                let result = try self.rpcClient.transcriptionImport(filePath: path, title: title)
+                self.analyticsSubmit { $0.resolveWorkflow(analyticsContext, path: analyticsPath) }
                 DispatchQueue.main.async {
-                    _ = self.applyStatusSync(status, sidecar: sidecar)
-                    self.endSidecarMutation()
+                    self.analyticsContextsByJobID[result.jobID] = analyticsContext
+                    self.activeExplicitImportJobID = result.jobID
+                    self.currentAnalyticsContext = analyticsContext
+                    self.currentMeetingID = result.meetingID
+                }
+                do {
+                    let status = try self.rpcClient.transcriptionStatus(limit: 100)
+                    let sidecar = try? self.rpcClient.sidecarStatus()
+                    DispatchQueue.main.async {
+                        _ = self.applyStatusSync(status, sidecar: sidecar)
+                        self.endSidecarMutation()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.errorMessage = "导入已接受，但状态暂时无法刷新。请稍后重试。"
+                        self.endSidecarMutation()
+                    }
                 }
             } catch {
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        analyticsContext,
+                        phase: "preparing",
+                        errorCode: "runtime-unavailable",
+                        recoveryAction: "retry"
+                    )
+                }
                 DispatchQueue.main.async {
                     self.publishErrorSync(error)
                     self.endSidecarMutation()
                 }
             }
         }
+    }
+
+    func transcriptAnalyticsContext() -> ProductAnalyticsContext? {
+        let path = ProductAnalyticsPath(provider: metrics.provider)
+        guard let currentAnalyticsContext else { return nil }
+        return ProductAnalyticsContext(attempt: currentAnalyticsContext, path: path)
     }
 
     func startWatcher(dirs: [String]) {
@@ -129,7 +177,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
-                self.refreshProviderStateNonBlocking()
+                _ = self.refreshProviderStateNonBlocking()
                 _ = try self.rpcClient.transcriptionWatchStart(dirs: dirs)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
@@ -169,12 +217,22 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func cancelJob(jobID: String, reason: String = "cancelled_by_user") {
+        let analyticsContext = analyticsContextsByJobID[jobID]
         beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
-                _ = try self.rpcClient.transcriptionCancel(jobID: jobID, reason: reason)
+                let result = try self.rpcClient.transcriptionCancel(jobID: jobID, reason: reason)
+                if let analyticsContext, result.state == .cancelled || result.state == .pausedByLive {
+                    ProductAnalytics.submit { $0.workflowCancelled(analyticsContext) }
+                    DispatchQueue.main.async {
+                        self.analyticsTerminalJobIDs.insert(jobID)
+                        if self.activeExplicitImportJobID == jobID {
+                            self.activeExplicitImportJobID = nil
+                        }
+                    }
+                }
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
                 DispatchQueue.main.async {
@@ -217,19 +275,52 @@ final class TranscriptionSessionViewModel: ObservableObject {
         buildingFinalMeetingID = meetingID
         beginSidecarMutation()
 
+        let analyticsContext = currentAnalyticsContext
         rpcQueue.async { [weak self] in
             guard let self else { return }
+            if let analyticsContext {
+                ProductAnalytics.submit { $0.recoveryAttempted(analyticsContext, phase: "analysis") }
+            }
+            let analysisStartedAt = DispatchTime.now().uptimeNanoseconds
             do {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 let transcripts = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
                 DispatchQueue.main.async {
                     self.updateArtifactsSync(result: result, transcript: transcripts)
                     self.finishFinalInsightBuild()
                 }
+                if let analyticsContext {
+                    ProductAnalytics.submit { analytics in
+                        analytics.resolveWorkflow(
+                            analyticsContext,
+                            path: ProductAnalyticsPath(provider: result.provider),
+                            analysisLatencyMilliseconds: analysisLatencyMS
+                        )
+                        analytics.recordSaved(analyticsContext)
+                        analytics.reviewOpened(analyticsContext)
+                        analytics.recoveryCompleted(analyticsContext, phase: "analysis", succeeded: true)
+                    }
+                }
             } catch {
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
+                if let analyticsContext {
+                    ProductAnalytics.submit {
+                        $0.workflowFailed(
+                            analyticsContext,
+                            phase: "analysis",
+                            errorCode: "unknown",
+                            recoveryAction: "retry",
+                            analysisLatencyMilliseconds: analysisLatencyMS
+                        )
+                    }
+                }
                 DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.publishErrorSync(error)
                     self.finishFinalInsightBuild()
                 }
@@ -245,6 +336,19 @@ final class TranscriptionSessionViewModel: ObservableObject {
             return
         }
 
+        let analyticsContext = currentAnalyticsContext
+        let duration = Double(transcriptSegments.map(\.endMs).max() ?? 0) / 1_000
+        let recordPath = recordsService?.recordFolderURL(for: meetingID)
+        let hasBlockingError = errorMessage != nil
+        let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+            recordPath: recordPath,
+            duration: duration,
+            exportCompleted: true,
+            hasBlockingError: hasBlockingError
+        )
+        if let analyticsContext {
+            ProductAnalytics.submit { $0.exportAttempted(analyticsContext) }
+        }
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -253,7 +357,19 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     meetingID: meetingID,
                     recordsService: self.recordsService
                 ) {
+                    if let analyticsContext {
+                        ProductAnalytics.submit { analytics in
+                            analytics.exportCompleted(analyticsContext)
+                            analytics.workflowCompleted(
+                                analyticsContext,
+                                evaluation: completionEvaluation
+                            )
+                        }
+                    }
                     DispatchQueue.main.async {
+                        if let analyticsContext {
+                            self.closeExplicitImportAdmission(for: analyticsContext)
+                        }
                         self.lastExportPath = url.path
                     }
                     return
@@ -261,11 +377,38 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 try self.ensureSidecarReady()
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
+                if let analyticsContext {
+                    ProductAnalytics.submit { analytics in
+                        analytics.exportCompleted(analyticsContext)
+                        analytics.workflowCompleted(
+                            analyticsContext,
+                            evaluation: completionEvaluation
+                        )
+                    }
+                }
                 DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.lastExportPath = result.path
                 }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                if let analyticsContext {
+                    ProductAnalytics.submit {
+                        $0.workflowFailed(
+                            analyticsContext,
+                            phase: "exporting",
+                            errorCode: "unknown",
+                            recoveryAction: "retry"
+                        )
+                    }
+                }
+                DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
+                    self.publishErrorSync(error)
+                }
             }
         }
     }
@@ -527,13 +670,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
 
     func refreshProviderStateNonBlocking(
         analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
-    ) {
+    ) -> ProductAnalyticsPath {
         if analysisMode == .local {
             DispatchQueue.main.async {
                 self.analysisRuntimeState = .ready
                 self.inlineError = nil
             }
-            return
+            return .local
         }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
@@ -541,7 +684,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.analysisRuntimeState = .ready
                 }
-                return
+                return ProductAnalyticsPath(providers: providers)
             }
             DispatchQueue.main.async {
                 self.analysisRuntimeState = .missingConfig
@@ -550,10 +693,12 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     occurredAt: Date()
                 )
             }
+            return .unavailable
         } catch {
             if isProviderProbeTimeout(error) {
                 publishProviderSoftFailure("智能分析探测超时，转写继续、洞察已暂停。")
             }
+            return .unavailable
         }
     }
 
@@ -622,6 +767,40 @@ final class TranscriptionSessionViewModel: ObservableObject {
         watcherState.queueSize = status.queue.count
         watcherState.activeJobID = status.activeJob?.id
 
+        var observedJobs = status.jobs
+        if let active = status.activeJob, !observedJobs.contains(where: { $0.id == active.id }) {
+            observedJobs.append(active)
+        }
+        if let completed = status.lastCompleted?.job, !observedJobs.contains(where: { $0.id == completed.id }) {
+            observedJobs.append(completed)
+        }
+        for job in observedJobs where !analyticsTerminalJobIDs.contains(job.id) {
+            guard let context = analyticsContextsByJobID[job.id] else { continue }
+            switch job.state {
+            case .failed:
+                analyticsTerminalJobIDs.insert(job.id)
+                if activeExplicitImportJobID == job.id {
+                    activeExplicitImportJobID = nil
+                }
+                analyticsSubmit {
+                    $0.workflowFailed(
+                        context,
+                        phase: "running",
+                        errorCode: "runtime-unavailable",
+                        recoveryAction: "retry"
+                    )
+                }
+            case .cancelled, .pausedByLive:
+                analyticsTerminalJobIDs.insert(job.id)
+                if activeExplicitImportJobID == job.id {
+                    activeExplicitImportJobID = nil
+                }
+                analyticsSubmit { $0.workflowCancelled(context) }
+            default:
+                break
+            }
+        }
+
         if let sidecar {
             let running = (sidecar["running"] as? Bool) ?? false
             let pid = (sidecar["pid"] as? Int) ?? 0
@@ -651,19 +830,35 @@ final class TranscriptionSessionViewModel: ObservableObject {
             }
         }
 
-        if let activeMeeting = status.activeJob?.meetingID {
-            currentMeetingID = activeMeeting
-        } else if let completedMeeting = status.lastCompleted?.meetingID {
-            currentMeetingID = completedMeeting
-        }
-
-        if let lastCompleted = status.lastCompleted {
-            if !knownCompletedJobIDs.contains(lastCompleted.job.id) {
-                knownCompletedJobIDs.insert(lastCompleted.job.id)
-                metrics.lastRefreshAt = lastCompleted.updatedAt
-                currentMeetingID = lastCompleted.meetingID
-                loadArtifactsForMeeting(lastCompleted.meetingID)
+        let visibleLastCompletedID = status.lastCompleted?.job.state == .completed
+            ? status.lastCompleted?.job.id
+            : nil
+        let newCompletedJobs = observedJobs
+            .filter {
+                $0.state == .completed
+                    && !knownCompletedJobIDs.contains($0.id)
+                    && (analyticsContextsByJobID[$0.id] != nil || $0.id == visibleLastCompletedID)
             }
+            .sorted { ($0.endedAt ?? .distantPast) < ($1.endedAt ?? .distantPast) }
+        let selectedJob = newCompletedJobs.last
+            ?? currentMeetingID.flatMap { meetingID in observedJobs.first { $0.meetingID == meetingID } }
+            ?? status.activeJob
+            ?? status.lastCompleted?.job
+        if let selectedJob {
+            currentMeetingID = selectedJob.meetingID
+            currentAnalyticsContext = analyticsContextsByJobID[selectedJob.id]
+        }
+        for completed in newCompletedJobs {
+            knownCompletedJobIDs.insert(completed.id)
+            metrics.lastRefreshAt = completed.id == visibleLastCompletedID
+                ? status.lastCompleted?.updatedAt
+                : completed.endedAt
+            currentMeetingID = completed.meetingID
+            currentAnalyticsContext = analyticsContextsByJobID[completed.id]
+            loadArtifactsForMeeting(
+                completed.meetingID,
+                analyticsContext: analyticsContextsByJobID[completed.id]
+            )
         }
 
         if let active = status.activeJob {
@@ -678,10 +873,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
         return hasActiveWork
     }
 
-    func loadArtifactsForMeeting(_ meetingID: String) {
+    func loadArtifactsForMeeting(
+        _ meetingID: String,
+        analyticsContext: ProductAnalyticsAttemptContext? = nil
+    ) {
         if isBuildingFinalInsight {
-            if buildingFinalMeetingID != meetingID, !pendingArtifactMeetingIDs.contains(meetingID) {
-                pendingArtifactMeetingIDs.append(meetingID)
+            if buildingFinalMeetingID != meetingID,
+               !pendingArtifactBuilds.contains(where: { $0.meetingID == meetingID }) {
+                pendingArtifactBuilds.append((meetingID, analyticsContext))
             }
             return
         }
@@ -690,16 +889,48 @@ final class TranscriptionSessionViewModel: ObservableObject {
         beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
+            if let analyticsContext {
+                self.analyticsSubmit { $0.recoveryAttempted(analyticsContext, phase: "analysis") }
+            }
+            let analysisStartedAt = DispatchTime.now().uptimeNanoseconds
             do {
                 try self.ensureSidecarReady()
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 let transcript = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
                 DispatchQueue.main.async {
                     self.updateArtifactsSync(result: result, transcript: transcript)
                     self.finishFinalInsightBuild()
                 }
+                if let analyticsContext {
+                    self.analyticsSubmit { analytics in
+                        analytics.resolveWorkflow(
+                            analyticsContext,
+                            path: ProductAnalyticsPath(provider: result.provider),
+                            analysisLatencyMilliseconds: analysisLatencyMS
+                        )
+                        analytics.recordSaved(analyticsContext)
+                        analytics.reviewOpened(analyticsContext)
+                        analytics.recoveryCompleted(analyticsContext, phase: "analysis", succeeded: true)
+                    }
+                }
             } catch {
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
+                if let analyticsContext {
+                    self.analyticsSubmit {
+                        $0.workflowFailed(
+                            analyticsContext,
+                            phase: "analysis",
+                            errorCode: "unknown",
+                            recoveryAction: "retry",
+                            analysisLatencyMilliseconds: analysisLatencyMS
+                        )
+                    }
+                }
                 DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.publishErrorSync(error)
                     self.finishFinalInsightBuild()
                 }
@@ -712,17 +943,25 @@ final class TranscriptionSessionViewModel: ObservableObject {
         hasPendingSidecarMutation = true
     }
 
+    private func closeExplicitImportAdmission(for context: ProductAnalyticsAttemptContext) {
+        guard let jobID = activeExplicitImportJobID,
+              analyticsContextsByJobID[jobID] == context
+        else { return }
+        analyticsTerminalJobIDs.insert(jobID)
+        activeExplicitImportJobID = nil
+    }
+
     private func endSidecarMutation() {
         pendingSidecarMutationCount = max(0, pendingSidecarMutationCount - 1)
         hasPendingSidecarMutation = pendingSidecarMutationCount > 0
     }
 
     private func finishFinalInsightBuild() {
-        let nextMeetingID = pendingArtifactMeetingIDs.isEmpty ? nil : pendingArtifactMeetingIDs.removeFirst()
+        let nextBuild = pendingArtifactBuilds.isEmpty ? nil : pendingArtifactBuilds.removeFirst()
         isBuildingFinalInsight = false
         buildingFinalMeetingID = nil
-        if let nextMeetingID {
-            loadArtifactsForMeeting(nextMeetingID)
+        if let nextBuild {
+            loadArtifactsForMeeting(nextBuild.meetingID, analyticsContext: nextBuild.analyticsContext)
         }
         endSidecarMutation()
     }
@@ -730,6 +969,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
     /// Called from DispatchQueue.main – no @MainActor needed.
     private func updateArtifactsSync(result: InsightRefreshResult, transcript: [TranscriptSegment]) {
         updateWorkbenchSync(result)
+        errorMessage = nil
+        inlineError = nil
         transcriptSegments = transcript.sorted(by: { $0.startMs < $1.startMs })
         metrics.provider = result.provider
         metrics.needsReviewCount = result.needsReviewCount

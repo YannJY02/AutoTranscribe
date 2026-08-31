@@ -23,6 +23,9 @@ final class RecordReviewDataSource: ObservableObject {
 
     let metadata: RecordMetadata
     let recordPath: URL
+    let analyticsContext: ProductAnalyticsContext
+    private(set) var didTrackOpenAnalytics = false
+    private var exportNeedsRecovery = false
     private let rpcQueue = DispatchQueue(label: "InsightKit.RecordReview.RPC", qos: .userInitiated)
     private let rpcClient: InsightRPCClientProtocol?
     private let transcriptRecoveryService: TranscriptRecoveryServicing?
@@ -32,7 +35,8 @@ final class RecordReviewDataSource: ObservableObject {
         rootDirectory: URL,
         recordPath: URL? = nil,
         rpcClient: InsightRPCClientProtocol? = nil,
-        transcriptRecoveryService: TranscriptRecoveryServicing? = nil
+        transcriptRecoveryService: TranscriptRecoveryServicing? = nil,
+        analyticsContext: ProductAnalyticsContext? = nil
     ) {
         self.metadata = metadata
         self.rpcClient = rpcClient
@@ -41,8 +45,20 @@ final class RecordReviewDataSource: ObservableObject {
         self.recordPath = recordPath
             ?? RecordsIndexService.recordFolderURL(for: metadata.id, rootDirectory: rootDirectory)
             ?? rootDirectory.appendingPathComponent(metadata.id)
+        self.analyticsContext = analyticsContext ?? ProductAnalyticsContext(
+            workflow: metadata.source == .live ? "live" : "import",
+            path: ProductAnalyticsPath.persistedRecord(at: self.recordPath)
+        )
         self.recordingDuration = metadata.duration
         loadMeetingAsset()
+    }
+
+    func trackOpenAnalytics() {
+        guard !didTrackOpenAnalytics else { return }
+        didTrackOpenAnalytics = true
+        ProductAnalytics.submit { analytics in
+            analytics.observeRecord(self.analyticsContext)
+        }
     }
 
     // MARK: - Loading
@@ -70,12 +86,44 @@ final class RecordReviewDataSource: ObservableObject {
     }
 
     func exportRecord(format: String) {
+        let recovering = exportNeedsRecovery
+        if recovering {
+            ProductAnalytics.submit {
+                $0.recoveryAttempted(
+                    self.analyticsContext,
+                    phase: "exporting"
+                )
+            }
+        }
         do {
             let url = try RecordDocumentExporter.export(format: format, metadata: metadata, recordPath: recordPath)
             lastExportURL = url
             exportStatusMessage = "已导出 \(url.lastPathComponent)"
+            exportNeedsRecovery = false
+            ProductAnalytics.submit { analytics in
+                analytics.exportCompleted(
+                    self.analyticsContext
+                )
+                if recovering {
+                    analytics.recoveryCompleted(
+                        self.analyticsContext,
+                        phase: "exporting",
+                        succeeded: true
+                    )
+                }
+            }
         } catch {
             exportStatusMessage = "导出失败：\(error.localizedDescription)"
+            exportNeedsRecovery = true
+            ProductAnalytics.submit {
+                $0.workflowFailed(
+                    self.analyticsContext,
+                    phase: "exporting",
+                    errorCode: "unknown",
+                    recoveryAction: "retry",
+                    completingRecovery: recovering
+                )
+            }
         }
     }
 
@@ -103,6 +151,18 @@ final class RecordReviewDataSource: ObservableObject {
 
     func recoverTranscript() {
         guard let transcriptRecoveryService else { return }
+        ProductAnalytics.submit { analytics in
+            analytics.workflowFailed(
+                self.analyticsContext,
+                phase: "reviewing",
+                errorCode: "storage",
+                recoveryAction: "retry"
+            )
+            analytics.recoveryAttempted(
+                self.analyticsContext,
+                phase: "reviewing"
+            )
+        }
         transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
         rpcQueue.async { [weak self] in
             guard let self else { return }
@@ -116,10 +176,24 @@ final class RecordReviewDataSource: ObservableObject {
                     self.transcriptRecoveryStatusMessage = result.smartMinutesMayNeedRegeneration
                         ? "逐字稿已恢复；现有智能纪要仍保留，但可能需要重新生成以匹配新逐字稿。"
                         : "逐字稿已恢复。"
+                    ProductAnalytics.submit { analytics in
+                        analytics.recoveryCompleted(
+                            self.analyticsContext,
+                            phase: "reviewing",
+                            succeeded: true
+                        )
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.transcriptRecoveryStatusMessage = "逐字稿恢复失败：\(error.localizedDescription)"
+                    ProductAnalytics.submit { analytics in
+                        analytics.recoveryCompleted(
+                            self.analyticsContext,
+                            phase: "reviewing",
+                            succeeded: false
+                        )
+                    }
                 }
             }
         }

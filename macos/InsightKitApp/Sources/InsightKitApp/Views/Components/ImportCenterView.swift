@@ -129,12 +129,14 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
                     importViewModel.exportDocument(format: "markdown")
                 }
                 .buttonStyle(.bordered)
+                .disabled(importViewModel.isExporting)
                 .accessibilityIdentifier("import_export_markdown_button")
 
                 Button("导出 PDF") {
                     importViewModel.exportDocument(format: "pdf")
                 }
                 .buttonStyle(.bordered)
+                .disabled(importViewModel.isExporting)
                 .accessibilityIdentifier("import_export_pdf_button")
 
                 Button("新建导入") {
@@ -142,6 +144,7 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(InsightTheme.accent)
+                .disabled(importViewModel.isExporting)
             }
             .padding(.horizontal, InsightSpacing.panelPadding)
             .padding(.vertical, InsightSpacing.md)

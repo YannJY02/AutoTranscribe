@@ -64,6 +64,47 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedSystemSourceID, "display-1")
     }
 
+    func testRPCExportPreventsSessionReplacementUntilCallbackCompletes() throws {
+        let rpcClient = RPCClientMock()
+        rpcClient.documentExportDelaySec = 0.3
+        let socketPath = "/tmp/insightkit-live-export-\(UUID().uuidString).sock"
+        let sidecarSocket = ConnectableSidecarSocket(socketPath: socketPath)
+        try sidecarSocket.start()
+        defer { sidecarSocket.stop() }
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(socketPath: socketPath, startupTimeoutSec: 3),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.sessionPhase = .reviewing
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = "delayed-live-export"
+        }
+        viewModel.syncSessionHandleFromState()
+
+        viewModel.exportDocument()
+        XCTAssertFalse(viewModel.resetForNewSession())
+
+        XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+        XCTAssertTrue(viewModel.isExporting)
+        XCTAssertEqual(viewModel.sessionHandle.lastMeetingID, "delayed-live-export")
+        XCTAssertEqual(viewModel.recordingStatusMessage, "导出正在完成，请稍候再新建会话。")
+
+        let exported = expectation(description: "delayed live export completes on original session")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            XCTAssertFalse(viewModel.isExporting)
+            XCTAssertEqual(viewModel.lastExportPath, "/tmp/mock.md")
+            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+            XCTAssertNil(viewModel.recordingStatusMessage)
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 1)
+    }
+
     func testMixedInputStillRequiresSystemSourceAndDoesNotOverwriteSelection() {
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
@@ -1930,6 +1971,43 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(replace.meetingID, "live-final-media-timeline-test")
         XCTAssertEqual(replace.segments.map(\.startMs), [34_000])
         XCTAssertEqual(replace.segments.map(\.text), ["media transcript used for final minutes"])
+    }
+
+    func testSuccessfulFinalInsightRetryClearsStaleError() throws {
+        let socketPath = "/tmp/insightkit-live-final-retry-\(UUID().uuidString).sock"
+        let sidecarSocket = ConnectableSidecarSocket(socketPath: socketPath)
+        try sidecarSocket.start()
+        defer { sidecarSocket.stop() }
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            sidecarManager: SidecarManager(socketPath: socketPath, startupTimeoutSec: 3),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.errorMessage = "previous analysis failure"
+        viewModel.transcriptSegments = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "Speaker", source: "mic", text: "final retry transcript")
+        ]
+        viewModel.stateQueue.sync {
+            viewModel._sessionState.lastMeetingID = "live-final-retry-test"
+        }
+
+        let completed = expectation(description: "final insight retry succeeded")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$sessionPhase
+            .dropFirst()
+            .sink { phase in
+                if phase == .reviewing { completed.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        viewModel.buildFinalInsight()
+
+        wait(for: [completed], timeout: 5)
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     func testLiveSmartMinutesSpeakerRenameUpdatesRuntimeMinutesPackageAndPersistedRecord() throws {

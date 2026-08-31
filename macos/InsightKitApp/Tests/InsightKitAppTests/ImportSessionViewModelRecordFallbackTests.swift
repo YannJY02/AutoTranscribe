@@ -22,6 +22,56 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleErrorStatusMessage, "转写失败：模型文件不存在")
     }
 
+    func testURLImportCannotReplaceActiveImport() {
+        let rpcClient = RPCClientMock()
+        let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
+
+        viewModel.importFile(url: URL(fileURLWithPath: "/tmp/first.wav"))
+        viewModel.importFile(url: URL(fileURLWithPath: "/tmp/second.wav"))
+
+        XCTAssertEqual(viewModel.mediaURL?.path, "/tmp/first.wav")
+        XCTAssertEqual(viewModel.sessionPhase, .processing)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.importStatusMessage, "请先完成或取消当前导入，再导入下一个文件。")
+    }
+
+    func testRPCExportPreventsAttemptReplacementUntilCallbackCompletes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitImportExportAdmission-\(UUID().uuidString)", isDirectory: true)
+        let recordID = "delayed-export"
+        let recordPath = root.appendingPathComponent(recordID, isDirectory: true)
+        try FileManager.default.createDirectory(at: recordPath, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedMinimalImportRecord(recordID: recordID, recordPath: recordPath)
+
+        let recordsService = RecordsIndexService()
+        recordsService.rootDirectory = root
+        let rpcClient = RPCClientMock()
+        rpcClient.documentExportDelaySec = 0.3
+        let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
+        viewModel.recordsService = recordsService
+        XCTAssertTrue(viewModel.loadPersistedArtifactsForCompletedImport(meetingID: recordID))
+        viewModel.sessionPhase = .reviewing
+        viewModel.recordsService = nil
+
+        viewModel.exportDocument()
+        viewModel.resetToSelecting()
+        viewModel.importFile(url: URL(fileURLWithPath: "/tmp/replacement.wav"))
+
+        XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+        XCTAssertTrue(viewModel.isExporting)
+        XCTAssertTrue(rpcClient.importCalls.isEmpty)
+
+        let exported = expectation(description: "delayed export completes on original attempt")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            XCTAssertFalse(viewModel.isExporting)
+            XCTAssertEqual(viewModel.lastExportURL?.path, "/tmp/mock.md")
+            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 1)
+    }
+
     func testVisibleImportStatusMessageIgnoresEmptyValues() {
         let viewModel = ImportSessionViewModel(rpcClient: RPCClientMock())
 
@@ -116,11 +166,30 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        viewModel.refreshAnalysisStatusForImport(analysisMode: .local)
+        _ = viewModel.refreshAnalysisStatusForImport(analysisMode: .local)
         wait(for: [cleared], timeout: 1)
 
         XCTAssertEqual(rpcClient.providersStatusCalls, 0)
         XCTAssertNil(viewModel.visibleAnalysisStatusMessage)
+    }
+
+    func testSuccessfulInsightRetryClearsPriorBlockingError() {
+        let rpcClient = RPCClientMock()
+        rpcClient.transcriptListStub = [
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "A", source: "file", text: "Recovered"),
+        ]
+        let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
+        viewModel.errorMessage = "previous analysis failure"
+        let cleared = expectation(description: "successful retry clears stale error")
+
+        viewModel.$errorMessage
+            .dropFirst()
+            .sink { if $0 == nil { cleared.fulfill() } }
+            .store(in: &cancellables)
+
+        viewModel.loadCompletedArtifacts(meetingID: "recovered-import")
+        wait(for: [cleared], timeout: 1)
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     func testCompletedImportShowsTranscriptBeforeSlowFinalInsight() {

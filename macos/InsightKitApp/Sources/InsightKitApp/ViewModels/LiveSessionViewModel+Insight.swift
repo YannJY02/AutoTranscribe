@@ -1,8 +1,15 @@
 import Foundation
 
 extension LiveSessionViewModel {
-    func updateWorkbench(_ result: InsightRefreshResult) {
+    func updateWorkbench(_ result: InsightRefreshResult, analyticsLatencyMilliseconds: Int? = nil) {
         let package = result.package
+        analyticsSubmit {
+            $0.resolveWorkflow(
+                "live",
+                path: ProductAnalyticsPath(provider: result.provider),
+                analysisLatencyMilliseconds: analyticsLatencyMilliseconds
+            )
+        }
         updateMain {
             self.workbench = InsightWorkbenchState(
                 sessionOverview: package.sessionOverview.overview,

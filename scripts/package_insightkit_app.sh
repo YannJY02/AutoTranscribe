@@ -382,6 +382,12 @@ cat > "$contents_dir/Info.plist" <<EOF
   <string>${GIT_REVISION}</string>
   <key>InsightKitBuildSource</key>
   <string>${BUILD_SOURCE}</string>
+  <key>InsightKitPostHogOwnerPilotHost</key>
+  <string>https://us.i.posthog.com</string>
+  <key>InsightKitPostHogOwnerPilotProjectKey</key>
+  <string>phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo</string>
+  <key>InsightKitPostHogOwnerPilotRetentionVerified</key>
+  <false/>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSMicrophoneUsageDescription</key>

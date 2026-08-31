@@ -1,0 +1,40 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH event_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.installation_id AS installation_id
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp < toDateTime({variables.window_end})
+), success_history AS (
+  SELECT installation_id,timestamp_utc,toDate(timestamp_utc) day FROM event_source
+  WHERE schema_version=1 AND event_name='workflow_completed'
+), consent_anchors AS (
+  SELECT installation_id,min(timestamp_utc) consent_started_at,count() anchor_count FROM event_source
+  WHERE schema_version=1 AND event_name='telemetry_consent_changed'
+  GROUP BY installation_id
+), observed_successes AS (
+  SELECT * FROM success_history WHERE timestamp_utc >= toDateTime({variables.window_start})
+), cohorts AS (
+  SELECT s.installation_id,min(s.day) cohort_day,
+    a.anchor_count=1 AND a.consent_started_at<=min(s.timestamp_utc) cohort_proven
+  FROM success_history s LEFT JOIN consent_anchors a USING(installation_id)
+  GROUP BY s.installation_id,a.anchor_count,a.consent_started_at
+), cohort_retention AS (
+  SELECT c.installation_id,c.cohort_day,c.cohort_proven,
+    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=14
+      AND toDateTime({variables.window_start})<=addDays(toDateTime(c.cohort_day,'UTC'),7) observable_7d_flag,
+    dateDiff('day',c.cohort_day,toDate(toTimeZone(toDateTime({variables.window_end}), 'UTC')))>=29
+      AND toDateTime({variables.window_start})<=addDays(toDateTime(c.cohort_day,'UTC'),28) observable_28d_flag,
+    countIf(dateDiff('day',c.cohort_day,s.day) BETWEEN 7 AND 13)>0 retained_7d_flag,
+    countIf(dateDiff('day',c.cohort_day,s.day)=28)>0 retained_28d_flag
+  FROM cohorts c LEFT JOIN observed_successes s ON s.installation_id=c.installation_id
+  GROUP BY c.installation_id,c.cohort_day,c.cohort_proven
+)
+SELECT if(COUNT(*)=0,NULL,countIf(cohort_proven AND observable_7d_flag)) mature_7d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(cohort_proven AND observable_28d_flag)) mature_28d_cohort_installations,
+  if(COUNT(*)=0,NULL,countIf(cohort_proven AND observable_7d_flag AND retained_7d_flag)) retained_7d,
+  if(COUNT(*)=0,NULL,countIf(cohort_proven AND observable_28d_flag AND retained_28d_flag)) retained_28d,
+  if(COUNT(*)=0,NULL,countIf(NOT cohort_proven)) unproven_cohort_installations,
+  if(unproven_cohort_installations>0 OR COUNT(*)<2 OR mature_28d_cohort_installations<2,'insufficient-window/data','requires-reconciliation') evidence_state
+FROM cohort_retention c;

@@ -4,6 +4,7 @@ import Foundation
 final class RPCClientMock: InsightRPCClientProtocol {
     var cancelCalls: [(jobID: String, reason: String)] = []
     var documentExportCalls: [(meetingID: String, format: String, outputDir: String)] = []
+    var documentExportDelaySec: TimeInterval = 0
     var watchStartCalls: [[String]] = []
     var watchStopCalls = 0
     var importCalls: [(path: String, title: String)] = []
@@ -29,6 +30,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionStatusCalls = 0
     var transcriptionStatusDelaySec: TimeInterval = 0
     var transcriptionStatusError: Error?
+    var transcriptionImportError: Error?
+    var transcriptionImportResults: [TranscriptionImportResult] = []
     var transcriptionCancelError: Error?
     var finalizationAbortError: Error?
     var finalizationAbortCalls: [(meetingID: String, leaseToken: String)] = []
@@ -139,11 +142,18 @@ final class RPCClientMock: InsightRPCClientProtocol {
     }
     func documentExport(meetingID: String, format: String, outputDir: String) throws -> DocumentExportResult {
         documentExportCalls.append((meetingID: meetingID, format: format, outputDir: outputDir))
+        if documentExportDelaySec > 0 {
+            Thread.sleep(forTimeInterval: documentExportDelaySec)
+        }
         return DocumentExportResult(path: "/tmp/mock.md", format: format)
     }
 
     func transcriptionImport(filePath: String, title: String) throws -> TranscriptionImportResult {
         importCalls.append((filePath, title))
+        if let transcriptionImportError { throw transcriptionImportError }
+        if !transcriptionImportResults.isEmpty {
+            return transcriptionImportResults.removeFirst()
+        }
         return TranscriptionImportResult(jobID: UUID().uuidString, meetingID: "m-1", state: .queued)
     }
 

@@ -650,7 +650,9 @@ final class InsightRPCClient {
         guard let value, !value.isEmpty else {
             return nil
         }
-        return ISO8601DateFormatter().date(from: value)
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private func decodePackageResult(_ result: [String: Any]) throws -> InsightRefreshResult {

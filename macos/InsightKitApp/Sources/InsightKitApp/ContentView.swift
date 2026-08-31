@@ -247,6 +247,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(InsightTheme.accent)
+                    .disabled(!coordinator.transcriptionViewModel.canStartExplicitImport)
 
                     Button(coordinator.transcriptionViewModel.watcherState.isRunning ? "停止监听" : "开始监听") {
                         toggleTranscriptionWatcher()
@@ -258,6 +259,7 @@ struct ContentView: View {
                         openTranscriptionImportPicker()
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!coordinator.transcriptionViewModel.canStartExplicitImport)
 
                     Button(coordinator.transcriptionViewModel.watcherState.isRunning ? "停止监听" : "开始监听") {
                         toggleTranscriptionWatcher()
@@ -274,6 +276,7 @@ struct ContentView: View {
                         openTranscriptionImportPicker()
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!coordinator.transcriptionViewModel.canStartExplicitImport)
 
                     Button("生成定稿洞察") {
                         coordinator.transcriptionViewModel.buildFinalInsight()
@@ -356,8 +359,12 @@ struct ContentView: View {
     }
 
     private func openTranscriptionImportPicker() {
+        guard coordinator.transcriptionViewModel.canStartExplicitImport else {
+            coordinator.publishInfoBanner("请先完成或取消当前导入，再导入下一个文件。")
+            return
+        }
         let panel = NSOpenPanel()
-        SupportedMediaTypes.configureOpenPanel(panel, allowsMultipleSelection: true)
+        SupportedMediaTypes.configureOpenPanel(panel)
         guard panel.runModal() == .OK else { return }
         let unsupported = panel.urls.filter { !SupportedMediaTypes.isSupportedFile($0) }
         if !unsupported.isEmpty {

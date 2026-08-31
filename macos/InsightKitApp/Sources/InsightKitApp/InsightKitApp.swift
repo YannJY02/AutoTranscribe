@@ -205,8 +205,9 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func newSession(_ sender: Any?) {
-        coordinator.resetLiveSession()
-        coordinator.openHome()
+        if coordinator.resetLiveSession() {
+            coordinator.openHome()
+        }
         showMainWindow()
     }
 

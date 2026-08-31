@@ -345,9 +345,11 @@ final class WorkflowCoordinator: ObservableObject {
         appState.preemptionState = .idle
     }
 
-    func resetLiveSession() {
-        liveViewModel.resetForNewSession()
+    @discardableResult
+    func resetLiveSession() -> Bool {
+        guard liveViewModel.resetForNewSession() else { return false }
         appState.preemptionState = .idle
+        return true
     }
 
     func shutdown() {

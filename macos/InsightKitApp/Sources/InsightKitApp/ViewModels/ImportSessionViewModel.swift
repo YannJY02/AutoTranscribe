@@ -22,9 +22,11 @@ final class ImportSessionViewModel: ObservableObject {
     @Published var exportStatusMessage: String?
     @Published var lastExportURL: URL?
     @Published var currentJobID: String?
+    @Published private(set) var isExporting = false
 
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
+    private let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
     private let rpcQueue = DispatchQueue(label: "InsightKit.ImportSession.RPC", qos: .userInitiated)
     private let fetchLock = NSLock()
     private var fetchInFlight = false
@@ -56,10 +58,12 @@ final class ImportSessionViewModel: ObservableObject {
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
-        sidecarManager: SidecarManager = SidecarManager()
+        sidecarManager: SidecarManager = SidecarManager(),
+        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
+        self.analyticsSubmit = analyticsSubmit
     }
 
     deinit {
@@ -75,6 +79,15 @@ final class ImportSessionViewModel: ObservableObject {
     // MARK: - Import Flow
 
     func importFile(url: URL) {
+        guard sessionPhase == .selecting, !isExporting else {
+            let message = "请先完成或取消当前导入，再导入下一个文件。"
+            if sessionPhase == .reviewing {
+                exportStatusMessage = message
+            } else {
+                importStatusMessage = message
+            }
+            return
+        }
         mediaURL = url
         sessionPhase = .processing
         importProgress = 0
@@ -84,6 +97,10 @@ final class ImportSessionViewModel: ObservableObject {
         importStatusMessage = "正在提交导入任务…"
         analysisStatusMessage = nil
         currentJobID = nil
+        let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(
+            analysisMode: AppConfigStore.shared.config.analysis.mode
+        )
+        analyticsSubmit { $0.beginWorkflow("import", provisionalPath: provisionalAnalyticsPath) }
 
         rpcQueue.async { [weak self] in
             guard let self else { return }
@@ -92,7 +109,8 @@ final class ImportSessionViewModel: ObservableObject {
                     guard let self else { return }
                     _ = try self.rpcClient.ensureReady(timeoutSec: 6)
                 })
-                self.refreshAnalysisStatusForImport()
+                let analyticsPath = self.refreshAnalysisStatusForImport()
+                self.analyticsSubmit { $0.resolveWorkflow("import", path: analyticsPath) }
                 let title = url.deletingPathExtension().lastPathComponent
                 let result = try self.rpcClient.transcriptionImport(filePath: url.path, title: title)
                 DispatchQueue.main.async {
@@ -103,6 +121,14 @@ final class ImportSessionViewModel: ObservableObject {
                     self.fetchStatus()
                 }
             } catch {
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        "import",
+                        phase: "preparing",
+                        errorCode: "runtime-unavailable",
+                        recoveryAction: "retry"
+                    )
+                }
                 DispatchQueue.main.async {
                     self.currentJobID = nil
                     self.importStatusMessage = nil
@@ -153,6 +179,12 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func resetToSelecting() {
+        guard !isExporting else {
+            exportStatusMessage = "导出正在完成，请稍候再新建导入。"
+            return
+        }
+        let analyticsPhase = sessionPhase == .reviewing ? "reviewing" : "running"
+        analyticsSubmit { $0.workflowCancelled("import", phase: analyticsPhase) }
         pollTask?.cancel()
         pollTask = nil
         sessionPhase = .selecting
@@ -181,24 +213,59 @@ final class ImportSessionViewModel: ObservableObject {
         sessionPhase = .processing
         rpcQueue.async { [weak self] in
             guard let self else { return }
+            self.analyticsSubmit { $0.recoveryAttempted("import", phase: "analysis") }
+            let analysisStartedAt = DispatchTime.now().uptimeNanoseconds
             do {
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 DispatchQueue.main.async {
-                    self.applyInsightResult(result)
+                    self.applyInsightResult(result, analyticsLatencyMilliseconds: analysisLatencyMS)
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
+                self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
             } catch {
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        "import",
+                        phase: "analysis",
+                        errorCode: "unknown",
+                        recoveryAction: "retry",
+                        analysisLatencyMilliseconds: analysisLatencyMS
+                    )
+                }
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
                     self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
             }
         }
     }
 
     func exportDocument(format: String = "markdown") {
-        guard let meetingID = currentMeetingID else { return }
-        if exportPersistedRecord(format: format, meetingID: meetingID) {
+        guard let meetingID = currentMeetingID, !isExporting else { return }
+        isExporting = true
+        analyticsSubmit { $0.exportAttempted("import") }
+        do {
+            if try exportPersistedRecord(format: format, meetingID: meetingID) {
+                let recordPath = persistedRecordPath(for: meetingID)
+                let duration = recordingDuration
+                let hasBlockingError = errorMessage != nil
+                analyticsSubmit { analytics in
+                    analytics.exportCompleted("import")
+                    analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
+                }
+                isExporting = false
+                return
+            }
+        } catch {
+            isExporting = false
+            exportStatusMessage = "导出失败：\(error.localizedDescription)"
+            analyticsSubmit {
+                $0.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
+            }
             return
         }
         rpcQueue.async { [weak self] in
@@ -208,9 +275,21 @@ final class ImportSessionViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.exportStatusMessage = "已导出 \(URL(fileURLWithPath: result.path).lastPathComponent)"
                     self.lastExportURL = URL(fileURLWithPath: result.path)
+                    let recordPath = self.persistedRecordPath(for: meetingID)
+                    let duration = self.recordingDuration
+                    let hasBlockingError = self.errorMessage != nil
+                    self.analyticsSubmit { analytics in
+                        analytics.exportCompleted("import")
+                        analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
+                    }
+                    self.isExporting = false
                 }
             } catch {
+                self.analyticsSubmit { analytics in
+                    analytics.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
+                }
                 DispatchQueue.main.async {
+                    self.isExporting = false
                     self.exportStatusMessage = "导出失败：\(error.localizedDescription)"
                 }
             }
@@ -293,6 +372,9 @@ final class ImportSessionViewModel: ObservableObject {
             importStatusMessage = nil
             errorMessage = "转写失败：\(job.error.isEmpty ? "未知错误" : job.error)"
             sessionPhase = .selecting
+            analyticsSubmit { analytics in
+                analytics.workflowFailed("import", phase: "running", errorCode: "runtime-unavailable", recoveryAction: "retry")
+            }
         } else if job.state == .cancelled || job.state == .pausedByLive {
             let message = job.state == .pausedByLive
                 ? "导入已暂停，以优先处理实时录制。你可以稍后重新导入或在转写队列中查看。"
@@ -304,8 +386,17 @@ final class ImportSessionViewModel: ObservableObject {
         }
     }
 
-    private func applyInsightResult(_ result: InsightRefreshResult) {
+    private func applyInsightResult(_ result: InsightRefreshResult, analyticsLatencyMilliseconds: Int? = nil) {
+        errorMessage = nil
         applyInsightPackage(result.package)
+        analyticsSubmit { analytics in
+            analytics.resolveWorkflow(
+                "import",
+                path: ProductAnalyticsPath(provider: result.provider),
+                analysisLatencyMilliseconds: analyticsLatencyMilliseconds
+            )
+            analytics.recordSaved("import", path: ProductAnalyticsPath(provider: result.provider))
+        }
     }
 
     func applyAnalysisProvidersStatusForImport(_ providers: AnalysisProvidersStatus) {
@@ -314,18 +405,19 @@ final class ImportSessionViewModel: ObservableObject {
 
     func refreshAnalysisStatusForImport(
         analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
-    ) {
+    ) -> ProductAnalyticsPath {
         if analysisMode == .local {
             DispatchQueue.main.async {
                 self.analysisStatusMessage = nil
             }
-            return
+            return .local
         }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
             DispatchQueue.main.async {
                 self.applyAnalysisProvidersStatusForImport(providers)
             }
+            return ProductAnalyticsPath(providers: providers)
         } catch {
             let message: String
             if Self.isProviderProbeTimeout(error) {
@@ -336,6 +428,7 @@ final class ImportSessionViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self.analysisStatusMessage = message
             }
+            return .unavailable
         }
     }
 
@@ -389,6 +482,14 @@ final class ImportSessionViewModel: ObservableObject {
                     self.transcriptEntries = Self.transcriptEntries(from: segments)
                 }
                 let loadedFromRecord = self.loadPersistedArtifactsForCompletedImport(meetingID: meetingID)
+                if let recordPath = self.persistedRecordPath(for: meetingID) {
+                    self.analyticsSubmit { analytics in
+                        analytics.recordSaved(
+                            "import",
+                            path: ProductAnalyticsPath.persistedRecord(at: recordPath)
+                        )
+                    }
+                }
                 if !self.notes.isEmpty {
                     self.saveNotesToRecord()
                 }
@@ -398,13 +499,34 @@ final class ImportSessionViewModel: ObservableObject {
                 self.recordsService?.refreshIndex()
             }
 
-            let insightResult = try? self.rpcClient.buildFinal(meetingID: meetingID)
-            DispatchQueue.main.async {
-                if let result = insightResult {
-                    self.applyInsightResult(result)
+            self.analyticsSubmit { $0.recoveryAttempted("import", phase: "analysis") }
+            let analysisStartedAt = DispatchTime.now().uptimeNanoseconds
+            do {
+                let insightResult = try self.rpcClient.buildFinal(meetingID: meetingID)
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
+                DispatchQueue.main.async {
+                    self.applyInsightResult(insightResult, analyticsLatencyMilliseconds: analysisLatencyMS)
                     self.recordsService?.refreshIndex()
+                    self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
                 }
-                self.sessionPhase = .reviewing
+                self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
+            } catch {
+                let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
+                self.analyticsSubmit {
+                    $0.workflowFailed(
+                        "import",
+                        phase: "analysis",
+                        errorCode: "unknown",
+                        recoveryAction: "retry",
+                        analysisLatencyMilliseconds: analysisLatencyMS
+                    )
+                }
+                DispatchQueue.main.async {
+                    self.errorMessage = "智能纪要生成失败：\(error.localizedDescription)"
+                    self.sessionPhase = .reviewing
+                    self.analyticsSubmit { $0.reviewOpened("import") }
+                }
             }
         }
     }
@@ -450,26 +572,22 @@ final class ImportSessionViewModel: ObservableObject {
         return loaded
     }
 
-    private func exportPersistedRecord(format: String, meetingID: String) -> Bool {
+    private func exportPersistedRecord(format: String, meetingID: String) throws -> Bool {
         guard persistedRecordPath(for: meetingID) != nil else {
             return false
         }
 
-        do {
-            if !notes.isEmpty {
-                saveNotesToRecord()
-            }
-            let url = try RecordDocumentExporter.exportIfPersistedRecordExists(
-                format: format,
-                meetingID: meetingID,
-                recordsService: recordsService
-            )
-            guard let url else { return false }
-            lastExportURL = url
-            exportStatusMessage = "已导出 \(url.lastPathComponent)"
-        } catch {
-            exportStatusMessage = "导出失败：\(error.localizedDescription)"
+        if !notes.isEmpty {
+            saveNotesToRecord()
         }
+        let url = try RecordDocumentExporter.exportIfPersistedRecordExists(
+            format: format,
+            meetingID: meetingID,
+            recordsService: recordsService
+        )
+        guard let url else { return false }
+        lastExportURL = url
+        exportStatusMessage = "已导出 \(url.lastPathComponent)"
         return true
     }
 

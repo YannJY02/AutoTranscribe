@@ -1,0 +1,98 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH raw_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.app_session_id AS app_session_id,
+    properties.workflow AS workflow
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp < toDateTime({variables.window_end})
+), anchored_source AS (
+  SELECT *,max(if(schema_version=1 AND event_name IN ('workflow_started','record_reopened'),
+    tuple(timestamp_utc,event_sequence,event_name),tuple(toDateTime(0),toInt(0),''))) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) context_anchor
+  FROM raw_source
+), event_source AS (
+  SELECT *,event_name='workflow_failed' AND tupleElement(context_anchor,3)='record_reopened' is_record_context_terminal
+  FROM anchored_source
+), window_source AS (
+  SELECT * FROM event_source WHERE timestamp_utc >= toDateTime({variables.window_start})
+), eligible AS (
+  SELECT * FROM window_source WHERE schema_version=1
+), pre_window_indexed AS (
+  SELECT e.*,sum(if(event_name='workflow_started',1,0)) OVER (
+    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) attempt_index
+  FROM event_source e WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+), pre_window_attempts AS (
+  SELECT app_session_id,workflow,attempt_index,countIf(event_name='workflow_started') starts,
+    countIf(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal) terminal_events
+  FROM pre_window_indexed WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), pre_window AS (
+  SELECT app_session_id,workflow,countIf(starts>0 AND terminal_events=0) open_attempts
+  FROM pre_window_attempts
+  GROUP BY app_session_id,workflow
+), indexed AS (
+  SELECT e.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) attempt_index,
+    sum(if(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal,1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) terminal_index,
+    sum(if(event_name IN ('workflow_started','record_reopened'),1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) funnel_index
+  FROM eligible e
+), classified AS (
+  SELECT i.*,coalesce(p.open_attempts,0) pre_window_open_attempts,
+    NOT is_record_context_terminal AND event_name IN ('workflow_completed','workflow_failed')
+      AND terminal_index<=coalesce(p.open_attempts,0) is_boundary_terminal
+  FROM indexed i LEFT JOIN pre_window p USING(app_session_id,workflow)
+), ordered AS (
+  SELECT c.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_starts,
+    sum(if(event_name IN ('workflow_completed','workflow_failed') AND NOT is_record_context_terminal AND NOT is_boundary_terminal,1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_terminals
+  FROM classified c
+), sessions AS (
+  SELECT app_session_id,workflow,funnel_index,
+    minOrNullIf(tuple(timestamp_utc,event_sequence),event_name='workflow_started') started,
+    minOrNullIf(tuple(timestamp_utc,event_sequence),event_name='record_saved') saved,
+    minOrNullIf(tuple(timestamp_utc,event_sequence),event_name='smart_minutes_review_opened') reviewed,
+    minOrNullIf(tuple(timestamp_utc,event_sequence),event_name='export_completed') exported
+  FROM ordered WHERE attempt_index>0 AND NOT is_record_context_terminal AND NOT is_boundary_terminal
+  GROUP BY app_session_id,workflow,funnel_index
+  HAVING countIf(event_name='workflow_started')>0
+), boundary_quality AS (
+  SELECT
+    countIf(event_name IN ('workflow_completed','workflow_failed') AND NOT is_record_context_terminal AND attempt_index=0 AND NOT is_boundary_terminal) orphan_boundary_terminals,
+    countIf(event_name='workflow_started' AND terminal_index<pre_window_open_attempts) ambiguous_boundary_starts
+  FROM classified
+), quality AS (
+  SELECT
+    (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_starts,
+    (SELECT countIf(event_name='record_reopened' AND prior_starts>prior_terminals) FROM ordered) reopens_during_active_attempts,
+    (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals,
+    (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
+), funnel_counts AS (
+  SELECT countIf(started IS NOT NULL) started,
+    countIf(saved>=started) record_saved,
+    countIf(reviewed>=saved AND saved>=started) review_opened,
+    countIf(exported>=reviewed AND reviewed>=saved AND saved>=started) export_completed
+  FROM sessions
+)
+SELECT funnel_counts.*,
+  multiIf(overlapping_starts+reopens_during_active_attempts+orphan_boundary_terminals+ambiguous_boundary_starts>0,'incomplete',funnel_counts.started=0,'insufficient-data','requires-reconciliation') evidence_state
+FROM funnel_counts CROSS JOIN quality;

@@ -21,11 +21,11 @@ final class SupportedMediaTypesTests: XCTestCase {
         )
     }
 
-    func testOpenPanelAllowsFileSelectionAndDefersExtensionValidationToApp() {
+    func testOpenPanelDefaultsToOneFileForSerializedPilotAttempts() {
         let panel = NSOpenPanel()
-        SupportedMediaTypes.configureOpenPanel(panel, allowsMultipleSelection: true)
+        SupportedMediaTypes.configureOpenPanel(panel)
 
-        XCTAssertTrue(panel.allowsMultipleSelection)
+        XCTAssertFalse(panel.allowsMultipleSelection)
         XCTAssertTrue(panel.canChooseFiles)
         XCTAssertFalse(panel.canChooseDirectories)
         XCTAssertTrue(

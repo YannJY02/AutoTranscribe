@@ -70,6 +70,10 @@ extension LiveSessionViewModel {
                     finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
+                self.analyticsSubmit { analytics in
+                    analytics.recordSaved("live")
+                    analytics.recoveryCompleted("live", phase: "finalizing", succeeded: true)
+                }
                 if !recordPath.isEmpty {
                     self.copyCaptureTimelineSidecar(
                         from: capturedTimelineSidecarURL,
@@ -95,8 +99,12 @@ extension LiveSessionViewModel {
                         ? "本次记录已保存媒体和笔记；可从已保存媒体恢复逐字稿。"
                         : nil
                     self.isFinalizingLiveSession = false
+                    self.recordLiveReviewOpenedIfSaved()
                 }
             } catch let saveError {
+                ProductAnalytics.submit { analytics in
+                    analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
+                }
                 if let finalizationLeaseToken {
                     do {
                         try self.rpcClient.sessionStopForFinalization(
@@ -122,6 +130,13 @@ extension LiveSessionViewModel {
                 self.publishError(saveError)
             }
         }
+    }
+
+    func recordLiveReviewOpenedIfSaved() {
+        guard sessionPhase == .reviewing,
+              !lastExportPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        analyticsSubmit { $0.reviewOpened("live") }
     }
 
     private func copyCaptureTimelineSidecar(from sourceURL: URL, toRecordPath recordPath: String) {
@@ -220,6 +235,10 @@ extension LiveSessionViewModel {
         guard !path.isEmpty else { return }
         let recordPath = URL(fileURLWithPath: path)
         let duration = recordingDuration
+        ProductAnalytics.submit {
+            $0.workflowFailed("live", phase: "reviewing", errorCode: "storage", recoveryAction: "retry")
+            $0.recoveryAttempted("live", phase: "reviewing")
+        }
         updateMain {
             self.transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
         }
@@ -238,10 +257,16 @@ extension LiveSessionViewModel {
                         ? "逐字稿已恢复；现有智能纪要仍保留，但可能需要重新生成以匹配新逐字稿。"
                         : "逐字稿已恢复。"
                     self.recordingStatusMessage = nil
+                    ProductAnalytics.submit {
+                        $0.recoveryCompleted("live", phase: "reviewing", succeeded: true)
+                    }
                 }
             } catch {
                 self.updateMain {
                     self.transcriptRecoveryStatusMessage = "逐字稿恢复失败：\(error.localizedDescription)"
+                    ProductAnalytics.submit {
+                        $0.recoveryCompleted("live", phase: "reviewing", succeeded: false)
+                    }
                 }
             }
         }

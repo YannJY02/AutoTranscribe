@@ -3,6 +3,8 @@ import CoreGraphics
 import SwiftUI
 
 struct SettingsView: View {
+    static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收产品流程事件、允许列表中的低基数属性，以及用于跨会话归因的随机安装标识；退出后重新启用会轮换该标识。本地加密待发队列最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止上传并清除本地队列；远端保留与删除遵循 PostHog 项目配置。"
+
     private struct VendorDraft {
         var baseURL: String
         var modelID: String
@@ -46,6 +48,9 @@ struct SettingsView: View {
     @State private var savedFeedbackTask: Task<Void, Never>? = nil
 
     @State private var statusMessage: String = ""
+    @State private var telemetryEnabled = false
+    @State private var telemetryReadbackCompleted = false
+    @State private var telemetryAvailable = false
     @State private var isRunningTask = false
     @State private var providerProbeResult: ProviderProbeResult?
     @State private var providerProbeAt: Date?
@@ -108,6 +113,44 @@ struct SettingsView: View {
             vendorSection
             asrSection
             storageSection
+            Section("外部遥测") {
+                Toggle("共享产品流程数据", isOn: Binding(
+                    get: { telemetryEnabled },
+                    set: { enabled in
+                        telemetryEnabled = enabled
+                        ExternalTelemetryConsentController.setEnabled(enabled) { result in
+                            DispatchQueue.main.async {
+                                switch result {
+                                case .success(let readback): telemetryEnabled = readback
+                                case .failure:
+                                    statusMessage = "外部遥测设置未能保存。"
+                                    ExternalTelemetryConsentController.read { readback, available in
+                                        DispatchQueue.main.async {
+                                            telemetryEnabled = readback
+                                            telemetryAvailable = available
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ))
+                .disabled(!telemetryReadbackCompleted || !telemetryAvailable)
+                .accessibilityIdentifier("settings_external_telemetry_toggle")
+                Text(telemetryReadbackCompleted
+                    ? (!telemetryAvailable
+                        ? "当前状态：不可用（未配置 PostHog）"
+                        : (telemetryEnabled ? "当前状态：已启用" : "当前状态：关闭"))
+                    : "当前状态：读取中")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings_external_telemetry_readback_status")
+                Text(Self.externalTelemetryDisclosure)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(Self.externalTelemetryDisclosure)
+                    .accessibilityIdentifier("settings_external_telemetry_disclosure")
+            }
 
             if !statusMessage.isEmpty {
                 Section {
@@ -134,6 +177,13 @@ struct SettingsView: View {
         .padding(16)
         .frame(minWidth: 600, idealWidth: 680)
         .onAppear {
+            ExternalTelemetryConsentController.read { enabled, available in
+                DispatchQueue.main.async {
+                    telemetryEnabled = enabled
+                    telemetryAvailable = available
+                    telemetryReadbackCompleted = true
+                }
+            }
             syncFromStore()
             Task {
                 try? await refreshASRRuntimeStatus()

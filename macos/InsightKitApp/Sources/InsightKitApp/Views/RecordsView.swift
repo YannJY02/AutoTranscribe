@@ -142,12 +142,14 @@ struct RecordsView: View {
 
     private func selectRecord(_ record: RecordMetadata) {
         selectedRecordID = record.id
-        reviewDataSource = RecordReviewDataSource(
+        let dataSource = RecordReviewDataSource(
             metadata: record,
             rootDirectory: recordsService.rootDirectory,
             recordPath: recordsService.recordFolderURL(for: record.id),
             transcriptRecoveryService: transcriptRecoveryService
         )
+        dataSource.trackOpenAnalytics()
+        reviewDataSource = dataSource
         recordsNavigation.openReview(recordID: record.id)
     }
 
@@ -168,7 +170,8 @@ struct RecordsView: View {
                 metadata: updated,
                 rootDirectory: recordsService.rootDirectory,
                 recordPath: recordsService.recordFolderURL(for: record.id),
-                transcriptRecoveryService: transcriptRecoveryService
+                transcriptRecoveryService: transcriptRecoveryService,
+                analyticsContext: reviewDataSource?.analyticsContext
             )
         }
         recordRenameTarget = nil
@@ -195,12 +198,14 @@ struct RecordsView: View {
         }
 
         selectedRecordID = record.id
-        reviewDataSource = RecordReviewDataSource(
+        let dataSource = RecordReviewDataSource(
             metadata: record,
             rootDirectory: recordsService.rootDirectory,
             recordPath: recordsService.recordFolderURL(for: record.id),
             transcriptRecoveryService: transcriptRecoveryService
         )
+        dataSource.trackOpenAnalytics()
+        reviewDataSource = dataSource
     }
 
     private func formatTimestamp(_ seconds: TimeInterval) -> String {

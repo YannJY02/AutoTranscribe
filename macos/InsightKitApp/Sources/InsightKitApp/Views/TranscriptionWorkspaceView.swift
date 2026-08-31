@@ -3,6 +3,7 @@ import SwiftUI
 struct TranscriptionWorkspaceView: View {
     @ObservedObject var viewModel: TranscriptionSessionViewModel
     let onImportRequest: () -> Void
+    @State private var transcriptAnalyticsKey = UUID().uuidString.lowercased()
 
     var body: some View {
         HSplitView {
@@ -17,6 +18,7 @@ struct TranscriptionWorkspaceView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(InsightTheme.accent)
+                    .disabled(!viewModel.canStartExplicitImport)
 
                     Button(viewModel.watcherState.isRunning ? "停止监听" : "开始监听") {
                         if viewModel.watcherState.isRunning {
@@ -58,12 +60,19 @@ struct TranscriptionWorkspaceView: View {
                 }
 
                 if !viewModel.transcriptSegments.isEmpty {
+                    let analyticsContext = viewModel.transcriptAnalyticsContext()
                     Divider()
                     TranscriptStreamView(
                         searchText: $viewModel.searchText,
                         selectedEvidence: $viewModel.selectedEvidence,
-                        segments: viewModel.transcriptSegments
+                        segments: viewModel.transcriptSegments,
+                        analyticsContext: analyticsContext
                     )
+                    .id(transcriptAnalyticsKey)
+                    .onAppear {
+                        guard let analyticsContext else { return }
+                        ProductAnalytics.submit { $0.registerSearchContext(analyticsContext) }
+                    }
                 }
             }
             .padding(18)
@@ -97,6 +106,9 @@ struct TranscriptionWorkspaceView: View {
             }
         }
         .background(viewModel.readingMode ? InsightTheme.background : Color.white)
+        .onChange(of: viewModel.currentMeetingID) { _, _ in
+            transcriptAnalyticsKey = UUID().uuidString.lowercased()
+        }
     }
 
     private var watcherPanel: some View {

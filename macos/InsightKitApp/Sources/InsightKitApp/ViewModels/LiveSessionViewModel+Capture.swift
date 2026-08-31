@@ -218,7 +218,7 @@ extension LiveSessionViewModel {
         }
 
         if case .success(let result) = outcome.refresh {
-            updateWorkbench(result)
+            updateWorkbench(result, analyticsLatencyMilliseconds: outcome.analysisLatencyMs)
         }
     }
 

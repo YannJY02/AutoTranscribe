@@ -1,0 +1,126 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH raw_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.app_session_id AS app_session_id,
+    properties.workflow AS workflow, properties.analysis_mode AS analysis_mode,
+    properties.provider_class AS provider_class, properties.phase AS phase,
+    properties.outcome AS outcome, properties.error_code AS error_code,
+    properties.recovery_action AS recovery_action, toInt(properties.duration_bucket_ms) AS duration_bucket_ms,
+    toInt(properties.latency_bucket_ms) AS latency_bucket_ms, toInt(properties.retry_count) AS retry_count,
+    toInt(properties.result_count) AS result_count, toInt(properties.module_count) AS module_count,
+    toFloat(properties.quality_score) AS quality_score
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp < toDateTime({variables.window_end})
+), anchored_source AS (
+  SELECT *,max(if(schema_version=1 AND event_name IN ('workflow_started','record_reopened'),
+    tuple(timestamp_utc,event_sequence,event_name),tuple(toDateTime(0),toInt(0),''))) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) context_anchor
+  FROM raw_source
+), event_source AS (
+  SELECT *,event_name='workflow_failed' AND tupleElement(context_anchor,3)='record_reopened' is_record_context_terminal
+  FROM anchored_source
+), window_source AS (
+  SELECT * FROM event_source WHERE timestamp_utc >= toDateTime({variables.window_start})
+), eligible AS (
+  SELECT * FROM window_source WHERE schema_version=1
+), pre_window_indexed AS (
+  SELECT e.*,sum(if(event_name='workflow_started',1,0)) OVER (
+    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) attempt_index
+  FROM event_source e WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+), pre_window_attempts AS (
+  SELECT app_session_id,workflow,attempt_index,countIf(event_name='workflow_started') starts,
+    countIf(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal) terminal_events
+  FROM pre_window_indexed WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), pre_window AS (
+  SELECT app_session_id,workflow,countIf(starts>0 AND terminal_events=0) open_attempts
+  FROM pre_window_attempts
+  GROUP BY app_session_id,workflow
+), indexed AS (
+  SELECT e.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) attempt_index,
+    sum(if(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal,1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) terminal_index
+  FROM eligible e
+), classified AS (
+  SELECT i.*,coalesce(p.open_attempts,0) pre_window_open_attempts,
+    NOT is_record_context_terminal AND event_name IN ('workflow_completed','workflow_failed')
+      AND terminal_index<=coalesce(p.open_attempts,0) is_boundary_terminal
+  FROM indexed i LEFT JOIN pre_window p USING(app_session_id,workflow)
+), ordered AS (
+  SELECT c.*,
+    sum(if(event_name='workflow_started',1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_starts,
+    sum(if(event_name IN ('workflow_completed','workflow_failed') AND NOT is_record_context_terminal AND NOT is_boundary_terminal,1,0)) OVER (
+      PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) prior_terminals
+  FROM classified c
+), diagnostics AS (
+  SELECT COUNT(*) event_count,countIf(schema_version<>1) unknown_schema,
+    countIf(event_sequence IS NULL OR event_sequence<=0) missing_event_sequence,
+    countIf(event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed')) unknown_event,
+    countIf(workflow IS NOT NULL AND workflow NOT IN ('live','import')) unknown_workflow,
+    countIf(analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud')) unknown_analysis_mode,
+    countIf(event_name='workflow_started' AND (workflow IS NULL OR analysis_mode IS NULL)) missing_start_dimensions,
+    countIf(provider_class IS NOT NULL AND provider_class NOT IN ('local','byok','none')) unknown_provider_class,
+    countIf(phase IS NOT NULL AND phase NOT IN ('preparing','running','finalizing','analysis','reviewing','exporting')) unknown_phase,
+    countIf(outcome IS NOT NULL AND outcome NOT IN ('succeeded','failed','cancelled')) unknown_outcome,
+    countIf(error_code IS NOT NULL AND error_code NOT IN ('configuration','permission-denied','runtime-unavailable','provider-unavailable','storage','unknown')) unknown_error_code,
+    countIf(recovery_action IS NOT NULL AND recovery_action NOT IN ('retry','open-settings','restart','none')) unknown_recovery_action,
+    countIf(retry_count NOT BETWEEN 0 AND 10 OR result_count NOT BETWEEN 0 AND 10000 OR module_count NOT BETWEEN 0 AND 100 OR quality_score NOT BETWEEN 0 AND 1) out_of_bounds,
+    countIf(duration_bucket_ms IS NOT NULL AND duration_bucket_ms NOT IN (1000,5000,15000,30000,60000,300000,900000,1800000,3600000)) unknown_duration_bucket,
+    countIf(latency_bucket_ms IS NOT NULL AND latency_bucket_ms NOT IN (100,250,500,1000,5000,15000,30000,60000,300000)) unknown_latency_bucket,
+    countIf(event_name IN ('workflow_completed','workflow_failed') AND provider_class IS NULL
+      OR event_name='workflow_completed' AND latency_bucket_ms IS NULL) missing_terminal_dimensions
+  FROM window_source
+), attempts AS (
+  SELECT app_session_id,workflow,attempt_index,
+    countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
+  FROM ordered WHERE attempt_index>0 AND NOT is_record_context_terminal AND NOT is_boundary_terminal GROUP BY app_session_id,workflow,attempt_index
+), boundary_quality AS (
+  SELECT
+    countIf(event_name IN ('workflow_completed','workflow_failed') AND NOT is_record_context_terminal AND attempt_index=0 AND NOT is_boundary_terminal) orphan_boundary_terminals,
+    countIf(event_name='workflow_started' AND terminal_index<pre_window_open_attempts) ambiguous_boundary_starts
+  FROM classified
+), quality AS (
+ SELECT
+  (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_attempts,
+  (SELECT countIf(starts<>1 OR completions>1) FROM attempts) duplicate_attempt_groups,
+  (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals,
+  (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
+)
+SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
+  if(event_count=0,NULL,missing_event_sequence) missing_event_sequence,
+  if(event_count=0,NULL,unknown_event) unknown_event,
+  if(event_count=0,NULL,unknown_workflow) unknown_workflow,
+  if(event_count=0,NULL,unknown_analysis_mode) unknown_analysis_mode,
+  if(event_count=0,NULL,missing_start_dimensions) missing_start_dimensions,
+  if(event_count=0,NULL,unknown_provider_class) unknown_provider_class,
+  if(event_count=0,NULL,unknown_phase) unknown_phase,
+  if(event_count=0,NULL,unknown_outcome) unknown_outcome,
+  if(event_count=0,NULL,unknown_error_code) unknown_error_code,
+  if(event_count=0,NULL,unknown_recovery_action) unknown_recovery_action,
+  if(event_count=0,NULL,out_of_bounds) out_of_bounds,
+  if(event_count=0,NULL,unknown_duration_bucket) unknown_duration_bucket,
+  if(event_count=0,NULL,unknown_latency_bucket) unknown_latency_bucket,
+  if(event_count=0,NULL,missing_terminal_dimensions) missing_terminal_dimensions,
+  overlapping_attempts,duplicate_attempt_groups,orphan_boundary_terminals,ambiguous_boundary_starts,
+  multiIf(event_count=0,'incomplete',unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+
+    unknown_analysis_mode+missing_start_dimensions+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+
+    unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+
+    missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals+
+    ambiguous_boundary_starts=0,'complete','incomplete') evidence_state
+FROM diagnostics CROSS JOIN quality;

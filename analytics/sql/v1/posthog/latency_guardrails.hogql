@@ -1,0 +1,26 @@
+-- query_version: 1; event_schema_version: 1; dialect: PostHog HogQL
+WITH event_source AS (
+  SELECT event AS event_name, toTimeZone(timestamp, 'UTC') AS timestamp_utc,
+    toInt(properties.event_sequence) AS event_sequence, toInt(properties.schema_version) AS schema_version,
+    properties.environment AS environment, properties.app_version AS app_version,
+    properties.app_build AS app_build, properties.workflow AS workflow,
+    properties.analysis_mode AS analysis_mode, properties.provider_class AS provider_class,
+    properties.outcome AS outcome, toInt(properties.latency_bucket_ms) AS latency_bucket_ms
+  FROM events
+  WHERE properties.environment = {variables.environment}
+    AND timestamp >= toDateTime({variables.window_start})
+    AND timestamp < toDateTime({variables.window_end})
+), eligible AS (
+  SELECT * FROM event_source WHERE schema_version=1
+    AND event_name IN ('workflow_completed','workflow_failed') AND latency_bucket_ms IS NOT NULL
+), grouped AS (
+  SELECT app_version,app_build,workflow,analysis_mode,provider_class,latency_bucket_ms,
+    COUNT(*) event_count,countIf(outcome='succeeded') success_count
+  FROM eligible GROUP BY app_version,app_build,workflow,analysis_mode,provider_class,latency_bucket_ms
+), grouped_count AS (
+  SELECT COUNT(*) row_count FROM grouped
+)
+SELECT *, 'requires-reconciliation' evidence_state FROM grouped
+UNION ALL
+SELECT NULL,NULL,NULL,NULL,NULL,NULL,0,0,'insufficient-data'
+FROM grouped_count WHERE row_count=0;
