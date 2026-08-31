@@ -106,7 +106,7 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
     if isinstance(value, dict):
         for key, child in value.items():
             key_text = str(key)
-            if PRIVATE_PATH.search(key_text) or _contains_secret(key_text):
+            if _has_unicode_surrogate(key_text) or PRIVATE_PATH.search(key_text) or _contains_secret(key_text):
                 raise ValidationError(f"forbidden field at {path}")
             normalized_key = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", key_text)
             normalized_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", normalized_key).replace("-", "_")
@@ -117,6 +117,8 @@ def _walk(value: Any, path: str = "input", *, redact_private_paths: bool = False
         for index, child in enumerate(value):
             _walk(child, f"{path}[{index}]", redact_private_paths=redact_private_paths)
     elif isinstance(value, str):
+        if _has_unicode_surrogate(value):
+            raise ValidationError(f"unsafe text rejected at {path}")
         if PRIVATE_PATH.search(value) and not redact_private_paths:
             raise ValidationError(f"private path rejected at {path}")
         if _contains_secret(value):
@@ -127,8 +129,12 @@ def _has_unsafe_ref_chars(value: str) -> bool:
     return any(char.isspace() for char in value) or _has_unsafe_text_chars(value)
 
 
+def _has_unicode_surrogate(value: str) -> bool:
+    return any(unicodedata.category(char) == "Cs" for char in value)
+
+
 def _has_unsafe_text_chars(value: str) -> bool:
-    return any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in value)
+    return any(unicodedata.category(char) in {"Cc", "Cf", "Cs", "Zl", "Zp"} for char in value)
 
 
 def _is_repo_ref(value: str) -> bool:
@@ -208,7 +214,7 @@ def _reference_identifies(item: dict[str, Any], value: str) -> bool:
         if expected is None:
             return False
         return (
-            len(parts) in {3, 4}
+            item["source_id"] == expected and len(parts) in {3, 4}
             and parts[:3] == ["yannjy", "issue", expected]
         )
     if item["source_type"] == "github":
@@ -216,7 +222,7 @@ def _reference_identifies(item: dict[str, Any], value: str) -> bool:
         expected = linked.split("-")[-1].lstrip("#")
         expected_kind = "pull" if linked.startswith("PR-") else "issues"
         return (
-            len(parts) == 4
+            item["source_id"] == linked and len(parts) == 4
             and parts[:2] == ["YannJY02", "AutoTranscribe"]
             and parts[2] == expected_kind
             and parts[3] == expected

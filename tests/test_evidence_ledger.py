@@ -350,6 +350,14 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
 
 @pytest.mark.parametrize("item", [
     source(
+        source_type="linear", source_id="YAN-51", linear_issue_id="YAN-50",
+        source_ref="https://linear.app/yannjy/issue/YAN-50",
+    ),
+    source(
+        source_type="github", source_id="GH-69", github_issue_or_pr_id="GH-68",
+        source_ref="https://github.com/YannJY02/AutoTranscribe/issues/68",
+    ),
+    source(
         source_type="linear", source_id="YAN-50",
         source_ref="https://linear.app/yannjy/issue/YAN-51",
     ),
@@ -385,6 +393,34 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
 def test_task_and_ci_references_must_identify_the_linked_evidence(tmp_path: Path, item: dict):
     with pytest.raises(ValidationError, match="identify the linked evidence"):
         EvidenceLedger(tmp_path / "ledger.json")._collect_normalized([item])
+
+
+def test_cli_rejects_escaped_unicode_surrogates_without_a_traceback(tmp_path: Path):
+    input_path = tmp_path / "input.json"
+    item = source(
+        source_type="analytics",
+        source_id="aggregate-1",
+        source_ref="https://us.posthog.com/project/1/insights/\ud800",
+    )
+    generated = {"privacy_class", "fact", "gap_or_decision", "owner_action", "recheck_source", "human_gate"}
+    input_path.write_text(json.dumps([
+        {"adapter": "external-reference", **{key: value for key, value in item.items() if key not in generated}}
+    ]))
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/evidence_ledger.py",
+            "--ledger", str(tmp_path / "ledger.json"),
+            "--input", str(input_path),
+        ],
+        cwd=Path(__file__).parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "Traceback" not in completed.stderr
 
 
 def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc3339_timestamps(tmp_path: Path):
