@@ -340,9 +340,17 @@ final class ProductAnalytics {
 
     /// Resolves the runtime singleton away from the caller so Keychain, queue
     /// readback, and filesystem setup can never delay a product interaction.
+    static func submit(_ operation: @escaping (ProductAnalytics) -> Void) {
+        submit(
+            failureStack: Thread.callStackReturnAddresses.map(\.uint64Value),
+            using: nil,
+            operation
+        )
+    }
+
     static func submit(
-        failureStack: [UInt64] = Thread.callStackReturnAddresses.map(\.uint64Value),
-        using analytics: ProductAnalytics? = nil,
+        failureStack: [UInt64],
+        using analytics: ProductAnalytics?,
         _ operation: @escaping (ProductAnalytics) -> Void
     ) {
         submissionQueue.async {
@@ -1190,7 +1198,7 @@ final class ProductAnalytics {
         guard emitRecoveryCompleted(
             values,
             workflow: workflow,
-            path: context.path,
+            path: recovery.path,
             phase: phase,
             succeeded: succeeded
         ) else { return }
