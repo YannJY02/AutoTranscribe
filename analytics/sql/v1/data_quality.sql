@@ -2,6 +2,12 @@
 WITH eligible AS (
  SELECT * FROM events WHERE schema_version=1 AND environment=:environment
  AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
+), pre_window AS (
+ SELECT app_session_id,workflow,
+  CASE WHEN SUM(CASE WHEN event_name='workflow_started' THEN 1 WHEN event_name IN ('workflow_completed','workflow_failed') THEN -1 ELSE 0 END)>0
+   THEN SUM(CASE WHEN event_name='workflow_started' THEN 1 WHEN event_name IN ('workflow_completed','workflow_failed') THEN -1 ELSE 0 END) ELSE 0 END open_attempts
+ FROM events WHERE schema_version=1 AND environment=:environment AND timestamp_utc<:window_start
+ GROUP BY app_session_id,workflow
 ), indexed AS (
  SELECT e.*,
   SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
@@ -41,11 +47,19 @@ WITH eligible AS (
  SELECT app_session_id,workflow,attempt_index,
   SUM(event_name='workflow_started') starts,SUM(event_name='workflow_completed') completions
  FROM ordered WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), boundary_terminals AS (
+ SELECT app_session_id,workflow,COUNT(*) terminals
+ FROM ordered WHERE attempt_index=0 AND event_name IN ('workflow_completed','workflow_failed')
+ GROUP BY app_session_id,workflow
+), boundary_quality AS (
+ SELECT COALESCE(SUM(MAX(b.terminals-COALESCE(p.open_attempts,0),0)),0) orphan_boundary_terminals
+ FROM boundary_terminals b LEFT JOIN pre_window p USING(app_session_id,workflow)
 ), quality AS (
  SELECT
   (SELECT COUNT(*) FROM ordered WHERE event_name='workflow_started' AND prior_starts>prior_terminals) overlapping_attempts,
-  (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) duplicate_attempt_groups
+  (SELECT COUNT(*) FROM attempts WHERE starts<>1 OR completions>1) duplicate_attempt_groups,
+  (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals
 )
-SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,
- CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups=0 THEN 'complete' ELSE 'incomplete' END evidence_state
+SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,quality.orphan_boundary_terminals,
+ CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals=0 THEN 'complete' ELSE 'incomplete' END evidence_state
 FROM diagnostics CROSS JOIN quality;

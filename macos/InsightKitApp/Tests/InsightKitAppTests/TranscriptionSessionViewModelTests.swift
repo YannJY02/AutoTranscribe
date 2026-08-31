@@ -166,6 +166,96 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         wait(for: [accepted], timeout: 1)
     }
 
+    func testExplicitImportsAreSerializedUntilTheAcceptedAttemptTerminates() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false
+        )
+
+        vm.importFile(path: "/tmp/first.wav")
+        vm.importFile(path: "/tmp/second.wav")
+
+        let accepted = expectation(description: "first import accepted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(rpc.importCalls.map(\.path), ["/tmp/first.wav"])
+            XCTAssertFalse(vm.canStartExplicitImport)
+            accepted.fulfill()
+        }
+        wait(for: [accepted], timeout: 1)
+    }
+
+    func testCompletedExplicitJobsAreAllBuiltAndFailedLastCompletedIsSkipped() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionImportResults = [
+            .init(jobID: "job-1", meetingID: "meeting-1", state: .queued),
+            .init(jobID: "job-2", meetingID: "meeting-2", state: .queued),
+        ]
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { _ in }
+        )
+
+        vm.importFile(path: "/tmp/first.wav")
+        let firstAccepted = expectation(description: "first accepted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { firstAccepted.fulfill() }
+        wait(for: [firstAccepted], timeout: 1)
+
+        let failed = TranscriptionJob(
+            id: "job-1", meetingID: "meeting-1", sourcePath: "/tmp/first.wav", title: "first",
+            state: .failed, progress: 100, stage: "failed", error: "fixture", reason: "",
+            startedAt: Date().addingTimeInterval(-2), endedAt: Date().addingTimeInterval(-1)
+        )
+        rpc.transcriptionStatusError = nil
+        rpc.transcriptionStatusStub = .init(
+            watcher: .init(), queue: [], activeJob: nil,
+            lastCompleted: .init(job: failed, meetingID: failed.meetingID, segmentsCount: 0, updatedAt: Date()),
+            jobs: [failed]
+        )
+        vm.refreshStatus()
+        let failureObserved = expectation(description: "failed job closes admission without building")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            XCTAssertTrue(vm.canStartExplicitImport)
+            XCTAssertEqual(rpc.buildFinalCalls, 0)
+            failureObserved.fulfill()
+        }
+        wait(for: [failureObserved], timeout: 1)
+
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 2)
+        vm.importFile(path: "/tmp/second.wav")
+        let secondAccepted = expectation(description: "second accepted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { secondAccepted.fulfill() }
+        wait(for: [secondAccepted], timeout: 1)
+
+        let completed1 = TranscriptionJob(
+            id: "job-1", meetingID: "meeting-1", sourcePath: "/tmp/first.wav", title: "first",
+            state: .completed, progress: 100, stage: "completed", error: "", reason: "",
+            startedAt: Date().addingTimeInterval(-4), endedAt: Date().addingTimeInterval(-2)
+        )
+        let completed2 = TranscriptionJob(
+            id: "job-2", meetingID: "meeting-2", sourcePath: "/tmp/second.wav", title: "second",
+            state: .completed, progress: 100, stage: "completed", error: "", reason: "",
+            startedAt: Date().addingTimeInterval(-3), endedAt: Date().addingTimeInterval(-1)
+        )
+        rpc.transcriptionStatusError = nil
+        rpc.transcriptionStatusStub = .init(
+            watcher: .init(), queue: [], activeJob: nil,
+            lastCompleted: .init(job: completed2, meetingID: completed2.meetingID, segmentsCount: 1, updatedAt: Date()),
+            jobs: [completed1, completed2]
+        )
+        vm.refreshStatus()
+        let bothBuilt = expectation(description: "all explicit completions built")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            XCTAssertEqual(rpc.buildFinalMeetingIDs, ["meeting-1", "meeting-2"])
+            bothBuilt.fulfill()
+        }
+        wait(for: [bothBuilt], timeout: 1)
+    }
+
     func testLocalAnalysisSkipsCloudProviderStatus() {
         let rpc = RPCClientMock()
         rpc.providersStatusError = NSError(domain: "unexpected-cloud-check", code: 1)

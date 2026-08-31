@@ -70,7 +70,10 @@ extension LiveSessionViewModel {
                     finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
-                self.analyticsSubmit { $0.recordSaved("live") }
+                self.analyticsSubmit { analytics in
+                    analytics.recordSaved("live")
+                    analytics.recoveryCompleted("live", phase: "finalizing", succeeded: true)
+                }
                 if !recordPath.isEmpty {
                     self.copyCaptureTimelineSidecar(
                         from: capturedTimelineSidecarURL,

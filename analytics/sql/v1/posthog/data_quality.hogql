@@ -12,10 +12,16 @@ WITH event_source AS (
     toFloat(properties.quality_score) AS quality_score
   FROM events
   WHERE properties.environment = {variables.environment}
-    AND timestamp >= toDateTime({variables.window_start})
     AND timestamp < toDateTime({variables.window_end})
+), window_source AS (
+  SELECT * FROM event_source WHERE timestamp_utc >= toDateTime({variables.window_start})
 ), eligible AS (
-  SELECT * FROM event_source WHERE schema_version=1
+  SELECT * FROM window_source WHERE schema_version=1
+), pre_window AS (
+  SELECT app_session_id,workflow,
+    greatest(countIf(event_name='workflow_started')-countIf(event_name IN ('workflow_completed','workflow_failed')),0) open_attempts
+  FROM event_source WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+  GROUP BY app_session_id,workflow
 ), indexed AS (
   SELECT e.*,
     sum(if(event_name='workflow_started',1,0)) OVER (
@@ -50,15 +56,23 @@ WITH event_source AS (
     countIf(latency_bucket_ms IS NOT NULL AND latency_bucket_ms NOT IN (100,250,500,1000,5000,15000,30000,60000,300000)) unknown_latency_bucket,
     countIf(event_name IN ('workflow_completed','workflow_failed') AND provider_class IS NULL
       OR event_name='workflow_completed' AND latency_bucket_ms IS NULL) missing_terminal_dimensions
-  FROM event_source
+  FROM window_source
 ), attempts AS (
   SELECT app_session_id,workflow,attempt_index,
     countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
   FROM ordered WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
+), boundary_terminals AS (
+  SELECT app_session_id,workflow,count() terminals
+  FROM ordered WHERE attempt_index=0 AND event_name IN ('workflow_completed','workflow_failed')
+  GROUP BY app_session_id,workflow
+), boundary_quality AS (
+  SELECT coalesce(sum(greatest(b.terminals-coalesce(p.open_attempts,0),0)),0) orphan_boundary_terminals
+  FROM boundary_terminals b LEFT JOIN pre_window p USING(app_session_id,workflow)
 ), quality AS (
-  SELECT
-    (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_attempts,
-    (SELECT countIf(starts<>1 OR completions>1) FROM attempts) duplicate_attempt_groups
+ SELECT
+  (SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) FROM ordered) overlapping_attempts,
+  (SELECT countIf(starts<>1 OR completions>1) FROM attempts) duplicate_attempt_groups,
+  (SELECT orphan_boundary_terminals FROM boundary_quality) orphan_boundary_terminals
 )
 SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,missing_event_sequence) missing_event_sequence,
@@ -74,9 +88,9 @@ SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,unknown_duration_bucket) unknown_duration_bucket,
   if(event_count=0,NULL,unknown_latency_bucket) unknown_latency_bucket,
   if(event_count=0,NULL,missing_terminal_dimensions) missing_terminal_dimensions,
-  overlapping_attempts,duplicate_attempt_groups,
+  overlapping_attempts,duplicate_attempt_groups,orphan_boundary_terminals,
   multiIf(event_count=0,'incomplete',unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+
     unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+
     unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+
-    missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups=0,'complete','incomplete') evidence_state
+    missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals=0,'complete','incomplete') evidence_state
 FROM diagnostics CROSS JOIN quality;

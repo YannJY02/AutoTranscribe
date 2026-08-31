@@ -18,6 +18,7 @@ struct TranscriptionWorkspaceView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(InsightTheme.accent)
+                    .disabled(!viewModel.canStartExplicitImport)
 
                     Button(viewModel.watcherState.isRunning ? "停止监听" : "开始监听") {
                         if viewModel.watcherState.isRunning {

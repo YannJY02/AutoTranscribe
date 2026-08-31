@@ -38,6 +38,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var knownCompletedJobIDs: Set<String> = []
     private var analyticsContextsByJobID: [String: ProductAnalyticsAttemptContext] = [:]
     private var analyticsTerminalJobIDs: Set<String> = []
+    private var activeExplicitImportJobID: String?
     private var currentAnalyticsContext: ProductAnalyticsAttemptContext?
     private var pollFailureStreak = 0
     private var pollIntervalSec: UInt64 = 2
@@ -96,6 +97,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
         jobs.first(where: { $0.state == .running })
     }
 
+    var canStartExplicitImport: Bool {
+        !hasPendingSidecarMutation && activeExplicitImportJobID == nil
+    }
+
     func refreshStatus() {
         guard beginFetchIfNeeded() else { return }
         rpcQueue.async { [weak self] in
@@ -105,6 +110,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func importFile(path: String, title: String = "") {
+        guard canStartExplicitImport else {
+            errorMessage = "请先完成或取消当前导入，再导入下一个文件。"
+            return
+        }
         let analyticsContext = ProductAnalyticsAttemptContext(workflow: "import")
         let provisionalAnalyticsPath = ProductAnalyticsPath.provisional(
             analysisMode: AppConfigStore.shared.config.analysis.mode
@@ -121,14 +130,22 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 self.analyticsSubmit { $0.resolveWorkflow(analyticsContext, path: analyticsPath) }
                 DispatchQueue.main.async {
                     self.analyticsContextsByJobID[result.jobID] = analyticsContext
+                    self.activeExplicitImportJobID = result.jobID
                     self.currentAnalyticsContext = analyticsContext
                     self.currentMeetingID = result.meetingID
                 }
-                let status = try self.rpcClient.transcriptionStatus(limit: 100)
-                let sidecar = try? self.rpcClient.sidecarStatus()
-                DispatchQueue.main.async {
-                    _ = self.applyStatusSync(status, sidecar: sidecar)
-                    self.endSidecarMutation()
+                do {
+                    let status = try self.rpcClient.transcriptionStatus(limit: 100)
+                    let sidecar = try? self.rpcClient.sidecarStatus()
+                    DispatchQueue.main.async {
+                        _ = self.applyStatusSync(status, sidecar: sidecar)
+                        self.endSidecarMutation()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.errorMessage = "导入已接受，但状态暂时无法刷新。请稍后重试。"
+                        self.endSidecarMutation()
+                    }
                 }
             } catch {
                 self.analyticsSubmit {
@@ -296,6 +313,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     }
                 }
                 DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.publishErrorSync(error)
                     self.finishFinalInsightBuild()
                 }
@@ -315,6 +335,12 @@ final class TranscriptionSessionViewModel: ObservableObject {
         let duration = Double(transcriptSegments.map(\.endMs).max() ?? 0) / 1_000
         let recordPath = recordsService?.recordFolderURL(for: meetingID)
         let hasBlockingError = errorMessage != nil
+        let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+            recordPath: recordPath,
+            duration: duration,
+            exportCompleted: true,
+            hasBlockingError: hasBlockingError
+        )
         if let analyticsContext {
             ProductAnalytics.submit { $0.exportAttempted(analyticsContext) }
         }
@@ -331,16 +357,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                             analytics.exportCompleted(analyticsContext)
                             analytics.workflowCompleted(
                                 analyticsContext,
-                                evaluation: .evaluate(
-                                    recordPath: recordPath,
-                                    duration: duration,
-                                    exportCompleted: true,
-                                    hasBlockingError: hasBlockingError
-                                )
+                                evaluation: completionEvaluation
                             )
                         }
                     }
                     DispatchQueue.main.async {
+                        if completionEvaluation.isSuccessful, let analyticsContext {
+                            self.closeExplicitImportAdmission(for: analyticsContext)
+                        }
                         self.lastExportPath = url.path
                     }
                     return
@@ -353,16 +377,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                         analytics.exportCompleted(analyticsContext)
                         analytics.workflowCompleted(
                             analyticsContext,
-                            evaluation: .evaluate(
-                                recordPath: recordPath,
-                                duration: duration,
-                                exportCompleted: true,
-                                hasBlockingError: hasBlockingError
-                            )
+                            evaluation: completionEvaluation
                         )
                     }
                 }
                 DispatchQueue.main.async {
+                    if completionEvaluation.isSuccessful, let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.lastExportPath = result.path
                 }
             } catch {
@@ -376,7 +398,12 @@ final class TranscriptionSessionViewModel: ObservableObject {
                         )
                     }
                 }
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
+                    self.publishErrorSync(error)
+                }
             }
         }
     }
@@ -747,6 +774,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
             switch job.state {
             case .failed:
                 analyticsTerminalJobIDs.insert(job.id)
+                if activeExplicitImportJobID == job.id {
+                    activeExplicitImportJobID = nil
+                }
                 analyticsSubmit {
                     $0.workflowFailed(
                         context,
@@ -757,6 +787,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 }
             case .cancelled, .pausedByLive:
                 analyticsTerminalJobIDs.insert(job.id)
+                if activeExplicitImportJobID == job.id {
+                    activeExplicitImportJobID = nil
+                }
                 analyticsSubmit { $0.workflowCancelled(context) }
             default:
                 break
@@ -792,10 +825,17 @@ final class TranscriptionSessionViewModel: ObservableObject {
             }
         }
 
-        let newCompletion = status.lastCompleted.flatMap {
-            knownCompletedJobIDs.contains($0.job.id) ? nil : $0
-        }
-        let selectedJob = newCompletion?.job
+        let visibleLastCompletedID = status.lastCompleted?.job.state == .completed
+            ? status.lastCompleted?.job.id
+            : nil
+        let newCompletedJobs = observedJobs
+            .filter {
+                $0.state == .completed
+                    && !knownCompletedJobIDs.contains($0.id)
+                    && (analyticsContextsByJobID[$0.id] != nil || $0.id == visibleLastCompletedID)
+            }
+            .sorted { ($0.endedAt ?? .distantPast) < ($1.endedAt ?? .distantPast) }
+        let selectedJob = newCompletedJobs.last
             ?? currentMeetingID.flatMap { meetingID in observedJobs.first { $0.meetingID == meetingID } }
             ?? status.activeJob
             ?? status.lastCompleted?.job
@@ -803,16 +843,17 @@ final class TranscriptionSessionViewModel: ObservableObject {
             currentMeetingID = selectedJob.meetingID
             currentAnalyticsContext = analyticsContextsByJobID[selectedJob.id]
         }
-        if let lastCompleted = status.lastCompleted {
-            if newCompletion != nil {
-                knownCompletedJobIDs.insert(lastCompleted.job.id)
-                metrics.lastRefreshAt = lastCompleted.updatedAt
-                currentMeetingID = lastCompleted.meetingID
-                loadArtifactsForMeeting(
-                    lastCompleted.meetingID,
-                    analyticsContext: analyticsContextsByJobID[lastCompleted.job.id]
-                )
-            }
+        for completed in newCompletedJobs {
+            knownCompletedJobIDs.insert(completed.id)
+            metrics.lastRefreshAt = completed.id == visibleLastCompletedID
+                ? status.lastCompleted?.updatedAt
+                : completed.endedAt
+            currentMeetingID = completed.meetingID
+            currentAnalyticsContext = analyticsContextsByJobID[completed.id]
+            loadArtifactsForMeeting(
+                completed.meetingID,
+                analyticsContext: analyticsContextsByJobID[completed.id]
+            )
         }
 
         if let active = status.activeJob {
@@ -882,6 +923,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     }
                 }
                 DispatchQueue.main.async {
+                    if let analyticsContext {
+                        self.closeExplicitImportAdmission(for: analyticsContext)
+                    }
                     self.publishErrorSync(error)
                     self.finishFinalInsightBuild()
                 }
@@ -892,6 +936,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private func beginSidecarMutation() {
         pendingSidecarMutationCount += 1
         hasPendingSidecarMutation = true
+    }
+
+    private func closeExplicitImportAdmission(for context: ProductAnalyticsAttemptContext) {
+        guard let jobID = activeExplicitImportJobID,
+              analyticsContextsByJobID[jobID] == context
+        else { return }
+        analyticsTerminalJobIDs.insert(jobID)
+        activeExplicitImportJobID = nil
     }
 
     private func endSidecarMutation() {

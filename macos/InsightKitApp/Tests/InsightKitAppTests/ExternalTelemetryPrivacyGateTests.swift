@@ -712,6 +712,30 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         })
     }
 
+    func testAcceptedImportStatusRefreshFailureDoesNotEmitWorkflowFailure() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let viewModel = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.importFile(path: "/tmp/accepted.wav")
+        let completed = expectation(description: "accepted import refresh failed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let names = try queuedObjects(gate).compactMap { $0["event_name"] as? String }
+        XCTAssertEqual(names, ["workflow_started"])
+        XCTAssertFalse(viewModel.canStartExplicitImport)
+    }
+
     func testLiveStartupFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 1)
@@ -780,6 +804,34 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(names, ["workflow_started", "record_saved", "smart_minutes_review_opened"])
         let saved = try XCTUnwrap(events.first { $0["event_name"] as? String == "record_saved" })
         XCTAssertEqual((saved["properties"] as? [String: Any])?["analysis_mode"] as? String, "cloud")
+    }
+
+    func testSuccessfulLiveRecordRetryClosesFinalizingRecovery() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.saveToRecords(
+            meetingID: "live-finalizing-retry",
+            transcriptSegmentsOverride: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "speaker", source: "mic", text: "fixture")
+            ]
+        )
+        let completed = expectation(description: "finalizing recovery closed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let events = try queuedObjects(gate)
+        let recovery = try XCTUnwrap(events.first { $0["event_name"] as? String == "recovery_completed" })
+        let properties = try XCTUnwrap(recovery["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["outcome"] as? String, "succeeded")
     }
 
     func testLocalAnalysisModeOverridesReadyCloudProviderPath() {

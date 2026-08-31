@@ -30,6 +30,7 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionStatusDelaySec: TimeInterval = 0
     var transcriptionStatusError: Error?
     var transcriptionImportError: Error?
+    var transcriptionImportResults: [TranscriptionImportResult] = []
     var transcriptionCancelError: Error?
     var finalizationAbortError: Error?
     var finalizationAbortCalls: [(meetingID: String, leaseToken: String)] = []
@@ -146,6 +147,9 @@ final class RPCClientMock: InsightRPCClientProtocol {
     func transcriptionImport(filePath: String, title: String) throws -> TranscriptionImportResult {
         importCalls.append((filePath, title))
         if let transcriptionImportError { throw transcriptionImportError }
+        if !transcriptionImportResults.isEmpty {
+            return transcriptionImportResults.removeFirst()
+        }
         return TranscriptionImportResult(jobID: UUID().uuidString, meetingID: "m-1", state: .queued)
     }
 

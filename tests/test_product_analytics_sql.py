@@ -115,8 +115,10 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     assert "if(event_count=0,NULL,unknown_schema)" in (
         POSTHOG_SQL_ROOT / "data_quality.hogql"
     ).read_text()
-    for name in ["maswr.hogql", "data_quality.hogql"]:
-        assert "attempt_index=0" not in (POSTHOG_SQL_ROOT / name).read_text()
+    for name in ["maswr.hogql", "data_quality.hogql", "funnel.hogql"]:
+        query = (POSTHOG_SQL_ROOT / name).read_text()
+        assert "pre_window" in query
+        assert "orphan_boundary_terminals" in query
 
 
 def test_maswr_exposes_all_four_segments_and_missing_segments():
@@ -375,6 +377,29 @@ def test_attempt_started_before_window_is_excluded_without_poisoning_quality():
     assert all(row["evidence_state"] != "incomplete" for row in rows)
 
 
+def test_terminal_without_retained_start_fails_closed():
+    connection = database()
+    connection.execute(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
+        provider_class,phase,outcome,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES('workflow_completed','2026-01-01T00:00:30Z',1,1,'development','1.0','1',
+        'orphan','orphan-session','live',1,'local','local','finalizing','succeeded','none',300000,1000)"""
+    )
+
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["orphan_boundary_terminals"] == 1
+    assert quality_result["evidence_state"] == "incomplete"
+
+    cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
+    rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
+    assert all(row["evidence_state"] == "incomplete" for row in rows)
+
+    funnel = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    assert dict(zip([item[0] for item in funnel.description], funnel.fetchone()))["evidence_state"] == "incomplete"
+
+
 def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
     connection = database()
     connection.executemany(
@@ -384,6 +409,7 @@ def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
         VALUES(?,?,?,1,'development','1.0','1','masked-overlap','masked-overlap-session','live',1,'local',
         'local',?,?, 'none',300000,1000)""",
         [
+            ("workflow_started", "2025-12-31T23:59:00Z", 1, "preparing", None),
             ("workflow_completed", "2026-01-01T00:00:30Z", 2, "finalizing", "succeeded"),
             ("workflow_started", "2026-01-01T00:01:00Z", 3, "preparing", None),
             ("workflow_started", "2026-01-01T00:02:00Z", 4, "preparing", None),
@@ -394,11 +420,15 @@ def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
     quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
     quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
     assert quality_result["overlapping_attempts"] == 1
+    assert quality_result["orphan_boundary_terminals"] == 0
     assert quality_result["evidence_state"] == "incomplete"
 
     cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
     rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
     assert all(row["evidence_state"] == "incomplete" for row in rows)
+
+    funnel = connection.execute((SQL_ROOT / "funnel.sql").read_text(), PARAMS)
+    assert dict(zip([item[0] for item in funnel.description], funnel.fetchone()))["evidence_state"] == "incomplete"
 
 
 def test_sequential_live_attempts_in_one_app_session_are_not_duplicates():

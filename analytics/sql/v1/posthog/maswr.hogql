@@ -7,13 +7,19 @@ WITH event_source AS (
     properties.analysis_mode AS analysis_mode
   FROM events
   WHERE properties.environment = {variables.environment}
-    AND timestamp >= toDateTime({variables.window_start})
     AND timestamp < toDateTime({variables.window_end})
+), window_source AS (
+  SELECT * FROM event_source WHERE timestamp_utc >= toDateTime({variables.window_start})
 ), segments AS (
   SELECT 'live' workflow,'local' analysis_mode UNION ALL
   SELECT 'live','cloud' UNION ALL SELECT 'import','local' UNION ALL SELECT 'import','cloud'
 ), eligible AS (
-  SELECT * FROM event_source WHERE schema_version=1
+  SELECT * FROM window_source WHERE schema_version=1
+), pre_window AS (
+  SELECT app_session_id,workflow,
+    greatest(countIf(event_name='workflow_started')-countIf(event_name IN ('workflow_completed','workflow_failed')),0) open_attempts
+  FROM event_source WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+  GROUP BY app_session_id,workflow
 ), indexed AS (
   SELECT e.*,
     sum(if(event_name='workflow_started',1,0)) OVER (
@@ -43,20 +49,27 @@ WITH event_source AS (
     maxIf(analysis_mode,path_rank=1) analysis_mode,
     countIf(event_name='workflow_started') starts,countIf(event_name='workflow_completed') completions
   FROM ranked GROUP BY app_session_id,workflow,attempt_index
+), boundary_terminals AS (
+  SELECT app_session_id,workflow,count() terminals
+  FROM ordered WHERE attempt_index=0 AND event_name IN ('workflow_completed','workflow_failed')
+  GROUP BY app_session_id,workflow
+), boundary_quality AS (
+  SELECT coalesce(sum(greatest(b.terminals-coalesce(p.open_attempts,0),0)),0) orphan_boundary_terminals
+  FROM boundary_terminals b LEFT JOIN pre_window p USING(app_session_id,workflow)
 ), counts AS (
   SELECT workflow,analysis_mode,SUM(starts) starts,SUM(completions) completions
   FROM attempts GROUP BY workflow,analysis_mode
 ), event_quality AS (
   SELECT countIf(schema_version<>1) + countIf(event_sequence IS NULL OR event_sequence<=0) AS event_issues
-  FROM event_source
+  FROM window_source
 ), attempt_quality AS (
   SELECT countIf(starts<>1 OR completions>1) AS grouped_issues FROM attempts
 ), order_quality AS (
   SELECT countIf(event_name='workflow_started' AND prior_starts>prior_terminals) AS ordering_issues
   FROM ordered
 ), quality AS (
-  SELECT event_issues+grouped_issues+ordering_issues AS issues
-  FROM event_quality CROSS JOIN attempt_quality CROSS JOIN order_quality
+  SELECT event_issues+grouped_issues+ordering_issues+orphan_boundary_terminals AS issues
+  FROM event_quality CROSS JOIN attempt_quality CROSS JOIN order_quality CROSS JOIN boundary_quality
 )
 SELECT s.workflow,s.analysis_mode,coalesce(c.starts,0) AS eligible_attempts,
   coalesce(c.completions,0) AS successful_attempts,
