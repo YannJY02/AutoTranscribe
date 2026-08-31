@@ -1,6 +1,7 @@
 import json
 import math
 import subprocess
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -435,6 +436,37 @@ def test_custom_external_builder_identity_survives_missing_credentials(tmp_path:
     assert report["legs"]["external"]["implementation_version"] == (
         f"{missing_credentials.__module__}:{missing_credentials.__qualname__}"
     )
+
+
+def test_callable_object_and_partial_builder_identities_do_not_crash(tmp_path: Path):
+    class Builder:
+        def __call__(self, case):
+            return _valid_package(case)
+
+    for builder, expected in (
+        (Builder(), f"{Builder.__module__}:{Builder.__qualname__}"),
+        (partial(_valid_package), "functools:partial"),
+    ):
+        report = run_eval(
+            ROOT / "evals/smart_minutes/v1",
+            tmp_path / expected.replace(":", "-"),
+            external={"vendor": "test-cloud", "model": "test-v1", "builder": builder},
+        )
+        assert report["legs"]["external"]["implementation_version"] == expected
+
+
+def test_provider_failure_mentioning_credentials_is_not_a_missing_prerequisite(tmp_path: Path):
+    def provider_failure(_case):
+        raise RuntimeError("provider credential verification failed")
+
+    report = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path,
+        external={"vendor": "test-cloud", "model": "test-v1", "builder": provider_failure},
+    )
+
+    assert report["legs"]["external"]["status"] == "observed"
+    assert report["legs"]["external"]["gate_result"] == "fail"
 
 
 def test_semantic_adapter_receives_local_and_external_outputs_and_is_bounded(tmp_path: Path):

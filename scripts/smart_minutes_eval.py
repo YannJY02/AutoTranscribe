@@ -181,7 +181,10 @@ def _load_adapter(spec: str | Callable[[dict[str, Any]], dict[str, Any]]) -> Cal
 def _callable_identity(value: str | Callable[..., Any]) -> str:
     if isinstance(value, str):
         return value
-    return f"{value.__module__}:{value.__qualname__}"
+    return (
+        f"{getattr(value, '__module__', type(value).__module__)}:"
+        f"{getattr(value, '__qualname__', type(value).__qualname__)}"
+    )
 
 
 def _bounded_semantic_result(result: Any, metric_ids: set[str]) -> dict[str, float | bool | None]:
@@ -526,7 +529,7 @@ def run_eval(
                 external_leg["cases"].append(case_result)
             except Exception as exc:
                 lower = str(exc).lower()
-                if not external_leg["cases"] and any(marker in lower for marker in ("missing api key", "未配置 api key", "credential")):
+                if not external_leg["cases"] and lower.startswith(("missing api key", "未配置 api key")):
                     external_leg = {
                         "status": "unobserved",
                         "provider": external["vendor"],

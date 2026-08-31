@@ -14,4 +14,4 @@ With `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL` confi
 uv run --extra observability python scripts/smart_minutes_eval.py --langfuse --output-dir logs/smart-minutes-eval/langfuse
 ```
 
-This path sends only deterministic case IDs, language and behavior enums, gate results, metric names, latency, and synthetic dataset/rubric hashes. It never sends transcripts, prompts, Smart Minutes output, meeting IDs, local paths, provider payloads, or private content-derived hashes.
+This path sends only deterministic case IDs, language and behavior enums, gate results, metric names, latency, the synthetic dataset hash, and the rubric version. It never sends transcripts, prompts, Smart Minutes output, meeting IDs, local paths, provider payloads, or private content-derived hashes.
