@@ -11,13 +11,19 @@ WITH event_source AS (
  FROM event_source
 ), eligible AS (
  SELECT * FROM contextualized WHERE timestamp_utc>=:window_start
+), pre_window_indexed AS (
+ SELECT e.*,SUM(event_name='workflow_started') OVER (
+  PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+ ) attempt_index
+ FROM contextualized e WHERE timestamp_utc<:window_start
+), pre_window_attempts AS (
+ SELECT app_session_id,workflow,attempt_index,SUM(event_name='workflow_started') starts,
+  SUM(event_name='workflow_completed' OR (event_name='workflow_failed' AND NOT is_record_context_terminal)) terminal_events
+ FROM pre_window_indexed WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
 ), pre_window AS (
- SELECT app_session_id,workflow,
-  CASE WHEN SUM(CASE WHEN event_name='workflow_started' THEN 1
-    WHEN event_name='workflow_completed' OR (event_name='workflow_failed' AND NOT is_record_context_terminal) THEN -1 ELSE 0 END)>0
-   THEN SUM(CASE WHEN event_name='workflow_started' THEN 1
-    WHEN event_name='workflow_completed' OR (event_name='workflow_failed' AND NOT is_record_context_terminal) THEN -1 ELSE 0 END) ELSE 0 END open_attempts
- FROM contextualized WHERE timestamp_utc<:window_start
+ SELECT app_session_id,workflow,SUM(starts>0 AND terminal_events=0) open_attempts
+ FROM pre_window_attempts
  GROUP BY app_session_id,workflow
 ), indexed AS (
  SELECT e.*,

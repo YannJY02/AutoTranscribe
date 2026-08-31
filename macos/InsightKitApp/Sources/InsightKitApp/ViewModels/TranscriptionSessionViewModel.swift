@@ -367,7 +367,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                         }
                     }
                     DispatchQueue.main.async {
-                        if completionEvaluation.isSuccessful, let analyticsContext {
+                        if let analyticsContext {
                             self.closeExplicitImportAdmission(for: analyticsContext)
                         }
                         self.lastExportPath = url.path
@@ -387,7 +387,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     }
                 }
                 DispatchQueue.main.async {
-                    if completionEvaluation.isSuccessful, let analyticsContext {
+                    if let analyticsContext {
                         self.closeExplicitImportAdmission(for: analyticsContext)
                     }
                     self.lastExportPath = result.path

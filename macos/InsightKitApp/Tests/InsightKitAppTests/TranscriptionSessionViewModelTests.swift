@@ -214,6 +214,32 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         wait(for: [cancelled], timeout: 1)
     }
 
+    func testUnqualifiedSuccessfulExportReleasesExplicitImportAdmission() {
+        let rpc = RPCClientMock()
+        rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false,
+            analyticsSubmit: { _ in }
+        )
+
+        vm.importFile(path: "/tmp/unqualified.wav")
+        let accepted = expectation(description: "explicit import accepted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertFalse(vm.canStartExplicitImport)
+            vm.exportDocument()
+            accepted.fulfill()
+        }
+        wait(for: [accepted], timeout: 1)
+
+        let exported = expectation(description: "unqualified export closes admission")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            XCTAssertEqual(rpc.documentExportCalls.count, 1)
+            XCTAssertTrue(vm.canStartExplicitImport)
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 1)
+    }
+
     func testCompletedExplicitJobsAreAllBuiltAndFailedLastCompletedIsSkipped() {
         let rpc = RPCClientMock()
         rpc.transcriptionImportResults = [

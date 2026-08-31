@@ -651,3 +651,34 @@ def test_overlapping_attempts_fail_closed_without_remote_attempt_correlation():
     cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
     rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
     assert all(row["evidence_state"] == "incomplete" for row in rows)
+
+
+def test_recovered_pre_window_attempt_counts_as_one_closed_attempt():
+    connection = database()
+    connection.executemany(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,provider_class,
+        phase,outcome,error_code,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES(?,?,?,1,'development','1.0','1','boundary-recovery','boundary-recovery-session','live',?,
+        'local','local','running',?,?,?,300000,1000)""",
+        [
+            ("workflow_started", "2025-12-30T00:00:00Z", 1, 1, None, None, "none"),
+            ("workflow_failed", "2025-12-30T00:01:00Z", 2, 1, "failed", "unknown", "retry"),
+            ("workflow_completed", "2025-12-30T00:02:00Z", 3, 1, "succeeded", None, "none"),
+            ("workflow_started", "2025-12-31T00:00:00Z", 4, 2, None, None, "none"),
+            ("workflow_failed", "2026-01-01T00:01:00Z", 5, 2, "failed", "unknown", "none"),
+        ],
+    )
+
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["orphan_boundary_terminals"] == 0
+    assert quality_result["evidence_state"] == "complete"
+
+    for query_name in ["maswr.sql", "funnel.sql"]:
+        cursor = connection.execute((SQL_ROOT / query_name).read_text(), PARAMS)
+        rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
+        assert all(row["evidence_state"] != "incomplete" for row in rows)
+
+    for query_name in ["maswr.hogql", "data_quality.hogql", "funnel.hogql"]:
+        assert "pre_window_attempts" in (POSTHOG_SQL_ROOT / query_name).read_text()

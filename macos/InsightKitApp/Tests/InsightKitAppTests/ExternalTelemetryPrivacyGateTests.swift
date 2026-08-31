@@ -102,7 +102,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         ))
     }
 
-    func testWorkflowCompletionRequiresEveryDeterministicMeetingAssetCriterion() throws {
+    func testWorkflowCompletionClosesFailedDeterministicMeetingAssetQualification() throws {
         let gate = makeGate()
         try gate.setConsent(enabled: true, consentVersion: 1)
         let analytics = ProductAnalytics(gate: gate)
@@ -110,8 +110,16 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         analytics.workflowCompleted("live", evaluation: .evaluate(
             recordPath: nil, duration: 0, exportCompleted: true, hasBlockingError: false
         ))
+        analytics.workflowCompleted("live", evaluation: .evaluate(
+            recordPath: nil, duration: 0, exportCompleted: true, hasBlockingError: false
+        ))
         let objects = try queuedObjects(gate)
-        XCTAssertEqual(objects.map { $0["event_name"] as? String }, ["workflow_started"])
+        XCTAssertEqual(objects.map { $0["event_name"] as? String }, ["workflow_started", "workflow_failed"])
+        let properties = try XCTUnwrap(objects.last?["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["outcome"] as? String, "failed")
+        XCTAssertEqual(properties["error_code"] as? String, "unknown")
+        XCTAssertEqual(properties["recovery_action"] as? String, "none")
     }
 
     func testLocalEvidenceLedgerStoresOnlyAggregateCounts() throws {

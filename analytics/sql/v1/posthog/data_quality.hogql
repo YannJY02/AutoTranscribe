@@ -27,11 +27,19 @@ WITH raw_source AS (
   SELECT * FROM event_source WHERE timestamp_utc >= toDateTime({variables.window_start})
 ), eligible AS (
   SELECT * FROM window_source WHERE schema_version=1
+), pre_window_indexed AS (
+  SELECT e.*,sum(if(event_name='workflow_started',1,0)) OVER (
+    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) attempt_index
+  FROM event_source e WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+), pre_window_attempts AS (
+  SELECT app_session_id,workflow,attempt_index,countIf(event_name='workflow_started') starts,
+    countIf(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal) terminal_events
+  FROM pre_window_indexed WHERE attempt_index>0 GROUP BY app_session_id,workflow,attempt_index
 ), pre_window AS (
-  SELECT app_session_id,workflow,
-    greatest(countIf(event_name='workflow_started')-
-      countIf(event_name='workflow_completed' OR event_name='workflow_failed' AND NOT is_record_context_terminal),0) open_attempts
-  FROM event_source WHERE schema_version=1 AND timestamp_utc < toDateTime({variables.window_start})
+  SELECT app_session_id,workflow,countIf(starts>0 AND terminal_events=0) open_attempts
+  FROM pre_window_attempts
   GROUP BY app_session_id,workflow
 ), indexed AS (
   SELECT e.*,

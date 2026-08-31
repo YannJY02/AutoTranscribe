@@ -22,6 +22,7 @@ final class ImportSessionViewModel: ObservableObject {
     @Published var exportStatusMessage: String?
     @Published var lastExportURL: URL?
     @Published var currentJobID: String?
+    @Published private(set) var isExporting = false
 
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
@@ -78,6 +79,15 @@ final class ImportSessionViewModel: ObservableObject {
     // MARK: - Import Flow
 
     func importFile(url: URL) {
+        guard sessionPhase == .selecting, !isExporting else {
+            let message = "请先完成或取消当前导入，再导入下一个文件。"
+            if sessionPhase == .reviewing {
+                exportStatusMessage = message
+            } else {
+                importStatusMessage = message
+            }
+            return
+        }
         mediaURL = url
         sessionPhase = .processing
         importProgress = 0
@@ -169,6 +179,10 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func resetToSelecting() {
+        guard !isExporting else {
+            exportStatusMessage = "导出正在完成，请稍候再新建导入。"
+            return
+        }
         let analyticsPhase = sessionPhase == .reviewing ? "reviewing" : "running"
         analyticsSubmit { $0.workflowCancelled("import", phase: analyticsPhase) }
         pollTask?.cancel()
@@ -231,7 +245,8 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func exportDocument(format: String = "markdown") {
-        guard let meetingID = currentMeetingID else { return }
+        guard let meetingID = currentMeetingID, !isExporting else { return }
+        isExporting = true
         analyticsSubmit { $0.exportAttempted("import") }
         do {
             if try exportPersistedRecord(format: format, meetingID: meetingID) {
@@ -242,9 +257,11 @@ final class ImportSessionViewModel: ObservableObject {
                     analytics.exportCompleted("import")
                     analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
                 }
+                isExporting = false
                 return
             }
         } catch {
+            isExporting = false
             exportStatusMessage = "导出失败：\(error.localizedDescription)"
             analyticsSubmit {
                 $0.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
@@ -265,12 +282,14 @@ final class ImportSessionViewModel: ObservableObject {
                         analytics.exportCompleted("import")
                         analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
                     }
+                    self.isExporting = false
                 }
             } catch {
                 self.analyticsSubmit { analytics in
                     analytics.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
                 }
                 DispatchQueue.main.async {
+                    self.isExporting = false
                     self.exportStatusMessage = "导出失败：\(error.localizedDescription)"
                 }
             }

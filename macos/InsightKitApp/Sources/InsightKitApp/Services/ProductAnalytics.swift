@@ -321,6 +321,7 @@ final class ProductAnalytics {
         var recordSavedEmitted = false
         var reviewOpenedEmitted = false
         var completionEmitted = false
+        var qualificationFailureEmitted = false
         var terminalEmitted = false
         var analysisLatencyMS: Int?
     }
@@ -831,7 +832,27 @@ final class ProductAnalytics {
     }
 
     private func workflowCompleted(key: String, workflow: String, evaluation: MeetingAssetWorkflowSuccess) {
-        guard evaluation.isSuccessful, let context = context(for: key) else { return }
+        guard evaluation.isSuccessful else {
+            stateLock.lock()
+            guard attempts[key]?.qualificationFailureEmitted == false else { stateLock.unlock(); return }
+            attempts[key]?.qualificationFailureEmitted = true
+            stateLock.unlock()
+            guard workflowFailed(
+                key: key,
+                workflow: workflow,
+                phase: "finalizing",
+                errorCode: "unknown",
+                recoveryAction: "none",
+                analysisLatencyMilliseconds: nil
+            ) else {
+                stateLock.lock()
+                attempts[key]?.qualificationFailureEmitted = false
+                stateLock.unlock()
+                return
+            }
+            return
+        }
+        guard let context = context(for: key) else { return }
         stateLock.lock()
         guard attempts[key]?.completionEmitted == false else { stateLock.unlock(); return }
         stateLock.unlock()
@@ -917,6 +938,7 @@ final class ProductAnalytics {
         _ = emit("workflow_failed", properties: values)
     }
 
+    @discardableResult
     private func workflowFailed(
         key: String,
         workflow: String,
@@ -924,13 +946,13 @@ final class ProductAnalytics {
         errorCode: String,
         recoveryAction: String,
         analysisLatencyMilliseconds: Int?
-    ) {
+    ) -> Bool {
         if let analysisLatencyMilliseconds {
             stateLock.lock()
             attempts[key]?.analysisLatencyMS = max(0, analysisLatencyMilliseconds)
             stateLock.unlock()
         }
-        guard let context = context(for: key) else { return }
+        guard let context = context(for: key) else { return false }
         stateLock.lock()
         let pendingRecoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
@@ -940,13 +962,14 @@ final class ProductAnalytics {
         var values = terminalProperties(workflow: workflow, context: context, phase: phase, outcome: "failed")
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
-        guard emit("workflow_failed", properties: values) == .accepted else { return }
+        guard emit("workflow_failed", properties: values) == .accepted else { return false }
         stateLock.lock()
         attempts[key]?.terminalEmitted = true
         pendingRecoveries[key] = recoveryAction == "none"
             ? nil
             : PendingRecovery(path: context.path, sequence: context.sequence, phase: phase)
         stateLock.unlock()
+        return true
     }
 
     func workflowCancelled(_ workflow: String, phase: String = "running") {
