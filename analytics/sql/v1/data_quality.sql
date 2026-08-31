@@ -2,21 +2,24 @@
 WITH eligible AS (
  SELECT * FROM events WHERE schema_version=1 AND environment=:environment
  AND timestamp_utc>=:window_start AND timestamp_utc<:window_end
-), ordered AS (
+), indexed AS (
  SELECT e.*,
   SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-  ) attempt_index,
+  ) attempt_index
+ FROM eligible e
+), ordered AS (
+ SELECT i.*,
   COALESCE(SUM(CASE WHEN event_name='workflow_started' THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
   ),0) prior_starts,
-  COALESCE(SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') THEN 1 ELSE 0 END) OVER (
+  COALESCE(SUM(CASE WHEN event_name IN ('workflow_completed','workflow_failed') AND attempt_index>0 THEN 1 ELSE 0 END) OVER (
    PARTITION BY app_session_id,workflow ORDER BY timestamp_utc,event_sequence
    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
   ),0) prior_terminals
- FROM eligible e
+ FROM indexed i
 ), diagnostics AS (
  SELECT SUM(CASE WHEN schema_version<>1 THEN 1 ELSE 0 END) unknown_schema,
  SUM(CASE WHEN event_sequence IS NULL OR event_sequence<=0 THEN 1 ELSE 0 END) missing_event_sequence,

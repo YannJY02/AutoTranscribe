@@ -375,6 +375,32 @@ def test_attempt_started_before_window_is_excluded_without_poisoning_quality():
     assert all(row["evidence_state"] != "incomplete" for row in rows)
 
 
+def test_pre_window_terminal_does_not_mask_overlapping_in_window_starts():
+    connection = database()
+    connection.executemany(
+        """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
+        app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
+        provider_class,phase,outcome,recovery_action,duration_bucket_ms,latency_bucket_ms)
+        VALUES(?,?,?,1,'development','1.0','1','masked-overlap','masked-overlap-session','live',1,'local',
+        'local',?,?, 'none',300000,1000)""",
+        [
+            ("workflow_completed", "2026-01-01T00:00:30Z", 2, "finalizing", "succeeded"),
+            ("workflow_started", "2026-01-01T00:01:00Z", 3, "preparing", None),
+            ("workflow_started", "2026-01-01T00:02:00Z", 4, "preparing", None),
+            ("workflow_completed", "2026-01-01T00:03:00Z", 5, "finalizing", "succeeded"),
+        ],
+    )
+
+    quality = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    quality_result = dict(zip([item[0] for item in quality.description], quality.fetchone()))
+    assert quality_result["overlapping_attempts"] == 1
+    assert quality_result["evidence_state"] == "incomplete"
+
+    cursor = connection.execute((SQL_ROOT / "maswr.sql").read_text(), PARAMS)
+    rows = [dict(zip([item[0] for item in cursor.description], row)) for row in cursor.fetchall()]
+    assert all(row["evidence_state"] == "incomplete" for row in rows)
+
+
 def test_sequential_live_attempts_in_one_app_session_are_not_duplicates():
     connection = database()
     connection.execute(
