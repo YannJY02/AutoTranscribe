@@ -197,7 +197,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "InsightKit 设置"
-        window.contentView = NSHostingView(rootView: SettingsView())
+        window.contentView = NSHostingView(rootView: SettingsView(coordinator: coordinator))
         window.center()
         window.makeKeyAndOrderFront(nil)
         settingsWindow = window

@@ -41,15 +41,15 @@ def _related_links(
     source_path: str | None = None,
 ) -> list[dict[str, str]]:
     links: list[dict[str, str]] = []
+    if meeting_id:
+        links.append({"label": "原始记录", "url": f"InsightKit 本地会话: {meeting_id}"})
+        links.append({"label": "文字记录", "url": f"InsightKit SQLite segments: meeting_id={meeting_id}"})
+
     for link in payload.get("provenance_links", []):
         label = _text(link.get("label"))
         url = _text(link.get("url"))
         if label and url:
             links.append({"label": label, "url": url})
-
-    if meeting_id:
-        links.append({"label": "原始记录", "url": f"InsightKit 本地会话: {meeting_id}"})
-        links.append({"label": "文字记录", "url": f"InsightKit SQLite segments: meeting_id={meeting_id}"})
 
     if source_path:
         links.append({"label": "媒体回放", "url": f"file://{Path(source_path).expanduser().resolve()}"})
@@ -60,9 +60,9 @@ def _related_links(
         })
 
     deduped: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for link in links:
-        key = (link["label"], link["url"])
+        key = link["url"]
         if key not in seen:
             seen.add(key)
             deduped.append(link)

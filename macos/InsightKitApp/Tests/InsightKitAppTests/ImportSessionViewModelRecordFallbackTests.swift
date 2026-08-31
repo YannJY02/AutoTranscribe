@@ -100,6 +100,29 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         XCTAssertNil(viewModel.visibleAnalysisStatusMessage)
     }
 
+    func testLocalAnalysisSkipsCloudProviderStatus() {
+        let rpcClient = RPCClientMock()
+        rpcClient.providersStatusError = NSError(domain: "unexpected-cloud-check", code: 1)
+        let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
+        viewModel.analysisStatusMessage = "stale cloud warning"
+        let cleared = expectation(description: "local mode clears stale cloud status")
+
+        viewModel.$analysisStatusMessage
+            .dropFirst()
+            .sink { message in
+                if message == nil {
+                    cleared.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.refreshAnalysisStatusForImport(analysisMode: .local)
+        wait(for: [cleared], timeout: 1)
+
+        XCTAssertEqual(rpcClient.providersStatusCalls, 0)
+        XCTAssertNil(viewModel.visibleAnalysisStatusMessage)
+    }
+
     func testCompletedImportShowsTranscriptBeforeSlowFinalInsight() {
         let rpcClient = RPCClientMock()
         rpcClient.transcriptListStub = [

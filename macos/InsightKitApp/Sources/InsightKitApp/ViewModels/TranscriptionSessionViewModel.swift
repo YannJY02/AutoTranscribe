@@ -25,6 +25,8 @@ final class TranscriptionSessionViewModel: ObservableObject {
     @Published var sidecarSnapshot = SidecarHealthSnapshot(lastErrorCode: "", lastLatencyMs: 0)
     @Published var pollingMode: TranscriptionPollingMode = .idle
     @Published var analysisRuntimeState: AnalysisRuntimeState = .ready
+    @Published private(set) var isBuildingFinalInsight = false
+    @Published private(set) var hasPendingSidecarMutation = false
 
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
@@ -40,6 +42,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
     private var lastInlineErrorAt: Date?
     private let fetchLock = NSLock()
     private var fetchInFlight = false
+    private var pendingSidecarMutationCount = 0
+    private var buildingFinalMeetingID: String?
+    private var pendingArtifactMeetingIDs: [String] = []
     /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
     /// cooperative thread pool which would stall all async/SwiftUI work.
     private let rpcQueue = DispatchQueue(label: "InsightKit.TranscriptionSession.RPC", qos: .userInitiated)
@@ -94,6 +99,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
     }
 
     func importFile(path: String, title: String = "") {
+        beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -103,14 +109,21 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 _ = try self.rpcClient.transcriptionImport(filePath: path, title: title)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
-                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
+                DispatchQueue.main.async {
+                    _ = self.applyStatusSync(status, sidecar: sidecar)
+                    self.endSidecarMutation()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.endSidecarMutation()
+                }
             }
         }
     }
 
     func startWatcher(dirs: [String]) {
+        beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -120,14 +133,21 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 _ = try self.rpcClient.transcriptionWatchStart(dirs: dirs)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
-                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
+                DispatchQueue.main.async {
+                    _ = self.applyStatusSync(status, sidecar: sidecar)
+                    self.endSidecarMutation()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.endSidecarMutation()
+                }
             }
         }
     }
 
     func stopWatcher() {
+        beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -135,14 +155,21 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 _ = try self.rpcClient.transcriptionWatchStop()
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
-                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
+                DispatchQueue.main.async {
+                    _ = self.applyStatusSync(status, sidecar: sidecar)
+                    self.endSidecarMutation()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.endSidecarMutation()
+                }
             }
         }
     }
 
     func cancelJob(jobID: String, reason: String = "cancelled_by_user") {
+        beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
@@ -150,9 +177,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 _ = try self.rpcClient.transcriptionCancel(jobID: jobID, reason: reason)
                 let status = try self.rpcClient.transcriptionStatus(limit: 100)
                 let sidecar = try? self.rpcClient.sidecarStatus()
-                DispatchQueue.main.async { _ = self.applyStatusSync(status, sidecar: sidecar) }
+                DispatchQueue.main.async {
+                    _ = self.applyStatusSync(status, sidecar: sidecar)
+                    self.endSidecarMutation()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.endSidecarMutation()
+                }
             }
         }
     }
@@ -179,6 +212,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
             inlineError = InlineErrorState(message: msg, occurredAt: Date())
             return
         }
+        guard !isBuildingFinalInsight else { return }
+        isBuildingFinalInsight = true
+        buildingFinalMeetingID = meetingID
+        beginSidecarMutation()
 
         rpcQueue.async { [weak self] in
             guard let self else { return }
@@ -187,9 +224,15 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 let transcripts = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
-                DispatchQueue.main.async { self.updateArtifactsSync(result: result, transcript: transcripts) }
+                DispatchQueue.main.async {
+                    self.updateArtifactsSync(result: result, transcript: transcripts)
+                    self.finishFinalInsightBuild()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.finishFinalInsightBuild()
+                }
             }
         }
     }
@@ -393,6 +436,10 @@ final class TranscriptionSessionViewModel: ObservableObject {
         }
         if requireProvider {
             let configStore = AppConfigStore.shared
+            if configStore.config.analysis.mode == .local {
+                DispatchQueue.main.async { self.analysisRuntimeState = .ready }
+                return
+            }
             let selectedVendor = configStore.config.analysis.selectedVendor
             let selectedProfile = configStore.profile(for: selectedVendor)
             let providers: AnalysisProvidersStatus
@@ -478,7 +525,16 @@ final class TranscriptionSessionViewModel: ObservableObject {
             || lower.contains("probe_timeout")
     }
 
-    private func refreshProviderStateNonBlocking() {
+    func refreshProviderStateNonBlocking(
+        analysisMode: AnalysisMode = AppConfigStore.shared.config.analysis.mode
+    ) {
+        if analysisMode == .local {
+            DispatchQueue.main.async {
+                self.analysisRuntimeState = .ready
+                self.inlineError = nil
+            }
+            return
+        }
         do {
             let providers = try rpcClient.providersStatus(probeActive: false)
             if providers.activeReady {
@@ -622,18 +678,53 @@ final class TranscriptionSessionViewModel: ObservableObject {
         return hasActiveWork
     }
 
-    private func loadArtifactsForMeeting(_ meetingID: String) {
+    func loadArtifactsForMeeting(_ meetingID: String) {
+        if isBuildingFinalInsight {
+            if buildingFinalMeetingID != meetingID, !pendingArtifactMeetingIDs.contains(meetingID) {
+                pendingArtifactMeetingIDs.append(meetingID)
+            }
+            return
+        }
+        isBuildingFinalInsight = true
+        buildingFinalMeetingID = meetingID
+        beginSidecarMutation()
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.ensureSidecarReady()
                 let result = try self.rpcClient.buildFinal(meetingID: meetingID)
                 let transcript = try self.rpcClient.transcriptList(meetingID: meetingID, limit: 1200)
-                DispatchQueue.main.async { self.updateArtifactsSync(result: result, transcript: transcript) }
+                DispatchQueue.main.async {
+                    self.updateArtifactsSync(result: result, transcript: transcript)
+                    self.finishFinalInsightBuild()
+                }
             } catch {
-                DispatchQueue.main.async { self.publishErrorSync(error) }
+                DispatchQueue.main.async {
+                    self.publishErrorSync(error)
+                    self.finishFinalInsightBuild()
+                }
             }
         }
+    }
+
+    private func beginSidecarMutation() {
+        pendingSidecarMutationCount += 1
+        hasPendingSidecarMutation = true
+    }
+
+    private func endSidecarMutation() {
+        pendingSidecarMutationCount = max(0, pendingSidecarMutationCount - 1)
+        hasPendingSidecarMutation = pendingSidecarMutationCount > 0
+    }
+
+    private func finishFinalInsightBuild() {
+        let nextMeetingID = pendingArtifactMeetingIDs.isEmpty ? nil : pendingArtifactMeetingIDs.removeFirst()
+        isBuildingFinalInsight = false
+        buildingFinalMeetingID = nil
+        if let nextMeetingID {
+            loadArtifactsForMeeting(nextMeetingID)
+        }
+        endSidecarMutation()
     }
 
     /// Called from DispatchQueue.main – no @MainActor needed.

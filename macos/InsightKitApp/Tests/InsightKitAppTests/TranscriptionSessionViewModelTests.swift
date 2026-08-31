@@ -3,6 +3,37 @@ import XCTest
 @testable import InsightKitApp
 
 final class TranscriptionSessionViewModelTests: XCTestCase {
+    func testLocalAnalysisSkipsCloudProviderStatus() {
+        let rpc = RPCClientMock()
+        rpc.providersStatusError = NSError(domain: "unexpected-cloud-check", code: 1)
+        let vm = TranscriptionSessionViewModel(
+            rpcClient: rpc,
+            autoRefresh: false,
+            autoPolling: false,
+            bootstrapSidecar: false
+        )
+        vm.analysisRuntimeState = .missingConfig
+        vm.inlineError = InlineErrorState(message: "stale cloud warning", occurredAt: Date())
+        let cleared = expectation(description: "local mode clears stale cloud status")
+        var cancellables = Set<AnyCancellable>()
+
+        vm.$inlineError
+            .dropFirst()
+            .sink { error in
+                if error == nil {
+                    cleared.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        vm.refreshProviderStateNonBlocking(analysisMode: .local)
+        wait(for: [cleared], timeout: 1)
+
+        XCTAssertEqual(rpc.providersStatusCalls, 0)
+        XCTAssertEqual(vm.analysisRuntimeState, .ready)
+        XCTAssertNil(vm.inlineError)
+    }
+
     func testPreemptForLiveCancelsRunningJobAndStopsWatcher() throws {
         let rpc = RPCClientMock()
         let vm = TranscriptionSessionViewModel(

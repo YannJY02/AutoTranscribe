@@ -228,6 +228,7 @@ struct LiveSessionFinalizationSnapshot {
     let analysisMeta: [String: Any]?
     let cachedFinalTranscript: [TranscriptSegment]?
     let presentationStatus: LivePresentationCaptureStatus?
+    let finalizationLeaseToken: String?
 
     init(
         meetingID: String,
@@ -238,7 +239,8 @@ struct LiveSessionFinalizationSnapshot {
         notes: [TimestampedNote],
         analysisMeta: [String: Any]?,
         cachedFinalTranscript: [TranscriptSegment]?,
-        presentationStatus: LivePresentationCaptureStatus? = nil
+        presentationStatus: LivePresentationCaptureStatus? = nil,
+        finalizationLeaseToken: String? = nil
     ) {
         self.meetingID = meetingID
         self.capturedSegments = capturedSegments
@@ -249,6 +251,7 @@ struct LiveSessionFinalizationSnapshot {
         self.analysisMeta = analysisMeta
         self.cachedFinalTranscript = cachedFinalTranscript
         self.presentationStatus = presentationStatus
+        self.finalizationLeaseToken = finalizationLeaseToken
     }
 }
 
@@ -301,7 +304,8 @@ final class LiveSessionFinalizer {
             durationSec: snapshot.durationSec,
             analysisMeta: snapshot.analysisMeta,
             notesMD: NotesFileIO.serialize(snapshot.notes),
-            presentationStatus: snapshot.presentationStatus
+            presentationStatus: snapshot.presentationStatus,
+            finalizationLeaseToken: snapshot.finalizationLeaseToken
         )).get().recordPath
 
         return LiveSessionFinalizationOutcome(

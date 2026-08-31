@@ -15,6 +15,7 @@ except ModuleNotFoundError:
     from transcriber import transcribe
 
 from insightkit.records.record_writer import RecordWriter, detect_media_type, detect_duration
+from insightkit.insights.service import attach_transcript_provenance
 
 _DEFAULT_RECORDS_ROOT = str(Path.home() / "Documents" / "InsightKit" / "Records")
 
@@ -33,6 +34,9 @@ def run_transcription_job(
     insight_service,
     cancel_event: threading.Event | None = None,
     on_progress: ProgressCallback | None = None,
+    provider_vendor: str | None = None,
+    provider_model: str | None = None,
+    strict_mode: bool | None = None,
 ) -> dict[str, Any]:
     """Run one file-based transcription pipeline into InsightKit store."""
 
@@ -92,9 +96,15 @@ def run_transcription_job(
     check_cancel()
     progress(82, "building_final")
     try:
-        package = insight_service.build_final(transcript_rows)
+        package = insight_service.build_final(
+            transcript_rows,
+            provider_vendor=provider_vendor,
+            provider_model=provider_model,
+            strict_mode=strict_mode,
+        )
     except Exception:
         package = insight_service.build_local_extractive(transcript_rows)
+    package = attach_transcript_provenance(package, meeting_id)
     call_meta = insight_service.last_call_meta
     store.upsert_insight_package(
         meeting_id,

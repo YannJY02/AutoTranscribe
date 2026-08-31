@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -42,6 +43,72 @@ class TestJobQueue(unittest.TestCase):
         self.assertIn("watcher", result)
         self.assertIn("queue", result)
         self.assertIn("jobs", result)
+
+    def test_idle_shutdown_blocks_new_imports_and_watchers(self):
+        media = Path(self.tmp) / "demo.wav"
+        media.write_bytes(b"fake")
+
+        self.assertTrue(self.queue.begin_idle_shutdown())
+        with self.assertRaisesRegex(RuntimeError, "shutting down"):
+            self.queue.transcription_import_file({"file_path": str(media)})
+        with self.assertRaisesRegex(RuntimeError, "shutting down"):
+            self.queue.transcription_watch_start({"dirs": [self.tmp]})
+
+    def test_idle_shutdown_refuses_active_watcher(self):
+        self.queue.transcription_watch_start({"dirs": [self.tmp]})
+
+        self.assertFalse(self.queue.begin_idle_shutdown())
+
+    def test_idle_shutdown_refuses_watcher_during_startup(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_start(*args, **kwargs):
+            started.set()
+            release.wait(timeout=1)
+            return {"state": "running", "dirs": []}
+
+        with mock.patch.object(self.watch, "start", side_effect=slow_start):
+            thread = threading.Thread(
+                target=self.queue.transcription_watch_start,
+                args=({"dirs": [self.tmp]},),
+            )
+            thread.start()
+            self.assertTrue(started.wait(timeout=1))
+            self.assertFalse(self.queue.begin_idle_shutdown())
+            release.set()
+            thread.join(timeout=1)
+
+    def test_idle_shutdown_refuses_overlapping_watcher_starts(self):
+        all_started = threading.Event()
+        release = threading.Event()
+        count_lock = threading.Lock()
+        started_count = 0
+
+        def slow_start(*args, **kwargs):
+            nonlocal started_count
+            with count_lock:
+                started_count += 1
+                if started_count == 2:
+                    all_started.set()
+            release.wait(timeout=1)
+            return {"state": "running", "dirs": []}
+
+        with mock.patch.object(self.watch, "start", side_effect=slow_start):
+            threads = [
+                threading.Thread(
+                    target=self.queue.transcription_watch_start,
+                    args=({"dirs": [self.tmp]},),
+                )
+                for _ in range(2)
+            ]
+            for thread in threads:
+                thread.start()
+            self.assertTrue(all_started.wait(timeout=1))
+            self.assertFalse(self.queue.begin_idle_shutdown())
+            release.set()
+            for thread in threads:
+                thread.join(timeout=1)
 
     def test_cancel_nonexistent_job_raises(self):
         with self.assertRaises(ValueError):
