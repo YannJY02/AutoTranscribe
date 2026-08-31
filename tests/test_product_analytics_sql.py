@@ -42,6 +42,14 @@ def database() -> sqlite3.Connection:
         VALUES(?,?,?,1,'development','1.0','1',?,?,?,?,?,'none','analysis',?,?,300000,1000)""",
         rows,
     )
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id) "
+        "VALUES('telemetry_consent_changed',?,1,1,'development',?)",
+        [
+            ("2025-12-31T23:59:00Z", "i1"),
+            ("2026-01-01T23:59:00Z", "i2"),
+        ],
+    )
     return connection
 
 
@@ -99,6 +107,10 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
     retention = (POSTHOG_SQL_ROOT / "retention.hogql").read_text()
     assert "timestamp >= toDateTime({variables.window_start})" not in activation
     assert "first_start >= toDateTime({variables.window_start})" in activation
+    assert "unproven_start_installations" in activation
+    assert "consent_started_at<first_start" in activation
+    assert "consent_started_sequence<first_start_sequence" in activation
+    assert "start_proven IS NULL OR NOT start_proven" in activation
     assert "timestamp >= toDateTime({variables.window_start})" not in retention
     assert "timestamp_utc >= toDateTime({variables.window_start})" in retention
     assert "observable_7d_flag" in retention
@@ -115,6 +127,9 @@ def test_posthog_queries_use_native_event_schema_and_sql_variables():
         POSTHOG_SQL_ROOT / "retention.hogql"
     ).read_text()
     assert "if(event_count=0,NULL,unknown_schema)" in (
+        POSTHOG_SQL_ROOT / "data_quality.hogql"
+    ).read_text()
+    assert "missing_start_dimensions" in (
         POSTHOG_SQL_ROOT / "data_quality.hogql"
     ).read_text()
     for name in ["maswr.hogql", "data_quality.hogql", "funnel.hogql"]:
@@ -155,6 +170,7 @@ def test_activation_ignores_completion_before_first_start():
         "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id,duration_bucket_ms) "
         "VALUES(?,?,1,'development','i3',300000)",
         [
+            ("telemetry_consent_changed", "2026-01-02T23:59:00Z"),
             ("workflow_completed", "2026-01-03T00:00:00Z"),
             ("workflow_started", "2026-01-03T01:00:00Z"),
             ("workflow_completed", "2026-01-03T02:00:00Z"),
@@ -174,9 +190,10 @@ def test_activation_derives_latency_even_when_the_completion_bucket_is_null():
         "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
         "VALUES(?,?,?,1,'development','i3',?)",
         [
-            ("workflow_started", "2026-01-03T00:00:00Z", 1, None),
-            ("workflow_completed", "2026-01-03T00:01:00Z", 2, None),
-            ("workflow_completed", "2026-01-03T00:02:00Z", 3, 60_000),
+            ("telemetry_consent_changed", "2026-01-02T23:59:00Z", 1, None),
+            ("workflow_started", "2026-01-03T00:00:00Z", 2, None),
+            ("workflow_completed", "2026-01-03T00:01:00Z", 3, None),
+            ("workflow_completed", "2026-01-03T00:02:00Z", 4, 60_000),
         ],
     )
     cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
@@ -192,10 +209,11 @@ def test_activation_latency_starts_at_the_installations_first_attempt():
         "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id,duration_bucket_ms) "
         "VALUES(?,?,?,1,'development','retrying',?)",
         [
-            ("workflow_started", "2026-01-03T00:00:00Z", 1, None),
-            ("workflow_failed", "2026-01-03T00:01:00Z", 2, None),
-            ("workflow_started", "2026-01-03T01:00:00Z", 3, None),
-            ("workflow_completed", "2026-01-03T01:01:00Z", 4, 60_000),
+            ("telemetry_consent_changed", "2026-01-02T23:59:00Z", 1, None),
+            ("workflow_started", "2026-01-03T00:00:00Z", 2, None),
+            ("workflow_failed", "2026-01-03T00:01:00Z", 3, None),
+            ("workflow_started", "2026-01-03T01:00:00Z", 4, None),
+            ("workflow_completed", "2026-01-03T01:01:00Z", 5, 60_000),
         ],
     )
     cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
@@ -220,12 +238,50 @@ def test_activation_excludes_installations_started_before_the_window():
     assert result["activated_installations"] == 1
 
 
+def test_activation_does_not_promote_a_surviving_start_without_its_consent_anchor():
+    connection = database()
+    connection.execute("DELETE FROM events")
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id) "
+        "VALUES(?,?,?,1,'development','expired-start')",
+        [
+            ("workflow_started", "2026-01-02T00:00:00Z", 1),
+            ("workflow_completed", "2026-01-02T00:01:00Z", 2),
+        ],
+    )
+
+    cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["unproven_start_installations"] == 1
+    assert result["started_installations"] == 0
+    assert result["activated_installations"] == 0
+    assert result["evidence_state"] == "insufficient-data"
+
+
+def test_activation_rejects_same_second_consent_recorded_after_start():
+    connection = database()
+    connection.execute("DELETE FROM events")
+    connection.executemany(
+        "INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,installation_id) "
+        "VALUES(?,?,?,1,'development','late-consent')",
+        [
+            ("workflow_started", "2026-01-02T00:00:00Z", 1),
+            ("telemetry_consent_changed", "2026-01-02T00:00:00Z", 2),
+            ("workflow_completed", "2026-01-02T00:01:00Z", 3),
+        ],
+    )
+
+    cursor = connection.execute((SQL_ROOT / "activation.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+
+    assert result["unproven_start_installations"] == 1
+    assert result["started_installations"] == 0
+    assert result["evidence_state"] == "insufficient-data"
+
+
 def test_retention_counts_only_cohorts_with_fully_observable_return_windows():
     connection = database()
-    connection.execute(
-        "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
-        "VALUES('telemetry_consent_changed','2025-12-31T23:59:00Z',1,'development','i1')"
-    )
     connection.executemany(
         "INSERT INTO events(event_name,timestamp_utc,schema_version,environment,installation_id) "
         "VALUES(?,?,1,'development',?)",
@@ -335,6 +391,7 @@ def test_reopened_record_recovery_pairs_without_polluting_maswr_quality():
 
 def test_retention_excludes_returns_before_exact_window_start():
     connection = database()
+    connection.execute("DELETE FROM events")
     connection.executemany(
         """INSERT INTO events(event_name,timestamp_utc,event_sequence,schema_version,environment,
         app_version,app_build,installation_id,app_session_id,workflow,attempt_sequence,analysis_mode,
@@ -468,6 +525,18 @@ def test_data_quality_rejects_terminal_events_without_guardrail_dimensions():
     cursor = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
     result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
     assert result["missing_terminal_dimensions"] == 1
+    assert result["evidence_state"] == "incomplete"
+
+
+def test_data_quality_rejects_started_events_without_segment_dimensions():
+    connection = database()
+    connection.execute(
+        "UPDATE events SET workflow=NULL,analysis_mode=NULL "
+        "WHERE event_name='workflow_started' AND installation_id='i1'"
+    )
+    cursor = connection.execute((SQL_ROOT / "data_quality.sql").read_text(), PARAMS)
+    result = dict(zip([item[0] for item in cursor.description], cursor.fetchone()))
+    assert result["missing_start_dimensions"] == 1
     assert result["evidence_state"] == "incomplete"
 
 

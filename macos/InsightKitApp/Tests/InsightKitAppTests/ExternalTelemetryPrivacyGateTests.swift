@@ -286,6 +286,26 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(manifest["opted_out"] as? Bool, false)
     }
 
+    func testReenableRotatesAnonymousInstallationIdentity() throws {
+        let gate = makeGate()
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let first = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
+        let firstObject = try XCTUnwrap(JSONSerialization.jsonObject(with: first) as? [String: Any])
+
+        try gate.setConsent(enabled: false, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let second = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
+        let secondObject = try XCTUnwrap(JSONSerialization.jsonObject(with: second) as? [String: Any])
+
+        XCTAssertNotEqual(firstObject["installation_id"] as? String, secondObject["installation_id"] as? String)
+        XCTAssertNotEqual(firstObject["app_session_id"] as? String, secondObject["app_session_id"] as? String)
+        XCTAssertEqual(secondObject["event_sequence"] as? Int, 1)
+        XCTAssertEqual(
+            secondObject["installation_id"] as? String,
+            defaults.string(forKey: "insightkit.external-telemetry.installation-id.v1")
+        )
+    }
+
     func testLedgerRotatesBeforeRemoteRetentionCanDropItsCounts() throws {
         var now = Date(timeIntervalSince1970: 1_788_000_000)
         let gate = makeGate(now: { now }, maxQueueItems: 20)
@@ -982,7 +1002,8 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("匿名"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("远端原始数据最多保留 30 天"))
         XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("本地加密待发队列最多保留 30 天"))
-        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("跨会话稳定的随机安装标识"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("随机安装标识"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("重新启用会轮换该标识"))
     }
 
     func testFailedExportRecoveryEmitsClosedFailedPair() throws {

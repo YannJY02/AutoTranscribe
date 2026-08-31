@@ -108,6 +108,7 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var recordingStatusMessage: String?
     @Published var transcriptRecoveryStatusMessage: String?
     @Published var isFinalizingLiveSession = false
+    @Published private(set) var isExporting = false
     @Published var visualPreviewSource: LiveVisualPreviewSource = .none
     @Published var capturePreviewStatusMessage: String?
     @Published var mediaURL: URL?
@@ -222,7 +223,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
     var canStopSession: Bool { isRunning }
     var canBuildFinal: Bool { currentBuildTargetID() != nil }
-    var canExportDocument: Bool { currentBuildTargetID() != nil }
+    var canExportDocument: Bool { currentBuildTargetID() != nil && !isExporting }
     var hasPersistedRecordForExport: Bool {
         RecordDocumentExporter.hasPersistedRecord(meetingID: currentBuildTargetID(), recordsService: recordsService)
     }
@@ -685,19 +686,19 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func exportDocument(format: String = "markdown") {
+        guard let meetingID = currentBuildTargetID(), !isExporting else { return }
+        isExporting = true
         ProductAnalytics.submit { $0.exportAttempted("live") }
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
-                guard let meetingID = self.currentBuildTargetID() else {
-                    throw NSError(domain: "InsightKit", code: -3, userInfo: [NSLocalizedDescriptionKey: "当前无会话，无法导出文档"])
-                }
                 if let url = try RecordDocumentExporter.exportIfPersistedRecordExists(
                     format: format,
                     meetingID: meetingID,
                     recordsService: self.recordsService
                 ) {
                     self.updateMain {
+                        self.finishExport()
                         self.lastExportPath = url.path
                         let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                         let duration = self.recordingDuration
@@ -716,6 +717,7 @@ final class LiveSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: true, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
                 self.updateMain {
+                    self.finishExport()
                     self.lastExportPath = result.path
                     let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                     let duration = self.recordingDuration
@@ -729,12 +731,27 @@ final class LiveSessionViewModel: ObservableObject {
                 ProductAnalytics.submit { analytics in
                     analytics.workflowFailed("live", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
                 }
-                self.publishError(error)
+                self.updateMain {
+                    self.finishExport()
+                    self.publishError(error)
+                }
             }
         }
     }
 
-    func resetForNewSession() {
+    private func finishExport() {
+        isExporting = false
+        if recordingStatusMessage == "导出正在完成，请稍候再新建会话。" {
+            recordingStatusMessage = nil
+        }
+    }
+
+    @discardableResult
+    func resetForNewSession() -> Bool {
+        guard !isExporting else {
+            recordingStatusMessage = "导出正在完成，请稍候再新建会话。"
+            return false
+        }
         let analyticsPhase = sessionPhase == .postSession
             ? "finalizing"
             : sessionPhase == .reviewing ? "reviewing" : "running"
@@ -747,6 +764,7 @@ final class LiveSessionViewModel: ObservableObject {
         resetSessionUI()
         prepareForLiveEntry()
         refreshSidecarStatus()
+        return true
     }
 
     // MARK: - UI Actions

@@ -455,13 +455,13 @@ final class ExternalTelemetryPrivacyGate {
             Self.installationIDLock.lock()
             if let existing = defaults.string(forKey: installationIDKey),
                let parsed = UUID(uuidString: existing) {
-                _installationID = parsed.uuidString.lowercased()
+                installationIDFallback = parsed.uuidString.lowercased()
                 Self.installationIDLock.unlock()
                 break
             }
             if let installationCandidate {
                 defaults.set(installationCandidate, forKey: installationIDKey)
-                _installationID = installationCandidate
+                installationIDFallback = installationCandidate
                 Self.installationIDLock.unlock()
                 break
             }
@@ -471,7 +471,15 @@ final class ExternalTelemetryPrivacyGate {
         appSessionID = uuid().uuidString.lowercased()
     }
 
-    private let _installationID: String
+    private let installationIDFallback: String
+
+    private var installationID: String {
+        Self.installationIDLock.lock()
+        defer { Self.installationIDLock.unlock() }
+        return defaults.string(forKey: installationIDKey)
+            .flatMap(UUID.init(uuidString:))?
+            .uuidString.lowercased() ?? installationIDFallback
+    }
 
     private static let queueKeyAccount = "external-telemetry-queue-key-v1"
     private static let acceptedConsentVersion = 1
@@ -499,9 +507,11 @@ final class ExternalTelemetryPrivacyGate {
         }
         guard consentVersion == Self.acceptedConsentVersion else { throw ConsentError.invalidVersion }
         let wasEnabled = readConsent().isEnabled
+        let hadPriorConsentState = defaults.data(forKey: consentKey) != nil
         let value = Consent(isEnabled: true, version: consentVersion, grantedAt: now())
         let encodedValue = try encoder.encode(value)
         let consentEpoch = UUID().uuidString.lowercased()
+        let rotatedAppSessionID = hadPriorConsentState ? UUID().uuidString.lowercased() : nil
         Self.stateLock.lock()
         if wasEnabled {
             Self.stateLock.unlock()
@@ -522,8 +532,16 @@ final class ExternalTelemetryPrivacyGate {
             throw ConsentError.transitionSuperseded
         }
         Self.stateLock.unlock()
-        defaults.set(encodedValue, forKey: consentKey)
+        if let rotatedAppSessionID {
+            defaults.set(consentEpoch, forKey: installationIDKey)
+            sequenceLock.lock()
+            appSessionID = rotatedAppSessionID
+            nextEventSequence = 0
+            sequenceLock.unlock()
+        }
         defaults.set(consentEpoch, forKey: consentEpochKey)
+        // Keep consent disabled until the new identity epoch is fully established.
+        defaults.set(encodedValue, forKey: consentKey)
         onEnableConsentPersisted()
         defaults.removeObject(forKey: revocationKey)
         Self.stateLock.lock()
@@ -715,6 +733,7 @@ final class ExternalTelemetryPrivacyGate {
             properties[key] = value
         }
 
+        let eventContext = allocateEventContext()
         let envelope = Envelope(
             schemaVersion: 1,
             eventName: event.name,
@@ -723,9 +742,9 @@ final class ExternalTelemetryPrivacyGate {
             appBuild: appBuild,
             environment: configuration.environment.rawValue,
             consentVersion: activeConsent.version,
-            installationID: _installationID,
-            appSessionID: appSessionID,
-            eventSequence: allocateEventSequence(),
+            installationID: installationID,
+            appSessionID: eventContext.appSessionID,
+            eventSequence: eventContext.eventSequence,
             properties: properties
         )
 
@@ -938,7 +957,7 @@ final class ExternalTelemetryPrivacyGate {
               Self.isValidAppBuild(envelope.appBuild),
               envelope.environment == configuration.environment.rawValue,
               envelope.consentVersion == readConsent().version,
-              envelope.installationID == _installationID,
+              envelope.installationID == installationID,
               UUID(uuidString: envelope.appSessionID) != nil,
               envelope.eventSequence >= 0,
               envelope.timestampUTC <= now(),
@@ -948,10 +967,10 @@ final class ExternalTelemetryPrivacyGate {
         return envelope.properties.allSatisfy { rules[$0.key]?.accepts($0.value) == true }
     }
 
-    private func allocateEventSequence() -> Int {
+    private func allocateEventContext() -> (appSessionID: String, eventSequence: Int) {
         sequenceLock.lock()
         nextEventSequence += 1
-        let value = nextEventSequence
+        let value = (appSessionID, nextEventSequence)
         sequenceLock.unlock()
         return value
     }

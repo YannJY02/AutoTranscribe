@@ -8,30 +8,46 @@ WITH event_source AS (
     AND timestamp < toDateTime({variables.window_end})
 ), eligible AS (
   SELECT * FROM event_source WHERE schema_version = 1
+), consent_anchors AS (
+  SELECT installation_id,min(timestamp_utc) consent_started_at,min(event_sequence) consent_started_sequence,
+    count() anchor_count FROM eligible
+  WHERE event_name='telemetry_consent_changed' GROUP BY installation_id
 ), ranked_starts AS (
   SELECT installation_id,timestamp_utc,event_sequence,ROW_NUMBER() OVER (
     PARTITION BY installation_id ORDER BY timestamp_utc,event_sequence
   ) start_rank FROM eligible WHERE event_name='workflow_started'
-), starts AS (
+), first_starts AS (
   SELECT installation_id,timestamp_utc AS first_start,event_sequence AS first_start_sequence
   FROM ranked_starts WHERE start_rank=1
 ), cohort_starts AS (
-  SELECT * FROM starts WHERE first_start >= toDateTime({variables.window_start})
+  SELECT s.*,a.anchor_count=1 AND (a.consent_started_at<first_start
+    OR (a.consent_started_at=first_start AND a.consent_started_sequence<first_start_sequence)) start_proven
+  FROM first_starts s LEFT JOIN consent_anchors a USING(installation_id)
+  WHERE first_start >= toDateTime({variables.window_start})
+), starts AS (
+  SELECT * FROM cohort_starts WHERE start_proven
+), proof AS (
+  SELECT countIf(start_proven IS NULL OR NOT start_proven) unproven_start_installations FROM cohort_starts
 ), installs AS (
   SELECT s.installation_id,s.first_start,
     minOrNullIf(e.timestamp_utc,e.event_name='workflow_completed' AND (e.timestamp_utc>s.first_start
       OR (e.timestamp_utc=s.first_start AND e.event_sequence>s.first_start_sequence))) AS first_success
-  FROM cohort_starts s LEFT JOIN eligible e ON e.installation_id=s.installation_id
+  FROM starts s LEFT JOIN eligible e ON e.installation_id=s.installation_id
   GROUP BY s.installation_id,s.first_start,s.first_start_sequence
 ), timed AS (
   SELECT *,dateDiff('millisecond',first_start,first_success) AS first_success_latency_ms FROM installs
+), metrics AS (
+  SELECT countIf(first_start IS NOT NULL) AS started_installations,
+    countIf(first_start IS NOT NULL AND first_success >= first_start) AS activated_installations,
+    if(started_installations=0,NULL,activated_installations/started_installations) AS activation_rate,
+    if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms<=60000)) AS success_under_1m,
+    if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>60000 AND first_success_latency_ms<=300000)) AS success_1_to_5m,
+    if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>300000 AND first_success_latency_ms<=1800000)) AS success_5_to_30m,
+    if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>1800000)) AS success_30m_plus
+  FROM timed
 )
-SELECT countIf(first_start IS NOT NULL) AS started_installations,
-  countIf(first_start IS NOT NULL AND first_success >= first_start) AS activated_installations,
-  if(started_installations=0,NULL,activated_installations/started_installations) AS activation_rate,
-  if(started_installations=0,'insufficient-data','requires-reconciliation') AS evidence_state,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms<=60000)) AS success_under_1m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>60000 AND first_success_latency_ms<=300000)) AS success_1_to_5m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>300000 AND first_success_latency_ms<=1800000)) AS success_5_to_30m,
-  if(started_installations=0,NULL,countIf(first_success IS NOT NULL AND first_success_latency_ms>1800000)) AS success_30m_plus
-FROM timed;
+SELECT metrics.started_installations,metrics.activated_installations,metrics.activation_rate,
+  proof.unproven_start_installations,
+  if(proof.unproven_start_installations>0 OR metrics.started_installations=0,'insufficient-data','requires-reconciliation') evidence_state,
+  metrics.success_under_1m,metrics.success_1_to_5m,metrics.success_5_to_30m,metrics.success_30m_plus
+FROM metrics CROSS JOIN proof;

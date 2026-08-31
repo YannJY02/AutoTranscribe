@@ -74,6 +74,7 @@ WITH raw_source AS (
     countIf(event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed')) unknown_event,
     countIf(workflow IS NOT NULL AND workflow NOT IN ('live','import')) unknown_workflow,
     countIf(analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud')) unknown_analysis_mode,
+    countIf(event_name='workflow_started' AND (workflow IS NULL OR analysis_mode IS NULL)) missing_start_dimensions,
     countIf(provider_class IS NOT NULL AND provider_class NOT IN ('local','byok','none')) unknown_provider_class,
     countIf(phase IS NOT NULL AND phase NOT IN ('preparing','running','finalizing','analysis','reviewing','exporting')) unknown_phase,
     countIf(outcome IS NOT NULL AND outcome NOT IN ('succeeded','failed','cancelled')) unknown_outcome,
@@ -106,6 +107,7 @@ SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,unknown_event) unknown_event,
   if(event_count=0,NULL,unknown_workflow) unknown_workflow,
   if(event_count=0,NULL,unknown_analysis_mode) unknown_analysis_mode,
+  if(event_count=0,NULL,missing_start_dimensions) missing_start_dimensions,
   if(event_count=0,NULL,unknown_provider_class) unknown_provider_class,
   if(event_count=0,NULL,unknown_phase) unknown_phase,
   if(event_count=0,NULL,unknown_outcome) unknown_outcome,
@@ -117,7 +119,7 @@ SELECT if(event_count=0,NULL,unknown_schema) unknown_schema,
   if(event_count=0,NULL,missing_terminal_dimensions) missing_terminal_dimensions,
   overlapping_attempts,duplicate_attempt_groups,orphan_boundary_terminals,ambiguous_boundary_starts,
   multiIf(event_count=0,'incomplete',unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+
-    unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+
+    unknown_analysis_mode+missing_start_dimensions+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+
     unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+
     missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals+
     ambiguous_boundary_starts=0,'complete','incomplete') evidence_state

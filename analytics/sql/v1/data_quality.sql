@@ -58,6 +58,7 @@ WITH event_source AS (
  SUM(CASE WHEN event_name NOT IN ('workflow_started','record_saved','record_reopened','transcript_search_completed','smart_minutes_review_opened','export_completed','workflow_completed','workflow_failed','recovery_attempted','recovery_completed','telemetry_consent_changed') THEN 1 ELSE 0 END) unknown_event,
  SUM(CASE WHEN workflow IS NOT NULL AND workflow NOT IN ('live','import') THEN 1 ELSE 0 END) unknown_workflow,
  SUM(CASE WHEN analysis_mode IS NOT NULL AND analysis_mode NOT IN ('local','cloud') THEN 1 ELSE 0 END) unknown_analysis_mode,
+ SUM(CASE WHEN event_name='workflow_started' AND (workflow IS NULL OR analysis_mode IS NULL) THEN 1 ELSE 0 END) missing_start_dimensions,
  SUM(CASE WHEN provider_class IS NOT NULL AND provider_class NOT IN ('local','byok','none') THEN 1 ELSE 0 END) unknown_provider_class,
  SUM(CASE WHEN phase IS NOT NULL AND phase NOT IN ('preparing','running','finalizing','analysis','reviewing','exporting') THEN 1 ELSE 0 END) unknown_phase,
  SUM(CASE WHEN outcome IS NOT NULL AND outcome NOT IN ('succeeded','failed','cancelled') THEN 1 ELSE 0 END) unknown_outcome,
@@ -86,5 +87,5 @@ WITH event_source AS (
   (SELECT ambiguous_boundary_starts FROM boundary_quality) ambiguous_boundary_starts
 )
 SELECT diagnostics.*,quality.overlapping_attempts,quality.duplicate_attempt_groups,quality.orphan_boundary_terminals,quality.ambiguous_boundary_starts,
- CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals+ambiguous_boundary_starts=0 THEN 'complete' ELSE 'incomplete' END evidence_state
+ CASE WHEN unknown_schema+missing_event_sequence+unknown_event+unknown_workflow+unknown_analysis_mode+missing_start_dimensions+unknown_provider_class+unknown_phase+unknown_outcome+unknown_error_code+unknown_recovery_action+out_of_bounds+unknown_duration_bucket+unknown_latency_bucket+missing_terminal_dimensions+overlapping_attempts+duplicate_attempt_groups+orphan_boundary_terminals+ambiguous_boundary_starts=0 THEN 'complete' ELSE 'incomplete' END evidence_state
 FROM diagnostics CROSS JOIN quality;
