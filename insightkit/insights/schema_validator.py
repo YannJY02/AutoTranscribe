@@ -22,6 +22,14 @@ class SchemaValidationError(ValueError):
     """Raised when an insight package fails validation."""
 
 
+def _manual_validate_span(span: Any, path: str) -> None:
+    if not isinstance(span, dict) or not {"start_ms", "end_ms"}.issubset(span):
+        raise SchemaValidationError(f"{path} requires start_ms and end_ms")
+    start, end = span["start_ms"], span["end_ms"]
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (start, end)):
+        raise SchemaValidationError(f"{path} bounds must be non-negative integers")
+
+
 
 def _manual_validate(payload: dict[str, Any]) -> None:
     missing = REQUIRED_TOP_LEVEL - set(payload.keys())
@@ -44,6 +52,17 @@ def _manual_validate(payload: dict[str, Any]) -> None:
     ]:
         if not isinstance(payload[list_key], list):
             raise SchemaValidationError(f"{list_key} must be array")
+
+    for section in ["highlight_insights", "decision_ledger", "action_tracks"]:
+        for index, item in enumerate(payload[section]):
+            if not isinstance(item, dict):
+                raise SchemaValidationError(f"{section}[{index}] must be object")
+            _manual_validate_span(item.get("evidence_span"), f"{section}[{index}].evidence_span")
+    for item_index, item in enumerate(payload["speaker_perspectives"]):
+        if not isinstance(item, dict) or not isinstance(item.get("evidence_spans"), list):
+            raise SchemaValidationError(f"speaker_perspectives[{item_index}].evidence_spans must be array")
+        for span_index, span in enumerate(item["evidence_spans"]):
+            _manual_validate_span(span, f"speaker_perspectives[{item_index}].evidence_spans[{span_index}]")
 
 
 

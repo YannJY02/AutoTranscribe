@@ -194,6 +194,8 @@ class InsightService:
             raise ProviderError(message) from exc
 
         payload = self._parse_or_fallback(raw, live_mode=live_mode, strict_mode=effective_strict)
+        if effective_strict:
+            validate_insight_package(payload)
         payload = postprocess_insight_package(payload, full_transcript=transcript_context)
         validate_insight_package(payload)
         return payload
