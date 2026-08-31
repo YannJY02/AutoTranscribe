@@ -223,6 +223,7 @@ def test_manifest_is_privacy_walked_and_records_a_separate_artifact_hash(tmp_pat
 
 @pytest.mark.parametrize("field", [
     "access_token", "client_secret", "private_key", "github_pat", "accessToken", "clientSecret",
+    "access_token_value",
     "aws_access_key_id", "aws_secret_access_key", "AWSAccessKeyId", "AWSAccessKey", "AWSSecretKey",
 ])
 def test_manifest_rejects_bare_credential_field_names(tmp_path: Path, field: str):
@@ -351,6 +352,10 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
     source(
         source_type="linear", source_id="YAN-50",
         source_ref="https://linear.app/yannjy/issue/YAN-51",
+    ),
+    source(
+        source_type="linear", source_id="YAN-50",
+        source_ref="https://linear.app/attacker/issue/YAN-50",
     ),
     source(
         source_type="github", source_id="GH-68",
@@ -688,6 +693,21 @@ def test_cli_rejects_every_non_array_json_value(tmp_path: Path, payload: str):
     )
     assert completed.returncode == 2
     assert "array" in completed.stderr
+
+
+def test_cli_rejects_non_utf8_input_without_traceback(tmp_path: Path):
+    input_path = tmp_path / "input.json"
+    input_path.write_bytes(b"\xff")
+    completed = subprocess.run(
+        [
+            sys.executable, str(Path(__file__).parents[1] / "scripts" / "evidence_ledger.py"),
+            "--ledger", str(tmp_path / "ledger.json"), "--input", str(input_path),
+        ],
+        text=True, capture_output=True, check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "Traceback" not in completed.stderr
 
 
 def test_typed_adapter_batch_is_order_independent(tmp_path: Path):

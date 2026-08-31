@@ -56,7 +56,7 @@ SECRET = re.compile(
 )
 CREDENTIAL_FIELD = re.compile(
     r"(?i)(?:^|_)(?:(?:token|secret|password|credential|authorization|pat)s?|"
-    r"(?:api|private|access|secret)_key(?:_id)?)$"
+    r"(?:api|private|access|secret)_key(?:_id)?)(?:_(?:value|text|string|raw))?$"
 )
 RFC3339 = re.compile(
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -197,8 +197,7 @@ def _feedback_ref(value: str) -> bool:
         )
     if _https_ref(value, {"linear.app"}):
         parts = [part for part in urlsplit(value).path.split("/") if part]
-        return any(part == "issue" and index + 1 < len(parts) and LINEAR_ISSUE.fullmatch(parts[index + 1])
-                   for index, part in enumerate(parts))
+        return len(parts) in {3, 4} and parts[:2] == ["yannjy", "issue"] and bool(LINEAR_ISSUE.fullmatch(parts[2]))
     return False
 
 
@@ -209,8 +208,8 @@ def _reference_identifies(item: dict[str, Any], value: str) -> bool:
         if expected is None:
             return False
         return (
-            (len(parts) >= 3 and parts[-2:] == ["issue", expected])
-            or (len(parts) >= 4 and parts[-3:-1] == ["issue", expected])
+            len(parts) in {3, 4}
+            and parts[:3] == ["yannjy", "issue", expected]
         )
     if item["source_type"] == "github":
         linked = str(item["github_issue_or_pr_id"] or "")
@@ -803,7 +802,7 @@ def main() -> int:
         else:
             output: Any = ledger.promotions(result, dry_run=True) if args.promotions else result
             print(_canonical(output).decode(), end="")
-    except (OSError, json.JSONDecodeError, ValidationError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
         parser.error(str(error))
     return 0
 
