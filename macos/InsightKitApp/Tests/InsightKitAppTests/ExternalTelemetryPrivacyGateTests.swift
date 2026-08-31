@@ -623,6 +623,61 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         })
     }
 
+    func testNewImportResetClosesOnlyAnUnfinishedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let viewModel = ImportSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        analytics.beginWorkflow("import", provisionalPath: .local)
+        viewModel.resetToSelecting()
+        analytics.beginWorkflow("import", provisionalPath: .local)
+        analytics.workflowCompleted(
+            "import",
+            evaluation: .init(
+                recordReopenable: true,
+                transcriptSearchable: true,
+                smartMinutesValid: true,
+                exportCompleted: true,
+                hasBlockingError: false
+            )
+        )
+        viewModel.resetToSelecting()
+
+        let events = try queuedObjects(gate)
+        XCTAssertEqual(
+            events.compactMap { $0["event_name"] as? String },
+            ["workflow_started", "workflow_failed", "workflow_started", "workflow_completed"]
+        )
+        let cancelled = try XCTUnwrap(events[1]["properties"] as? [String: Any])
+        XCTAssertEqual(cancelled["outcome"] as? String, "cancelled")
+    }
+
+    func testNewLiveSessionResetClosesAnUnfinishedAttempt() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 1)
+        let analytics = ProductAnalytics(gate: gate)
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        viewModel.resetForNewSession()
+
+        let events = try queuedObjects(gate)
+        XCTAssertEqual(
+            events.compactMap { $0["event_name"] as? String },
+            ["workflow_started", "workflow_failed"]
+        )
+        let cancelled = try XCTUnwrap(events[1]["properties"] as? [String: Any])
+        XCTAssertEqual(cancelled["outcome"] as? String, "cancelled")
+        viewModel.shutdown()
+    }
+
     func testQueuedImportSubmissionFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 1)

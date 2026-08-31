@@ -59,9 +59,7 @@ struct TranscriptionWorkspaceView: View {
                 }
 
                 if !viewModel.transcriptSegments.isEmpty {
-                    let analyticsContext = viewModel.transcriptAnalyticsContext(
-                        fallbackKey: transcriptAnalyticsKey
-                    )
+                    let analyticsContext = viewModel.transcriptAnalyticsContext()
                     Divider()
                     TranscriptStreamView(
                         searchText: $viewModel.searchText,
@@ -71,6 +69,7 @@ struct TranscriptionWorkspaceView: View {
                     )
                     .id(transcriptAnalyticsKey)
                     .onAppear {
+                        guard let analyticsContext else { return }
                         ProductAnalytics.submit { $0.registerSearchContext(analyticsContext) }
                     }
                 }

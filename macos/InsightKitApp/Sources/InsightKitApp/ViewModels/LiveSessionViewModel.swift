@@ -735,6 +735,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func resetForNewSession() {
+        analyticsSubmit { $0.workflowCancelled("live") }
         stopLiveSession()
         stateQueue.sync {
             self._sessionState = SessionHandle()

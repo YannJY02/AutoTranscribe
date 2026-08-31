@@ -50,6 +50,7 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         let count = analyticsSubmissions
         lock.unlock()
         XCTAssertEqual(count, 0)
+        XCTAssertNil(vm.transcriptAnalyticsContext())
     }
 
     func testWatcherSkipsRestoredJobsWithUnknownStartTime() {

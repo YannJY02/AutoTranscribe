@@ -147,11 +147,9 @@ final class TranscriptionSessionViewModel: ObservableObject {
         }
     }
 
-    func transcriptAnalyticsContext(fallbackKey: String) -> ProductAnalyticsContext {
+    func transcriptAnalyticsContext() -> ProductAnalyticsContext? {
         let path = ProductAnalyticsPath(provider: metrics.provider)
-        guard let currentAnalyticsContext else {
-            return ProductAnalyticsContext(workflow: "import", path: path, key: fallbackKey)
-        }
+        guard let currentAnalyticsContext else { return nil }
         return ProductAnalyticsContext(attempt: currentAnalyticsContext, path: path)
     }
 

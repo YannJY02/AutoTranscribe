@@ -170,6 +170,7 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func resetToSelecting() {
+        analyticsSubmit { $0.workflowCancelled("import") }
         pollTask?.cancel()
         pollTask = nil
         sessionPhase = .selecting

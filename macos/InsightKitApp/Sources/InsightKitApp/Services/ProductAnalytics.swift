@@ -321,6 +321,7 @@ final class ProductAnalytics {
         var recordSavedEmitted = false
         var reviewOpenedEmitted = false
         var completionEmitted = false
+        var terminalEmitted = false
         var analysisLatencyMS: Int?
     }
     private struct PendingRecovery {
@@ -839,6 +840,7 @@ final class ProductAnalytics {
         guard emit("workflow_completed", properties: values) == .accepted else { return }
         stateLock.lock()
         attempts[key]?.completionEmitted = true
+        attempts[key]?.terminalEmitted = true
         let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
         if let recoveryPhase {
@@ -940,6 +942,7 @@ final class ProductAnalytics {
         values["recovery_action"] = recoveryAction
         guard emit("workflow_failed", properties: values) == .accepted else { return }
         stateLock.lock()
+        attempts[key]?.terminalEmitted = true
         pendingRecoveries[key] = recoveryAction == "none"
             ? nil
             : PendingRecovery(path: context.path, sequence: context.sequence, phase: phase)
@@ -956,15 +959,24 @@ final class ProductAnalytics {
 
     private func workflowCancelled(key: String, workflow: String) {
         guard let context = context(for: key) else { return }
-        var values = terminalProperties(workflow: workflow, context: context, phase: "running", outcome: "cancelled")
-        values["recovery_action"] = "none"
-        _ = emit("workflow_failed", properties: values)
         stateLock.lock()
+        let shouldEmitTerminal = attempts[key]?.terminalEmitted == false
         let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
+        if shouldEmitTerminal {
+            var values = terminalProperties(workflow: workflow, context: context, phase: "running", outcome: "cancelled")
+            values["recovery_action"] = "none"
+            _ = emit("workflow_failed", properties: values)
+        }
         if let recoveryPhase {
             recoveryCompleted(key: key, workflow: workflow, phase: recoveryPhase, succeeded: false)
         }
+        stateLock.lock()
+        if attempts[key]?.sequence == context.sequence {
+            attempts[key] = nil
+            pendingRecoveries[key] = nil
+        }
+        stateLock.unlock()
     }
 
     func recoveryAttempted(_ workflow: String, phase: String, explicitPath: ProductAnalyticsPath? = nil) {

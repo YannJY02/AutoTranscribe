@@ -4,7 +4,7 @@ struct TranscriptStreamView: View {
     @Binding var searchText: String
     @Binding var selectedEvidence: EvidenceRange?
     let segments: [TranscriptSegment]
-    let analyticsContext: ProductAnalyticsContext
+    let analyticsContext: ProductAnalyticsContext?
 
     var filtered: [TranscriptSegment] {
         guard !searchText.isEmpty else { return segments }
@@ -34,7 +34,7 @@ struct TranscriptStreamView: View {
 
             TextField("搜索发言人或内容", text: $searchText)
                 .onSubmit {
-                    guard !searchText.isEmpty else { return }
+                    guard !searchText.isEmpty, let analyticsContext else { return }
                     let resultCount = min(filtered.count, 10_000)
                     ProductAnalytics.submit { analytics in
                         analytics.transcriptSearchCompleted(analyticsContext, resultCount: resultCount)
