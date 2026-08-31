@@ -508,7 +508,16 @@ def run_eval(
         builder = external.get("builder")
         uses_service_builder = builder is None
         if builder is None:
-            builder = lambda case: cloud_service.build_final(case["transcript"])
+            def builder(case: dict[str, Any]) -> dict[str, Any]:
+                previous_mode = os.environ.get("INSIGHTKIT_ANALYSIS_MODE")
+                os.environ["INSIGHTKIT_ANALYSIS_MODE"] = "cloud"
+                try:
+                    return cloud_service.build_final(case["transcript"])
+                finally:
+                    if previous_mode is None:
+                        os.environ.pop("INSIGHTKIT_ANALYSIS_MODE", None)
+                    else:
+                        os.environ["INSIGHTKIT_ANALYSIS_MODE"] = previous_mode
         for case in contract["cases"]:
             started = time.perf_counter()
             try:

@@ -705,6 +705,41 @@ def test_external_leg_records_resolved_provider_and_model(monkeypatch, tmp_path:
     assert report["legs"]["external"]["model"] == "resolved-model-v2"
 
 
+def test_external_service_leg_ignores_local_mode_override(monkeypatch, tmp_path: Path):
+    import scripts.smart_minutes_eval as eval_module
+
+    class ModeSensitiveService:
+        def __init__(self, default_vendor=None, model=None):
+            self.default_vendor = default_vendor
+            self.model = model
+            self.last_call_meta = {}
+
+        def build_local_extractive(self, transcript):
+            return _valid_package({"transcript": transcript})
+
+        def build_final(self, transcript, provider_vendor=None, provider_model=None):
+            assert eval_module.os.environ["INSIGHTKIT_ANALYSIS_MODE"] == "cloud"
+            self.last_call_meta = {
+                "vendor": provider_vendor or self.default_vendor,
+                "model": provider_model or self.model,
+            }
+            return _valid_package({"transcript": transcript})
+
+    monkeypatch.setattr(eval_module, "InsightService", ModeSensitiveService)
+    monkeypatch.setenv("INSIGHTKIT_ANALYSIS_MODE", "local")
+
+    report = run_eval(
+        ROOT / "evals/smart_minutes/v1",
+        tmp_path,
+        external={"vendor": "configured-cloud", "model": "cloud-v1"},
+    )
+
+    assert report["legs"]["external"]["provider"] == "configured-cloud"
+    assert report["legs"]["external"]["model"] == "cloud-v1"
+    assert report["legs"]["external"]["gate_result"] == "pass"
+    assert eval_module.os.environ["INSIGHTKIT_ANALYSIS_MODE"] == "local"
+
+
 def _valid_package(case=None):
     transcript = (case or {}).get("transcript") or [{"start_ms": 0, "end_ms": 1000}]
     row = transcript[0] if transcript else {"start_ms": 0, "end_ms": 0}
