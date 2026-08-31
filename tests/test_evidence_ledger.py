@@ -95,6 +95,22 @@ def test_distinct_transitions_have_distinct_promotion_ids(tmp_path: Path):
     assert len({item["promotion_id"] for item in ledger.promotions(normalized)}) == 2
 
 
+def test_promotion_payload_identifies_its_publication_target(tmp_path: Path):
+    ledger = EvidenceLedger(tmp_path / "ledger.json")
+    linear = ledger.promotions(ledger._collect_normalized([source()]))[0]
+    github = ledger.promotions(ledger._collect_normalized([
+        source(
+            source_id="check-102", revision="build-102",
+            source_ref="https://github.com/YannJY02/AutoTranscribe/actions/runs/102",
+            linear_issue_id=None, github_issue_or_pr_id="GH-68",
+        )
+    ]))
+    github = next(item for item in github if item["target_service"] == "github")
+
+    assert (linear["target_service"], linear["target"]) == ("linear", "YAN-50")
+    assert (github["target_service"], github["target"]) == ("github", "GH-68")
+
+
 def test_same_revision_with_changed_claim_is_rejected(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     ledger._collect_normalized([source()])
@@ -113,7 +129,10 @@ def test_concurrent_collectors_do_not_lose_records(tmp_path: Path):
     path = tmp_path / "ledger.json"
     context = multiprocessing.get_context("spawn")
     processes = [
-        context.Process(target=_collect_in_process, args=(str(path), source(source_id=f"check-{index}", revision=f"build-{index}")))
+        context.Process(target=_collect_in_process, args=(str(path), source(
+            source_id=f"check-{index}", revision=f"build-{index}",
+            source_ref=f"https://github.com/YannJY02/AutoTranscribe/actions/runs/{index}",
+        )))
         for index in range(4)
     ]
     for process in processes:
@@ -311,6 +330,25 @@ def test_source_refs_reject_uri_fallback_and_opaque_external_refs(tmp_path: Path
     assert accepted["records"][0]["source_type"] == "analytics"
 
 
+@pytest.mark.parametrize("item", [
+    source(
+        source_type="linear", source_id="YAN-50",
+        source_ref="https://linear.app/yannjy/issue/YAN-51",
+    ),
+    source(
+        source_type="github", source_id="GH-68",
+        source_ref="https://github.com/YannJY02/AutoTranscribe/issues/69",
+    ),
+    source(
+        source_type="ci", source_id="check-101",
+        source_ref="https://github.com/YannJY02/AutoTranscribe/actions/runs/102",
+    ),
+])
+def test_task_and_ci_references_must_identify_the_linked_evidence(tmp_path: Path, item: dict):
+    with pytest.raises(ValidationError, match="identify the linked evidence"):
+        EvidenceLedger(tmp_path / "ledger.json")._collect_normalized([item])
+
+
 def test_schema_boundaries_reject_overlong_https_refs_numeric_ids_and_non_rfc3339_timestamps(tmp_path: Path):
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     with pytest.raises(ValidationError, match="inspectable approved reference"):
@@ -480,16 +518,17 @@ def test_handoff_escapes_markdown_in_every_rendered_claim_field(tmp_path: Path):
     malicious_prose = f"``ticks`` {malicious_link} @octocat ~~strike~~"
     ledger = EvidenceLedger(tmp_path / "ledger.json")
     normalized = ledger._collect_normalized([source(
-        source_ref=f"https://github.com/org/repo/issues/1{malicious_link}",
+        source_type="analytics", source_id="aggregate-1",
+        source_ref=f"https://us.posthog.com/project/1/insights/2{malicious_link}",
         fact=f"Observed {malicious_prose}",
-        recheck_source=f"https://github.com/org/repo/issues/1{malicious_link}",
+        recheck_source=f"https://us.posthog.com/project/1/insights/2{malicious_link}",
     )])
     evidence_id = normalized["records"][0]["evidence_id"]
 
     handoff = ledger.issue_handoff("GH-68", normalized, evidence_ids={evidence_id})
 
     assert f"``` Observed {malicious_prose} ```" in handoff
-    assert f"` https://github.com/org/repo/issues/1{malicious_link} `" in handoff
+    assert f"` https://us.posthog.com/project/1/insights/2{malicious_link} `" in handoff
 
 
 def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
@@ -532,6 +571,25 @@ def test_friday_update_requires_live_linear_and_linked_evidence(tmp_path: Path):
         inferred_ledger.friday_update(
             "2026-W35", inferred,
             live_linear_evidence_ids={inferred_id}, linked_evidence_ids=set(),
+        )
+
+    mixed = ledger._collect_normalized([
+        source(
+            source_type="linear", source_id="YAN-51",
+            source_ref="https://linear.app/yannjy/issue/YAN-51",
+            linear_issue_id="YAN-51", revision="linear-inference-2",
+            lifecycle_transition="linked-status", claim_class="inference",
+            promotion_category="status",
+        )
+    ])
+    inferred_linked_id = next(
+        record["evidence_id"] for record in mixed["records"]
+        if record["source_id"] == "YAN-51"
+    )
+    with pytest.raises(ValidationError, match="live Linear evidence"):
+        ledger.friday_update(
+            "2026-W35", mixed,
+            live_linear_evidence_ids={linear_id}, linked_evidence_ids={inferred_linked_id},
         )
 
 

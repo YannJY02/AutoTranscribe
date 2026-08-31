@@ -174,6 +174,32 @@ def _approved_external_ref(source_type: str, value: str) -> bool:
     return False
 
 
+def _reference_identifies(item: dict[str, Any], value: str) -> bool:
+    parts = [part for part in urlsplit(value).path.split("/") if part]
+    if item["source_type"] == "linear":
+        expected = item["linear_issue_id"] or item["source_id"]
+        return (
+            (len(parts) >= 3 and parts[-2:] == ["issue", expected])
+            or (len(parts) >= 4 and parts[-3:-1] == ["issue", expected])
+        )
+    if item["source_type"] == "github":
+        expected = str(item["github_issue_or_pr_id"] or "").split("-")[-1].lstrip("#")
+        return (
+            len(parts) >= 4
+            and parts[-4:-2] == ["YannJY02", "AutoTranscribe"]
+            and parts[-2] in {"issues", "pull"}
+            and parts[-1] == expected
+        )
+    if item["source_type"] == "ci":
+        match = re.search(r"([0-9]+)$", item["source_id"])
+        return bool(
+            match and len(parts) >= 5
+            and parts[-5:-2] == ["YannJY02", "AutoTranscribe", "actions"]
+            and parts[-2:] == ["runs", match.group(1)]
+        )
+    return True
+
+
 def _valid_timestamp(value: Any) -> bool:
     if not isinstance(value, str) or len(value) > 64 or not RFC3339.fullmatch(value):
         return False
@@ -275,6 +301,8 @@ def _validate(item: dict[str, Any], *, persisted: bool = False) -> None:
         inspectable = _approved_external_ref(item["source_type"], source_ref)
     if not inspectable:
         raise ValidationError("source_ref is not an inspectable approved reference")
+    if item["source_type"] in {"linear", "github", "ci"} and not _reference_identifies(item, source_ref):
+        raise ValidationError("source_ref does not identify the linked evidence")
 
     for field in ("fact", "gap_or_decision", "owner_action", "recheck_source", "human_gate"):
         value = item[field]
@@ -565,6 +593,8 @@ class EvidenceLedger:
             )
             promotions.append({
                 "promotion_id": promotion_id, "evidence_id": record["evidence_id"],
+                "target_service": "linear" if record["linear_issue_id"] else "github",
+                "target": target,
                 "promotion_category": category, "source_ref": record["source_ref"],
                 "claim": {key: record[key] for key in (
                     "fact", "gap_or_decision", "owner_action", "recheck_source", "human_gate", "unknowns"
@@ -628,13 +658,13 @@ class EvidenceLedger:
         missing = requested - set(by_id)
         if missing:
             raise ValidationError(f"Friday update is missing linked evidence: {', '.join(sorted(missing))}")
-        if any(
-            by_id[evidence_id]["source_type"] != "linear"
-            or by_id[evidence_id]["claim_class"] != "observed"
+        linear_ids = {evidence_id for evidence_id in requested if by_id[evidence_id]["source_type"] == "linear"}
+        if any(by_id[evidence_id]["source_type"] != "linear" for evidence_id in live_linear_evidence_ids) or any(
+            by_id[evidence_id]["claim_class"] != "observed"
             or by_id[evidence_id]["result"] == "unobserved"
             or by_id[evidence_id]["revision"] == "unavailable"
             or _is_degraded(by_id[evidence_id])
-            for evidence_id in live_linear_evidence_ids
+            for evidence_id in linear_ids
         ):
             raise ValidationError("Friday update is missing live Linear evidence")
         lines = [f"# Friday Project Update: {period}", ""]
