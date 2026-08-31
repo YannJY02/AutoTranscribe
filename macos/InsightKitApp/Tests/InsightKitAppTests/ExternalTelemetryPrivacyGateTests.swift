@@ -153,6 +153,8 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let ledgerURL = root.appendingPathComponent("concurrent-ledger.json")
         let analytics = ProductAnalytics(gate: gate, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
         XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
+        Self.waitUntil { FileManager.default.fileExists(atPath: ledgerURL.path) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ledgerURL.path))
         let group = DispatchGroup()
         for _ in 0..<20 {
             group.enter()
