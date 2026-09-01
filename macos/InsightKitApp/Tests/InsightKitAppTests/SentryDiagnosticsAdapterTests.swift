@@ -69,6 +69,16 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(transport.envelopes.isEmpty)
     }
 
+    func testSyntheticFailureCapturesTheCurrentCallStack() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForEnvelope())
+        XCTAssertFalse(try XCTUnwrap(transport.failureStacks.first).isEmpty)
+    }
+
     func testUnifiedConsentRevocationCancelsInFlightSentryDelivery() throws {
         let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")

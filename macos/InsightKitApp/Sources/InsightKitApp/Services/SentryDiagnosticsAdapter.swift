@@ -65,14 +65,14 @@ final class SentryDiagnosticsAdapter {
             self.attachments = attachments
         }
 
-        static let syntheticFailure = Failure(
+        static var syntheticFailure: Failure { Failure(
             workflow: .live,
             phase: .running,
             engineClass: .local,
             providerClass: .none,
             errorCategory: .runtime,
             recoveryResult: .succeeded
-        )
+        ) }
 
     }
 
