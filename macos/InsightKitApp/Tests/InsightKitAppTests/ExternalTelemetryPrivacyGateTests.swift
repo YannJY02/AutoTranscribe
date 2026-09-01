@@ -867,6 +867,54 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(properties["outcome"] as? String, "succeeded")
     }
 
+    func testLiveFinalizationExceptionEmitsFailureBeforeSuccessfulFallbackSave() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        let rpcClient = RPCClientMock()
+        rpcClient.sessionStopForFinalizationError = NSError(
+            domain: "ExternalTelemetryPrivacyGateTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "transient finalization failure"]
+        )
+        rpcClient.sessionStopForFinalizationFailuresRemaining = 1
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-finalization-diagnostic-test"
+        }
+        viewModel.sessionHandle = SessionHandle(
+            activeMeetingID: "live-finalization-diagnostic-test",
+            lastMeetingID: nil
+        )
+        viewModel.transcriptSegments = [
+            TranscriptSegment(
+                startMs: 0,
+                endMs: 1_000,
+                speaker: "SPEAKER_00",
+                source: "mic",
+                text: "retry-safe transcript"
+            )
+        ]
+
+        viewModel.stopLiveSession()
+        let completed = expectation(description: "fallback save completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let events = try queuedObjects(gate)
+        let failure = try XCTUnwrap(events.first { $0["event_name"] as? String == "workflow_failed" })
+        let properties = try XCTUnwrap(failure["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["error_code"] as? String, "unknown")
+    }
+
     func testLocalAnalysisModeOverridesReadyCloudProviderPath() {
         let providers = RPCClientMock().providersStatusStub
 

@@ -1,4 +1,5 @@
 import Foundation
+import MachO
 import XCTest
 @testable import InsightKitApp
 
@@ -185,6 +186,46 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
         XCTAssertTrue(transport.waitForEnvelope())
         XCTAssertFalse(try XCTUnwrap(transport.failureStacks.first).isEmpty)
+    }
+
+    func testRestartedAdapterReconstructsPersistedFailureStack() throws {
+        let fixture = try makeFixture()
+        let failingTransport = SignalingThrowingSentryTransport()
+        let firstAdapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: failingTransport)
+        let mainImage = try XCTUnwrap(_dyld_get_image_header(0))
+        let mainImageAddress = UInt64(UInt(bitPattern: UnsafeRawPointer(mainImage)))
+
+        XCTAssertEqual(firstAdapter.capture(.init(
+            workflow: .live,
+            phase: .running,
+            engineClass: .local,
+            providerClass: .none,
+            errorCategory: .runtime,
+            recoveryResult: .succeeded,
+            failureStack: [mainImageAddress]
+        )), .accepted)
+        XCTAssertTrue(failingTransport.waitForAttempt())
+        let deliveryStopped = Date().addingTimeInterval(1)
+        while firstAdapter.localDeliveryFailureCount < 2, Date() < deliveryStopped {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        let persisted = try XCTUnwrap(fixture.gate.queuedEnvelopes().first)
+        let persistedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: persisted) as? [String: Any]
+        )
+        let offsets = try XCTUnwrap(persistedObject["failure_frame_offsets"] as? [NSNumber])
+        XCTAssertEqual(offsets.map(\.uint64Value), [0])
+
+        let restartedGate = try fixture.restartedGate()
+        let recordingTransport = RecordingSentryTransport()
+        let restartedAdapter = SentryDiagnosticsAdapter(
+            gate: restartedGate,
+            transport: recordingTransport
+        )
+        restartedAdapter.startReleaseSessionAfterDrainingQueue()
+
+        XCTAssertTrue(recordingTransport.waitForEnvelope())
+        XCTAssertFalse(try XCTUnwrap(recordingTransport.failureStacks.first).isEmpty)
     }
 
     func testHTTPTransportDoesNotInventStackForReplayedWorkflowFailure() throws {

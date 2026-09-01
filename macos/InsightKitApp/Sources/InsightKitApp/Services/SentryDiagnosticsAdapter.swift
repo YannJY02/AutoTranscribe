@@ -10,6 +10,35 @@ func currentExternalTelemetryFailureStack() -> [UInt64] {
     return frames.prefix(Int(count)).compactMap { $0.map { UInt64(UInt(bitPattern: $0)) } }
 }
 
+private func mainExecutableFrames(_ frames: [UInt64]) -> [UInt64] {
+    guard let mainImage = _dyld_get_image_header(0) else { return [] }
+    let mainBase = UnsafeRawPointer(mainImage)
+    return frames.filter { address in
+        guard let pointer = UnsafeRawPointer(bitPattern: UInt(address)) else { return false }
+        var info = Dl_info()
+        return dladdr(pointer, &info) != 0 && info.dli_fbase == mainBase
+    }
+}
+
+private func mainExecutableFrameOffsets(_ frames: [UInt64]) -> [UInt64] {
+    guard let mainImage = _dyld_get_image_header(0) else { return [] }
+    let base = UInt64(UInt(bitPattern: UnsafeRawPointer(mainImage)))
+    return mainExecutableFrames(frames).prefix(64).compactMap { address in
+        guard address >= base else { return nil }
+        return address - base
+    }
+}
+
+private func mainExecutableFrames(fromOffsets offsets: [UInt64]) -> [UInt64] {
+    guard let mainImage = _dyld_get_image_header(0) else { return [] }
+    let base = UInt64(UInt(bitPattern: UnsafeRawPointer(mainImage)))
+    let candidates = offsets.prefix(64).compactMap { offset -> UInt64? in
+        let (address, overflow) = base.addingReportingOverflow(offset)
+        return overflow ? nil : address
+    }
+    return mainExecutableFrames(candidates)
+}
+
 /// Vendor-neutral seam implemented by the local proof transport and, when owner
 /// configuration exists, a Sentry SDK transport. It receives only gate-approved JSON.
 protocol SentryDiagnosticsTransport {
@@ -205,7 +234,7 @@ final class SentryDiagnosticsAdapter {
             "provider_class": failure.providerClass.rawValue,
             "error_category": failure.errorCategory.rawValue,
             "recovery_result": failure.recoveryResult.rawValue,
-        ]))
+        ], failureFrameOffsets: mainExecutableFrameOffsets(failure.failureStack)))
         do {
             try gate.incrementReleaseSessionErrorCount()
         } catch {
@@ -366,7 +395,10 @@ final class SentryDiagnosticsAdapter {
         guard let currentEnvelope = try gate.currentQueuedEnvelope(matching: envelope) else { return }
         if isDeliveredReleaseSessionStart(currentEnvelope) { return }
         if !acknowledge, deliveredRetainedEnvelopes.contains(currentEnvelope) { return }
-        try transport.send(envelope: currentEnvelope, failureStack: failureStack)
+        let effectiveFailureStack = failureStack.isEmpty
+            ? persistedFailureStack(for: currentEnvelope)
+            : failureStack
+        try transport.send(envelope: currentEnvelope, failureStack: effectiveFailureStack)
         if acknowledge {
             try gate.acknowledgeQueuedEnvelope(currentEnvelope)
             forgetFailureStack(for: envelope)
@@ -437,7 +469,7 @@ final class SentryDiagnosticsAdapter {
         for envelope in envelopes {
             guard mayDeliver, gate.consent.isEnabled else { return }
             do {
-                try transport.send(envelope: envelope, failureStack: [])
+                try transport.send(envelope: envelope, failureStack: persistedFailureStack(for: envelope))
                 try gate.acknowledgeQueuedEnvelope(envelope)
             } catch {
                 recordDeliveryFailure()
@@ -450,6 +482,13 @@ final class SentryDiagnosticsAdapter {
         diagnosticsLock.lock()
         deliveryFailureCount += 1
         diagnosticsLock.unlock()
+    }
+
+    private func persistedFailureStack(for envelope: Data) -> [UInt64] {
+        guard let object = try? JSONSerialization.jsonObject(with: envelope) as? [String: Any],
+              let values = object["failure_frame_offsets"] as? [NSNumber]
+        else { return [] }
+        return mainExecutableFrames(fromOffsets: values.map(\.uint64Value))
     }
 
 }
@@ -651,7 +690,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             ]
             itemType = "transaction"
         } else {
-            let frames = Self.mainExecutableFrames(failureStack).reversed().map { address in
+            let frames = mainExecutableFrames(failureStack).reversed().map { address in
                 ["instruction_addr": String(format: "0x%llx", address), "in_app": true] as [String: Any]
             }
             var exception: [String: Any] = [
@@ -737,16 +776,6 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             "image_addr": String(format: "0x%llx", UInt64(UInt(bitPattern: header))),
             "image_size": maximumVMAddress - minimumVMAddress,
         ]]
-    }
-
-    private static func mainExecutableFrames(_ frames: [UInt64]) -> [UInt64] {
-        guard let mainImage = _dyld_get_image_header(0) else { return [] }
-        let mainBase = UnsafeRawPointer(mainImage)
-        return frames.filter { address in
-            guard let pointer = UnsafeRawPointer(bitPattern: UInt(address)) else { return false }
-            var info = Dl_info()
-            return dladdr(pointer, &info) != 0 && info.dli_fbase == mainBase
-        }
     }
 
     enum TransportError: Error { case invalidApprovedEnvelope, invalidDSN, timedOut, rejected }

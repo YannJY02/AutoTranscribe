@@ -94,6 +94,17 @@ final class ExternalTelemetryPrivacyGate {
     struct Event {
         let name: String
         let properties: [String: Any]
+        let failureFrameOffsets: [UInt64]
+
+        init(
+            name: String,
+            properties: [String: Any],
+            failureFrameOffsets: [UInt64] = []
+        ) {
+            self.name = name
+            self.properties = properties
+            self.failureFrameOffsets = failureFrameOffsets
+        }
     }
 
     struct Consent: Codable, Equatable {
@@ -159,6 +170,7 @@ final class ExternalTelemetryPrivacyGate {
         let installationID: String
         let appSessionID: String
         let eventSequence: Int
+        let failureFrameOffsets: [UInt64]?
         let properties: [String: PropertyValue]
 
         enum CodingKeys: String, CodingKey {
@@ -173,6 +185,7 @@ final class ExternalTelemetryPrivacyGate {
             case installationID = "installation_id"
             case appSessionID = "app_session_id"
             case eventSequence = "event_sequence"
+            case failureFrameOffsets = "failure_frame_offsets"
             case properties
         }
 
@@ -188,6 +201,7 @@ final class ExternalTelemetryPrivacyGate {
             installationID: String,
             appSessionID: String,
             eventSequence: Int,
+            failureFrameOffsets: [UInt64]? = nil,
             properties: [String: PropertyValue]
         ) {
             self.schemaVersion = schemaVersion
@@ -201,6 +215,7 @@ final class ExternalTelemetryPrivacyGate {
             self.installationID = installationID
             self.appSessionID = appSessionID
             self.eventSequence = eventSequence
+            self.failureFrameOffsets = failureFrameOffsets
             self.properties = properties
         }
 
@@ -217,6 +232,7 @@ final class ExternalTelemetryPrivacyGate {
             installationID = try container.decode(String.self, forKey: .installationID)
             appSessionID = try container.decode(String.self, forKey: .appSessionID)
             eventSequence = try container.decodeIfPresent(Int.self, forKey: .eventSequence) ?? 0
+            failureFrameOffsets = try container.decodeIfPresent([UInt64].self, forKey: .failureFrameOffsets)
             properties = try container.decode([String: PropertyValue].self, forKey: .properties)
         }
 
@@ -233,6 +249,7 @@ final class ExternalTelemetryPrivacyGate {
                 installationID: installationID,
                 appSessionID: appSessionID,
                 eventSequence: eventSequence,
+                failureFrameOffsets: failureFrameOffsets,
                 properties: properties.merging(updates) { _, replacement in replacement }
             )
         }
@@ -829,6 +846,12 @@ final class ExternalTelemetryPrivacyGate {
             mutateDiagnostics { $0.rejected += 1 }
             return RecordOutcome(result: .rejected, debugEnvelope: nil)
         }
+        guard event.failureFrameOffsets.count <= 64,
+              event.failureFrameOffsets.allSatisfy({ $0 <= UInt64(UInt32.max) })
+        else {
+            mutateDiagnostics { $0.rejected += 1 }
+            return RecordOutcome(result: .rejected, debugEnvelope: nil)
+        }
 
         var properties: [String: PropertyValue] = [:]
         for (key, rawValue) in event.properties {
@@ -852,6 +875,7 @@ final class ExternalTelemetryPrivacyGate {
             installationID: installationID,
             appSessionID: eventContext.appSessionID,
             eventSequence: eventContext.eventSequence,
+            failureFrameOffsets: event.failureFrameOffsets.isEmpty ? nil : event.failureFrameOffsets,
             properties: properties
         )
 

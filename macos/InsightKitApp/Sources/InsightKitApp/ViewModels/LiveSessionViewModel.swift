@@ -587,6 +587,14 @@ final class LiveSessionViewModel: ObservableObject {
                 }
             } catch {
                 finalizationFailed = true
+                self.analyticsSubmit(ProductAnalytics.failure { analytics in
+                    analytics.workflowFailed(
+                        "live",
+                        phase: "finalizing",
+                        errorCode: "unknown",
+                        recoveryAction: "retry"
+                    )
+                })
                 self.publishError(error)
             }
 
