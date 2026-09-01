@@ -11,10 +11,118 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         "POSTHOG_DEVELOPMENT_RETENTION_VERIFIED": "1",
     ]
 
-    private func makeFixture(enable: Bool = true, maxQueueItems: Int = 8) throws -> Fixture {
-        let fixture = try Fixture(enable: enable, maxQueueItems: maxQueueItems)
+    private func makeFixture(
+        enable: Bool = true,
+        maxQueueItems: Int = 8,
+        writeData: @escaping (Data, URL) throws -> Void = { data, url in try data.write(to: url, options: .atomic) }
+    ) throws -> Fixture {
+        let fixture = try Fixture(enable: enable, maxQueueItems: maxQueueItems, writeData: writeData)
         addTeardownBlock { fixture.cleanup() }
         return fixture
+    }
+
+    func testAppLifecycleOwnershipUsesAnAtomicProcessLock() throws {
+        let lockURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitAppLock-\(UUID().uuidString)")
+        guard case .acquired(let first) = AppLifecycleDelegate.claimSingleInstance(at: lockURL) else {
+            return XCTFail("first process must acquire the lifecycle lock")
+        }
+        defer {
+            close(first)
+            try? FileManager.default.removeItem(at: lockURL)
+        }
+
+        guard case .contended = AppLifecycleDelegate.claimSingleInstance(at: lockURL) else {
+            return XCTFail("second process must observe lock contention")
+        }
+    }
+
+    func testAppLifecycleOwnershipReportsLockSetupFailureSeparately() throws {
+        let parentFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitAppLockParent-\(UUID().uuidString)")
+        try Data().write(to: parentFile)
+        defer { try? FileManager.default.removeItem(at: parentFile) }
+
+        guard case .unavailable = AppLifecycleDelegate.claimSingleInstance(
+            at: parentFile.appendingPathComponent("insightkit-app.lock")
+        ) else {
+            return XCTFail("lock I/O failure must not look like contention")
+        }
+    }
+
+    func testExistingProcessSelectionExcludesContendingProcess() {
+        XCTAssertEqual(
+            AppLifecycleDelegate.existingProcessID(in: [101, 202], excluding: 101),
+            202
+        )
+        XCTAssertNil(AppLifecycleDelegate.existingProcessID(in: [101], excluding: 101))
+    }
+
+    func testFailureBeforeReleaseStartIsAppliedWhenTheStartPersists() throws {
+        let fixture = try makeFixture(maxQueueItems: 4)
+
+        try fixture.gate.incrementReleaseSessionErrorCount()
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "release_session_started",
+            properties: [
+                "session_status": "ok",
+                "session_error_count": 0,
+                "session_start_delivered": false,
+            ]
+        )).result, .accepted)
+
+        let start = try XCTUnwrap(fixture.gate.queuedEnvelopes().first)
+        XCTAssertTrue(String(decoding: start, as: UTF8.self).contains("\"session_error_count\":1"))
+    }
+
+    func testDeliveredStartMarkerSurvivesAnInFlightErrorCountUpdate() throws {
+        let fixture = try makeFixture(maxQueueItems: 4)
+        let admitted = try XCTUnwrap(fixture.gate.record(event: .init(
+            name: "release_session_started",
+            properties: [
+                "session_status": "ok",
+                "session_error_count": 0,
+                "session_start_delivered": false,
+            ]
+        )).debugEnvelope)
+        _ = try fixture.gate.queuedEnvelopes()
+
+        try fixture.gate.incrementReleaseSessionErrorCount()
+        try fixture.gate.markReleaseSessionStartedDelivered(admitted)
+
+        let start = try XCTUnwrap(fixture.gate.queuedEnvelopes().first)
+        let text = String(decoding: start, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"session_error_count\":1"))
+        XCTAssertTrue(text.contains("\"session_start_delivered\":true"))
+    }
+
+    func testReleaseStartRetriesWhenDurableDeliveryMarkerWriteFails() throws {
+        let writer = FailNextWrite()
+        let fixture = try makeFixture(writeData: writer.write)
+        let transport = PausingSuccessfulSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(adapter.captureReleaseSession(.ok), .accepted)
+        XCTAssertTrue(transport.waitForFirstAttempt())
+        writer.failNext()
+        transport.releaseFirstAttempt()
+
+        XCTAssertTrue(transport.waitForSecondAttempt())
+    }
+
+    func testLegacySentryQueueLocationIsDetectedForPurge() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LegacySentryQueue-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertFalse(SentryDiagnosticsRuntime.hasLegacyQueue(in: root))
+
+        FileManager.default.createFile(
+            atPath: root.appendingPathComponent("external-telemetry-queue-v1.json").path,
+            contents: Data()
+        )
+
+        XCTAssertTrue(SentryDiagnosticsRuntime.hasLegacyQueue(in: root))
     }
 
     func testRawFailureContentIsScrubbedBeforeSyntheticTransportReceivesEnvelope() throws {
@@ -79,7 +187,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(transport.failureStacks.first).isEmpty)
     }
 
-    func testHTTPTransportBackfillsStackForReplayedWorkflowFailure() throws {
+    func testHTTPTransportDoesNotInventStackForReplayedWorkflowFailure() throws {
         let fixture = try makeFixture()
         let approved = try XCTUnwrap(fixture.gate.record(event: .init(
             name: "workflow_failed",
@@ -99,8 +207,8 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(lines[2])) as? [String: Any])
         let exception = try XCTUnwrap(payload["exception"] as? [String: Any])
         let values = try XCTUnwrap(exception["values"] as? [[String: Any]])
-        let stacktrace = try XCTUnwrap(values.first?["stacktrace"] as? [String: Any])
-        XCTAssertFalse(try XCTUnwrap(stacktrace["frames"] as? [[String: Any]]).isEmpty)
+        XCTAssertNil(values.first?["stacktrace"])
+        XCTAssertNil(payload["debug_meta"])
     }
 
     func testUnifiedConsentRevocationCancelsInFlightSentryDelivery() throws {
@@ -152,7 +260,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         XCTAssertTrue(transport.waitForCancellation())
 
-        try fixture.gate.setConsent(enabled: true, consentVersion: 1)
+        try fixture.gate.setConsent(enabled: true, consentVersion: 2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         XCTAssertEqual(enabledNotification.wait(timeout: .now() + 0.1), .success)
         XCTAssertTrue(transport.waitForResume())
@@ -303,7 +411,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(try sentryGate.queuedEnvelopes().count, 1)
 
         _ = fixture.gate.disableAndPurge()
-        try fixture.gate.setConsent(enabled: true, consentVersion: 1)
+        try fixture.gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(fixture.gate.record(event: .init(
             name: "review_opened",
             properties: ["workflow": "live", "phase": "reviewing"]
@@ -433,6 +541,12 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
         XCTAssertEqual(adapter.captureReleaseSession(.ok), .accepted)
         XCTAssertTrue(transport.waitForDeliveries(1))
+        let startMarkedDeadline = Date().addingTimeInterval(1)
+        while !(try currentGate.queuedEnvelopes()).contains(where: {
+            String(decoding: $0, as: UTF8.self).contains("\"session_start_delivered\":true")
+        }), Date() < startMarkedDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertEqual(
             adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
             .accepted
@@ -677,6 +791,10 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
             "INSIGHTKIT_SENTRY_DSN": "https://@example.invalid/71",
         ]))
+        XCTAssertNil(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://public@/71",
+        ]))
         XCTAssertNotNil(SentryRuntimeConfiguration.from(environment: [
             "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
             "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
@@ -700,13 +818,18 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             explicitPath: path,
             completingRecovery: true
         )
+        analytics.beginWorkflow("live", provisionalPath: path)
+        analytics.workflowFailed("live", phase: "running", errorCode: "runtime-unavailable", recoveryAction: "none")
+        let record = ProductAnalyticsContext(workflow: "record-review", path: path)
+        analytics.observeRecord(record)
+        analytics.workflowFailed(record, phase: "reviewing", errorCode: "storage", recoveryAction: "none")
 
         XCTAssertGreaterThan(fixture.gate.localDiagnostics.queueFull, 0)
-        XCTAssertEqual(signals.count, 5)
+        XCTAssertEqual(signals.count, 7)
         guard case .failure(let failure) = signals[1] else { return XCTFail("expected failure signal") }
         XCTAssertEqual(failure.workflow, .import)
         XCTAssertEqual(failure.phase, .exporting)
-        XCTAssertEqual(failure.engineClass, .local)
+        XCTAssertEqual(failure.engineClass, .remote)
         XCTAssertEqual(failure.providerClass, .byok)
         XCTAssertEqual(failure.errorCategory, .storage)
         XCTAssertEqual(failure.recoveryResult, .notAttempted)
@@ -716,6 +839,11 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(failedRecovery.result, .failed)
         guard case .failure(let retriedFailure) = signals[4] else { return XCTFail("expected retried failure signal") }
         XCTAssertEqual(retriedFailure.recoveryResult, .failed)
+        guard case .failure(let saturatedAttempt) = signals[5],
+              case .failure(let saturatedRecord) = signals[6]
+        else { return XCTFail("expected saturated-context failure signals") }
+        XCTAssertEqual(saturatedAttempt.engineClass, .remote)
+        XCTAssertEqual(saturatedRecord.engineClass, .remote)
     }
 
     func testRecoverySignalProducesSentryEnvelope() throws {
@@ -914,6 +1042,13 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let tags = try XCTUnwrap(payload["tags"] as? [String: Any])
         XCTAssertTrue(tags.values.allSatisfy { $0 is String })
         XCTAssertEqual(tags["duration_bucket_ms"] as? String, "5000")
+        let retryRequest = try SentryHTTPTransport(configuration: configuration).makeRequest(
+            approvedEnvelope: approved,
+            failureStack: []
+        )
+        let retryLines = try XCTUnwrap(retryRequest.httpBody).split(separator: 0x0a)
+        let retryPayload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(retryLines[2])) as? [String: Any])
+        XCTAssertEqual(payload["event_id"] as? String, retryPayload["event_id"] as? String)
 
         let failure = try XCTUnwrap(fixture.gate.record(event: .init(name: "workflow_failed", properties: [
             "workflow": "live", "phase": "running", "error_category": "runtime",
@@ -926,17 +1061,23 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let failurePayload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(failureLines[2])) as? [String: Any])
         let exception = try XCTUnwrap(failurePayload["exception"] as? [String: Any])
         let values = try XCTUnwrap(exception["values"] as? [[String: Any]])
-        let stacktrace = try XCTUnwrap(values.first?["stacktrace"] as? [String: Any])
-        XCTAssertEqual(
-            try XCTUnwrap(stacktrace["frames"] as? [[String: Any]]).first?["instruction_addr"] as? String,
-            "0x1234"
-        )
+        XCTAssertNil(values.first?["stacktrace"], "non-executable frames must not be marked in-app")
+        XCTAssertNil(failurePayload["debug_meta"])
+        let failureTags = try XCTUnwrap(failurePayload["tags"] as? [String: Any])
+        XCTAssertTrue(failureTags.values.allSatisfy { $0 is String })
 
         let sessionFixture = try makeFixture(maxQueueItems: 1)
         XCTAssertEqual(sessionFixture.gate.record(event: .init(
             name: "release_session_started",
-            properties: ["session_status": "ok"]
+            properties: [
+                "session_status": "ok",
+                "session_error_count": 0,
+                "session_start_delivered": false,
+            ]
         )).result, .accepted)
+        try sessionFixture.gate.incrementReleaseSessionErrorCount()
+        let sessionStart = try XCTUnwrap(sessionFixture.gate.queuedEnvelopes().first)
+        try sessionFixture.gate.markReleaseSessionStartedDelivered(sessionStart)
         let compactTerminal = try XCTUnwrap(sessionFixture.gate.closeReleaseSession(status: "exited"))
         let sessionRequest = try SentryHTTPTransport(configuration: configuration).makeRequest(
             approvedEnvelope: compactTerminal,
@@ -944,8 +1085,9 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         )
         let sessionLines = try XCTUnwrap(sessionRequest.httpBody).split(separator: 0x0a)
         let sessionPayload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(sessionLines[2])) as? [String: Any])
-        XCTAssertEqual(sessionPayload["init"] as? Bool, true)
+        XCTAssertEqual(sessionPayload["init"] as? Bool, false)
         XCTAssertEqual(sessionPayload["status"] as? String, "exited")
+        XCTAssertEqual(sessionPayload["errors"] as? Int, 1)
     }
 }
 
@@ -1144,6 +1286,24 @@ private final class SignalingThrowingSentryTransport: SentryDiagnosticsTransport
     func waitForAttempt() -> Bool { attempted.wait(timeout: .now() + 1) == .success }
 }
 
+private final class FailNextWrite: @unchecked Sendable {
+    private let lock = NSLock()
+    private var shouldFail = false
+
+    func failNext() {
+        lock.lock(); shouldFail = true; lock.unlock()
+    }
+
+    func write(_ data: Data, to url: URL) throws {
+        lock.lock()
+        let fail = shouldFail
+        shouldFail = false
+        lock.unlock()
+        if fail { throw CocoaError(.fileWriteUnknown) }
+        try data.write(to: url, options: .atomic)
+    }
+}
+
 private final class Fixture {
     private(set) var gate: ExternalTelemetryPrivacyGate!
     private let suite: String
@@ -1153,7 +1313,11 @@ private final class Fixture {
     private let keyBox: QueueKeyBox
     private let maxQueueItems: Int
 
-    init(enable: Bool = true, maxQueueItems: Int = 8) throws {
+    init(
+        enable: Bool = true,
+        maxQueueItems: Int = 8,
+        writeData: @escaping (Data, URL) throws -> Void = { data, url in try data.write(to: url, options: .atomic) }
+    ) throws {
         let suite = "SentryDiagnosticsAdapterTests-\(UUID().uuidString)"
         let localDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         localDefaults.removePersistentDomain(forName: suite)
@@ -1174,9 +1338,10 @@ private final class Fixture {
             storageDirectory: localDirectory,
             readQueueKey: { localKeyBox.data },
             saveQueueKey: { localKeyBox.data = $0 },
-            deleteQueueKey: { localKeyBox.data = nil }
+            deleteQueueKey: { localKeyBox.data = nil },
+            writeData: writeData
         )
-        if enable { try gate.setConsent(enabled: true, consentVersion: 1) }
+        if enable { try gate.setConsent(enabled: true, consentVersion: 2) }
     }
 
     func cleanup() {
@@ -1239,7 +1404,7 @@ private final class Fixture {
     func persistRevokedConsent() throws {
         let consent = try JSONEncoder().encode(ExternalTelemetryPrivacyGate.Consent(
             isEnabled: false,
-            version: 1,
+            version: 2,
             grantedAt: nil
         ))
         defaults?.set(consent, forKey: "insightkit.external-telemetry.consent.v1")

@@ -219,6 +219,31 @@ final class ExternalTelemetryPrivacyGate {
             eventSequence = try container.decodeIfPresent(Int.self, forKey: .eventSequence) ?? 0
             properties = try container.decode([String: PropertyValue].self, forKey: .properties)
         }
+
+        func replacingProperties(_ updates: [String: PropertyValue]) -> Envelope {
+            Envelope(
+                schemaVersion: schemaVersion,
+                eventName: eventName,
+                timestampUTC: timestampUTC,
+                sessionStartedUTC: sessionStartedUTC,
+                appVersion: appVersion,
+                appBuild: appBuild,
+                environment: environment,
+                consentVersion: consentVersion,
+                installationID: installationID,
+                appSessionID: appSessionID,
+                eventSequence: eventSequence,
+                properties: properties.merging(updates) { _, replacement in replacement }
+            )
+        }
+
+        func hasSameIdentity(as other: Envelope) -> Bool {
+            eventName == other.eventName
+                && environment == other.environment
+                && installationID == other.installationID
+                && appSessionID == other.appSessionID
+                && eventSequence == other.eventSequence
+        }
     }
 
     private enum PropertyValue: Codable, Equatable {
@@ -304,8 +329,8 @@ final class ExternalTelemetryPrivacyGate {
         "recovery_completed": commonWorkflowRules,
         "telemetry_consent_changed": ["telemetry_enabled": .boolean],
         "review_opened": commonWorkflowRules,
-        "release_session_started": ["session_status": .enumStrings(["ok"])],
-        "release_session_ended": ["session_status": .enumStrings(["exited", "crashed", "abnormal"])],
+        "release_session_started": releaseSessionRules(statuses: ["ok"]),
+        "release_session_ended": releaseSessionRules(statuses: ["exited", "crashed", "abnormal"]),
         "app_crashed": [
             "error_category": .enumStrings(["runtime", "storage", "unknown"]),
             "phase": .enumStrings(["launch", "preparing", "running", "finalizing", "reviewing"]),
@@ -331,6 +356,14 @@ final class ExternalTelemetryPrivacyGate {
         "quality_score": .boundedNumber(0 ... 1),
         "recovered": .boolean,
     ]
+
+    private static func releaseSessionRules(statuses: Set<String>) -> [String: PropertyRule] {
+        [
+            "session_status": .enumStrings(statuses),
+            "session_error_count": .boundedInteger(0 ... 1_000),
+            "session_start_delivered": .boolean,
+        ]
+    }
 
     private let configuration: ExternalTelemetryConfiguration
     private let appVersion: String
@@ -383,6 +416,7 @@ final class ExternalTelemetryPrivacyGate {
     private var appSessionID: String
     private let sequenceLock = NSLock()
     private var nextEventSequence = 0
+    private var pendingReleaseSessionErrorCounts: [String: Int] = [:]
 
     private let diagnosticsLock = NSLock()
     private var diagnostics = LocalDiagnostics()
@@ -531,7 +565,7 @@ final class ExternalTelemetryPrivacyGate {
     }
 
     private static let queueKeyAccount = "external-telemetry-queue-key-v1"
-    private static let acceptedConsentVersion = 1
+    static let acceptedConsentVersion = 2
 
     private static func defaultReadQueueKey() throws -> Data? {
         guard let encoded = try KeychainService().readSecret(
@@ -647,7 +681,7 @@ final class ExternalTelemetryPrivacyGate {
     }
 
     private func disableAndPurgePersistedState() -> DisableEvidence {
-        let purged = (try? readQueueWithoutExpiry().count) ?? 0
+        let purged = (try? queuedItemCountAcrossFiles()) ?? 0
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
         var failures: [String] = []
         do { try persistEncrypted([]) }
@@ -720,22 +754,39 @@ final class ExternalTelemetryPrivacyGate {
 
     private func removeAllQueuedItems() throws {
         let manager = FileManager.default
-        var queueURLs = [queueURL]
+        let queueURLs = allQueueURLs()
+        for url in queueURLs where manager.fileExists(atPath: url.path) {
+            try removeItem(url)
+        }
+        guard queueURLs.allSatisfy({ !manager.fileExists(atPath: $0.path) }) else {
+            throw PurgeError.queueStillPresent
+        }
+    }
+
+    private func allQueueURLs() -> [URL] {
+        let manager = FileManager.default
+        var urlsByPath = [queueURL.standardizedFileURL.path: queueURL]
         if let enumerator = manager.enumerator(
             at: storageDirectory,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ) {
             for case let url as URL in enumerator where
-                url.lastPathComponent == queueURL.lastPathComponent && url != queueURL {
-                queueURLs.append(url)
+                url.lastPathComponent == queueURL.lastPathComponent {
+                urlsByPath[url.standardizedFileURL.path] = url
             }
         }
-        for url in queueURLs where manager.fileExists(atPath: url.path) {
-            try removeItem(url)
-        }
-        guard queueURLs.allSatisfy({ !manager.fileExists(atPath: $0.path) }) else {
-            throw PurgeError.queueStillPresent
+        return Array(urlsByPath.values)
+    }
+
+    private func queuedItemCountAcrossFiles() throws -> Int {
+        guard let keyData = try readQueueKey() else { return 0 }
+        let key = SymmetricKey(data: keyData)
+        return try allQueueURLs().reduce(into: 0) { count, url in
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            let sealed = try AES.GCM.SealedBox(combined: Data(contentsOf: url))
+            let clear = try AES.GCM.open(sealed, using: key)
+            count += try decoder.decode([Envelope].self, from: clear).count
         }
     }
 
@@ -871,13 +922,26 @@ final class ExternalTelemetryPrivacyGate {
                         mutateDiagnostics { $0.queueFull += 1 }
                         return
                     }
-                    let removed = queue.count - configuration.maxQueueItems + 1
-                    queue.removeFirst(removed)
-                    mutateDiagnostics { $0.queueFull += removed }
+                    guard let evictable = queue.firstIndex(where: { $0.eventName != "release_session_ended" }) else {
+                        mutateDiagnostics { $0.queueFull += 1 }
+                        return
+                    }
+                    queue.remove(at: evictable)
+                    mutateDiagnostics { $0.queueFull += 1 }
                 }
-                queue.append(envelope)
+                var persistedEnvelope = envelope
+                if envelope.eventName == "release_session_started",
+                   let pendingErrors = pendingReleaseSessionErrorCounts[envelope.appSessionID] {
+                    persistedEnvelope = envelope.replacingProperties([
+                        "session_error_count": .integer(min(pendingErrors, 1_000)),
+                    ])
+                }
+                queue.append(persistedEnvelope)
                 try persist(queue)
-                onPersisted?(debugEnvelope)
+                if envelope.eventName == "release_session_started" {
+                    pendingReleaseSessionErrorCounts.removeValue(forKey: envelope.appSessionID)
+                }
+                onPersisted?(try encoder.encode(persistedEnvelope))
             } catch {
                 mutateDiagnostics { $0.serializationFailed += 1 }
             }
@@ -923,6 +987,14 @@ final class ExternalTelemetryPrivacyGate {
                 return []
             }
             return envelopes
+        }
+    }
+
+    func currentQueuedEnvelope(matching data: Data) throws -> Data? {
+        guard let target = try? decoder.decode(Envelope.self, from: data) else { return nil }
+        return try queuedEnvelopes().first { encoded in
+            guard let candidate = try? decoder.decode(Envelope.self, from: encoded) else { return false }
+            return candidate.hasSameIdentity(as: target)
         }
     }
 
@@ -976,6 +1048,47 @@ final class ExternalTelemetryPrivacyGate {
         }
     }
 
+    func incrementReleaseSessionErrorCount() throws {
+        guard consent.isEnabled else { return }
+        try Self.persistenceQueue.sync {
+            var queue = try loadAndExpireQueue()
+            guard let index = queue.lastIndex(where: {
+                $0.eventName == "release_session_started" && $0.appSessionID == appSessionID
+            }) else {
+                pendingReleaseSessionErrorCounts[appSessionID] = min(
+                    pendingReleaseSessionErrorCounts[appSessionID, default: 0] + 1,
+                    1_000
+                )
+                return
+            }
+            let start = queue[index]
+            let current: Int
+            if case .integer(let value) = start.properties["session_error_count"] {
+                current = value
+            } else {
+                current = 0
+            }
+            queue[index] = start.replacingProperties([
+                "session_error_count": .integer(min(current + 1, 1_000)),
+            ])
+            try persist(queue)
+        }
+    }
+
+    func markReleaseSessionStartedDelivered(_ data: Data) throws {
+        guard consent.isEnabled,
+              let target = try? decoder.decode(Envelope.self, from: data),
+              target.eventName == "release_session_started"
+        else { return }
+        try Self.persistenceQueue.sync {
+            var queue = try loadAndExpireQueue()
+            guard let index = queue.firstIndex(where: { $0.hasSameIdentity(as: target) }) else { return }
+            let start = queue[index]
+            queue[index] = start.replacingProperties(["session_start_delivered": .boolean(true)])
+            try persist(queue)
+        }
+    }
+
     /// Converts this process's durable open release session into a terminal event.
     /// The original pseudonymous session id and start timestamp remain available to
     /// the vendor adapter; only the terminal event timestamp changes.
@@ -999,7 +1112,7 @@ final class ExternalTelemetryPrivacyGate {
                 installationID: start.installationID,
                 appSessionID: start.appSessionID,
                 eventSequence: start.eventSequence,
-                properties: ["session_status": .string(status)]
+                properties: start.properties.merging(["session_status": .string(status)]) { _, replacement in replacement }
             )
             queue[index] = end
             try persist(queue)
@@ -1028,7 +1141,7 @@ final class ExternalTelemetryPrivacyGate {
                     installationID: start.installationID,
                     appSessionID: start.appSessionID,
                     eventSequence: start.eventSequence,
-                    properties: ["session_status": .string("abnormal")]
+                    properties: start.properties.merging(["session_status": .string("abnormal")]) { _, replacement in replacement }
                 )
                 changed = true
             }
@@ -1070,7 +1183,10 @@ final class ExternalTelemetryPrivacyGate {
             try persist(valid)
         }
         let cutoff = now().addingTimeInterval(-Double(configuration.retentionDays) * 86_400)
-        let retained = valid.filter { $0.timestampUTC >= cutoff }
+        let retained = valid.filter {
+            $0.timestampUTC >= cutoff
+                || ($0.eventName == "release_session_started" && $0.appSessionID == appSessionID)
+        }
         let removed = valid.count - retained.count
         if removed > 0 {
             mutateDiagnostics { $0.expired += removed }

@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import MachO
+import CryptoKit
 
 func currentExternalTelemetryFailureStack() -> [UInt64] {
     var frames = [UnsafeMutableRawPointer?](repeating: nil, count: 64)
@@ -205,6 +206,11 @@ final class SentryDiagnosticsAdapter {
             "error_category": failure.errorCategory.rawValue,
             "recovery_result": failure.recoveryResult.rawValue,
         ]))
+        do {
+            try gate.incrementReleaseSessionErrorCount()
+        } catch {
+            recordDeliveryFailure()
+        }
         guard outcome.result == .accepted, let envelope = outcome.debugEnvelope else {
             return outcome.result
         }
@@ -217,7 +223,11 @@ final class SentryDiagnosticsAdapter {
         if status == .ok {
             return deliver(gate.record(event: .init(
                 name: "release_session_started",
-                properties: ["session_status": status.rawValue]
+                properties: [
+                    "session_status": status.rawValue,
+                    "session_error_count": 0,
+                    "session_start_delivered": false,
+                ]
             ), replacingOldestWhenFull: true), acknowledge: false)
         }
         let envelope: Data
@@ -325,6 +335,10 @@ final class SentryDiagnosticsAdapter {
         let envelopes: [Data]
         do {
             envelopes = try gate.queuedEnvelopes()
+            let retained = Set(envelopes)
+            deliveryStateLock.lock()
+            retainedFailureStacks = retainedFailureStacks.filter { retained.contains($0.key) }
+            deliveryStateLock.unlock()
         } catch {
             recordDeliveryFailure()
             return
@@ -349,19 +363,22 @@ final class SentryDiagnosticsAdapter {
         failureStack: [UInt64],
         acknowledge: Bool
     ) throws {
-        guard try gate.queuedEnvelopes().contains(envelope) else { return }
-        if !acknowledge, deliveredRetainedEnvelopes.contains(envelope) { return }
-        try transport.send(envelope: envelope, failureStack: failureStack)
+        guard let currentEnvelope = try gate.currentQueuedEnvelope(matching: envelope) else { return }
+        if isDeliveredReleaseSessionStart(currentEnvelope) { return }
+        if !acknowledge, deliveredRetainedEnvelopes.contains(currentEnvelope) { return }
+        try transport.send(envelope: currentEnvelope, failureStack: failureStack)
         if acknowledge {
-            try gate.acknowledgeQueuedEnvelope(envelope)
+            try gate.acknowledgeQueuedEnvelope(currentEnvelope)
             forgetFailureStack(for: envelope)
-            if isReleaseSessionEnd(envelope), let endedSessionID = stringField("app_session_id", in: envelope) {
+            if isReleaseSessionEnd(currentEnvelope),
+               let endedSessionID = stringField("app_session_id", in: currentEnvelope) {
                 deliveredRetainedEnvelopes = Set(deliveredRetainedEnvelopes.filter {
                     stringField("app_session_id", in: $0) != endedSessionID
                 })
             }
         } else {
-            deliveredRetainedEnvelopes.insert(envelope)
+            try gate.markReleaseSessionStartedDelivered(currentEnvelope)
+            deliveredRetainedEnvelopes.insert(currentEnvelope)
             forgetFailureStack(for: envelope)
         }
     }
@@ -391,6 +408,13 @@ final class SentryDiagnosticsAdapter {
 
     private func isReleaseSessionEnd(_ envelope: Data) -> Bool {
         stringField("event_name", in: envelope) == "release_session_ended"
+    }
+
+    private func isDeliveredReleaseSessionStart(_ envelope: Data) -> Bool {
+        guard isReleaseSessionStart(envelope),
+              let properties = (try? JSONSerialization.jsonObject(with: envelope) as? [String: Any])?["properties"] as? [String: Any]
+        else { return false }
+        return properties["session_start_delivered"] as? Bool == true
     }
 
     private func stringField(_ name: String, in envelope: Data) -> String? {
@@ -453,6 +477,8 @@ struct SentryRuntimeConfiguration: Equatable {
               let rawDSN = environment["INSIGHTKIT_SENTRY_DSN"],
               let dsn = URL(string: rawDSN),
               dsn.scheme == "https",
+              let host = dsn.host,
+              !host.isEmpty,
               let publicKey = dsn.user,
               !publicKey.isEmpty,
               !dsn.lastPathComponent.isEmpty,
@@ -547,16 +573,20 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
 
     func makeRequest(approvedEnvelope: Data, failureStack: [UInt64]) throws -> URLRequest {
         let approved = try JSONSerialization.jsonObject(with: approvedEnvelope) as? [String: Any]
-        let eventID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         guard let approved,
               let version = approved["app_version"] as? String,
               let build = approved["app_build"] as? String,
               let environment = approved["environment"] as? String,
               let eventName = approved["event_name"] as? String,
               let timestamp = approved["timestamp_utc"] as? String,
+              let installationID = approved["installation_id"] as? String,
               let sessionID = approved["app_session_id"] as? String,
+              let eventSequence = approved["event_sequence"] as? Int,
               let properties = approved["properties"] as? [String: Any]
         else { throw TransportError.invalidApprovedEnvelope }
+        let eventIdentity = "\(installationID):\(sessionID):\(eventSequence):\(eventName)"
+        let eventID = SHA256.hash(data: Data(eventIdentity.utf8)).prefix(16)
+            .map { String(format: "%02x", $0) }.joined()
 
         let release = "com.yannjy.insightkit@\(version)+\(build)"
         let isSession = eventName.hasPrefix("release_session_")
@@ -567,7 +597,9 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             let deliveredStart = deliveredSessionStarts[sessionID]
             let persistedStart = approved["session_started_utc"] as? String
             let started = persistedStart ?? deliveredStart ?? timestamp
-            let initializesSession = eventName == "release_session_started" || deliveredStart == nil
+            let persistedDelivered = properties["session_start_delivered"] as? Bool ?? false
+            let initializesSession = eventName == "release_session_started" || (!persistedDelivered && deliveredStart == nil)
+            let errorCount = properties["session_error_count"] as? Int ?? 0
             sessionStateLock.unlock()
             payload = [
                 "sid": sessionID,
@@ -575,7 +607,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
                 "started": started,
                 "timestamp": timestamp,
                 "status": status,
-                "errors": status == "crashed" ? 1 : 0,
+                "errors": max(errorCount, status == "crashed" ? 1 : 0),
                 "attrs": ["release": release, "environment": environment],
             ]
             itemType = "session"
@@ -590,7 +622,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
                 "dist": build,
                 "environment": environment,
                 "transaction": eventName,
-                "tags": properties,
+                "tags": properties.mapValues { String(describing: $0) },
                 "message": ["formatted": "InsightKit workflow recovery completed"],
             ]
             itemType = "event"
@@ -619,28 +651,30 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             ]
             itemType = "transaction"
         } else {
-            let frames = (failureStack.isEmpty ? currentExternalTelemetryFailureStack() : failureStack).reversed().map { address in
+            let frames = Self.mainExecutableFrames(failureStack).reversed().map { address in
                 ["instruction_addr": String(format: "0x%llx", address), "in_app": true] as [String: Any]
             }
-            payload = [
-            "event_id": eventID,
-            "timestamp": timestamp,
-            "platform": "native",
-            "level": "error",
-            "logger": "insightkit.diagnostics",
-            "release": release,
-            "dist": build,
-            "environment": environment,
-            "transaction": eventName,
-            "tags": properties,
-            "contexts": ["app": ["app_identifier": "com.yannjy.insightkit", "app_version": version, "app_build": build]],
-            "exception": ["values": [[
+            var exception: [String: Any] = [
                 "type": properties["error_category"] ?? "unknown",
                 "value": "InsightKit workflow failure",
-                "stacktrace": ["frames": frames],
-            ]]],
-            "debug_meta": ["images": Self.mainExecutableDebugImages()],
             ]
+            if !frames.isEmpty { exception["stacktrace"] = ["frames": frames] }
+            var failurePayload: [String: Any] = [
+                "event_id": eventID,
+                "timestamp": timestamp,
+                "platform": "native",
+                "level": "error",
+                "logger": "insightkit.diagnostics",
+                "release": release,
+                "dist": build,
+                "environment": environment,
+                "transaction": eventName,
+                "tags": properties.mapValues { String(describing: $0) },
+                "contexts": ["app": ["app_identifier": "com.yannjy.insightkit", "app_version": version, "app_build": build]],
+                "exception": ["values": [exception]],
+            ]
+            if !frames.isEmpty { failurePayload["debug_meta"] = ["images": Self.mainExecutableDebugImages()] }
+            payload = failurePayload
             itemType = "event"
         }
         let eventData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
@@ -705,6 +739,16 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
         ]]
     }
 
+    private static func mainExecutableFrames(_ frames: [UInt64]) -> [UInt64] {
+        guard let mainImage = _dyld_get_image_header(0) else { return [] }
+        let mainBase = UnsafeRawPointer(mainImage)
+        return frames.filter { address in
+            guard let pointer = UnsafeRawPointer(bitPattern: UInt(address)) else { return false }
+            var info = Dl_info()
+            return dladdr(pointer, &info) != 0 && info.dli_fbase == mainBase
+        }
+    }
+
     enum TransportError: Error { case invalidApprovedEnvelope, invalidDSN, timedOut, rejected }
 }
 
@@ -734,13 +778,27 @@ final class SentryDiagnosticsRuntime {
         #endif
         let telemetryEnvironment = environment["INSIGHTKIT_ANALYTICS_ENVIRONMENT"]
             .flatMap(TelemetryEnvironment.init(rawValue:)) ?? defaultEnvironment
-        let storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let storageRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("InsightKit/Telemetry/Sentry", isDirectory: true)
+        let storage = storageRoot
+            .appendingPathComponent(telemetryEnvironment.rawValue, isDirectory: true)
+        let legacyQueueExists = gateOverride == nil && Self.hasLegacyQueue(in: storageRoot)
         guard let configuration = try? ExternalTelemetryConfiguration(
             environment: telemetryEnvironment,
             retentionDays: 7,
             maxQueueItems: 64
         ) else {
+            adapter = nil
+            return
+        }
+        let purgeGate = gateOverride ?? ExternalTelemetryPrivacyGate(
+            configuration: configuration,
+            appVersion: version,
+            appBuild: build,
+            storageDirectory: storageRoot
+        )
+        if explicitSetting == "0" || legacyQueueExists {
+            _ = purgeGate.disableAndPurge()
             adapter = nil
             return
         }
@@ -750,11 +808,6 @@ final class SentryDiagnosticsRuntime {
             appBuild: build,
             storageDirectory: storage
         )
-        if explicitSetting == "0" {
-            _ = gate.disableAndPurge()
-            adapter = nil
-            return
-        }
         guard let postHog = ProductAnalytics.configuredPostHogValues(
             process: environment,
             bundleInfo: bundle.infoDictionary ?? [:],
@@ -776,6 +829,12 @@ final class SentryDiagnosticsRuntime {
         if environment["INSIGHTKIT_SENTRY_SYNTHETIC_FAILURE"] == "1" {
             _ = adapter?.capture(.syntheticFailure)
         }
+    }
+
+    static func hasLegacyQueue(in storageRoot: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: storageRoot.appendingPathComponent("external-telemetry-queue-v1.json").path
+        )
     }
 
     func applicationWillTerminate() { adapter?.endReleaseSession(.exited) }

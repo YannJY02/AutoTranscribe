@@ -4,7 +4,9 @@ InsightKit telemetry is default-off. The runtime transport is created only when
 `INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED=1` and a valid HTTPS `INSIGHTKIT_SENTRY_DSN`
 are present. Delivery additionally requires the central privacy gate's persisted
 opt-in; the environment never grants or restores consent, so a persisted opt-out
-wins. The DSN is environment-specific. `SENTRY_AUTH_TOKEN`, organization,
+wins. Consent contract v2 explicitly covers both PostHog and Sentry; an older v1
+PostHog-only grant fails closed and must be confirmed again. The DSN is
+environment-specific. `SENTRY_AUTH_TOKEN`, organization,
 and project values are release-administration inputs and must never enter the app,
 repository, logs, or proof artifacts.
 
@@ -32,13 +34,15 @@ breadcrumbs/logs, request data, provider payloads, paths, messages, or local
 variables. Delivery is best-effort on a utility queue with a two-second request
 timeout; rejection or unavailability cannot block or crash a workflow.
 
-Sentry uses its own encrypted queue under `InsightKit/Telemetry/Sentry`; shared
+Sentry uses its own environment-partitioned encrypted queue under
+`InsightKit/Telemetry/Sentry/<environment>`; shared
 consent and queue-key erasure still make one opt-out a cryptographic purge without
 letting Sentry consume product-analytics records. Pending-write capacity is also
 counted per durable queue, so a saturated product-analytics queue cannot reject a
-Sentry diagnostic. The app-level consent control is
-delivered by YAN-54, so production opt-in remains blocked until that dependency is
-merged.
+Sentry diagnostic. On the first upgraded launch, any legacy unpartitioned Sentry
+queue is purged and consent must be confirmed again before delivery. The app-level
+consent control is delivered by YAN-54, so production opt-in remains blocked until
+that dependency is merged.
 
 Failure return addresses are captured at the workflow call site before the
 asynchronous product-analytics submission hop and forwarded without local variables,
@@ -50,9 +54,13 @@ blocked until an owner-approved crash-safe Sentry SDK/session integration is
 configured and read back remotely.
 
 Startup drains the prior-session queue before recording the current release
-session. If a full backlog cannot be delivered, the bounded queue replaces only
-its oldest item so the current session remains closable; the local `queueFull`
-diagnostic records that replacement.
+session; failures during that window are retained and applied when the start is
+persisted. The app uses an atomic per-user file lock for one lifecycle-owning
+process, so a second launch activates the existing app instead of sharing the
+Sentry session queue. If a full backlog cannot be delivered, the bounded queue
+replaces only a non-terminal item and preserves terminal session evidence; the local
+`queueFull` diagnostic records that replacement. Workflow failures increment the
+durable session error count even when the app later exits cleanly.
 
 Delivery remains bounded to one in-flight request. When the slot frees, one
 coalesced catch-up drain retries accepted durable envelopes without waiting for

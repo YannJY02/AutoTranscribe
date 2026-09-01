@@ -553,6 +553,7 @@ final class LiveSessionViewModel: ObservableObject {
             let shouldFlushTail = self.asrWarmStatus.ready
             var drainedSegments: [TranscriptSegment] = []
             var finalizationLeaseToken: String?
+            var finalizationFailed = false
             do {
                 let pendingChunks = self.queuedChunks
                 self.queuedChunks.removeAll(keepingCapacity: false)
@@ -585,6 +586,7 @@ final class LiveSessionViewModel: ObservableObject {
                     )
                 }
             } catch {
+                finalizationFailed = true
                 self.publishError(error)
             }
 
@@ -598,7 +600,9 @@ final class LiveSessionViewModel: ObservableObject {
             self.syncSessionHandleFromState()
             self.updateMain {
                 self.metrics.queueDepth = 0
-                self.captureState = finalState
+                if !finalizationFailed {
+                    self.captureState = finalState
+                }
                 self.sessionPhase = .postSession
             }
             // Save record folder after session ends
@@ -608,7 +612,8 @@ final class LiveSessionViewModel: ObservableObject {
                 self.saveToRecords(
                     meetingID: meetingID,
                     transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride,
-                    finalizationLeaseToken: finalizationLeaseToken
+                    finalizationLeaseToken: finalizationLeaseToken,
+                    completionCaptureState: finalState
                 )
             } else {
                 self.updateMain {

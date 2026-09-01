@@ -226,6 +226,10 @@ struct ProductAnalyticsPath: Equatable {
     static let local = ProductAnalyticsPath(analysisMode: "local", providerClass: "local")
     static let unavailable = ProductAnalyticsPath(analysisMode: "local", providerClass: "none")
 
+    var externalTelemetryEngineClass: ExternalTelemetryEngineClass {
+        analysisMode == "cloud" || analysisMode == "byok-cloud" ? .remote : .local
+    }
+
     init(analysisMode: String, providerClass: String) {
         self.analysisMode = analysisMode
         self.providerClass = providerClass
@@ -634,7 +638,7 @@ final class ProductAnalytics {
     func setConsent(enabled: Bool) throws {
         if enabled {
             guard isAvailable else { throw ConfigurationError.transportUnavailable }
-            try gate.setConsent(enabled: true, consentVersion: 1)
+            try gate.setConsent(enabled: true, consentVersion: ExternalTelemetryPrivacyGate.acceptedConsentVersion)
             stateLock.lock()
             attempts.removeAll()
             pendingRecoveries.removeAll()
@@ -675,11 +679,14 @@ final class ProductAnalytics {
     private func beginWorkflow(key: String, workflow: String, provisionalPath: ProductAnalyticsPath) {
         let startedAt = now()
         stateLock.lock()
+        guard acceptingEvents else { stateLock.unlock(); return }
         let epoch = uploadEpoch
         let attemptSequence = (nextAttemptSequenceByWorkflow[workflow] ?? 0) + 1
         nextAttemptSequenceByWorkflow[workflow] = attemptSequence
+        attempts[key] = Attempt(path: provisionalPath, startedAt: startedAt, sequence: attemptSequence)
+        let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
-        guard emit(
+        _ = emit(
             "workflow_started",
             properties: properties(
                 workflow: workflow,
@@ -687,13 +694,13 @@ final class ProductAnalytics {
                 phase: "preparing",
                 attemptSequence: attemptSequence
             )
-        ) == .accepted else { return }
+        )
         stateLock.lock()
-        guard acceptingEvents, uploadEpoch == epoch else { stateLock.unlock(); return }
-        attempts[key] = Attempt(path: provisionalPath, startedAt: startedAt, sequence: attemptSequence)
-        stateLock.unlock()
-        stateLock.lock()
-        let recoveryPhase = pendingRecoveries[key]?.phase
+        guard acceptingEvents, uploadEpoch == epoch else {
+            attempts[key] = nil
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
         if let recoveryPhase {
             recoveryAttempted(key: key, workflow: workflow, phase: recoveryPhase)
@@ -730,9 +737,11 @@ final class ProductAnalytics {
     func observeRecord(_ context: ProductAnalyticsContext) {
         stateLock.lock()
         guard observedRecordSequences[context.key] == nil else { stateLock.unlock(); return }
+        guard acceptingEvents else { stateLock.unlock(); return }
         let epoch = uploadEpoch
         let attemptSequence = (nextAttemptSequenceByWorkflow[context.workflow] ?? 0) + 1
         nextAttemptSequenceByWorkflow[context.workflow] = attemptSequence
+        observedRecordSequences[context.key] = attemptSequence
         stateLock.unlock()
         let values = properties(
             workflow: context.workflow,
@@ -740,10 +749,13 @@ final class ProductAnalytics {
             phase: "reviewing",
             attemptSequence: attemptSequence
         )
-        guard emit("record_reopened", properties: values) == .accepted else { return }
+        _ = emit("record_reopened", properties: values)
         stateLock.lock()
-        guard acceptingEvents, uploadEpoch == epoch else { stateLock.unlock(); return }
-        observedRecordSequences[context.key] = attemptSequence
+        guard acceptingEvents, uploadEpoch == epoch else {
+            observedRecordSequences[context.key] = nil
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
         _ = emit("smart_minutes_review_opened", properties: values)
     }
@@ -1100,7 +1112,7 @@ final class ProductAnalytics {
         return ExternalTelemetryWorkflowFailureContext(
             workflow: workflow,
             phase: phase,
-            engineClass: .local,
+            engineClass: path.externalTelemetryEngineClass,
             providerClass: provider,
             errorCategory: category,
             recoveryResult: recoveryResult,
@@ -1268,7 +1280,7 @@ final class ProductAnalytics {
             onWorkflowSignal(.recovery(.init(
                 workflow: workflow,
                 phase: phase,
-                engineClass: .local,
+                engineClass: path.externalTelemetryEngineClass,
                 providerClass: provider,
                 result: succeeded ? .succeeded : .failed
             )))

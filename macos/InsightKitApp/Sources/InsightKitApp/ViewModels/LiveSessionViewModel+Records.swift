@@ -10,7 +10,8 @@ extension LiveSessionViewModel {
         meetingID: String,
         insightPackageOverride: InsightPackageV1? = nil,
         transcriptSegmentsOverride: [TranscriptSegment]? = nil,
-        finalizationLeaseToken: String? = nil
+        finalizationLeaseToken: String? = nil,
+        completionCaptureState: CaptureState? = nil
     ) {
         // Capture @Published state on the calling thread to avoid data races.
         // These properties are mutated on main; reading them here (pipelineQueue)
@@ -95,6 +96,12 @@ extension LiveSessionViewModel {
                     }
                     self.transcriptSegments = outcome.transcriptSegments
                     self.recordingStatusMessage = outcome.statusMessage
+                    if let completionCaptureState {
+                        self.captureState = completionCaptureState
+                        if case .error = completionCaptureState {} else {
+                            self.errorMessage = nil
+                        }
+                    }
                     self.transcriptRecoveryStatusMessage = outcome.recoveryAvailable
                         ? "本次记录已保存媒体和笔记；可从已保存媒体恢复逐字稿。"
                         : nil
