@@ -336,16 +336,33 @@ final class ProductAnalytics {
         label: "com.yannjy.insightkit.product-analytics-submission",
         qos: .utility
     )
-    private static let submissionFailureStackKey = DispatchSpecificKey<[UInt64]>()
+    private static let submissionFailureStackKey = "com.yannjy.insightkit.product-analytics-failure-stack"
+
+    static var currentSubmissionFailureStack: [UInt64]? {
+        (Thread.current.threadDictionary[submissionFailureStackKey] as? [NSNumber])?
+            .map(\.uint64Value)
+    }
 
     /// Resolves the runtime singleton away from the caller so Keychain, queue
     /// readback, and filesystem setup can never delay a product interaction.
     static func submit(_ operation: @escaping (ProductAnalytics) -> Void) {
-        submit(
-            failureStack: currentExternalTelemetryFailureStack(),
-            using: nil,
-            operation
-        )
+        submit(using: nil, operation)
+    }
+
+    static func submit(
+        using analytics: ProductAnalytics?,
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) {
+        submissionQueue.async { operation(analytics ?? shared) }
+    }
+
+    static func failure(
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) -> (ProductAnalytics) -> Void {
+        let failureStack = currentExternalTelemetryFailureStack()
+        return { analytics in
+            withFailureStack(failureStack) { operation(analytics) }
+        }
     }
 
     static func submit(
@@ -353,11 +370,24 @@ final class ProductAnalytics {
         using analytics: ProductAnalytics?,
         _ operation: @escaping (ProductAnalytics) -> Void
     ) {
-        submissionQueue.async {
-            submissionQueue.setSpecific(key: submissionFailureStackKey, value: failureStack)
-            defer { submissionQueue.setSpecific(key: submissionFailureStackKey, value: nil) }
-            operation(analytics ?? shared)
+        submit(using: analytics) { analytics in
+            withFailureStack(failureStack) { operation(analytics) }
         }
+    }
+
+    private static func withFailureStack(_ failureStack: [UInt64], _ operation: () -> Void) {
+        let values = failureStack.map { NSNumber(value: $0) }
+        let threadDictionary = Thread.current.threadDictionary
+        let previous = threadDictionary[submissionFailureStackKey]
+        threadDictionary[submissionFailureStackKey] = values
+        defer {
+            if let previous {
+                threadDictionary[submissionFailureStackKey] = previous
+            } else {
+                threadDictionary.removeObject(forKey: submissionFailureStackKey)
+            }
+        }
+        operation()
     }
 
     var isEnabled: Bool { gate.consent.isEnabled && isAvailable }
@@ -1059,7 +1089,7 @@ final class ProductAnalytics {
             providerClass: provider,
             errorCategory: category,
             recoveryResult: recoveryResult,
-            failureStack: DispatchQueue.getSpecific(key: submissionFailureStackKey)
+            failureStack: Self.currentSubmissionFailureStack
                 ?? currentExternalTelemetryFailureStack()
         )
     }

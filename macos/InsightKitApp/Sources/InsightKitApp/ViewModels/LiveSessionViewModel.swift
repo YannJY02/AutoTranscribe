@@ -476,27 +476,27 @@ final class LiveSessionViewModel: ObservableObject {
                             model: selectedModel
                         )
                     } catch {
-                        self.analyticsSubmit {
+                        self.analyticsSubmit(ProductAnalytics.failure {
                             $0.workflowFailed(
                                 "live",
                                 phase: "preparing",
                                 errorCode: "runtime-unavailable",
                                 recoveryAction: "retry"
                             )
-                        }
+                        })
                         self.publishError(error)
                         self.stopLiveSession(finalState: .error(error.localizedDescription))
                     }
                 }
             } catch {
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "live",
                         phase: "preparing",
                         errorCode: "runtime-unavailable",
                         recoveryAction: "retry"
                     )
-                }
+                })
                 self.publishError(error)
                 self.stopLiveSession(finalState: .error(error.localizedDescription))
             }
@@ -666,7 +666,7 @@ final class LiveSessionViewModel: ObservableObject {
                 let analysisLatencyMS = analysisStartedAt.map {
                     Int((DispatchTime.now().uptimeNanoseconds - $0) / 1_000_000)
                 }
-                ProductAnalytics.submit {
+                ProductAnalytics.submit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "live",
                         phase: "analysis",
@@ -674,7 +674,7 @@ final class LiveSessionViewModel: ObservableObject {
                         recoveryAction: "retry",
                         analysisLatencyMilliseconds: analysisLatencyMS
                     )
-                }
+                })
                 self.updateMain {
                     if self.captureState == .refreshing {
                         self.captureState = .idle
@@ -728,9 +728,9 @@ final class LiveSessionViewModel: ObservableObject {
                     }
                 }
             } catch {
-                ProductAnalytics.submit { analytics in
+                ProductAnalytics.submit(ProductAnalytics.failure { analytics in
                     analytics.workflowFailed("live", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
-                }
+                })
                 self.updateMain {
                     self.finishExport()
                     self.publishError(error)

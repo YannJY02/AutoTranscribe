@@ -791,6 +791,21 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(transport.failureStacks.last, [0x1111, 0x2222])
     }
 
+    func testRoutineAnalyticsSubmissionCarriesNoFailureStack() throws {
+        let fixture = try makeFixture()
+        let analytics = ProductAnalytics(gate: fixture.gate)
+        let completed = DispatchSemaphore(value: 0)
+        var observedStack: [UInt64]?
+
+        ProductAnalytics.submit(using: analytics) { _ in
+            observedStack = ProductAnalytics.currentSubmissionFailureStack
+            completed.signal()
+        }
+
+        XCTAssertEqual(completed.wait(timeout: .now() + 1), .success)
+        XCTAssertNil(observedStack)
+    }
+
     func testHTTPTransportRejectsAfterCancellationUntilExplicitResume() throws {
         StubSentryURLProtocol.reset()
         let sessionConfiguration = URLSessionConfiguration.ephemeral

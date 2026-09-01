@@ -102,9 +102,9 @@ extension LiveSessionViewModel {
                     self.recordLiveReviewOpenedIfSaved()
                 }
             } catch let saveError {
-                ProductAnalytics.submit { analytics in
+                ProductAnalytics.submit(ProductAnalytics.failure { analytics in
                     analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
-                }
+                })
                 if let finalizationLeaseToken {
                     do {
                         try self.rpcClient.sessionStopForFinalization(
@@ -235,10 +235,10 @@ extension LiveSessionViewModel {
         guard !path.isEmpty else { return }
         let recordPath = URL(fileURLWithPath: path)
         let duration = recordingDuration
-        ProductAnalytics.submit {
+        ProductAnalytics.submit(ProductAnalytics.failure {
             $0.workflowFailed("live", phase: "reviewing", errorCode: "storage", recoveryAction: "retry")
             $0.recoveryAttempted("live", phase: "reviewing")
-        }
+        })
         updateMain {
             self.transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
         }

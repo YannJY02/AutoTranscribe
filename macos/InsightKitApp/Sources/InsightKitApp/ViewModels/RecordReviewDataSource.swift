@@ -115,7 +115,7 @@ final class RecordReviewDataSource: ObservableObject {
         } catch {
             exportStatusMessage = "导出失败：\(error.localizedDescription)"
             exportNeedsRecovery = true
-            ProductAnalytics.submit {
+            ProductAnalytics.submit(ProductAnalytics.failure {
                 $0.workflowFailed(
                     self.analyticsContext,
                     phase: "exporting",
@@ -123,7 +123,7 @@ final class RecordReviewDataSource: ObservableObject {
                     recoveryAction: "retry",
                     completingRecovery: recovering
                 )
-            }
+            })
         }
     }
 
@@ -151,7 +151,7 @@ final class RecordReviewDataSource: ObservableObject {
 
     func recoverTranscript() {
         guard let transcriptRecoveryService else { return }
-        ProductAnalytics.submit { analytics in
+        ProductAnalytics.submit(ProductAnalytics.failure { analytics in
             analytics.workflowFailed(
                 self.analyticsContext,
                 phase: "reviewing",
@@ -162,7 +162,7 @@ final class RecordReviewDataSource: ObservableObject {
                 self.analyticsContext,
                 phase: "reviewing"
             )
-        }
+        })
         transcriptRecoveryStatusMessage = "正在从已保存媒体恢复逐字稿。"
         rpcQueue.async { [weak self] in
             guard let self else { return }

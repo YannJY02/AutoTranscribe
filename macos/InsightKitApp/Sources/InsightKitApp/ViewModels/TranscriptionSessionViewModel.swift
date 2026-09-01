@@ -148,14 +148,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     }
                 }
             } catch {
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         analyticsContext,
                         phase: "preparing",
                         errorCode: "runtime-unavailable",
                         recoveryAction: "retry"
                     )
-                }
+                })
                 DispatchQueue.main.async {
                     self.publishErrorSync(error)
                     self.endSidecarMutation()
@@ -307,7 +307,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             } catch {
                 let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 if let analyticsContext {
-                    ProductAnalytics.submit {
+                    ProductAnalytics.submit(ProductAnalytics.failure {
                         $0.workflowFailed(
                             analyticsContext,
                             phase: "analysis",
@@ -315,7 +315,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                             recoveryAction: "retry",
                             analysisLatencyMilliseconds: analysisLatencyMS
                         )
-                    }
+                    })
                 }
                 DispatchQueue.main.async {
                     if let analyticsContext {
@@ -394,14 +394,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 }
             } catch {
                 if let analyticsContext {
-                    ProductAnalytics.submit {
+                    ProductAnalytics.submit(ProductAnalytics.failure {
                         $0.workflowFailed(
                             analyticsContext,
                             phase: "exporting",
                             errorCode: "unknown",
                             recoveryAction: "retry"
                         )
-                    }
+                    })
                 }
                 DispatchQueue.main.async {
                     if let analyticsContext {
@@ -782,14 +782,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 if activeExplicitImportJobID == job.id {
                     activeExplicitImportJobID = nil
                 }
-                analyticsSubmit {
+                analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         context,
                         phase: "running",
                         errorCode: "runtime-unavailable",
                         recoveryAction: "retry"
                     )
-                }
+                })
             case .cancelled, .pausedByLive:
                 analyticsTerminalJobIDs.insert(job.id)
                 if activeExplicitImportJobID == job.id {
@@ -917,7 +917,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
             } catch {
                 let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
                 if let analyticsContext {
-                    self.analyticsSubmit {
+                    self.analyticsSubmit(ProductAnalytics.failure {
                         $0.workflowFailed(
                             analyticsContext,
                             phase: "analysis",
@@ -925,7 +925,7 @@ final class TranscriptionSessionViewModel: ObservableObject {
                             recoveryAction: "retry",
                             analysisLatencyMilliseconds: analysisLatencyMS
                         )
-                    }
+                    })
                 }
                 DispatchQueue.main.async {
                     if let analyticsContext {
