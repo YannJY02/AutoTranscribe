@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-01T23:03:34.419263+00:00",
+  "status": "failed",
+  "issue": 73,
+  "base": "origin/main",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "branch": "codex/yan-55-owner-lifecycle-pilot",
+  "workspace": "$WORKSPACE",
+  "changed_files": [
+    "macos/InsightKitApp/Sources/InsightKitApp/Services/AppConfigStore.swift",
+    "macos/InsightKitApp/Tests/InsightKitAppTests/AppConfigStoreTests.swift",
+    "macos/InsightKitApp/UITests/InsightKitUITests.swift",
+    "macos/InsightKitApp/UITests/NavigationTests.swift",
+    "pilots/evidence/GH-73/InsightKit-exact-build.zip",
+    "pilots/evidence/GH-73/build-proof.json",
+    "pilots/evidence/GH-73/evidence-ledger.json",
+    "pilots/evidence/GH-73/full-harness-manifest.json",
+    "pilots/evidence/GH-73/langfuse-readback.json",
+    "pilots/evidence/GH-73/live-local-proof.json",
+    "pilots/evidence/GH-73/live-local-review.jpeg",
+    "pilots/evidence/GH-73/pilot-outcome.json",
+    "pilots/evidence/GH-73/pilot-proof.json",
+    "pilots/evidence/GH-73/posthog-readback.json",
+    "pilots/evidence/GH-73/repository-proof.json",
+    "pilots/evidence/GH-73/rollback-proof.json",
+    "pilots/evidence/GH-73/sentry-readback.json",
+    "pilots/gh-73-owner-lifecycle.json",
+    "scripts/lifecycle_pilot.py",
+    "tests/test_lifecycle_pilot.py"
+  ],
+  "gates": [
+    {
+      "name": "diff-check",
+      "status": "passed",
+      "commands": [
+        {"command": ["git", "diff", "--check"], "exit_code": 0, "duration_seconds": 0.01, "ok": true},
+        {"command": ["git", "diff", "--cached", "--check"], "exit_code": 0, "duration_seconds": 0.01, "ok": true},
+        {"command": ["git", "diff", "--check", "origin/main...HEAD"], "exit_code": 0, "duration_seconds": 0.009, "ok": true}
+      ]
+    },
+    {
+      "name": "python-tests",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [".venv/bin/python", "-m", "pytest", "tests", "-q", "--tb=short", "-m", "not integration and not requires_model and not slow"],
+          "exit_code": 0,
+          "duration_seconds": 31.415,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "swift-tests",
+      "status": "passed",
+      "commands": [
+        {"command": ["swift", "test", "--package-path", "macos/InsightKitApp"], "exit_code": 0, "duration_seconds": 25.595, "ok": true}
+      ]
+    },
+    {
+      "name": "xcuitests",
+      "status": "failed",
+      "commands": [
+        {
+          "command": [".venv/bin/python", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "./scripts/run_uitests.sh"],
+          "exit_code": 1,
+          "duration_seconds": 82.988,
+          "ok": false
+        }
+      ]
+    }
+  ],
+  "finished_at": "2026-09-01T23:05:54.465072+00:00"
+}

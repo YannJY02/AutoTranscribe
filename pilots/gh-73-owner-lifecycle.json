@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "pilot_id": "gh-73-owner-three-day-v1",
+  "issue": "GH-73",
+  "environment": "owner-pilot",
+  "build": {
+    "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+    "app_bundle_ref": "logs/harness/GH-73/exact-build/InsightKit.app",
+    "proof_ref": "pilots/evidence/GH-73/build-proof.json"
+  },
+  "window": {
+    "started_at": "2026-09-01T20:50:00Z",
+    "ends_at": "2026-09-01T22:07:00Z"
+  },
+  "cohort": {"kind": "owner", "size": 1, "reference_mac": true},
+  "configuration": {
+    "event_schema_version": 1,
+    "smart_minutes_dataset": "smart-minutes-v1",
+    "consent_default": "off",
+    "attempt_order": ["live-local", "live-cloud", "import-local", "import-cloud"],
+    "quality_thresholds": [],
+    "consent_plan": "explicit-enable-then-disable",
+    "rollout_steps": ["exact-build", "serialized-attempts", "reconcile", "rollback"],
+    "rollback_trigger": "privacy-or-quality-gate-failure",
+    "human_gates": [],
+    "sql_refs": ["analytics/sql/v1/posthog/reconciliation.hogql"]
+  },
+  "attempts": [
+    {
+      "id": "live-local",
+      "workflow": "live",
+      "analysis_mode": "local",
+      "classification": "observed",
+      "result": "failed",
+      "stages": {
+        "started": "observed",
+        "record_saved": "unobserved",
+        "record_reopened": "unobserved",
+        "smart_minutes_review_opened": "observed",
+        "export_completed": "unobserved",
+        "workflow_completed": "failed"
+      },
+      "evidence_refs": ["pilots/evidence/GH-73/live-local-proof.json"],
+      "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved", "host-ui-automation.unavailable"]
+    },
+    {
+      "id": "live-cloud",
+      "workflow": "live",
+      "analysis_mode": "cloud",
+      "classification": "unobserved",
+      "result": "blocked",
+      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "evidence_refs": [],
+      "unknowns": ["provider-path.not-exercised"]
+    },
+    {
+      "id": "import-local",
+      "workflow": "import",
+      "analysis_mode": "local",
+      "classification": "unobserved",
+      "result": "blocked",
+      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "evidence_refs": [],
+      "unknowns": ["exclusive-macos.window-exhausted"]
+    },
+    {
+      "id": "import-cloud",
+      "workflow": "import",
+      "analysis_mode": "cloud",
+      "classification": "unobserved",
+      "result": "blocked",
+      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "evidence_refs": [],
+      "unknowns": ["exclusive-macos.window-exhausted", "provider-path.not-exercised"]
+    }
+  ],
+  "reconciliation": {
+    "posthog": {
+      "classification": "observed",
+      "evidence_ref": "pilots/evidence/GH-73/posthog-readback.json",
+      "scope": "prerequisite-synthetic",
+      "project_id": "585182",
+      "state": "complete",
+      "local_event_counts": {"export_completed": 1, "record_reopened": 1, "record_saved": 1, "recovery_attempted": 1, "recovery_completed": 1, "smart_minutes_review_opened": 1, "workflow_completed": 3, "workflow_failed": 1, "workflow_started": 4},
+      "remote_event_counts": {"export_completed": 1, "record_reopened": 1, "record_saved": 1, "recovery_attempted": 1, "recovery_completed": 1, "smart_minutes_review_opened": 1, "workflow_completed": 3, "workflow_failed": 1, "workflow_started": 4},
+      "schema_version": 1,
+      "environment": "owner-pilot",
+      "window_start": "2026-08-30T00:00:00Z",
+      "window_end": "2026-09-01T00:00:00Z"
+    },
+    "sentry": {
+      "classification": "observed",
+      "evidence_ref": "pilots/evidence/GH-73/sentry-readback.json",
+      "scope": "prerequisite-synthetic",
+      "project_id": "4512002926247936",
+      "issue_id": "7703629009",
+      "event_id": "a41dc478d78c98608270a3502b12a019",
+      "environment": "release",
+      "release": "com.yannjy.insightkit@1.0+20260902043234",
+      "build": "20260902043234"
+    },
+    "langfuse": {
+      "classification": "observed",
+      "evidence_ref": "pilots/evidence/GH-73/langfuse-readback.json",
+      "scope": "prerequisite-synthetic",
+      "project_id": "cmtfr0jg10323ad0fqe9x8h27",
+      "dataset_id": "cmtgiyr9p04suad0jyd9h7w1w",
+      "dataset_name": "insightkit-smart-minutes-v1-metadata",
+      "dataset_sha256": "3afe544b693e4a03a814f1b3f746b6d3f04c9229d3fa0e822c6b47e5716ca3b1",
+      "experiment_id": "a57c3105-e1da-4eaf-9c96-5c9798bf6f38",
+      "experiment_name": "smart-minutes-v1-20260831T005732440827Z",
+      "item_count": 4,
+      "score_count": 9,
+      "score_names": ["failure_behavior", "latency", "source_evidence_linkage"],
+      "score_environment": "owner-pilot",
+      "observation_environment": "sdk-experiment"
+    },
+    "repository": {
+      "classification": "observed",
+      "evidence_ref": "pilots/evidence/GH-73/repository-proof.json",
+      "scope": "repository-proof",
+      "status": "failed",
+      "checks": ["exact-build", "codesign", "harness-doctor", "privacy-safe-provider-readbacks", "focused-pilot-tests", "full-agent-harness"],
+      "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
+      "harness_manifest_sha256": "0e55e9cbd3a00aa7d92b88615c6b2d95eed9bc6e4151364f934e8d702ba58e23"
+    }
+  },
+  "rollback": {
+    "kind": "dry-run",
+    "classification": "observed",
+    "consent_disabled": true,
+    "queues_purged": true,
+    "app_target_verified": true,
+    "evidence_preserved": true,
+    "evidence_refs": ["pilots/evidence/GH-73/rollback-proof.json"]
+  },
+  "claims": {
+    "observed": ["attempt.live-local", "reconciliation.posthog", "reconciliation.sentry", "reconciliation.langfuse", "reconciliation.repository", "rollback.dry-run"],
+    "inferred": [],
+    "unobserved": ["attempt.live-cloud", "attempt.import-local", "attempt.import-cloud", "production-readiness", "external-user-validation"]
+  },
+  "deviations": ["host-ui-automation.unavailable", "analysis-mode.synthetic-ui-route", "pilot-outcome.partial"],
+  "evidence_ledger_ref": "pilots/evidence/GH-73/evidence-ledger.json"
+}

@@ -1,6 +1,25 @@
 import XCTest
 
 final class NavigationTests: InsightKitUITests {
+    func testRunnerAnalysisModeOverride() throws {
+        guard let mode = ProcessInfo.processInfo.environment["INSIGHTKIT_UI_TEST_ANALYSIS_MODE"] else {
+            throw XCTSkip("Runner analysis mode is not configured")
+        }
+        let expected = mode == "local" ? "本地（离线）" : "云端"
+        let settingsButton = app.buttons["home_open_settings"].firstMatch
+        if !settingsButton.exists {
+            let backButton = app.buttons["返回首页"].firstMatch
+            XCTAssertTrue(waitForElement(backButton, timeout: 5))
+            backButton.click()
+            XCTAssertTrue(waitForElement(settingsButton, timeout: 5))
+        }
+        settingsButton.click()
+        let settingsWindow = app.windows["InsightKit 设置"].firstMatch
+        XCTAssertTrue(waitForElement(settingsWindow, timeout: 5))
+        let picker = settingsWindow.popUpButtons["settings_analysis_mode_picker"].firstMatch
+        XCTAssertTrue(waitForElement(picker, timeout: 5))
+        XCTAssertEqual(stringValue(of: picker), expected)
+    }
 
     func testFullNavigationCycle() throws {
         let homeTitle = app.staticTexts["home_title"]

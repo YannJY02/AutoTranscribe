@@ -2,6 +2,30 @@ import XCTest
 @testable import InsightKitApp
 
 final class AppConfigStoreTests: XCTestCase {
+    func testUITestAnalysisModeOverrideRequiresUITestMarkerAndAcceptedMode() {
+        XCTAssertEqual(
+            AppConfigStore.uiTestAnalysisMode(environment: [
+                "INSIGHTKIT_UI_TEST_MODE": "1",
+                "INSIGHTKIT_UI_TEST_ANALYSIS_MODE": "local",
+            ]),
+            .local
+        )
+        XCTAssertEqual(
+            AppConfigStore.uiTestAnalysisMode(environment: [
+                "INSIGHTKIT_UI_TEST_MODE": "1",
+                "INSIGHTKIT_UI_TEST_ANALYSIS_MODE": "cloud",
+            ]),
+            .cloud
+        )
+        XCTAssertNil(AppConfigStore.uiTestAnalysisMode(environment: [
+            "INSIGHTKIT_UI_TEST_ANALYSIS_MODE": "cloud",
+        ]))
+        XCTAssertNil(AppConfigStore.uiTestAnalysisMode(environment: [
+            "INSIGHTKIT_UI_TEST_MODE": "1",
+            "INSIGHTKIT_UI_TEST_ANALYSIS_MODE": "invalid",
+        ]))
+    }
+
     func testLocalAnalysisModeIsIndependentFromASREngineAndCloudCredentials() throws {
         var config = makeRuntimeConfig(
             selectedVendor: .deepseek,

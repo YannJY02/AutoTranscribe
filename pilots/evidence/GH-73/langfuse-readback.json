@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "issue": "GH-73",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "pilot_id": "gh-73-owner-three-day-v1",
+  "evidence_kind": "reconciliation",
+  "subject": "langfuse",
+  "observed_at": "2026-09-01T22:05:00Z",
+  "scope": "prerequisite-synthetic",
+  "project_id": "cmtfr0jg10323ad0fqe9x8h27",
+  "dataset_id": "cmtgiyr9p04suad0jyd9h7w1w",
+  "dataset_name": "insightkit-smart-minutes-v1-metadata",
+  "dataset_sha256": "3afe544b693e4a03a814f1b3f746b6d3f04c9229d3fa0e822c6b47e5716ca3b1",
+  "dataset_item_count": 4,
+  "experiment_id": "a57c3105-e1da-4eaf-9c96-5c9798bf6f38",
+  "experiment_name": "smart-minutes-v1-20260831T005732440827Z",
+  "experiment_item_count": 4,
+  "score_count": 9,
+  "score_names": ["failure_behavior", "latency", "source_evidence_linkage"],
+  "score_environment": "owner-pilot",
+  "observation_environment": "sdk-experiment",
+  "privacy_safe": true
+}

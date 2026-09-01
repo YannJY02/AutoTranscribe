@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "app_bundle_ref": "logs/harness/GH-73/exact-build/InsightKit.app",
+  "app_bundle_sha256": "b0c6590d3e250a5fca36d953bd4008c4dce660854de4853ba404d32c934b7eee",
+  "app_archive_ref": "pilots/evidence/GH-73/InsightKit-exact-build.zip",
+  "app_archive_sha256": "f8335653a78d78bd37761bb05e59b21ecf397946969d55f0d49c05d05bd84b63",
+  "build_version": "20260902053055",
+  "build_source": "local-workspace-clean",
+  "git_revision_short": "8374631",
+  "package_script_sha256": "4571dab8c828738135e659f5c594a9ef4858ce44f6c097bf8e634b517f820bb1",
+  "source_clean": true,
+  "distribution": "local",
+  "signing": "adhoc",
+  "verification": ["codesign.deep-strict", "info-plist.source-binding", "bundle-content-sha256"]
+}

@@ -1,0 +1,17 @@
+{
+  "status": "failed",
+  "issue": "GH-73",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "pilot_id": "gh-73-owner-three-day-v1",
+  "evidence_kind": "attempt",
+  "subject": "live-local",
+  "observed_at": "2026-09-01T21:45:08Z",
+  "privacy_safe": true,
+  "scenario": "synthetic-ui-route",
+  "analysis_mode_observed": false,
+  "stages": {"started": "observed", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "observed", "export_completed": "unobserved", "workflow_completed": "failed"},
+  "app": {"build": "20260902053055", "bundle_sha256": "b0c6590d3e250a5fca36d953bd4008c4dce660854de4853ba404d32c934b7eee", "source": "local-workspace-clean"},
+  "visual": {"artifact_ref": "pilots/evidence/GH-73/live-local-review.jpeg", "artifact_sha256": "fc9b2d418875540992e9271e4b02cc1515076b2ddc9dc0e71b64fdf518cfc936", "fixture": "synthetic"},
+  "host_attempts": ["system-authentication-running", "automation-mode-timeout", "computer-use-visible-review"],
+  "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved"]
+}
