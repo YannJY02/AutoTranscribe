@@ -3,6 +3,14 @@ import XCTest
 @testable import InsightKitApp
 
 final class SentryDiagnosticsAdapterTests: XCTestCase {
+    private let enabledRuntimeEnvironment = [
+        "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+        "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+        "POSTHOG_DEVELOPMENT_HOST": "https://example.invalid",
+        "POSTHOG_DEVELOPMENT_PROJECT_KEY": "phc_test",
+        "POSTHOG_DEVELOPMENT_RETENTION_VERIFIED": "1",
+    ]
+
     private func makeFixture(enable: Bool = true, maxQueueItems: Int = 8) throws -> Fixture {
         let fixture = try Fixture(enable: enable, maxQueueItems: maxQueueItems)
         addTeardownBlock { fixture.cleanup() }
@@ -126,7 +134,28 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])["event_name"] as? String
         }
         XCTAssertEqual(eventNames, ["release_session_started", "release_session_started"])
+        let sessionIDs = try transport.envelopes.map {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])["app_session_id"] as? String
+        }
+        XCTAssertNotEqual(sessionIDs[0], sessionIDs[1])
         _ = adapter
+    }
+
+    func testEnabledRuntimePurgesConsentWhenPostHogIsUnavailable() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+
+        _ = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+            ],
+            gateOverride: fixture.gate,
+            transportOverride: transport
+        )
+
+        XCTAssertFalse(fixture.gate.consent.isEnabled)
+        XCTAssertFalse(transport.waitForEnvelope(timeout: 0.1))
     }
 
     func testExplicitDisablePurgesWithoutTelemetryEnvironment() throws {
@@ -379,10 +408,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let restartedGate = try fixture.restartedGate()
         let transport = RecordingSentryTransport()
         let runtime = SentryDiagnosticsRuntime(
-            environment: [
-                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
-                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
-            ],
+            environment: enabledRuntimeEnvironment,
             gateOverride: restartedGate,
             transportOverride: transport
         )
@@ -408,10 +434,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let restartedGate = try fixture.restartedGate()
         let transport = SignalingThrowingSentryTransport()
         let runtime = SentryDiagnosticsRuntime(
-            environment: [
-                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
-                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
-            ],
+            environment: enabledRuntimeEnvironment,
             gateOverride: restartedGate,
             transportOverride: transport
         )
@@ -441,10 +464,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let restartedGate = try fixture.restartedGate()
         let transport = PausingSuccessfulSentryTransport()
         let runtime = SentryDiagnosticsRuntime(
-            environment: [
-                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
-                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
-            ],
+            environment: enabledRuntimeEnvironment,
             gateOverride: restartedGate,
             transportOverride: transport
         )
@@ -606,10 +626,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let transport = RecordingSentryTransport()
 
         let runtime = SentryDiagnosticsRuntime(
-            environment: [
-                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
-                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
-            ],
+            environment: enabledRuntimeEnvironment,
             gateOverride: fixture.gate,
             transportOverride: transport
         )
@@ -623,10 +640,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let fixture = try makeFixture()
         let transport = RecordingSentryTransport()
         let runtime = SentryDiagnosticsRuntime(
-            environment: [
-                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
-                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
-            ],
+            environment: enabledRuntimeEnvironment,
             gateOverride: fixture.gate,
             transportOverride: transport
         )

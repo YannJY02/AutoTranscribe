@@ -84,10 +84,9 @@ final class NavigationTests: InsightKitUITests {
         let disclosure = settingsWindow.staticTexts["settings_external_telemetry_disclosure"]
         XCTAssertTrue(disclosure.exists)
         let disclosureText = stringValue(of: disclosure)
-        for requiredText in ["默认关闭", "PostHog", "30 天", "不会发送会议内容"] {
+        for requiredText in ["默认关闭", "PostHog", "Sentry", "30 天", "不会发送会议内容"] {
             XCTAssertTrue(disclosureText.contains(requiredText), "披露缺少：\(requiredText)")
         }
-        XCTAssertFalse(disclosureText.contains("Sentry"), "未接入的 Sentry 不应出现在遥测披露中")
         attachScreenshot(named: "product-evidence-telemetry-settings", windowTitle: "InsightKit 设置")
     }
 }

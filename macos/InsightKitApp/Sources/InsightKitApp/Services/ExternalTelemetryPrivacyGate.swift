@@ -1129,6 +1129,14 @@ final class ExternalTelemetryPrivacyGate {
         return value
     }
 
+    func rotateAppSessionIdentity() {
+        let rotatedID = uuid().uuidString.lowercased()
+        sequenceLock.lock()
+        appSessionID = rotatedID
+        nextEventSequence = 0
+        sequenceLock.unlock()
+    }
+
     private func mutateDiagnostics(_ mutation: (inout LocalDiagnostics) -> Void) {
         diagnosticsLock.lock()
         mutation(&diagnostics)

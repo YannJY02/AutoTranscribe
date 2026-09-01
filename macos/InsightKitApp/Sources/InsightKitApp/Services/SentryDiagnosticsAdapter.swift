@@ -128,6 +128,7 @@ final class SentryDiagnosticsAdapter {
     }
 
     private func enableDelivery() {
+        gate.rotateAppSessionIdentity()
         transport.resume()
         deliveryStateLock.lock()
         acceptingDelivery = true
@@ -690,6 +691,15 @@ final class SentryDiagnosticsRuntime {
             storageDirectory: storage
         )
         if explicitSetting == "0" {
+            _ = gate.disableAndPurge()
+            adapter = nil
+            return
+        }
+        guard ProductAnalytics.configuredPostHogValues(
+            process: environment,
+            bundleInfo: bundle.infoDictionary ?? [:],
+            environment: telemetryEnvironment
+        ) != nil else {
             _ = gate.disableAndPurge()
             adapter = nil
             return
