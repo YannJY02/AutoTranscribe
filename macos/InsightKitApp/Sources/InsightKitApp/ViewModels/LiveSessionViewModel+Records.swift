@@ -11,7 +11,8 @@ extension LiveSessionViewModel {
         insightPackageOverride: InsightPackageV1? = nil,
         transcriptSegmentsOverride: [TranscriptSegment]? = nil,
         finalizationLeaseToken: String? = nil,
-        completionCaptureState: CaptureState? = nil
+        completionCaptureState: CaptureState? = nil,
+        recoveringFinalizationFailure: Bool = false
     ) {
         // Capture @Published state on the calling thread to avoid data races.
         // These properties are mutated on main; reading them here (pipelineQueue)
@@ -71,6 +72,9 @@ extension LiveSessionViewModel {
                     finalizationLeaseToken: finalizationLeaseToken
                 ))
                 let recordPath = outcome.recordPath
+                let finalizationRecovered = !recoveringFinalizationFailure
+                    || finalizationLeaseToken != nil
+                    || outcome.transcriptState == .mediaTimed
                 self.analyticsSubmit { analytics in
                     analytics.recordSaved("live")
                     analytics.recoveryCompleted("live", phase: "finalizing", succeeded: true)
@@ -96,7 +100,7 @@ extension LiveSessionViewModel {
                     }
                     self.transcriptSegments = outcome.transcriptSegments
                     self.recordingStatusMessage = outcome.statusMessage
-                    if let completionCaptureState {
+                    if finalizationRecovered, let completionCaptureState {
                         self.captureState = completionCaptureState
                         if case .error = completionCaptureState {} else {
                             self.errorMessage = nil

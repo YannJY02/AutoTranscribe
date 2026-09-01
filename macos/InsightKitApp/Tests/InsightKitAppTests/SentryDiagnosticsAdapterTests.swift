@@ -934,7 +934,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertNil(observedStack)
     }
 
-    func testCompletionSubmissionCarriesStackOnlyForFailedEvaluation() throws {
+    func testCompletionSubmissionCarriesOriginStackOnlyForFailedEvaluation() throws {
         let fixture = try makeFixture()
         let analytics = ProductAnalytics(gate: fixture.gate)
         let successful = MeetingAssetWorkflowSuccess(
@@ -957,24 +957,32 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         var failureStack: [UInt64]?
         var successEvaluationRanOnMainThread: Bool?
         var stackCaptureCount = 0
+        var successStackCapturedBeforeEvaluation = false
+        var failureEvaluationStarted = false
+        var failureStackCapturedBeforeEvaluation = false
 
         ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(evaluating: {
             successEvaluationRanOnMainThread = Thread.isMainThread
             return successful
         }, captureFailureStack: {
             stackCaptureCount += 1
+            successStackCapturedBeforeEvaluation = successEvaluationRanOnMainThread == nil
             return [0x1111]
         }) { _, _ in
             successStack = ProductAnalytics.currentSubmissionFailureStack
             successCompleted.signal()
         })
         XCTAssertEqual(successCompleted.wait(timeout: .now() + 1), .success)
-        XCTAssertEqual(stackCaptureCount, 0)
+        XCTAssertEqual(stackCaptureCount, 1)
 
         ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(
-            evaluating: { failed },
+            evaluating: {
+                failureEvaluationStarted = true
+                return failed
+            },
             captureFailureStack: {
                 stackCaptureCount += 1
+                failureStackCapturedBeforeEvaluation = !failureEvaluationStarted
                 return [0x2222]
             }
         ) { _, _ in
@@ -984,7 +992,9 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(failureCompleted.wait(timeout: .now() + 1), .success)
 
         XCTAssertEqual(successEvaluationRanOnMainThread, false)
-        XCTAssertEqual(stackCaptureCount, 1)
+        XCTAssertEqual(stackCaptureCount, 2)
+        XCTAssertTrue(successStackCapturedBeforeEvaluation)
+        XCTAssertTrue(failureStackCapturedBeforeEvaluation)
         XCTAssertNil(successStack)
         XCTAssertEqual(failureStack, [0x2222])
     }

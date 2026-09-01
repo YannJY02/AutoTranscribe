@@ -613,7 +613,8 @@ final class LiveSessionViewModel: ObservableObject {
                     meetingID: meetingID,
                     transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride,
                     finalizationLeaseToken: finalizationLeaseToken,
-                    completionCaptureState: finalState
+                    completionCaptureState: finalState,
+                    recoveringFinalizationFailure: finalizationFailed
                 )
             } else {
                 self.updateMain {

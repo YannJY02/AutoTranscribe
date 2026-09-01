@@ -371,15 +371,16 @@ final class ProductAnalytics {
 
     static func completion(
         evaluating evaluate: @escaping () -> MeetingAssetWorkflowSuccess,
-        captureFailureStack: @escaping () -> [UInt64] = { currentExternalTelemetryFailureStack() },
+        captureFailureStack: () -> [UInt64] = { currentExternalTelemetryFailureStack() },
         _ operation: @escaping (ProductAnalytics, MeetingAssetWorkflowSuccess) -> Void
     ) -> (ProductAnalytics) -> Void {
+        let failureStack = captureFailureStack()
         return { analytics in
             let evaluation = evaluate()
             if evaluation.isSuccessful {
                 operation(analytics, evaluation)
             } else {
-                withFailureStack(captureFailureStack()) { operation(analytics, evaluation) }
+                withFailureStack(failureStack) { operation(analytics, evaluation) }
             }
         }
     }
