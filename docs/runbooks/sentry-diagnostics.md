@@ -31,8 +31,8 @@ All events first pass `ExternalTelemetryPrivacyGate`. Sentry receives only its
 approved JSON envelope. The adapter has no automatic SDK collectors and therefore
 does not enable PII, screenshots, replay, view hierarchy, attachments, raw
 breadcrumbs/logs, request data, provider payloads, paths, messages, or local
-variables. Delivery is best-effort on a utility queue with a two-second request
-timeout; rejection or unavailability cannot block or crash a workflow.
+variables. Delivery is best-effort on a utility queue with a ten-second request
+and bounded-wait timeout; rejection or unavailability cannot block or crash a workflow.
 
 Sentry uses its own environment-partitioned encrypted queue under
 `InsightKit/Telemetry/Sentry/<environment>`; shared
@@ -58,8 +58,8 @@ session; failures during that window are retained and applied when the start is
 persisted. The app uses an atomic per-user file lock for one lifecycle-owning
 process, so a second launch activates the existing app instead of sharing the
 Sentry session queue. If a full backlog cannot be delivered, the bounded queue
-replaces only a non-terminal item and preserves terminal session evidence; the local
-`queueFull` diagnostic records that replacement. Workflow failures increment the
+replaces only a non-session item and preserves both open and terminal session evidence;
+the local `queueFull` diagnostic records that replacement. Workflow failures increment the
 durable session error count even when the app later exits cleanly.
 
 Delivery remains bounded to one in-flight request. When the slot frees, one
