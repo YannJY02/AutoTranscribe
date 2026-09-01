@@ -79,6 +79,30 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(transport.failureStacks.first).isEmpty)
     }
 
+    func testHTTPTransportBackfillsStackForReplayedWorkflowFailure() throws {
+        let fixture = try makeFixture()
+        let approved = try XCTUnwrap(fixture.gate.record(event: .init(
+            name: "workflow_failed",
+            properties: ["workflow": "live", "phase": "running"]
+        )).debugEnvelope)
+        let configuration = try XCTUnwrap(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+        ]))
+
+        let request = try SentryHTTPTransport(configuration: configuration).makeRequest(
+            approvedEnvelope: approved,
+            failureStack: []
+        )
+
+        let lines = try XCTUnwrap(request.httpBody).split(separator: 0x0a)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(lines[2])) as? [String: Any])
+        let exception = try XCTUnwrap(payload["exception"] as? [String: Any])
+        let values = try XCTUnwrap(exception["values"] as? [[String: Any]])
+        let stacktrace = try XCTUnwrap(values.first?["stacktrace"] as? [String: Any])
+        XCTAssertFalse(try XCTUnwrap(stacktrace["frames"] as? [[String: Any]]).isEmpty)
+    }
+
     func testUnifiedConsentRevocationCancelsInFlightSentryDelivery() throws {
         let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")

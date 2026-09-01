@@ -568,7 +568,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             ]
             itemType = "transaction"
         } else {
-            let frames = failureStack.reversed().map { address in
+            let frames = (failureStack.isEmpty ? currentExternalTelemetryFailureStack() : failureStack).reversed().map { address in
                 ["instruction_addr": String(format: "0x%llx", address), "in_app": true] as [String: Any]
             }
             payload = [
