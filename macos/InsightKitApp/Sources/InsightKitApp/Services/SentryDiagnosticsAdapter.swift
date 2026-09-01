@@ -89,6 +89,7 @@ final class SentryDiagnosticsAdapter {
     private let deliveryQueue = DispatchQueue(label: "com.yannjy.insightkit.sentry-delivery", qos: .utility)
     private let deliverySlots = DispatchSemaphore(value: 1)
     private let deliveryStateLock = NSLock()
+    private let consentReconciliationLock = NSLock()
     private let diagnosticsLock = NSLock()
     private let releaseSessionLock = NSLock()
     private var acceptingDelivery: Bool
@@ -115,12 +116,12 @@ final class SentryDiagnosticsAdapter {
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
             queue: nil
-        ) { [weak self] _ in self?.revokeDelivery() })
+        ) { [weak self] _ in self?.reconcileDeliveryWithPersistedConsent() })
         consentObservers.append(NotificationCenter.default.addObserver(
             forName: .externalTelemetryConsentDidEnable,
             object: nil,
             queue: nil
-        ) { [weak self] _ in self?.enableDelivery() })
+        ) { [weak self] _ in self?.reconcileDeliveryWithPersistedConsent() })
         distributedConsentObservers.append(DistributedNotificationCenter.default().addObserver(
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
@@ -131,6 +132,7 @@ final class SentryDiagnosticsAdapter {
             object: nil,
             queue: nil
         ) { [weak self] _ in self?.reconcileDeliveryWithPersistedConsent() })
+        reconcileDeliveryWithPersistedConsent()
         deliveryQueue.async { [weak self] in self?.drainPersistedQueue() }
     }
 
@@ -165,6 +167,8 @@ final class SentryDiagnosticsAdapter {
     }
 
     private func reconcileDeliveryWithPersistedConsent() {
+        consentReconciliationLock.lock()
+        defer { consentReconciliationLock.unlock() }
         if gate.consent.isEnabled { enableDelivery() } else { revokeDelivery() }
     }
 
