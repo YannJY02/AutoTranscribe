@@ -117,6 +117,23 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(try sentryGate.queuedEnvelopes().isEmpty)
     }
 
+    func testCrossProcessConsentRevocationCancelsInFlightSentryDelivery() throws {
+        let fixture = try makeFixture()
+        let transport = BlockingSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForAttempt())
+
+        DistributedNotificationCenter.default().postNotificationName(
+            .externalTelemetryConsentWillRevoke,
+            object: nil,
+            deliverImmediately: true
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        XCTAssertTrue(transport.waitForCancellation())
+    }
+
     func testInvalidConsentRevocationCancelsInFlightSentryDelivery() throws {
         let fixture = try makeFixture()
         let transport = BlockingSentryTransport()

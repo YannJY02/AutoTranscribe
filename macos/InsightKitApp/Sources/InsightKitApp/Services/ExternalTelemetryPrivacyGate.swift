@@ -10,6 +10,15 @@ extension Notification.Name {
     )
 }
 
+private func postExternalTelemetryConsentWillRevoke() {
+    NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+    DistributedNotificationCenter.default().postNotificationName(
+        .externalTelemetryConsentWillRevoke,
+        object: nil,
+        deliverImmediately: true
+    )
+}
+
 enum TelemetryEnvironment: String, CaseIterable, Codable {
     case development
     case ownerPilot = "owner-pilot"
@@ -611,7 +620,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
-        NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+        postExternalTelemetryConsentWillRevoke()
         onRevocationAdmitted()
         let admission = RevocationAdmission(
             generation: disablingGeneration,
@@ -1273,7 +1282,7 @@ final class ExternalTelemetryPrivacyGate {
             Self.revocationTasks = [token: task]
             Self.stateLock.unlock()
             Self.consentTransitionLock.unlock()
-            NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+            postExternalTelemetryConsentWillRevoke()
             onRevocationAdmitted()
             return RevocationAdmission(generation: generation, token: token, task: task, didAdvanceGeneration: true)
         }
@@ -1301,7 +1310,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
-        NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+        postExternalTelemetryConsentWillRevoke()
         onRevocationAdmitted()
         return RevocationAdmission(generation: invalidationGeneration, token: revocationToken, task: task, didAdvanceGeneration: true)
     }

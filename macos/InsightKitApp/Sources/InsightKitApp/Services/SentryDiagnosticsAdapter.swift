@@ -98,6 +98,7 @@ final class SentryDiagnosticsAdapter {
     private var releaseSessionMayStart = true
     private var deliveryFailureCount = 0
     private var consentObservers: [NSObjectProtocol] = []
+    private var distributedConsentObservers: [NSObjectProtocol] = []
     private var deliveredRetainedEnvelopes: Set<Data> = []
 
     var localDeliveryFailureCount: Int {
@@ -120,19 +121,27 @@ final class SentryDiagnosticsAdapter {
             object: nil,
             queue: nil
         ) { [weak self] _ in self?.enableDelivery() })
+        distributedConsentObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: .externalTelemetryConsentWillRevoke,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in self?.revokeDelivery() })
         deliveryQueue.async { [weak self] in self?.drainPersistedQueue() }
     }
 
     deinit {
         consentObservers.forEach(NotificationCenter.default.removeObserver)
+        distributedConsentObservers.forEach(DistributedNotificationCenter.default().removeObserver)
     }
 
     private func revokeDelivery() {
         deliveryStateLock.lock()
+        let wasAcceptingDelivery = acceptingDelivery
         acceptingDelivery = false
         capacityDrainNeeded = false
         retainedFailureStacks.removeAll()
         deliveryStateLock.unlock()
+        guard wasAcceptingDelivery else { return }
         transport.cancelAll()
         deliveryQueue.async { [weak self] in self?.deliveredRetainedEnvelopes.removeAll() }
     }
