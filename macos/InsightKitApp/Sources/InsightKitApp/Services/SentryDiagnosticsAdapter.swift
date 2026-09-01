@@ -566,10 +566,22 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
     private var cancellationGeneration: UInt64 = 0
     private var isCancelled = false
     private var activeTasks: [URLSessionDataTask] = []
+    var usesCookieFreeSession: Bool {
+        session.configuration.httpCookieStorage == nil
+            && !session.configuration.httpShouldSetCookies
+    }
 
-    init(configuration: SentryRuntimeConfiguration, session: URLSession = .shared) {
+    init(configuration: SentryRuntimeConfiguration, session: URLSession? = nil) {
         self.configuration = configuration
-        self.session = session
+        if let session {
+            self.session = session
+        } else {
+            let sessionConfiguration = URLSessionConfiguration.ephemeral
+            sessionConfiguration.httpCookieStorage = nil
+            sessionConfiguration.httpShouldSetCookies = false
+            sessionConfiguration.httpCookieAcceptPolicy = .never
+            self.session = URLSession(configuration: sessionConfiguration)
+        }
     }
 
     func send(envelope approvedEnvelope: Data, failureStack: [UInt64]) throws {

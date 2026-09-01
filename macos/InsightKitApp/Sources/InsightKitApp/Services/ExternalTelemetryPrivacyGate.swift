@@ -958,7 +958,7 @@ final class ExternalTelemetryPrivacyGate {
                         mutateDiagnostics { $0.queueFull += 1 }
                         return
                     }
-                    guard let evictable = queue.firstIndex(where: { $0.eventName != "release_session_ended" }) else {
+                    guard let evictable = queue.firstIndex(where: { !$0.eventName.hasPrefix("release_session_") }) else {
                         mutateDiagnostics { $0.queueFull += 1 }
                         return
                     }

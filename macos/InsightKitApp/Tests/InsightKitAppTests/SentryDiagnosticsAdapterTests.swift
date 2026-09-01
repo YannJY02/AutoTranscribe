@@ -1087,6 +1087,17 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(StubSentryURLProtocol.requestCount, 1)
     }
 
+    func testHTTPTransportDefaultSessionDoesNotUseCookies() throws {
+        let configuration = try XCTUnwrap(SentryRuntimeConfiguration.from(environment: [
+            "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+            "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+        ]))
+
+        let transport = SentryHTTPTransport(configuration: configuration)
+
+        XCTAssertTrue(transport.usesCookieFreeSession)
+    }
+
     func testHTTPTransportBuildsSerializableSentryEventAndTransactionEnvelopes() throws {
         let fixture = try makeFixture()
         let approved = try XCTUnwrap(fixture.gate.record(event: .init(name: "workflow_completed", properties: [

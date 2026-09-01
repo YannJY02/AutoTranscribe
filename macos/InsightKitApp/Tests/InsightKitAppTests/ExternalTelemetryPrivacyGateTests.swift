@@ -1443,6 +1443,27 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertFalse(queued.contains { $0.contains("review_opened") })
     }
 
+    func testReplacingFullQueuePreservesOpenReleaseSession() throws {
+        let gate = makeGate(maxQueueItems: 2)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        XCTAssertEqual(gate.record(event: .init(
+            name: "release_session_started",
+            properties: ["session_status": "ok"]
+        )).result, .accepted)
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        XCTAssertEqual(try gate.queuedEnvelopes().count, 2)
+        gate.rotateAppSessionIdentity()
+        XCTAssertEqual(gate.record(
+            event: .init(name: "release_session_started", properties: ["session_status": "ok"]),
+            replacingOldestWhenFull: true
+        ).result, .accepted)
+
+        let queued = try gate.queuedEnvelopes().map { String(decoding: $0, as: UTF8.self) }
+        XCTAssertEqual(queued.count, 2)
+        XCTAssertEqual(queued.filter { $0.contains("release_session_started") }.count, 2)
+        XCTAssertFalse(queued.contains { $0.contains("review_opened") })
+    }
+
     func testSerializationFailureIsDroppedWithoutThrowingOrQueueing() throws {
         let gate = makeGate()
         try gate.setConsent(enabled: true, consentVersion: 2)
