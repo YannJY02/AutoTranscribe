@@ -79,7 +79,7 @@ final class SentryDiagnosticsAdapter {
     private let gate: ExternalTelemetryPrivacyGate
     private let transport: SentryDiagnosticsTransport
     private let deliveryQueue = DispatchQueue(label: "com.yannjy.insightkit.sentry-delivery", qos: .utility)
-    private let deliverySlots = DispatchSemaphore(value: 8)
+    private let deliverySlots = DispatchSemaphore(value: 1)
     private let deliveryStateLock = NSLock()
     private let diagnosticsLock = NSLock()
     private let releaseSessionLock = NSLock()

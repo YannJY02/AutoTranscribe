@@ -12,6 +12,12 @@ Sentry uses the same optional `INSIGHTKIT_ANALYTICS_ENVIRONMENT` override as
 product analytics; debug builds default to `development` and release builds to
 `release`.
 
+The Settings control is deliberately unified with PostHog availability. A build
+without a configured PostHog transport cannot enable external telemetry; if a
+stale opt-in is present, initialization revokes it and purges both vendor queues.
+Sentry-only deployment is not a supported state because it would leave the shared
+consent unavailable for readback and revocation.
+
 Set `INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED=0` to explicitly disable telemetry. On
 the next launch this invokes the central gate's cryptographic purge, deletes its
 bounded queue and queue key, and constructs no Sentry transport. An absent setting
@@ -48,7 +54,7 @@ session. If a full backlog cannot be delivered, the bounded queue replaces only
 its oldest item so the current session remains closable; the local `queueFull`
 diagnostic records that replacement.
 
-Delivery remains bounded to eight concurrent slots. When a slot frees, one
+Delivery remains bounded to one in-flight request. When the slot frees, one
 coalesced catch-up drain retries accepted durable envelopes without waiting for
 restart. A delivered terminal marker clears retry state only for its matching
 `app_session_id`, so another open session cannot emit a duplicate start marker.

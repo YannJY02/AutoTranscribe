@@ -3,7 +3,7 @@ import CoreGraphics
 import SwiftUI
 
 struct SettingsView: View {
-    static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收产品流程事件、允许列表中的低基数属性，以及用于跨会话归因的随机安装标识；退出后重新启用会轮换该标识。本地加密待发队列最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止上传并清除本地队列；远端保留与删除遵循 PostHog 项目配置。"
+    static let externalTelemetryDisclosure = "默认关闭。启用后，PostHog 接收产品流程事件、允许列表中的低基数属性，以及用于跨会话归因的随机安装标识；Sentry 接收允许列表中的应用错误、恢复结果和版本/会话诊断。Sentry 不存储原始 IP，但服务端可能从连接推断粗粒度地区。退出后重新启用会轮换该标识。本地加密待发队列最多保留 30 天。不会发送会议内容、文件路径、提示词、凭据或供应商载荷。关闭会停止上传并清除本地队列；远端保留与删除遵循各项目配置。"
 
     private struct VendorDraft {
         var baseURL: String

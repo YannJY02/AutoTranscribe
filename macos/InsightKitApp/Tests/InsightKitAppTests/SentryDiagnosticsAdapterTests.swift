@@ -95,7 +95,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let adapter = SentryDiagnosticsAdapter(gate: sentryGate, transport: transport)
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
         XCTAssertTrue(transport.waitForFirstAttempt())
-        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .queueFull)
         let revoked = expectation(description: "revocation completed")
         DispatchQueue.global().async {
             try? ProductAnalytics(gate: fixture.gate).setConsent(enabled: false)
@@ -212,12 +212,6 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             .accepted
         )
         XCTAssertTrue(transport.waitForFirstAttempt())
-        for _ in 1 ..< 8 {
-            XCTAssertEqual(
-                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
-                .accepted
-            )
-        }
         XCTAssertEqual(
             adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
             .queueFull
@@ -225,7 +219,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
         transport.releaseFirstAttempt()
 
-        XCTAssertTrue(transport.waitForDeliveries(9))
+        XCTAssertTrue(transport.waitForDeliveries(2))
         let deadline = Date().addingTimeInterval(1)
         while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
@@ -243,17 +237,11 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             .accepted
         )
         XCTAssertTrue(transport.waitForFirstAttempt())
-        for _ in 1 ..< 8 {
-            XCTAssertEqual(
-                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
-                .accepted
-            )
-        }
         XCTAssertEqual(adapter.captureReleaseSession(.ok), .queueFull)
 
         transport.releaseFirstAttempt()
 
-        XCTAssertTrue(transport.waitForDeliveries(9))
+        XCTAssertTrue(transport.waitForDeliveries(2))
         let startDeadline = Date().addingTimeInterval(1)
         var queued = try fixture.gate.queuedEnvelopes()
         while queued.count != 1, Date() < startDeadline {
@@ -291,12 +279,6 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
             .accepted
         )
         XCTAssertTrue(transport.waitForPausedAttempt())
-        for _ in 1 ..< 8 {
-            XCTAssertEqual(
-                adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
-                .accepted
-            )
-        }
         XCTAssertEqual(
             adapter.capturePerformance(workflow: .live, phase: .running, durationMilliseconds: 1_000),
             .queueFull
@@ -304,7 +286,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
         transport.releasePausedAttempt()
 
-        XCTAssertTrue(transport.waitForDeliveries(10))
+        XCTAssertTrue(transport.waitForDeliveries(3))
         let drainDeadline = Date().addingTimeInterval(1)
         var queued = try currentGate.queuedEnvelopes()
         while queued.count != 1, Date() < drainDeadline {
@@ -347,7 +329,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
         XCTAssertEqual(adapter.captureReleaseSession(.ok), .accepted)
-        XCTAssertEqual(adapter.capturePerformance(workflow: .import, phase: .finalizing, durationMilliseconds: 9_999_999), .accepted)
+        XCTAssertEqual(adapter.capturePerformance(workflow: .import, phase: .finalizing, durationMilliseconds: 9_999_999), .queueFull)
         XCTAssertTrue(transport.waitForEnvelope())
         XCTAssertTrue(transport.waitForEnvelope())
         let text = transport.envelopes.compactMap { String(data: $0, encoding: .utf8) }.joined()
