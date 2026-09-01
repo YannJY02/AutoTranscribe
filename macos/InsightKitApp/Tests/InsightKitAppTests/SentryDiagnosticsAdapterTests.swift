@@ -828,25 +828,37 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         var successStack: [UInt64]?
         var failureStack: [UInt64]?
         var successEvaluationRanOnMainThread: Bool?
+        var stackCaptureCount = 0
 
         ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(evaluating: {
             successEvaluationRanOnMainThread = Thread.isMainThread
             return successful
+        }, captureFailureStack: {
+            stackCaptureCount += 1
+            return [0x1111]
         }) { _, _ in
             successStack = ProductAnalytics.currentSubmissionFailureStack
             successCompleted.signal()
         })
         XCTAssertEqual(successCompleted.wait(timeout: .now() + 1), .success)
+        XCTAssertEqual(stackCaptureCount, 0)
 
-        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(evaluating: { failed }) { _, _ in
+        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(
+            evaluating: { failed },
+            captureFailureStack: {
+                stackCaptureCount += 1
+                return [0x2222]
+            }
+        ) { _, _ in
             failureStack = ProductAnalytics.currentSubmissionFailureStack
             failureCompleted.signal()
         })
         XCTAssertEqual(failureCompleted.wait(timeout: .now() + 1), .success)
 
         XCTAssertEqual(successEvaluationRanOnMainThread, false)
+        XCTAssertEqual(stackCaptureCount, 1)
         XCTAssertNil(successStack)
-        XCTAssertFalse(failureStack?.isEmpty ?? true)
+        XCTAssertEqual(failureStack, [0x2222])
     }
 
     func testHTTPTransportRejectsAfterCancellationUntilExplicitResume() throws {
