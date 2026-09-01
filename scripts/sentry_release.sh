@@ -17,7 +17,7 @@ dsym_path="$3"
 release="com.yannjy.insightkit@${version}+${build}"
 
 [[ "$version" =~ ^[0-9]{1,4}\.[0-9]{1,4}(\.[0-9]{1,4})?$ ]] || { echo "invalid version" >&2; exit 64; }
-[[ "$build" =~ ^[0-9]{1,9}$ ]] || { echo "invalid build" >&2; exit 64; }
+[[ "$build" =~ ^[0-9]{1,14}$ ]] || { echo "invalid build" >&2; exit 64; }
 [[ -d "$dsym_path" ]] || { echo "dSYM directory not found" >&2; exit 66; }
 
 sentry-cli releases new "$release" 2>/dev/null || sentry-cli releases info "$release" >/dev/null

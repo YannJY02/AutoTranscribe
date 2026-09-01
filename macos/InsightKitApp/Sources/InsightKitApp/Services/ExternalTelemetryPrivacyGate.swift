@@ -1032,7 +1032,7 @@ final class ExternalTelemetryPrivacyGate {
     }
 
     private static func isValidAppBuild(_ value: String) -> Bool {
-        value.range(of: #"^[0-9]{1,9}$"#, options: .regularExpression) != nil
+        value.range(of: #"^[0-9]{1,14}$"#, options: .regularExpression) != nil
     }
 
     private func readQueueWithoutExpiry() throws -> [Envelope] {

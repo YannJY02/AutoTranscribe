@@ -2830,6 +2830,13 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
     }
 
+    func testAppMetadataAcceptsPackagedTimestampBuild() throws {
+        let gate = makeGate(appVersion: "1.0", appBuild: "20260901092924")
+        try gate.setConsent(enabled: true, consentVersion: 1)
+
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+    }
+
     func testRecordAdmissionInvalidConsentObservationCannotBeSuppressedByStaleRestore() throws {
         let seed = makeGate()
         try seed.setConsent(enabled: true, consentVersion: 1)
