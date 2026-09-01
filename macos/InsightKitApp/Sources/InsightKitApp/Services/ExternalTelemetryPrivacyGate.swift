@@ -10,10 +10,10 @@ extension Notification.Name {
     )
 }
 
-private func postExternalTelemetryConsentWillRevoke() {
-    NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
+private func postExternalTelemetryConsentChange(_ name: Notification.Name) {
+    NotificationCenter.default.post(name: name, object: nil)
     DistributedNotificationCenter.default().postNotificationName(
-        .externalTelemetryConsentWillRevoke,
+        name,
         object: nil,
         deliverImmediately: true
     )
@@ -597,7 +597,7 @@ final class ExternalTelemetryPrivacyGate {
         Self.revocationTasks.removeAll()
         Self.stateLock.unlock()
         Self.consentTransitionLock.unlock()
-        NotificationCenter.default.post(name: .externalTelemetryConsentDidEnable, object: nil)
+        postExternalTelemetryConsentChange(.externalTelemetryConsentDidEnable)
     }
 
     @discardableResult
@@ -620,7 +620,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
-        postExternalTelemetryConsentWillRevoke()
+        postExternalTelemetryConsentChange(.externalTelemetryConsentWillRevoke)
         onRevocationAdmitted()
         let admission = RevocationAdmission(
             generation: disablingGeneration,
@@ -1282,7 +1282,7 @@ final class ExternalTelemetryPrivacyGate {
             Self.revocationTasks = [token: task]
             Self.stateLock.unlock()
             Self.consentTransitionLock.unlock()
-            postExternalTelemetryConsentWillRevoke()
+            postExternalTelemetryConsentChange(.externalTelemetryConsentWillRevoke)
             onRevocationAdmitted()
             return RevocationAdmission(generation: generation, token: token, task: task, didAdvanceGeneration: true)
         }
@@ -1310,7 +1310,7 @@ final class ExternalTelemetryPrivacyGate {
         defaults.set(revocationToken, forKey: revocationKey)
         defaults.set(encodedDisabled, forKey: consentKey)
         Self.consentTransitionLock.unlock()
-        postExternalTelemetryConsentWillRevoke()
+        postExternalTelemetryConsentChange(.externalTelemetryConsentWillRevoke)
         onRevocationAdmitted()
         return RevocationAdmission(generation: invalidationGeneration, token: revocationToken, task: task, didAdvanceGeneration: true)
     }

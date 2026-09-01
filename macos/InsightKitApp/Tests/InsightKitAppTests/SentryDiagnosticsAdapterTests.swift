@@ -124,6 +124,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
         XCTAssertTrue(transport.waitForAttempt())
 
+        try fixture.persistRevokedConsent()
         DistributedNotificationCenter.default().postNotificationName(
             .externalTelemetryConsentWillRevoke,
             object: nil,
@@ -132,6 +133,38 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 
         XCTAssertTrue(transport.waitForCancellation())
+    }
+
+    func testCrossProcessConsentReenableIgnoresAStaleRevocation() throws {
+        let fixture = try makeFixture()
+        let transport = ReenableSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+        let enabledNotification = DispatchSemaphore(value: 0)
+        let center = DistributedNotificationCenter.default()
+        let observer = center.addObserver(
+            forName: .externalTelemetryConsentDidEnable,
+            object: nil,
+            queue: nil
+        ) { _ in enabledNotification.signal() }
+        defer { center.removeObserver(observer) }
+
+        _ = fixture.gate.disableAndPurge()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertTrue(transport.waitForCancellation())
+
+        try fixture.gate.setConsent(enabled: true, consentVersion: 1)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(enabledNotification.wait(timeout: .now() + 0.1), .success)
+        XCTAssertTrue(transport.waitForResume())
+
+        center.postNotificationName(
+            .externalTelemetryConsentWillRevoke,
+            object: nil,
+            deliverImmediately: true
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(transport.cancellationCount, 1)
+        _ = adapter
     }
 
     func testInvalidConsentRevocationCancelsInFlightSentryDelivery() throws {
@@ -881,6 +914,23 @@ private final class BlockingSentryTransport: SentryDiagnosticsTransport, @unchec
     func waitForCancellation() -> Bool { cancelled.wait(timeout: .now() + 0.1) == .success }
 }
 
+private final class ReenableSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private let cancelled = DispatchSemaphore(value: 0)
+    private let resumed = DispatchSemaphore(value: 0)
+    private var cancellations = 0
+    var cancellationCount: Int { lock.lock(); defer { lock.unlock() }; return cancellations }
+
+    func send(envelope: Data, failureStack: [UInt64]) throws {}
+    func cancelAll() {
+        lock.lock(); cancellations += 1; lock.unlock()
+        cancelled.signal()
+    }
+    func resume() { resumed.signal() }
+    func waitForCancellation() -> Bool { cancelled.wait(timeout: .now() + 0.1) == .success }
+    func waitForResume() -> Bool { resumed.wait(timeout: .now() + 0.1) == .success }
+}
+
 private final class PausedCancellationSentryTransport: SentryDiagnosticsTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var attemptCount = 0
@@ -1114,6 +1164,16 @@ private final class Fixture {
             grantedAt: Date()
         ))
         defaults?.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
+    }
+
+    func persistRevokedConsent() throws {
+        let consent = try JSONEncoder().encode(ExternalTelemetryPrivacyGate.Consent(
+            isEnabled: false,
+            version: 1,
+            grantedAt: nil
+        ))
+        defaults?.set(consent, forKey: "insightkit.external-telemetry.consent.v1")
+        defaults?.set("test-revocation", forKey: "insightkit.external-telemetry.revoked.v1")
     }
 }
 

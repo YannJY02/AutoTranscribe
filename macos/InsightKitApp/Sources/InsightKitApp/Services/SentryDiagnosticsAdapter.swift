@@ -125,7 +125,12 @@ final class SentryDiagnosticsAdapter {
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
             queue: nil
-        ) { [weak self] _ in self?.revokeDelivery() })
+        ) { [weak self] _ in self?.reconcileDeliveryWithPersistedConsent() })
+        distributedConsentObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: .externalTelemetryConsentDidEnable,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in self?.reconcileDeliveryWithPersistedConsent() })
         deliveryQueue.async { [weak self] in self?.drainPersistedQueue() }
     }
 
@@ -147,12 +152,20 @@ final class SentryDiagnosticsAdapter {
     }
 
     private func enableDelivery() {
+        deliveryStateLock.lock()
+        guard !acceptingDelivery else {
+            deliveryStateLock.unlock()
+            return
+        }
         gate.rotateAppSessionIdentity()
         transport.resume()
-        deliveryStateLock.lock()
         acceptingDelivery = true
         deliveryStateLock.unlock()
         startReleaseSessionAfterDrainingQueue()
+    }
+
+    private func reconcileDeliveryWithPersistedConsent() {
+        if gate.consent.isEnabled { enableDelivery() } else { revokeDelivery() }
     }
 
     func startReleaseSessionAfterDrainingQueue() {
