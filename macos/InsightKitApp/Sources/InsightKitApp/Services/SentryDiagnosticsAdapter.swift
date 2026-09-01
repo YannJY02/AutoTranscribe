@@ -550,6 +550,8 @@ struct SentryRuntimeConfiguration: Equatable {
 /// absent: no PII, screenshots, replay, view hierarchy, attachments, breadcrumbs,
 /// request data, local variables, or raw logs can be collected by this transport.
 final class SentryHTTPTransport: SentryDiagnosticsTransport {
+    private static let deliveryTimeout: TimeInterval = 10
+
     private final class DeliveryResult: @unchecked Sendable {
         private let lock = NSLock()
         private var accepted = false
@@ -598,7 +600,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             deliveryLock.unlock()
         }
         task.resume()
-        guard finished.wait(timeout: .now() + 2) == .success else {
+        guard finished.wait(timeout: .now() + Self.deliveryTimeout) == .success else {
             task.cancel()
             throw TransportError.timedOut
         }
@@ -749,7 +751,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
         var request = URLRequest(url: try envelopeURL())
         request.httpMethod = "POST"
         request.httpBody = body
-        request.timeoutInterval = 2
+        request.timeoutInterval = Self.deliveryTimeout
         request.setValue("application/x-sentry-envelope", forHTTPHeaderField: "Content-Type")
         return request
     }

@@ -1103,7 +1103,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         )
 
         XCTAssertEqual(request.url?.absoluteString, "https://example.invalid/prefix/api/71/envelope/")
-        XCTAssertEqual(request.timeoutInterval, 2)
+        XCTAssertEqual(request.timeoutInterval, 10)
         let body = try XCTUnwrap(request.httpBody)
         let lines = body.split(separator: 0x0a)
         XCTAssertEqual(lines.count, 3)
