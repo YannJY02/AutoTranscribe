@@ -1,15 +1,71 @@
 import AppKit
+import Darwin
 import ScreenCaptureKit
 import SwiftUI
 
 @main
 final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
+    enum SingleInstanceClaim {
+        case acquired(Int32)
+        case contended
+        case unavailable
+    }
+
     private let coordinator = WorkflowCoordinator()
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var uiTestCaptureTimer: Timer?
 
+    static func claimSingleInstance(at lockURL: URL) -> SingleInstanceClaim {
+        do {
+            try FileManager.default.createDirectory(
+                at: lockURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        } catch {
+            return .unavailable
+        }
+        let descriptor = open(lockURL.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { return .unavailable }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            let lockError = errno
+            close(descriptor)
+            return lockError == EWOULDBLOCK ? .contended : .unavailable
+        }
+        return .acquired(descriptor)
+    }
+
+    static func existingProcessID(in processIDs: [pid_t], excluding currentProcessID: pid_t) -> pid_t? {
+        processIDs.first { $0 != currentProcessID }
+    }
+
     static func main() {
+        let lockURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("InsightKit/insightkit-app.lock")
+        let lockDescriptor: Int32
+        switch claimSingleInstance(at: lockURL) {
+        case .acquired(let descriptor):
+            lockDescriptor = descriptor
+        case .contended:
+            if let bundleID = Bundle.main.bundleIdentifier {
+                let applications = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                let existingPID = existingProcessID(
+                    in: applications.map(\.processIdentifier),
+                    excluding: getpid()
+                )
+                applications.first { $0.processIdentifier == existingPID }?
+                    .activate(options: [.activateAllWindows])
+            }
+            return
+        case .unavailable:
+            let alert = NSAlert()
+            alert.messageText = "InsightKit 无法安全启动"
+            alert.informativeText = "无法建立单实例保护。请检查磁盘空间和应用支持目录权限后重试。"
+            alert.alertStyle = .critical
+            alert.runModal()
+            return
+        }
+        defer { close(lockDescriptor) }
         let app = NSApplication.shared
         let delegate = AppLifecycleDelegate()
         app.delegate = delegate
@@ -20,6 +76,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = SentryDiagnosticsRuntime.shared
         NSApp.setActivationPolicy(.regular)
         showMainWindow()
         installUITestCaptureTimer()
@@ -42,6 +99,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        SentryDiagnosticsRuntime.shared.applicationWillTerminate()
         uiTestCaptureTimer?.invalidate()
         coordinator.shutdown()
         SettingsView.shutdownSharedSidecar()

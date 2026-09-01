@@ -121,14 +121,14 @@ final class ImportSessionViewModel: ObservableObject {
                     self.fetchStatus()
                 }
             } catch {
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "import",
                         phase: "preparing",
                         errorCode: "runtime-unavailable",
                         recoveryAction: "retry"
                     )
-                }
+                })
                 DispatchQueue.main.async {
                     self.currentJobID = nil
                     self.importStatusMessage = nil
@@ -226,7 +226,7 @@ final class ImportSessionViewModel: ObservableObject {
                 self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
             } catch {
                 let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "import",
                         phase: "analysis",
@@ -234,7 +234,7 @@ final class ImportSessionViewModel: ObservableObject {
                         recoveryAction: "retry",
                         analysisLatencyMilliseconds: analysisLatencyMS
                     )
-                }
+                })
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
                     self.sessionPhase = .reviewing
@@ -253,19 +253,26 @@ final class ImportSessionViewModel: ObservableObject {
                 let recordPath = persistedRecordPath(for: meetingID)
                 let duration = recordingDuration
                 let hasBlockingError = errorMessage != nil
-                analyticsSubmit { analytics in
+                analyticsSubmit(ProductAnalytics.completion(evaluating: {
+                    MeetingAssetWorkflowSuccess.evaluate(
+                        recordPath: recordPath,
+                        duration: duration,
+                        exportCompleted: true,
+                        hasBlockingError: hasBlockingError
+                    )
+                }) { analytics, completionEvaluation in
                     analytics.exportCompleted("import")
-                    analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                }
+                    analytics.workflowCompleted("import", evaluation: completionEvaluation)
+                })
                 isExporting = false
                 return
             }
         } catch {
             isExporting = false
             exportStatusMessage = "导出失败：\(error.localizedDescription)"
-            analyticsSubmit {
+            analyticsSubmit(ProductAnalytics.failure {
                 $0.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
-            }
+            })
             return
         }
         rpcQueue.async { [weak self] in
@@ -278,16 +285,23 @@ final class ImportSessionViewModel: ObservableObject {
                     let recordPath = self.persistedRecordPath(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    self.analyticsSubmit { analytics in
+                    self.analyticsSubmit(ProductAnalytics.completion(evaluating: {
+                        MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                    }) { analytics, completionEvaluation in
                         analytics.exportCompleted("import")
-                        analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                    }
+                        analytics.workflowCompleted("import", evaluation: completionEvaluation)
+                    })
                     self.isExporting = false
                 }
             } catch {
-                self.analyticsSubmit { analytics in
+                self.analyticsSubmit(ProductAnalytics.failure { analytics in
                     analytics.workflowFailed("import", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
-                }
+                })
                 DispatchQueue.main.async {
                     self.isExporting = false
                     self.exportStatusMessage = "导出失败：\(error.localizedDescription)"
@@ -372,9 +386,9 @@ final class ImportSessionViewModel: ObservableObject {
             importStatusMessage = nil
             errorMessage = "转写失败：\(job.error.isEmpty ? "未知错误" : job.error)"
             sessionPhase = .selecting
-            analyticsSubmit { analytics in
+            analyticsSubmit(ProductAnalytics.failure { analytics in
                 analytics.workflowFailed("import", phase: "running", errorCode: "runtime-unavailable", recoveryAction: "retry")
-            }
+            })
         } else if job.state == .cancelled || job.state == .pausedByLive {
             let message = job.state == .pausedByLive
                 ? "导入已暂停，以优先处理实时录制。你可以稍后重新导入或在转写队列中查看。"
@@ -513,7 +527,7 @@ final class ImportSessionViewModel: ObservableObject {
                 self.analyticsSubmit { $0.recoveryCompleted("import", phase: "analysis", succeeded: true) }
             } catch {
                 let analysisLatencyMS = Int((DispatchTime.now().uptimeNanoseconds - analysisStartedAt) / 1_000_000)
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "import",
                         phase: "analysis",
@@ -521,7 +535,7 @@ final class ImportSessionViewModel: ObservableObject {
                         recoveryAction: "retry",
                         analysisLatencyMilliseconds: analysisLatencyMS
                     )
-                }
+                })
                 DispatchQueue.main.async {
                     self.errorMessage = "智能纪要生成失败：\(error.localizedDescription)"
                     self.sessionPhase = .reviewing

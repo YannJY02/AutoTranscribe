@@ -29,7 +29,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testPostHogBatchDisablesGeoIPAndUsesStableRetryDeduplication() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let envelope = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
 
         let first = try PostHogProductAnalyticsTransport.makeBatch(
@@ -58,7 +58,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testProductAnalyticsAllowsOnlyOneBatchInFlightAndCancelsBeforeOptOutPurge() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let transport = DelayedTransport()
         let analytics = ProductAnalytics(gate: gate, transport: transport)
         XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live"]), .accepted)
@@ -76,7 +76,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let productGate = makeGate(storageDirectory: root)
         let sentryRoot = root.appendingPathComponent("Sentry", isDirectory: true)
         let sentryGate = makeGate(storageDirectory: sentryRoot)
-        try productGate.setConsent(enabled: true, consentVersion: 1)
+        try productGate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(productGate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(sentryGate.record(event: .init(name: "app_crashed", properties: [
             "error_category": "runtime", "phase": "running",
@@ -88,12 +88,17 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             forName: .externalTelemetryConsentWillRevoke,
             object: nil,
             queue: nil
-        ) { _ in revoked.fulfill() }
+        ) { _ in
+            XCTAssertFalse(productGate.consent.isEnabled)
+            XCTAssertFalse(sentryGate.consent.isEnabled)
+            revoked.fulfill()
+        }
         defer { NotificationCenter.default.removeObserver(observer) }
 
-        try ProductAnalytics(gate: productGate).setConsent(enabled: false)
+        let evidence = productGate.disableAndPurge()
 
         wait(for: [revoked], timeout: 1)
+        XCTAssertEqual(evidence.purgedItems, 2)
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: root.appendingPathComponent("external-telemetry-queue-v1.json").path
         ))
@@ -104,7 +109,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testWorkflowCompletionClosesFailedDeterministicMeetingAssetQualification() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("live", provisionalPath: .local)
         analytics.workflowCompleted("live", evaluation: .evaluate(
@@ -124,7 +129,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testLocalEvidenceLedgerStoresOnlyAggregateCounts() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("ledger.json")
         let analytics = ProductAnalytics(gate: gate, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
         XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
@@ -157,7 +162,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testConcurrentLedgerAdmissionCannotOverwriteOptOutState() throws {
         let gate = makeGate(maxQueueItems: 100)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("concurrent-ledger.json")
         let analytics = ProductAnalytics(gate: gate, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
         XCTAssertEqual(analytics.emit("workflow_started", properties: ["workflow": "live", "analysis_mode": "local"]), .accepted)
@@ -191,7 +196,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testLedgerAcknowledgementPreservesNewerPendingAdmission() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("ack-ledger.json")
         let transport = DelayedTransport()
         let analytics = ProductAnalytics(
@@ -223,7 +228,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             if attempt >= 2 { throw CocoaError(.fileWriteNoPermission) }
             try data.write(to: url, options: .atomic)
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("failed-ack-ledger.json")
         let transport = SuccessfulTransport()
         let analytics = ProductAnalytics(gate: gate, transport: transport, ledger: ProductAnalyticsEvidenceLedger(url: ledgerURL))
@@ -246,7 +251,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testLedgerStartsFreshAfterOptOutAndReenable() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("consent-epoch-ledger.json")
         let analytics = ProductAnalytics(
             gate: gate,
@@ -288,12 +293,12 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReenableRotatesAnonymousInstallationIdentity() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let first = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
         let firstObject = try XCTUnwrap(JSONSerialization.jsonObject(with: first) as? [String: Any])
 
-        try gate.setConsent(enabled: false, consentVersion: 1)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: false, consentVersion: 2)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let second = try XCTUnwrap(gate.record(event: validEvent()).debugEnvelope)
         let secondObject = try XCTUnwrap(JSONSerialization.jsonObject(with: second) as? [String: Any])
 
@@ -309,7 +314,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
     func testLedgerRotatesBeforeRemoteRetentionCanDropItsCounts() throws {
         var now = Date(timeIntervalSince1970: 1_788_000_000)
         let gate = makeGate(now: { now }, maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("retention-ledger.json")
         let analytics = ProductAnalytics(
             gate: gate,
@@ -350,7 +355,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let ledgerURL = root.appendingPathComponent("environment-ledger.json")
         let ledger = ProductAnalyticsEvidenceLedger(url: ledgerURL)
         let development = makeGate(storageDirectory: root.appendingPathComponent("development"))
-        try development.setConsent(enabled: true, consentVersion: 1)
+        try development.setConsent(enabled: true, consentVersion: 2)
         ledger.record(try XCTUnwrap(development.record(event: .init(
             name: "workflow_started",
             properties: ["workflow": "live", "analysis_mode": "local"]
@@ -382,7 +387,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testEvidenceLedgerIgnoresEventsThatNeverBecomeDurable() throws {
         let gate = makeGate(writeData: { _, _ in throw CocoaError(.fileWriteNoPermission) })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let ledgerURL = root.appendingPathComponent("non-durable-ledger.json")
         let analytics = ProductAnalytics(
             gate: gate,
@@ -403,7 +408,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testProductAnalyticsFlushesAcceptedEnvelopeAndAcknowledgesIt() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let transport = SuccessfulTransport()
         let analytics = ProductAnalytics(gate: gate, transport: transport)
 
@@ -418,7 +423,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testProductAnalyticsV1AcceptsExactCustomEventFamily() throws {
         let gate = makeGate(maxQueueItems: 11)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let names = [
             "workflow_started", "record_saved", "record_reopened",
@@ -438,7 +443,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testCentralGateAcceptsSentryEventsButProductAnalyticsRejectsThem() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
 
         XCTAssertEqual(
@@ -460,7 +465,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testResolvedAttemptUsesActualPathAndEmitsOneCompletionAcrossRepeatedExports() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         var clock = Date(timeIntervalSince1970: 1_000)
         let analytics = ProductAnalytics(gate: gate, now: { clock })
         analytics.beginWorkflow(
@@ -508,7 +513,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRecordObservationUsesExplicitPersistedPathAfterFailedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow(
             "import",
@@ -533,7 +538,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRepeatedRecordObservationKeepsOneSequenceAndAllowsTranscriptSearch() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let context = ProductAnalyticsContext(workflow: "import", path: .local, key: "stable-record")
 
@@ -547,7 +552,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testSearchContextReusesStartedAttemptWithoutEmittingFakeRecordReopen() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let attempt = ProductAnalyticsAttemptContext(workflow: "import")
         analytics.beginWorkflow(attempt, provisionalPath: .local)
@@ -567,7 +572,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRequiredTransportBlocksConsentInsteadOfQueueingEventsLocallyForever() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         let analytics = ProductAnalytics(gate: gate, requiresTransportForConsent: true)
 
@@ -626,7 +631,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testImportSubmissionFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let rpc = RPCClientMock()
         rpc.transcriptionImportError = NSError(domain: "test", code: 1)
@@ -653,7 +658,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testNewImportResetClosesOnlyAnUnfinishedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let viewModel = ImportSessionViewModel(
             rpcClient: RPCClientMock(),
@@ -688,7 +693,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testNewLiveSessionResetClosesAnUnfinishedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let viewModel = LiveSessionViewModel(
             rpcClient: RPCClientMock(),
@@ -712,7 +717,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testQueuedImportSubmissionFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let rpc = RPCClientMock()
         rpc.transcriptionImportError = NSError(domain: "test", code: 1)
@@ -742,7 +747,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testAcceptedImportStatusRefreshFailureDoesNotEmitWorkflowFailure() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let rpc = RPCClientMock()
         rpc.transcriptionStatusError = NSError(domain: "test", code: 1)
@@ -766,7 +771,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testLiveStartupFailureStillClosesStartedAttempt() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let originalAnalysisMode = AppConfigStore.shared.config.analysis.mode
         AppConfigStore.shared.updateAnalysisMode(.cloud)
@@ -803,7 +808,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testLiveSavedReviewEmitsReviewEventAfterRecordSaved() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("live", provisionalPath: .local)
         analytics.resolveWorkflow(
@@ -836,7 +841,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testSuccessfulLiveRecordRetryClosesFinalizingRecovery() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("live", provisionalPath: .local)
         analytics.workflowFailed("live", phase: "finalizing", errorCode: "storage", recoveryAction: "retry")
@@ -862,6 +867,88 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(properties["outcome"] as? String, "succeeded")
     }
 
+    func testPartialLiveRecordSaveReportsFinalizingRecoveryFailure() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowFailed("live", phase: "finalizing", errorCode: "unknown", recoveryAction: "retry")
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.saveToRecords(
+            meetingID: "live-finalizing-partial-save",
+            transcriptSegmentsOverride: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "speaker", source: "mic", text: "partial")
+            ],
+            recoveringFinalizationFailure: true
+        )
+        let deadline = Date().addingTimeInterval(1)
+        var events = try queuedObjects(gate)
+        while !events.contains(where: { $0["event_name"] as? String == "recovery_completed" }),
+              Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            events = try queuedObjects(gate)
+        }
+        let recovery = try XCTUnwrap(
+            events.first { $0["event_name"] as? String == "recovery_completed" },
+            "events: \(events.compactMap { $0["event_name"] as? String })"
+        )
+        let properties = try XCTUnwrap(recovery["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["outcome"] as? String, "failed")
+    }
+
+    func testLiveFinalizationExceptionEmitsFailureBeforeSuccessfulFallbackSave() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        let rpcClient = RPCClientMock()
+        rpcClient.sessionStopForFinalizationError = NSError(
+            domain: "ExternalTelemetryPrivacyGateTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "transient finalization failure"]
+        )
+        rpcClient.sessionStopForFinalizationFailuresRemaining = 1
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-finalization-diagnostic-test"
+        }
+        viewModel.sessionHandle = SessionHandle(
+            activeMeetingID: "live-finalization-diagnostic-test",
+            lastMeetingID: nil
+        )
+        viewModel.transcriptSegments = [
+            TranscriptSegment(
+                startMs: 0,
+                endMs: 1_000,
+                speaker: "SPEAKER_00",
+                source: "mic",
+                text: "retry-safe transcript"
+            )
+        ]
+
+        viewModel.stopLiveSession()
+        let completed = expectation(description: "fallback save completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { completed.fulfill() }
+        wait(for: [completed], timeout: 1)
+
+        let events = try queuedObjects(gate)
+        let failure = try XCTUnwrap(events.first { $0["event_name"] as? String == "workflow_failed" })
+        let properties = try XCTUnwrap(failure["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["error_code"] as? String, "unknown")
+    }
+
     func testLocalAnalysisModeOverridesReadyCloudProviderPath() {
         let providers = RPCClientMock().providersStatusStub
 
@@ -873,7 +960,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testQueuedArtifactBuildRetainsEachAnalyticsContext() throws {
         let gate = makeGate(maxQueueItems: 30)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let first = ProductAnalyticsAttemptContext(workflow: "import")
         let second = ProductAnalyticsAttemptContext(workflow: "import")
@@ -905,7 +992,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testImportReviewEventWaitsForReviewPhase() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("import", provisionalPath: .local)
         let rpc = RPCClientMock()
@@ -948,7 +1035,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testImportInsightRetryEmitsReviewOnlyAfterReviewPhase() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let rpc = RPCClientMock()
         let recordsRoot = root.appendingPathComponent("RetryRecords", isDirectory: true)
@@ -997,8 +1084,11 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         wait(for: [reviewing], timeout: 1)
     }
 
-    func testTelemetryDisclosureDoesNotPromiseUnenforcedRemoteRetentionOrSentryDelivery() {
-        XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
+    func testTelemetryDisclosureNamesBothVendorsWithoutPromisingRemoteRetention() {
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("PostHog"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("Sentry"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("原始 IP"))
+        XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("粗粒度地区"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("匿名"))
         XCTAssertFalse(SettingsView.externalTelemetryDisclosure.contains("远端原始数据最多保留 30 天"))
         XCTAssertTrue(SettingsView.externalTelemetryDisclosure.contains("本地加密待发队列最多保留 30 天"))
@@ -1008,7 +1098,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testFailedExportRecoveryEmitsClosedFailedPair() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("live", provisionalPath: .local)
         analytics.workflowFailed("live", phase: "exporting", errorCode: "storage", recoveryAction: "retry")
@@ -1024,7 +1114,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testAnalysisFailureUsesMeasuredProviderLatencyBucket() throws {
         let gate = makeGate(maxQueueItems: 10)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow(
             "import",
@@ -1044,7 +1134,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testSameWorkflowCanTrackIndependentJobAttemptsWithoutUploadingJobKeys() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let first = ProductAnalyticsAttemptContext(workflow: "import")
         let second = ProductAnalyticsAttemptContext(workflow: "import")
@@ -1079,7 +1169,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testConsentEpochDoesNotExposeAttemptCorrelation() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow(ProductAnalyticsAttemptContext(workflow: "import"), provisionalPath: .local)
         try analytics.setConsent(enabled: false)
@@ -1092,7 +1182,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRestartedWorkflowCompletesPriorRecoveryWithOriginalAttemptSequence() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         analytics.beginWorkflow("live", provisionalPath: .local)
         analytics.workflowFailed("live", phase: "preparing", errorCode: "runtime-unavailable", recoveryAction: "retry")
@@ -1117,7 +1207,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReopenedRecordRecoveryDoesNotExposeAttemptCorrelation() throws {
         let gate = makeGate(maxQueueItems: 20)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         let context = ProductAnalyticsContext(workflow: "import", path: .local)
         analytics.observeRecord(context)
@@ -1149,7 +1239,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testProductAnalyticsV1AcceptsApprovedLowCardinalityDimensions() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
 
         let outcome = analytics.emit("workflow_failed", properties: [
@@ -1165,7 +1255,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testProductAnalyticsV1RejectsLegacyUnapprovedProperties() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let analytics = ProductAnalytics(gate: gate)
         for property in ["error_category", "recovered"] {
             XCTAssertEqual(analytics.emit("workflow_failed", properties: [property: true]), .rejected)
@@ -1174,7 +1264,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testSuccessfulUploadAcknowledgesOnlyUploadedQueuePrefix() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         let uploaded = try gate.queuedEnvelopes()
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
@@ -1209,10 +1299,10 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(gate.record(event: validEvent()).result, .disabled)
         XCTAssertEqual(try gate.queuedEnvelopes(), [])
 
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let reloaded = makeGate()
         XCTAssertTrue(reloaded.consent.isEnabled)
-        XCTAssertEqual(reloaded.consent.version, 1)
+        XCTAssertEqual(reloaded.consent.version, 2)
         XCTAssertNotNil(reloaded.consent.grantedAt)
     }
 
@@ -1222,7 +1312,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             "11111111-1111-4111-8111-111111111111",
             "22222222-2222-4222-8222-222222222222",
         ]))
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         let outcome = gate.record(event: validEvent())
 
@@ -1250,7 +1340,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testBoundaryRejectsEveryProhibitedPropertyClassAndSecretShapedValue() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let prohibited: [(String, Any)] = [
             ("transcript", "spoken words"), ("notes", "private"), ("prompt", "instructions"),
             ("completion", "answer"), ("media", "audio bytes"), ("filename", "meeting.m4a"),
@@ -1273,7 +1363,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testUnknownEventPropertyAndEnumValueFailClosed() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         XCTAssertEqual(gate.record(event: .init(name: "made_up", properties: [:])).result, .rejected)
         XCTAssertEqual(gate.record(event: .init(name: "review_opened", properties: ["mystery": true])).result, .rejected)
@@ -1283,7 +1373,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testDisablePurgesQueueAndWritesDeterministicReadbackEvidence() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
 
@@ -1304,7 +1394,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
     func testQueueIsBoundedDropsWhenFullAndExpiresItemsAtRetentionLimit() throws {
         var now = Date(timeIntervalSince1970: 1_788_000_000)
         let gate = makeGate(now: { now }, maxQueueItems: 2, retentionDays: 1)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
@@ -1317,9 +1407,66 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(gate.localDiagnostics.expired, 2)
     }
 
+    func testRetentionKeepsCurrentOpenReleaseSession() throws {
+        var now = Date(timeIntervalSince1970: 1_788_000_000)
+        let gate = makeGate(now: { now }, retentionDays: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        XCTAssertEqual(gate.record(event: .init(
+            name: "release_session_started",
+            properties: ["session_status": "ok"]
+        )).result, .accepted)
+
+        now.addTimeInterval(86_401)
+
+        XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
+        XCTAssertNotNil(try gate.closeReleaseSession(status: "exited"))
+    }
+
+    func testReplacingFullQueuePreservesTerminalReleaseSession() throws {
+        let gate = makeGate(maxQueueItems: 2)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        XCTAssertEqual(gate.record(event: .init(
+            name: "release_session_started",
+            properties: ["session_status": "ok"]
+        )).result, .accepted)
+        XCTAssertNotNil(try gate.closeReleaseSession(status: "exited"))
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        XCTAssertEqual(gate.record(
+            event: .init(name: "release_session_started", properties: ["session_status": "ok"]),
+            replacingOldestWhenFull: true
+        ).result, .accepted)
+
+        let queued = try gate.queuedEnvelopes().map { String(decoding: $0, as: UTF8.self) }
+        XCTAssertEqual(queued.count, 2)
+        XCTAssertTrue(queued.contains { $0.contains("release_session_ended") })
+        XCTAssertTrue(queued.contains { $0.contains("release_session_started") })
+        XCTAssertFalse(queued.contains { $0.contains("review_opened") })
+    }
+
+    func testReplacingFullQueuePreservesOpenReleaseSession() throws {
+        let gate = makeGate(maxQueueItems: 2)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        XCTAssertEqual(gate.record(event: .init(
+            name: "release_session_started",
+            properties: ["session_status": "ok"]
+        )).result, .accepted)
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        XCTAssertEqual(try gate.queuedEnvelopes().count, 2)
+        gate.rotateAppSessionIdentity()
+        XCTAssertEqual(gate.record(
+            event: .init(name: "release_session_started", properties: ["session_status": "ok"]),
+            replacingOldestWhenFull: true
+        ).result, .accepted)
+
+        let queued = try gate.queuedEnvelopes().map { String(decoding: $0, as: UTF8.self) }
+        XCTAssertEqual(queued.count, 2)
+        XCTAssertEqual(queued.filter { $0.contains("release_session_started") }.count, 2)
+        XCTAssertFalse(queued.contains { $0.contains("review_opened") })
+    }
+
     func testSerializationFailureIsDroppedWithoutThrowingOrQueueing() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         let outcome = gate.record(event: .init(
             name: "workflow_completed",
@@ -1339,7 +1486,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             retentionDays: 1,
             removeItem: { _ in throw CocoaError(.fileWriteNoPermission) }
         )
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         now.addTimeInterval(86_401)
 
@@ -1370,7 +1517,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             "33333333-3333-4333-8333-333333333333",
             "44444444-4444-4444-8444-444444444444",
         ]))
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         let outcome = gate.record(event: validEvent())
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(outcome.debugEnvelope)) as? [String: Any])
@@ -1398,8 +1545,9 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         for consent in [
-            ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 2, grantedAt: now),
-            ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 1, grantedAt: now.addingTimeInterval(1)),
+            ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 1, grantedAt: now),
+            ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 3, grantedAt: now),
+            ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 2, grantedAt: now.addingTimeInterval(1)),
         ] {
             defaults.set(try encoder.encode(consent), forKey: "insightkit.external-telemetry.consent.v1")
             let gate = makeGate(now: { now })
@@ -1410,7 +1558,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRecordCryptographicallyInvalidatesMalformedDisabledConsent() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
         let encoder = JSONEncoder()
@@ -1432,7 +1580,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testPurgeFailureMakesQueuedItemsUnreadableAndWritesPrivacySafeEvidence() throws {
         let gate = makeGate(removeItem: { _ in throw CocoaError(.fileWriteNoPermission) })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
 
         let evidence = gate.disableAndPurge()
@@ -1471,7 +1619,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             },
             deleteQueueKey: { throw CocoaError(.fileWriteNoPermission) }
         )
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
         let originalKey = try XCTUnwrap(queueKey.get())
@@ -1508,7 +1656,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             if url.lastPathComponent.contains("disable-evidence") { throw CocoaError(.fileWriteNoPermission) }
             try data.write(to: url, options: .atomic)
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
 
         let evidence = gate.disableAndPurge()
@@ -1519,7 +1667,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testTamperedPersistedQueueCannotBypassAllowlistReadback() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
         let queueURL = root.appendingPathComponent("external-telemetry-queue-v1.json")
@@ -1540,7 +1688,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
     func testPersistedQueueRejectsSubstitutedIdentifiersAndFutureTimestamp() throws {
         let now = Date(timeIntervalSince1970: 1_788_000_000)
         let gate = makeGate(now: { now })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
 
@@ -1561,7 +1709,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testDisableIgnoresInvalidConsentVersion() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
 
         XCTAssertNoThrow(try gate.setConsent(enabled: false, consentVersion: 0))
@@ -1581,7 +1729,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             try data.write(to: url, options: .atomic)
         })
         let secondGate = makeGate()
-        try firstGate.setConsent(enabled: true, consentVersion: 1)
+        try firstGate.setConsent(enabled: true, consentVersion: 2)
         let startedAt = Date()
         XCTAssertEqual(firstGate.record(event: validEvent()).result, .accepted)
         XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.05)
@@ -1604,7 +1752,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             "11111111-1111-4111-8111-111111111111",
             "22222222-2222-4222-8222-222222222222",
         ]))
-        try first.setConsent(enabled: true, consentVersion: 1)
+        try first.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(first.record(event: validEvent()).result, .accepted)
 
         let second = makeGate(uuid: uuidSequence([
@@ -1624,7 +1772,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testQueueIsBoundToCurrentEnvironmentAndConsentContract() throws {
         let development = makeGate(environment: .development)
-        try development.setConsent(enabled: true, consentVersion: 1)
+        try development.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(development.record(event: validEvent()).result, .accepted)
 
         let release = makeGate(environment: .release)
@@ -1636,7 +1784,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         defaults.set(
-            try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 2, grantedAt: Date())),
+            try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 3, grantedAt: Date())),
             forKey: "insightkit.external-telemetry.consent.v1"
         )
         XCTAssertEqual(try release.queuedEnvelopes(), [])
@@ -1646,7 +1794,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testDiagnosticsSnapshotsRemainDeterministicDuringConcurrentRecording() throws {
         let gate = makeGate(maxQueueItems: 10)
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         DispatchQueue.concurrentPerform(iterations: 100) { _ in
             _ = gate.record(event: .init(name: "unknown", properties: [:]))
@@ -1675,7 +1823,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             }
             try data.write(to: url, options: .atomic)
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         wait(for: [writeStarted], timeout: 2)
@@ -1694,7 +1842,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             guardPassed.fulfill()
             permitAdmission.wait()
         })
-        try recordingGate.setConsent(enabled: true, consentVersion: 1)
+        try recordingGate.setConsent(enabled: true, consentVersion: 2)
         let outcome = LockedValue<ExternalTelemetryPrivacyGate.RecordResult?>(nil)
         let recordFinished = expectation(description: "record finished")
         DispatchQueue.global().async {
@@ -1706,7 +1854,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let disablingGate = makeGate(now: { fixedNow })
         _ = disablingGate.disableAndPurge()
         let reenablingGate = makeGate(now: { fixedNow })
-        try reenablingGate.setConsent(enabled: true, consentVersion: 1)
+        try reenablingGate.setConsent(enabled: true, consentVersion: 2)
         permitAdmission.signal()
         wait(for: [recordFinished], timeout: 2)
 
@@ -1716,7 +1864,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRecordObservingInvalidConsentCryptographicallyPurgesWithoutReadbackCall() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
         let acceptedConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
@@ -1738,7 +1886,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReadbackRechecksGenerationAfterDisableBeforeReturningBatch() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -1777,7 +1925,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReadbackGuardCannotReturnStaleBatchAcrossDisableEnableABA() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -1812,7 +1960,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let enablingGate = makeGate()
         let enableFinished = expectation(description: "new consent enable finished")
         DispatchQueue.global().async {
-            try? enablingGate.setConsent(enabled: true, consentVersion: 1)
+            try? enablingGate.setConsent(enabled: true, consentVersion: 2)
             enableFinished.fulfill()
         }
         permitRead.signal()
@@ -1840,7 +1988,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let enableFinished = expectation(description: "enable finished")
         let enableError = LockedValue<Bool>(false)
         DispatchQueue.global().async {
-            do { try enablingGate.setConsent(enabled: true, consentVersion: 1) }
+            do { try enablingGate.setConsent(enabled: true, consentVersion: 2) }
             catch { enableError.set(true) }
             enableFinished.fulfill()
         }
@@ -1872,7 +2020,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let oldEnableFinished = expectation(description: "old enable finished")
         let oldEnableWasSuperseded = LockedValue(false)
         DispatchQueue.global().async {
-            do { try oldEnable.setConsent(enabled: true, consentVersion: 1) }
+            do { try oldEnable.setConsent(enabled: true, consentVersion: 2) }
             catch ExternalTelemetryPrivacyGate.ConsentError.transitionSuperseded {
                 oldEnableWasSuperseded.set(true)
             } catch {}
@@ -1882,7 +2030,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
         let transitionGate = makeGate()
         _ = transitionGate.disableAndPurge()
-        try transitionGate.setConsent(enabled: true, consentVersion: 1)
+        try transitionGate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertTrue(transitionGate.consent.isEnabled)
 
         resumeOldEnable.signal()
@@ -1899,7 +2047,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             removeItem: { _ in throw CocoaError(.fileWriteNoPermission) },
             deleteQueueKey: { deleteKeyCalls.withValue { $0 += 1 } }
         )
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
 
@@ -1961,7 +2109,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
         let firstGate = try XCTUnwrap(first.get())
         let secondGate = try XCTUnwrap(second.get())
-        try firstGate.setConsent(enabled: true, consentVersion: 1)
+        try firstGate.setConsent(enabled: true, consentVersion: 2)
         let firstOutcome = firstGate.record(event: validEvent())
         let secondOutcome = secondGate.record(event: validEvent())
         XCTAssertEqual(firstOutcome.result, .accepted)
@@ -2012,7 +2160,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         wait(for: [invalidGuardPassed], timeout: 2)
 
         let enablingGate = makeGate()
-        try enablingGate.setConsent(enabled: true, consentVersion: 1)
+        try enablingGate.setConsent(enabled: true, consentVersion: 2)
         resumeInvalidationAdmission.signal()
         wait(for: [readFinished], timeout: 2)
 
@@ -2033,7 +2181,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             }
             try data.write(to: url, options: .atomic)
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let acceptedConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         wait(for: [writeStarted], timeout: 2)
@@ -2041,7 +2189,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         defaults.set(
-            try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 2, grantedAt: Date())),
+            try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 3, grantedAt: Date())),
             forKey: "insightkit.external-telemetry.consent.v1"
         )
         let barrierFinished = expectation(description: "invalid consent barrier finished")
@@ -2070,7 +2218,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
                 self.defaults.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
             }
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let acceptedConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
@@ -2087,7 +2235,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReadbackFinalConsentObservationInvalidatesAndPurgesBeforeStaleConsentRestore() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let acceptedConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
@@ -2146,7 +2294,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
                 }
             }
         )
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let acceptedConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         wait(for: [persistenceStarted], timeout: 2)
@@ -2167,7 +2315,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testBlockingUUIDGenerationOnOneInstanceDoesNotDelayAnotherInstancesRecord() throws {
         let activeGate = makeGate()
-        try activeGate.setConsent(enabled: true, consentVersion: 1)
+        try activeGate.setConsent(enabled: true, consentVersion: 2)
         defaults.removeObject(forKey: "insightkit.external-telemetry.installation-id.v1")
         let uuidStarted = expectation(description: "UUID generation started")
         let releaseUUID = DispatchSemaphore(value: 0)
@@ -2221,7 +2369,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             }
             try data.write(to: url, options: .atomic)
         })
-        try blockingGate.setConsent(enabled: true, consentVersion: 1)
+        try blockingGate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(blockingGate.record(event: validEvent()).result, .accepted)
         wait(for: [persistenceStarted], timeout: 2)
 
@@ -2242,9 +2390,45 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(try blockingGate.queuedEnvelopes().count, 2)
     }
 
+    func testPendingPersistenceCapacityIsIsolatedByDurableQueue() throws {
+        let productRoot = root.appendingPathComponent("ProductAnalytics", isDirectory: true)
+        let sentryRoot = root.appendingPathComponent("Sentry", isDirectory: true)
+        let productQueueURL = productRoot.appendingPathComponent("external-telemetry-queue-v1.json")
+        let persistenceStarted = expectation(description: "product persistence started")
+        let releasePersistence = DispatchSemaphore(value: 0)
+        defer { releasePersistence.signal() }
+        let productGate = makeGate(storageDirectory: productRoot, writeData: { data, url in
+            if url == productQueueURL {
+                persistenceStarted.fulfill()
+                releasePersistence.wait()
+            }
+            try data.write(to: url, options: .atomic)
+        })
+        try productGate.setConsent(enabled: true, consentVersion: 2)
+        XCTAssertEqual(productGate.record(event: validEvent()).result, .accepted)
+        wait(for: [persistenceStarted], timeout: 2)
+
+        let sentryGate = makeGate(maxQueueItems: 1, storageDirectory: sentryRoot)
+        XCTAssertEqual(sentryGate.record(event: .init(
+            name: "workflow_failed",
+            properties: [
+                "workflow": "live", "phase": "running", "engine_class": "local",
+                "provider_class": "none", "error_category": "runtime",
+                "recovery_result": "not-attempted",
+            ]
+        )).result, .accepted)
+
+        releasePersistence.signal()
+        let deadline = Date().addingTimeInterval(2)
+        while (try? sentryGate.queuedEnvelopes().count) != 1, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(try sentryGate.queuedEnvelopes().count, 1)
+    }
+
     func testRepeatedInvalidConsentCoalescesWhileRevocationPurgeIsBlocked() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -2325,7 +2509,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testPersistedRevocationTokenIsTakenOverOnceAfterRestart() throws {
         let seedGate = makeGate()
-        try seedGate.setConsent(enabled: true, consentVersion: 1)
+        try seedGate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seedGate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seedGate.queuedEnvelopes().count, 1)
         XCTAssertNotNil(queueKey.get())
@@ -2375,7 +2559,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testExplicitDisableRegistersOneRevocationTaskBeforeTokenIsObservable() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -2436,7 +2620,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testRevocationWaiterExecutesOwnerStorageContext() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -2499,7 +2683,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let ownerKey = LockedValue<Data?>(nil)
         let waiterKey = LockedValue<Data?>(nil)
         let seed = makeGate(storageDirectory: ownerRoot, queueKeyStore: ownerKey)
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
 
@@ -2550,7 +2734,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testPersistenceWorkerInvalidConsentObservationPurgesBeforeStaleConsentRestore() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
         let staleConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
@@ -2606,14 +2790,14 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             XCTAssertEqual(ExternalTelemetryPrivacyGate.revocationTaskCountForTesting, 1)
         }
 
-        try makeGate().setConsent(enabled: true, consentVersion: 1)
+        try makeGate().setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(ExternalTelemetryPrivacyGate.revocationTaskCountForTesting, 0)
     }
 
     func testExplicitDisableUUIDGenerationDoesNotHoldGlobalStateLock() throws {
         defaults.set("11111111-1111-4111-8111-111111111111", forKey: "insightkit.external-telemetry.installation-id.v1")
         let active = makeGate()
-        try active.setConsent(enabled: true, consentVersion: 1)
+        try active.setConsent(enabled: true, consentVersion: 2)
         let uuidStarted = expectation(description: "disable UUID generation started outside lock")
         let releaseUUID = DispatchSemaphore(value: 0)
         let calls = LockedValue(0)
@@ -2700,7 +2884,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
     func testOlderPurgeCannotClearNewerFailedRevocationMarker() throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let staleAccepted = try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 1, grantedAt: Date()))
+        let staleAccepted = try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 2, grantedAt: Date()))
         let malformed = try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 99, grantedAt: Date()))
         defaults.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
         let oldCleanupChecked = expectation(description: "old cleanup reached conditional clear")
@@ -2747,7 +2931,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
     func testInstallationFallbackUUIDDoesNotHoldGlobalStateLock() throws {
         defaults.set("11111111-1111-4111-8111-111111111111", forKey: "insightkit.external-telemetry.installation-id.v1")
         let active = makeGate()
-        try active.setConsent(enabled: true, consentVersion: 1)
+        try active.setConsent(enabled: true, consentVersion: 2)
         let started = expectation(description: "fallback UUID outside lock")
         let release = DispatchSemaphore(value: 0)
         let shouldBlock = LockedValue(true)
@@ -2770,7 +2954,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testValueAllowlistRejectsUnbucketedDurationOutOfRangeQualityAndInvalidAppMetadata() throws {
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         XCTAssertEqual(gate.record(event: .init(name: "workflow_completed", properties: ["duration_bucket_ms": 5_001])).result, .rejected)
         XCTAssertEqual(gate.record(event: .init(name: "workflow_completed", properties: ["quality_score": -0.01])).result, .rejected)
@@ -2778,21 +2962,28 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(makeGate(appVersion: "private/path", appBuild: "123").record(event: validEvent()).result, .rejected)
 
         let invalidMetadata = makeGate(appVersion: "1.2.3-secret", appBuild: "sk-secret")
-        try invalidMetadata.setConsent(enabled: true, consentVersion: 1)
+        try invalidMetadata.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(invalidMetadata.record(event: validEvent()).result, .rejected)
         XCTAssertEqual(try invalidMetadata.queuedEnvelopes(), [])
     }
 
     func testAppMetadataAcceptsCheckedInTwoComponentBundleVersion() throws {
         let gate = makeGate(appVersion: "1.0", appBuild: "1")
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+    }
+
+    func testAppMetadataAcceptsPackagedTimestampBuild() throws {
+        let gate = makeGate(appVersion: "1.0", appBuild: "20260901092924")
+        try gate.setConsent(enabled: true, consentVersion: 2)
 
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
     }
 
     func testRecordAdmissionInvalidConsentObservationCannotBeSuppressedByStaleRestore() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
         let staleConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
@@ -2820,7 +3011,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testPersistenceWorkerInvalidConsentObservationCannotBeSuppressedByStaleRestore() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
         let staleConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
@@ -2844,7 +3035,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
     func testReadbackFinalInvalidConsentObservationCannotBeSuppressedByStaleRestore() throws {
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
         let staleConsent = try XCTUnwrap(defaults.data(forKey: "insightkit.external-telemetry.consent.v1"))
@@ -2879,7 +3070,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             completionReached.fulfill()
             releaseCompletion.wait()
         })
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         let finished = expectation(description: "disable returned")
         let didReturn = LockedValue(false)
         DispatchQueue.global().async {
@@ -2930,7 +3121,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         wait(for: [joinerPaused], timeout: 2)
 
         let newlyEnabled = makeGate()
-        try newlyEnabled.setConsent(enabled: true, consentVersion: 1)
+        try newlyEnabled.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(newlyEnabled.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try newlyEnabled.queuedEnvelopes().count, 1)
 
@@ -2953,7 +3144,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         })
         let enableFinished = expectation(description: "enable finished")
         DispatchQueue.global().async {
-            try? enabling.setConsent(enabled: true, consentVersion: 1)
+            try? enabling.setConsent(enabled: true, consentVersion: 2)
             enableFinished.fulfill()
         }
         wait(for: [consentPersisted], timeout: 2)
@@ -2990,7 +3181,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
             isEnabled: true, version: 99, grantedAt: Date()
         ))
         let gate = makeGate()
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
 
@@ -2998,7 +3189,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(try gate.queuedEnvelopes(), [])
         XCTAssertNil(queueKey.get())
 
-        try gate.setConsent(enabled: true, consentVersion: 1)
+        try gate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try gate.queuedEnvelopes().count, 1)
         XCTAssertNotNil(queueKey.get())
@@ -3007,7 +3198,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(try gate.queuedEnvelopes(), [])
         XCTAssertNil(queueKey.get())
         defaults.set(try encoder.encode(ExternalTelemetryPrivacyGate.Consent(
-            isEnabled: true, version: 1, grantedAt: Date()
+            isEnabled: true, version: 2, grantedAt: Date()
         )), forKey: "insightkit.external-telemetry.consent.v1")
         XCTAssertEqual(try gate.queuedEnvelopes(), [])
     }
@@ -3016,7 +3207,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let seed = makeGate()
-        try seed.setConsent(enabled: true, consentVersion: 1)
+        try seed.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(seed.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try seed.queuedEnvelopes().count, 1)
         XCTAssertNotNil(queueKey.get())
@@ -3104,7 +3295,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         wait(for: [invalidObserved], timeout: 2)
 
         let enabled = makeGate()
-        try enabled.setConsent(enabled: true, consentVersion: 1)
+        try enabled.setConsent(enabled: true, consentVersion: 2)
         XCTAssertEqual(enabled.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(try enabled.queuedEnvelopes().count, 1)
         let enabledKey = queueKey.get()
@@ -3165,7 +3356,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         wait(for: [invalidationStarted], timeout: 2)
 
         let enablingGate = makeGate()
-        try enablingGate.setConsent(enabled: true, consentVersion: 1)
+        try enablingGate.setConsent(enabled: true, consentVersion: 2)
         XCTAssertTrue(enablingGate.consent.isEnabled)
         resumeInvalidation.signal()
         wait(for: [invalidationFinished], timeout: 2)

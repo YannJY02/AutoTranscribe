@@ -19,6 +19,7 @@ final class WorkflowCoordinator: ObservableObject {
     private var capabilities: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
     private var didShutdown = false
+    private var telemetryLiveStartedAt: TimeInterval?
     /// Dedicated GCD queue for blocking RPC I/O.
     private let rpcQueue = DispatchQueue(label: "InsightKit.WorkflowCoordinator.RPC", qos: .userInitiated)
 
@@ -412,6 +413,24 @@ final class WorkflowCoordinator: ObservableObject {
         liveViewModel.$captureState
             .sink { [weak self] state in
                 self?.appState.liveState = state
+                guard let self else { return }
+                switch state {
+                case .capturing where telemetryLiveStartedAt == nil:
+                    telemetryLiveStartedAt = ProcessInfo.processInfo.systemUptime
+                case .idle:
+                    if let started = telemetryLiveStartedAt {
+                        SentryDiagnosticsRuntime.shared.capturePerformance(
+                            workflow: .live,
+                            phase: .running,
+                            milliseconds: max(0, Int((ProcessInfo.processInfo.systemUptime - started) * 1_000))
+                        )
+                        telemetryLiveStartedAt = nil
+                    }
+                case .error:
+                    telemetryLiveStartedAt = nil
+                default:
+                    break
+                }
             }
             .store(in: &cancellables)
 

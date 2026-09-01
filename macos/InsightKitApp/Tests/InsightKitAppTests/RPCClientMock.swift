@@ -34,6 +34,8 @@ final class RPCClientMock: InsightRPCClientProtocol {
     var transcriptionImportResults: [TranscriptionImportResult] = []
     var transcriptionCancelError: Error?
     var finalizationAbortError: Error?
+    var sessionStopForFinalizationError: Error?
+    var sessionStopForFinalizationFailuresRemaining: Int?
     var finalizationAbortCalls: [(meetingID: String, leaseToken: String)] = []
     var finalizationAbortObserver: (() -> Void)?
     var recordsSaveError: Error?
@@ -115,7 +117,15 @@ final class RPCClientMock: InsightRPCClientProtocol {
 
     func sessionStart(meetingID: String, title: String, source: String) throws {}
     func sessionStop(meetingID: String) throws {}
-    func sessionStopForFinalization(meetingID: String, leaseToken: String) throws {}
+    func sessionStopForFinalization(meetingID: String, leaseToken: String) throws {
+        if let sessionStopForFinalizationError {
+            if let remaining = sessionStopForFinalizationFailuresRemaining {
+                guard remaining > 0 else { return }
+                sessionStopForFinalizationFailuresRemaining = remaining - 1
+            }
+            throw sessionStopForFinalizationError
+        }
+    }
     func sessionFinalizationAbort(meetingID: String, leaseToken: String) throws {
         finalizationAbortCalls.append((meetingID, leaseToken))
         finalizationAbortObserver?()

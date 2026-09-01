@@ -1651,6 +1651,166 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(rpcClient.recordsSaveCalls.first?.meetingID, "live-stop-drain-test")
     }
 
+    func testStopLiveSessionKeepsFinalizationFailureVisible() {
+        let rpcClient = RPCClientMock()
+        rpcClient.sessionStopForFinalizationError = NSError(
+            domain: "LiveSessionViewModelTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "finalization failed"]
+        )
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-finalization-failure-test"
+        }
+        viewModel.sessionHandle = SessionHandle(
+            activeMeetingID: "live-finalization-failure-test",
+            lastMeetingID: nil
+        )
+        let errorPublished = expectation(description: "finalization error remains terminal")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$captureState
+            .filter {
+                if case .error(let message) = $0 { return message.contains("finalization failed") }
+                return false
+            }
+            .prefix(1)
+            .sink { _ in errorPublished.fulfill() }
+            .store(in: &cancellables)
+
+        viewModel.stopLiveSession()
+
+        wait(for: [errorPublished], timeout: 2)
+        if case .error = viewModel.captureState {} else {
+            XCTFail("failed finalization must not be reported as idle success")
+        }
+    }
+
+    func testStopLiveSessionClearsTransientFinalizationFailureAfterSaveRetrySucceeds() {
+        let rpcClient = RPCClientMock()
+        rpcClient.sessionStopForFinalizationError = NSError(
+            domain: "LiveSessionViewModelTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "transient finalization failure"]
+        )
+        rpcClient.sessionStopForFinalizationFailuresRemaining = 1
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService()
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-finalization-retry-test"
+        }
+        viewModel.sessionHandle = SessionHandle(
+            activeMeetingID: "live-finalization-retry-test",
+            lastMeetingID: nil
+        )
+        viewModel.transcriptSegments = [
+            TranscriptSegment(
+                startMs: 0,
+                endMs: 1_000,
+                speaker: "SPEAKER_00",
+                source: "mic",
+                text: "retry-safe transcript"
+            )
+        ]
+        let saved = expectation(description: "save retry succeeds")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$lastExportPath
+            .filter { !$0.isEmpty }
+            .prefix(1)
+            .sink { _ in saved.fulfill() }
+            .store(in: &cancellables)
+
+        viewModel.stopLiveSession()
+
+        wait(for: [saved], timeout: 5)
+        XCTAssertEqual(viewModel.captureState, .idle)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    func testStopLiveSessionKeepsDrainFailureVisibleAfterPartialSave() {
+        let pipeline = LiveTranscriptProcessingMock()
+        pipeline.processError = NSError(
+            domain: "LiveSessionViewModelTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "queued chunk drain failed"]
+        )
+        let rpcClient = RPCClientMock()
+        let viewModel = LiveSessionViewModel(
+            rpcClient: rpcClient,
+            sidecarManager: SidecarManager(),
+            micCapture: MicCaptureService(),
+            systemAudioCapture: SystemAudioCaptureService(),
+            mixBus: AudioMixBus(),
+            chunkAssembler: ChunkAssembler(),
+            asrService: LiveASRService(),
+            transcriptPipeline: pipeline
+        )
+        viewModel.asrWarmStatus = ASRWarmStatus(
+            ready: true,
+            state: .ready,
+            inProgress: false,
+            attempt: 1,
+            lastWarmMs: 1_000,
+            lastError: ""
+        )
+        viewModel.stateQueue.sync {
+            viewModel._isRunningLock.lock()
+            viewModel._isRunning = true
+            viewModel._isRunningLock.unlock()
+            viewModel._sessionState.activeMeetingID = "live-drain-failure-test"
+            viewModel.activeMode = .microphone
+        }
+        viewModel.sessionHandle = SessionHandle(
+            activeMeetingID: "live-drain-failure-test",
+            lastMeetingID: nil
+        )
+        viewModel.transcriptSegments = [
+            TranscriptSegment(
+                startMs: 0,
+                endMs: 1_000,
+                speaker: "SPEAKER_00",
+                source: "mic",
+                text: "partial transcript"
+            )
+        ]
+        viewModel.queuedChunks = [makeLiveSessionTestChunk(index: 1)]
+        let saved = expectation(description: "partial record is saved")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$lastExportPath
+            .filter { !$0.isEmpty }
+            .prefix(1)
+            .sink { _ in saved.fulfill() }
+            .store(in: &cancellables)
+
+        viewModel.stopLiveSession()
+
+        wait(for: [saved], timeout: 5)
+        XCTAssertEqual(viewModel.errorMessage, "queued chunk drain failed")
+        if case .error = viewModel.captureState {} else {
+            XCTFail("partial save must not hide the drain failure")
+        }
+    }
+
     func testSaveToRecordsReplacesLiveChunkTranscriptWithFinalMediaTranscript() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKitLiveMediaTranscript_\(UUID().uuidString)", isDirectory: true)
@@ -2217,6 +2377,7 @@ private final class LiveTranscriptProcessingMock: LiveTranscriptProcessing {
         analysisRuntimeState: nil,
         errorMessage: nil
     )
+    var processError: Error?
     private(set) var resetCalls = 0
     private(set) var processCalls: [(chunk: AudioChunk, context: LiveTranscriptPipelineContext)] = []
 
@@ -2226,6 +2387,7 @@ private final class LiveTranscriptProcessingMock: LiveTranscriptProcessing {
 
     func process(chunk: AudioChunk, context: LiveTranscriptPipelineContext) throws -> LiveTranscriptPipelineOutcome {
         processCalls.append((chunk: chunk, context: context))
+        if let processError { throw processError }
         return outcome
     }
 }

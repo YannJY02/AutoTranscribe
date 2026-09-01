@@ -476,27 +476,27 @@ final class LiveSessionViewModel: ObservableObject {
                             model: selectedModel
                         )
                     } catch {
-                        self.analyticsSubmit {
+                        self.analyticsSubmit(ProductAnalytics.failure {
                             $0.workflowFailed(
                                 "live",
                                 phase: "preparing",
                                 errorCode: "runtime-unavailable",
                                 recoveryAction: "retry"
                             )
-                        }
+                        })
                         self.publishError(error)
                         self.stopLiveSession(finalState: .error(error.localizedDescription))
                     }
                 }
             } catch {
-                self.analyticsSubmit {
+                self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "live",
                         phase: "preparing",
                         errorCode: "runtime-unavailable",
                         recoveryAction: "retry"
                     )
-                }
+                })
                 self.publishError(error)
                 self.stopLiveSession(finalState: .error(error.localizedDescription))
             }
@@ -553,6 +553,7 @@ final class LiveSessionViewModel: ObservableObject {
             let shouldFlushTail = self.asrWarmStatus.ready
             var drainedSegments: [TranscriptSegment] = []
             var finalizationLeaseToken: String?
+            var finalizationFailed = false
             do {
                 let pendingChunks = self.queuedChunks
                 self.queuedChunks.removeAll(keepingCapacity: false)
@@ -585,6 +586,15 @@ final class LiveSessionViewModel: ObservableObject {
                     )
                 }
             } catch {
+                finalizationFailed = true
+                self.analyticsSubmit(ProductAnalytics.failure { analytics in
+                    analytics.workflowFailed(
+                        "live",
+                        phase: "finalizing",
+                        errorCode: "unknown",
+                        recoveryAction: "retry"
+                    )
+                })
                 self.publishError(error)
             }
 
@@ -598,7 +608,9 @@ final class LiveSessionViewModel: ObservableObject {
             self.syncSessionHandleFromState()
             self.updateMain {
                 self.metrics.queueDepth = 0
-                self.captureState = finalState
+                if !finalizationFailed {
+                    self.captureState = finalState
+                }
                 self.sessionPhase = .postSession
             }
             // Save record folder after session ends
@@ -608,7 +620,9 @@ final class LiveSessionViewModel: ObservableObject {
                 self.saveToRecords(
                     meetingID: meetingID,
                     transcriptSegmentsOverride: transcriptOverride.isEmpty ? nil : transcriptOverride,
-                    finalizationLeaseToken: finalizationLeaseToken
+                    finalizationLeaseToken: finalizationLeaseToken,
+                    completionCaptureState: finalState,
+                    recoveringFinalizationFailure: finalizationFailed
                 )
             } else {
                 self.updateMain {
@@ -666,7 +680,7 @@ final class LiveSessionViewModel: ObservableObject {
                 let analysisLatencyMS = analysisStartedAt.map {
                     Int((DispatchTime.now().uptimeNanoseconds - $0) / 1_000_000)
                 }
-                ProductAnalytics.submit {
+                ProductAnalytics.submit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "live",
                         phase: "analysis",
@@ -674,7 +688,7 @@ final class LiveSessionViewModel: ObservableObject {
                         recoveryAction: "retry",
                         analysisLatencyMilliseconds: analysisLatencyMS
                     )
-                }
+                })
                 self.updateMain {
                     if self.captureState == .refreshing {
                         self.captureState = .idle
@@ -703,10 +717,17 @@ final class LiveSessionViewModel: ObservableObject {
                         let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                         let duration = self.recordingDuration
                         let hasBlockingError = self.errorMessage != nil
-                        ProductAnalytics.submit { analytics in
+                        ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                            MeetingAssetWorkflowSuccess.evaluate(
+                                recordPath: recordPath,
+                                duration: duration,
+                                exportCompleted: true,
+                                hasBlockingError: hasBlockingError
+                            )
+                        }) { analytics, completionEvaluation in
                             analytics.exportCompleted("live")
-                            analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                        }
+                            analytics.workflowCompleted("live", evaluation: completionEvaluation)
+                        })
                     }
                     return
                 }
@@ -722,15 +743,22 @@ final class LiveSessionViewModel: ObservableObject {
                     let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    ProductAnalytics.submit { analytics in
+                    ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                        MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                    }) { analytics, completionEvaluation in
                         analytics.exportCompleted("live")
-                        analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                    }
+                        analytics.workflowCompleted("live", evaluation: completionEvaluation)
+                    })
                 }
             } catch {
-                ProductAnalytics.submit { analytics in
+                ProductAnalytics.submit(ProductAnalytics.failure { analytics in
                     analytics.workflowFailed("live", phase: "exporting", errorCode: "unknown", recoveryAction: "retry")
-                }
+                })
                 self.updateMain {
                     self.finishExport()
                     self.publishError(error)

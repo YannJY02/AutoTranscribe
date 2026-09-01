@@ -226,6 +226,10 @@ struct ProductAnalyticsPath: Equatable {
     static let local = ProductAnalyticsPath(analysisMode: "local", providerClass: "local")
     static let unavailable = ProductAnalyticsPath(analysisMode: "local", providerClass: "none")
 
+    var externalTelemetryEngineClass: ExternalTelemetryEngineClass {
+        analysisMode == "cloud" || analysisMode == "byok-cloud" ? .remote : .local
+    }
+
     init(analysisMode: String, providerClass: String) {
         self.analysisMode = analysisMode
         self.providerClass = providerClass
@@ -336,13 +340,74 @@ final class ProductAnalytics {
         label: "com.yannjy.insightkit.product-analytics-submission",
         qos: .utility
     )
+    private static let submissionFailureStackKey = "com.yannjy.insightkit.product-analytics-failure-stack"
+
+    static var currentSubmissionFailureStack: [UInt64]? {
+        (Thread.current.threadDictionary[submissionFailureStackKey] as? [NSNumber])?
+            .map(\.uint64Value)
+    }
 
     /// Resolves the runtime singleton away from the caller so Keychain, queue
     /// readback, and filesystem setup can never delay a product interaction.
     static func submit(_ operation: @escaping (ProductAnalytics) -> Void) {
-        submissionQueue.async {
-            operation(shared)
+        submit(using: nil, operation)
+    }
+
+    static func submit(
+        using analytics: ProductAnalytics?,
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) {
+        submissionQueue.async { operation(analytics ?? shared) }
+    }
+
+    static func failure(
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) -> (ProductAnalytics) -> Void {
+        let failureStack = currentExternalTelemetryFailureStack()
+        return { analytics in
+            withFailureStack(failureStack) { operation(analytics) }
         }
+    }
+
+    static func completion(
+        evaluating evaluate: @escaping () -> MeetingAssetWorkflowSuccess,
+        captureFailureStack: () -> [UInt64] = { currentExternalTelemetryFailureStack() },
+        _ operation: @escaping (ProductAnalytics, MeetingAssetWorkflowSuccess) -> Void
+    ) -> (ProductAnalytics) -> Void {
+        let failureStack = captureFailureStack()
+        return { analytics in
+            let evaluation = evaluate()
+            if evaluation.isSuccessful {
+                operation(analytics, evaluation)
+            } else {
+                withFailureStack(failureStack) { operation(analytics, evaluation) }
+            }
+        }
+    }
+
+    static func submit(
+        failureStack: [UInt64],
+        using analytics: ProductAnalytics?,
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) {
+        submit(using: analytics) { analytics in
+            withFailureStack(failureStack) { operation(analytics) }
+        }
+    }
+
+    private static func withFailureStack(_ failureStack: [UInt64], _ operation: () -> Void) {
+        let values = failureStack.map { NSNumber(value: $0) }
+        let threadDictionary = Thread.current.threadDictionary
+        let previous = threadDictionary[submissionFailureStackKey]
+        threadDictionary[submissionFailureStackKey] = values
+        defer {
+            if let previous {
+                threadDictionary[submissionFailureStackKey] = previous
+            } else {
+                threadDictionary.removeObject(forKey: submissionFailureStackKey)
+            }
+        }
+        operation()
     }
 
     var isEnabled: Bool { gate.consent.isEnabled && isAvailable }
@@ -449,6 +514,7 @@ final class ProductAnalytics {
             gate: gate,
             transport: transport,
             ledger: ledger,
+            onWorkflowSignal: SentryDiagnosticsRuntime.shared.capture,
             requiresTransportForConsent: !isUITest
         )
     }()
@@ -471,11 +537,13 @@ final class ProductAnalytics {
     private var observedRecordSequences: [String: Int] = [:]
     private var nextAttemptSequenceByWorkflow: [String: Int] = [:]
     private let now: () -> Date
+    private let onWorkflowSignal: (ExternalTelemetryWorkflowSignal) -> Void
 
     init(
         gate: ExternalTelemetryPrivacyGate,
         transport: ProductAnalyticsTransport? = nil,
         ledger: ProductAnalyticsEvidenceLedger? = nil,
+        onWorkflowSignal: @escaping (ExternalTelemetryWorkflowSignal) -> Void = { _ in },
         now: @escaping () -> Date = Date.init,
         requiresTransportForConsent: Bool = false
     ) {
@@ -483,6 +551,7 @@ final class ProductAnalytics {
         self.transport = transport
         self.requiresTransportForConsent = requiresTransportForConsent
         self.ledger = ledger
+        self.onWorkflowSignal = onWorkflowSignal
         self.now = now
         self.acceptingEvents = gate.consent.isEnabled && (!requiresTransportForConsent || transport != nil)
         if gate.consent.isEnabled && !acceptingEvents {
@@ -570,7 +639,7 @@ final class ProductAnalytics {
     func setConsent(enabled: Bool) throws {
         if enabled {
             guard isAvailable else { throw ConfigurationError.transportUnavailable }
-            try gate.setConsent(enabled: true, consentVersion: 1)
+            try gate.setConsent(enabled: true, consentVersion: ExternalTelemetryPrivacyGate.acceptedConsentVersion)
             stateLock.lock()
             attempts.removeAll()
             pendingRecoveries.removeAll()
@@ -588,7 +657,6 @@ final class ProductAnalytics {
             uploadEpoch &+= 1
             uploadInFlight = false
             stateLock.unlock()
-            NotificationCenter.default.post(name: .externalTelemetryConsentWillRevoke, object: nil)
             transportOperationLock.lock()
             transport?.cancelAll()
             transportOperationLock.unlock()
@@ -612,11 +680,14 @@ final class ProductAnalytics {
     private func beginWorkflow(key: String, workflow: String, provisionalPath: ProductAnalyticsPath) {
         let startedAt = now()
         stateLock.lock()
+        guard acceptingEvents else { stateLock.unlock(); return }
         let epoch = uploadEpoch
         let attemptSequence = (nextAttemptSequenceByWorkflow[workflow] ?? 0) + 1
         nextAttemptSequenceByWorkflow[workflow] = attemptSequence
+        attempts[key] = Attempt(path: provisionalPath, startedAt: startedAt, sequence: attemptSequence)
+        let recoveryPhase = pendingRecoveries[key]?.phase
         stateLock.unlock()
-        guard emit(
+        _ = emit(
             "workflow_started",
             properties: properties(
                 workflow: workflow,
@@ -624,13 +695,13 @@ final class ProductAnalytics {
                 phase: "preparing",
                 attemptSequence: attemptSequence
             )
-        ) == .accepted else { return }
+        )
         stateLock.lock()
-        guard acceptingEvents, uploadEpoch == epoch else { stateLock.unlock(); return }
-        attempts[key] = Attempt(path: provisionalPath, startedAt: startedAt, sequence: attemptSequence)
-        stateLock.unlock()
-        stateLock.lock()
-        let recoveryPhase = pendingRecoveries[key]?.phase
+        guard acceptingEvents, uploadEpoch == epoch else {
+            attempts[key] = nil
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
         if let recoveryPhase {
             recoveryAttempted(key: key, workflow: workflow, phase: recoveryPhase)
@@ -667,9 +738,11 @@ final class ProductAnalytics {
     func observeRecord(_ context: ProductAnalyticsContext) {
         stateLock.lock()
         guard observedRecordSequences[context.key] == nil else { stateLock.unlock(); return }
+        guard acceptingEvents else { stateLock.unlock(); return }
         let epoch = uploadEpoch
         let attemptSequence = (nextAttemptSequenceByWorkflow[context.workflow] ?? 0) + 1
         nextAttemptSequenceByWorkflow[context.workflow] = attemptSequence
+        observedRecordSequences[context.key] = attemptSequence
         stateLock.unlock()
         let values = properties(
             workflow: context.workflow,
@@ -677,10 +750,13 @@ final class ProductAnalytics {
             phase: "reviewing",
             attemptSequence: attemptSequence
         )
-        guard emit("record_reopened", properties: values) == .accepted else { return }
+        _ = emit("record_reopened", properties: values)
         stateLock.lock()
-        guard acceptingEvents, uploadEpoch == epoch else { stateLock.unlock(); return }
-        observedRecordSequences[context.key] = attemptSequence
+        guard acceptingEvents, uploadEpoch == epoch else {
+            observedRecordSequences[context.key] = nil
+            stateLock.unlock()
+            return
+        }
         stateLock.unlock()
         _ = emit("smart_minutes_review_opened", properties: values)
     }
@@ -885,7 +961,14 @@ final class ProductAnalytics {
             var values = properties(workflow: workflow, path: explicitPath, phase: phase, outcome: "failed")
             values["error_code"] = errorCode
             values["recovery_action"] = recoveryAction
-            _ = emit("workflow_failed", properties: values)
+            _ = emitWorkflowFailure(
+                values,
+                workflow: workflow,
+                path: explicitPath,
+                phase: phase,
+                errorCode: errorCode,
+                recoveryResult: completingRecovery ? .failed : .notAttempted
+            )
             return
         }
         workflowFailed(
@@ -935,7 +1018,14 @@ final class ProductAnalytics {
         )
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
-        _ = emit("workflow_failed", properties: values)
+        _ = emitWorkflowFailure(
+            values,
+            workflow: context.workflow,
+            path: context.path,
+            phase: phase,
+            errorCode: errorCode,
+            recoveryResult: completingRecovery ? .failed : .notAttempted
+        )
     }
 
     @discardableResult
@@ -962,7 +1052,14 @@ final class ProductAnalytics {
         var values = terminalProperties(workflow: workflow, context: context, phase: phase, outcome: "failed")
         values["error_code"] = errorCode
         values["recovery_action"] = recoveryAction
-        guard emit("workflow_failed", properties: values) == .accepted else { return false }
+        guard emitWorkflowFailure(
+            values,
+            workflow: workflow,
+            path: context.path,
+            phase: phase,
+            errorCode: errorCode,
+            recoveryResult: pendingRecoveryPhase == nil ? .notAttempted : .failed
+        ) else { return false }
         stateLock.lock()
         attempts[key]?.terminalEmitted = true
         pendingRecoveries[key] = recoveryAction == "none"
@@ -970,6 +1067,59 @@ final class ProductAnalytics {
             : PendingRecovery(path: context.path, sequence: context.sequence, phase: phase)
         stateLock.unlock()
         return true
+    }
+
+    @discardableResult
+    private func emitWorkflowFailure(
+        _ values: [String: Any],
+        workflow: String,
+        path: ProductAnalyticsPath,
+        phase: String,
+        errorCode: String,
+        recoveryResult: ExternalTelemetryRecoveryResult
+    ) -> Bool {
+        if let context = Self.workflowFailureContext(
+            workflow: workflow,
+            path: path,
+            phase: phase,
+            errorCode: errorCode,
+            recoveryResult: recoveryResult
+        ) {
+            onWorkflowSignal(.failure(context))
+        }
+        return emit("workflow_failed", properties: values) == .accepted
+    }
+
+    private static func workflowFailureContext(
+        workflow: String,
+        path: ProductAnalyticsPath,
+        phase: String,
+        errorCode: String,
+        recoveryResult: ExternalTelemetryRecoveryResult
+    ) -> ExternalTelemetryWorkflowFailureContext? {
+        guard let workflow = ExternalTelemetryWorkflow(rawValue: workflow),
+              let phase = ExternalTelemetryPhase(rawValue: phase),
+              let provider = ExternalTelemetryProviderClass(rawValue: path.providerClass)
+        else { return nil }
+        let category: ExternalTelemetryErrorCategory
+        switch errorCode {
+        case "configuration": category = .configuration
+        case "permission-denied": category = .permission
+        case "runtime-unavailable", "provider-unavailable": category = .runtime
+        case "storage": category = .storage
+        case "unknown": category = .unknown
+        default: return nil
+        }
+        return ExternalTelemetryWorkflowFailureContext(
+            workflow: workflow,
+            phase: phase,
+            engineClass: path.externalTelemetryEngineClass,
+            providerClass: provider,
+            errorCategory: category,
+            recoveryResult: recoveryResult,
+            failureStack: Self.currentSubmissionFailureStack
+                ?? currentExternalTelemetryFailureStack()
+        )
     }
 
     func workflowCancelled(_ workflow: String, phase: String = "running") {
@@ -1059,7 +1209,7 @@ final class ProductAnalytics {
         if let explicitPath {
             var values = properties(workflow: workflow, path: explicitPath, phase: phase, outcome: succeeded ? "succeeded" : "failed")
             values["recovery_action"] = "retry"
-            _ = emit("recovery_completed", properties: values)
+            _ = emitRecoveryCompleted(values, workflow: workflow, path: explicitPath, phase: phase, succeeded: succeeded)
             return
         }
         recoveryCompleted(key: workflow, workflow: workflow, phase: phase, succeeded: succeeded)
@@ -1079,7 +1229,13 @@ final class ProductAnalytics {
             attemptSequence: attemptSequence
         )
         values["recovery_action"] = "retry"
-        _ = emit("recovery_completed", properties: values)
+        _ = emitRecoveryCompleted(
+            values,
+            workflow: context.workflow,
+            path: context.path,
+            phase: phase,
+            succeeded: succeeded
+        )
     }
 
     private func recoveryCompleted(key: String, workflow: String, phase: String, succeeded: Bool) {
@@ -1097,12 +1253,40 @@ final class ProductAnalytics {
             attemptSequence: recovery.sequence
         )
         values["recovery_action"] = "retry"
-        guard emit("recovery_completed", properties: values) == .accepted else { return }
+        guard emitRecoveryCompleted(
+            values,
+            workflow: workflow,
+            path: recovery.path,
+            phase: phase,
+            succeeded: succeeded
+        ) else { return }
         stateLock.lock()
         if pendingRecoveries[key]?.sequence == recovery.sequence {
             pendingRecoveries[key] = nil
         }
         stateLock.unlock()
+    }
+
+    @discardableResult
+    private func emitRecoveryCompleted(
+        _ values: [String: Any],
+        workflow: String,
+        path: ProductAnalyticsPath,
+        phase: String,
+        succeeded: Bool
+    ) -> Bool {
+        if let workflow = ExternalTelemetryWorkflow(rawValue: workflow),
+           let phase = ExternalTelemetryPhase(rawValue: phase),
+           let provider = ExternalTelemetryProviderClass(rawValue: path.providerClass) {
+            onWorkflowSignal(.recovery(.init(
+                workflow: workflow,
+                phase: phase,
+                engineClass: path.externalTelemetryEngineClass,
+                providerClass: provider,
+                result: succeeded ? .succeeded : .failed
+            )))
+        }
+        return emit("recovery_completed", properties: values) == .accepted
     }
 
     private func context(for key: String) -> (path: ProductAnalyticsPath, startedAt: Date, analysisLatencyMS: Int?, sequence: Int)? {
