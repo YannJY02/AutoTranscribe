@@ -77,7 +77,7 @@ extension LiveSessionViewModel {
                     || outcome.transcriptState == .mediaTimed
                 self.analyticsSubmit { analytics in
                     analytics.recordSaved("live")
-                    analytics.recoveryCompleted("live", phase: "finalizing", succeeded: true)
+                    analytics.recoveryCompleted("live", phase: "finalizing", succeeded: finalizationRecovered)
                 }
                 if !recordPath.isEmpty {
                     self.copyCaptureTimelineSidecar(

@@ -95,15 +95,18 @@ final class ExternalTelemetryPrivacyGate {
         let name: String
         let properties: [String: Any]
         let failureFrameOffsets: [UInt64]
+        let failureImageID: String?
 
         init(
             name: String,
             properties: [String: Any],
-            failureFrameOffsets: [UInt64] = []
+            failureFrameOffsets: [UInt64] = [],
+            failureImageID: String? = nil
         ) {
             self.name = name
             self.properties = properties
             self.failureFrameOffsets = failureFrameOffsets
+            self.failureImageID = failureImageID
         }
     }
 
@@ -171,6 +174,7 @@ final class ExternalTelemetryPrivacyGate {
         let appSessionID: String
         let eventSequence: Int
         let failureFrameOffsets: [UInt64]?
+        let failureImageID: String?
         let properties: [String: PropertyValue]
 
         enum CodingKeys: String, CodingKey {
@@ -186,6 +190,7 @@ final class ExternalTelemetryPrivacyGate {
             case appSessionID = "app_session_id"
             case eventSequence = "event_sequence"
             case failureFrameOffsets = "failure_frame_offsets"
+            case failureImageID = "failure_image_id"
             case properties
         }
 
@@ -202,6 +207,7 @@ final class ExternalTelemetryPrivacyGate {
             appSessionID: String,
             eventSequence: Int,
             failureFrameOffsets: [UInt64]? = nil,
+            failureImageID: String? = nil,
             properties: [String: PropertyValue]
         ) {
             self.schemaVersion = schemaVersion
@@ -216,6 +222,7 @@ final class ExternalTelemetryPrivacyGate {
             self.appSessionID = appSessionID
             self.eventSequence = eventSequence
             self.failureFrameOffsets = failureFrameOffsets
+            self.failureImageID = failureImageID
             self.properties = properties
         }
 
@@ -233,6 +240,7 @@ final class ExternalTelemetryPrivacyGate {
             appSessionID = try container.decode(String.self, forKey: .appSessionID)
             eventSequence = try container.decodeIfPresent(Int.self, forKey: .eventSequence) ?? 0
             failureFrameOffsets = try container.decodeIfPresent([UInt64].self, forKey: .failureFrameOffsets)
+            failureImageID = try container.decodeIfPresent(String.self, forKey: .failureImageID)
             properties = try container.decode([String: PropertyValue].self, forKey: .properties)
         }
 
@@ -250,6 +258,7 @@ final class ExternalTelemetryPrivacyGate {
                 appSessionID: appSessionID,
                 eventSequence: eventSequence,
                 failureFrameOffsets: failureFrameOffsets,
+                failureImageID: failureImageID,
                 properties: properties.merging(updates) { _, replacement in replacement }
             )
         }
@@ -847,7 +856,9 @@ final class ExternalTelemetryPrivacyGate {
             return RecordOutcome(result: .rejected, debugEnvelope: nil)
         }
         guard event.failureFrameOffsets.count <= 64,
-              event.failureFrameOffsets.allSatisfy({ $0 <= UInt64(UInt32.max) })
+              event.failureFrameOffsets.allSatisfy({ $0 <= UInt64(UInt32.max) }),
+              event.failureFrameOffsets.isEmpty == (event.failureImageID == nil),
+              event.failureImageID.map({ UUID(uuidString: $0) != nil }) ?? true
         else {
             mutateDiagnostics { $0.rejected += 1 }
             return RecordOutcome(result: .rejected, debugEnvelope: nil)
@@ -876,6 +887,7 @@ final class ExternalTelemetryPrivacyGate {
             appSessionID: eventContext.appSessionID,
             eventSequence: eventContext.eventSequence,
             failureFrameOffsets: event.failureFrameOffsets.isEmpty ? nil : event.failureFrameOffsets,
+            failureImageID: event.failureImageID,
             properties: properties
         )
 

@@ -39,6 +39,21 @@ private func mainExecutableFrames(fromOffsets offsets: [UInt64]) -> [UInt64] {
     return mainExecutableFrames(candidates)
 }
 
+private func mainExecutableDebugID() -> String? {
+    guard let header = _dyld_get_image_header(0), header.pointee.magic == MH_MAGIC_64 else { return nil }
+    let commandStart = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+    var offset = 0
+    for _ in 0 ..< header.pointee.ncmds {
+        let command = commandStart.advanced(by: offset).assumingMemoryBound(to: load_command.self).pointee
+        if command.cmd == LC_UUID {
+            let uuidCommand = commandStart.advanced(by: offset).assumingMemoryBound(to: uuid_command.self).pointee
+            return UUID(uuid: uuidCommand.uuid).uuidString
+        }
+        offset += Int(command.cmdsize)
+    }
+    return nil
+}
+
 /// Vendor-neutral seam implemented by the local proof transport and, when owner
 /// configuration exists, a Sentry SDK transport. It receives only gate-approved JSON.
 protocol SentryDiagnosticsTransport {
@@ -227,6 +242,8 @@ final class SentryDiagnosticsAdapter {
 
     @discardableResult
     func capture(_ failure: Failure) -> ExternalTelemetryPrivacyGate.RecordResult {
+        let imageID = mainExecutableDebugID()
+        let offsets = imageID == nil ? [] : mainExecutableFrameOffsets(failure.failureStack)
         let outcome = gate.record(event: .init(name: "workflow_failed", properties: [
             "workflow": failure.workflow.rawValue,
             "phase": failure.phase.rawValue,
@@ -234,7 +251,7 @@ final class SentryDiagnosticsAdapter {
             "provider_class": failure.providerClass.rawValue,
             "error_category": failure.errorCategory.rawValue,
             "recovery_result": failure.recoveryResult.rawValue,
-        ], failureFrameOffsets: mainExecutableFrameOffsets(failure.failureStack)))
+        ], failureFrameOffsets: offsets, failureImageID: offsets.isEmpty ? nil : imageID))
         do {
             try gate.incrementReleaseSessionErrorCount()
         } catch {
@@ -486,7 +503,9 @@ final class SentryDiagnosticsAdapter {
 
     private func persistedFailureStack(for envelope: Data) -> [UInt64] {
         guard let object = try? JSONSerialization.jsonObject(with: envelope) as? [String: Any],
-              let values = object["failure_frame_offsets"] as? [NSNumber]
+              let values = object["failure_frame_offsets"] as? [NSNumber],
+              let persistedImageID = object["failure_image_id"] as? String,
+              persistedImageID.caseInsensitiveCompare(mainExecutableDebugID() ?? "") == .orderedSame
         else { return [] }
         return mainExecutableFrames(fromOffsets: values.map(\.uint64Value))
     }
@@ -747,18 +766,17 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
     }
 
     private static func mainExecutableDebugImages() -> [[String: Any]] {
-        guard let header = _dyld_get_image_header(0), header.pointee.magic == MH_MAGIC_64 else { return [] }
+        guard let header = _dyld_get_image_header(0),
+              header.pointee.magic == MH_MAGIC_64,
+              let debugID = mainExecutableDebugID()
+        else { return [] }
         let commandStart = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
         var offset = 0
-        var debugID: String?
         var minimumVMAddress = UInt64.max
         var maximumVMAddress: UInt64 = 0
         for _ in 0 ..< header.pointee.ncmds {
             let command = commandStart.advanced(by: offset).assumingMemoryBound(to: load_command.self).pointee
-            if command.cmd == LC_UUID {
-                let uuidCommand = commandStart.advanced(by: offset).assumingMemoryBound(to: uuid_command.self).pointee
-                debugID = UUID(uuid: uuidCommand.uuid).uuidString
-            } else if command.cmd == LC_SEGMENT_64 {
+            if command.cmd == LC_SEGMENT_64 {
                 let segment = commandStart.advanced(by: offset).assumingMemoryBound(to: segment_command_64.self).pointee
                 if segment.filesize > 0 {
                     minimumVMAddress = min(minimumVMAddress, segment.vmaddr)
@@ -767,7 +785,7 @@ final class SentryHTTPTransport: SentryDiagnosticsTransport {
             }
             offset += Int(command.cmdsize)
         }
-        guard let debugID, minimumVMAddress != UInt64.max else { return [] }
+        guard minimumVMAddress != UInt64.max else { return [] }
         return [[
             "type": "macho",
             "debug_id": debugID,

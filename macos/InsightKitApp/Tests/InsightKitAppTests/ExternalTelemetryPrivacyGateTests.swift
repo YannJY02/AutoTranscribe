@@ -867,6 +867,40 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         XCTAssertEqual(properties["outcome"] as? String, "succeeded")
     }
 
+    func testPartialLiveRecordSaveReportsFinalizingRecoveryFailure() throws {
+        let gate = makeGate(maxQueueItems: 20)
+        try gate.setConsent(enabled: true, consentVersion: 2)
+        let analytics = ProductAnalytics(gate: gate)
+        analytics.beginWorkflow("live", provisionalPath: .local)
+        analytics.workflowFailed("live", phase: "finalizing", errorCode: "unknown", recoveryAction: "retry")
+        let viewModel = LiveSessionViewModel(
+            rpcClient: RPCClientMock(),
+            analyticsSubmit: { operation in operation(analytics) }
+        )
+
+        viewModel.saveToRecords(
+            meetingID: "live-finalizing-partial-save",
+            transcriptSegmentsOverride: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "speaker", source: "mic", text: "partial")
+            ],
+            recoveringFinalizationFailure: true
+        )
+        let deadline = Date().addingTimeInterval(1)
+        var events = try queuedObjects(gate)
+        while !events.contains(where: { $0["event_name"] as? String == "recovery_completed" }),
+              Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            events = try queuedObjects(gate)
+        }
+        let recovery = try XCTUnwrap(
+            events.first { $0["event_name"] as? String == "recovery_completed" },
+            "events: \(events.compactMap { $0["event_name"] as? String })"
+        )
+        let properties = try XCTUnwrap(recovery["properties"] as? [String: Any])
+        XCTAssertEqual(properties["phase"] as? String, "finalizing")
+        XCTAssertEqual(properties["outcome"] as? String, "failed")
+    }
+
     func testLiveFinalizationExceptionEmitsFailureBeforeSuccessfulFallbackSave() throws {
         let gate = makeGate(maxQueueItems: 20)
         try gate.setConsent(enabled: true, consentVersion: 2)

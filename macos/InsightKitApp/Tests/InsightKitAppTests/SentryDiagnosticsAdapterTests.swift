@@ -215,6 +215,7 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         )
         let offsets = try XCTUnwrap(persistedObject["failure_frame_offsets"] as? [NSNumber])
         XCTAssertEqual(offsets.map(\.uint64Value), [0])
+        XCTAssertNotNil(UUID(uuidString: try XCTUnwrap(persistedObject["failure_image_id"] as? String)))
 
         let restartedGate = try fixture.restartedGate()
         let recordingTransport = RecordingSentryTransport()
@@ -226,6 +227,28 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
 
         XCTAssertTrue(recordingTransport.waitForEnvelope())
         XCTAssertFalse(try XCTUnwrap(recordingTransport.failureStacks.first).isEmpty)
+    }
+
+    func testRestartedAdapterOmitsPersistedStackForDifferentImage() throws {
+        let fixture = try makeFixture()
+        XCTAssertEqual(fixture.gate.record(event: .init(
+            name: "workflow_failed",
+            properties: ["workflow": "live", "phase": "running"],
+            failureFrameOffsets: [0],
+            failureImageID: UUID().uuidString
+        )).result, .accepted)
+        let persistenceDeadline = Date().addingTimeInterval(1)
+        while try fixture.gate.queuedEnvelopes().isEmpty, Date() < persistenceDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+
+        let restartedGate = try fixture.restartedGate()
+        let recordingTransport = RecordingSentryTransport()
+        let restartedAdapter = SentryDiagnosticsAdapter(gate: restartedGate, transport: recordingTransport)
+        restartedAdapter.startReleaseSessionAfterDrainingQueue()
+
+        XCTAssertTrue(recordingTransport.waitForEnvelope())
+        XCTAssertEqual(try XCTUnwrap(recordingTransport.failureStacks.first), [])
     }
 
     func testHTTPTransportDoesNotInventStackForReplayedWorkflowFailure() throws {
