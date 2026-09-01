@@ -703,10 +703,16 @@ final class LiveSessionViewModel: ObservableObject {
                         let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                         let duration = self.recordingDuration
                         let hasBlockingError = self.errorMessage != nil
-                        ProductAnalytics.submit { analytics in
+                        let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                        ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
                             analytics.exportCompleted("live")
-                            analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                        }
+                            analytics.workflowCompleted("live", evaluation: completionEvaluation)
+                        })
                     }
                     return
                 }
@@ -722,10 +728,16 @@ final class LiveSessionViewModel: ObservableObject {
                     let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    ProductAnalytics.submit { analytics in
+                    let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+                        recordPath: recordPath,
+                        duration: duration,
+                        exportCompleted: true,
+                        hasBlockingError: hasBlockingError
+                    )
+                    ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
                         analytics.exportCompleted("live")
-                        analytics.workflowCompleted("live", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                    }
+                        analytics.workflowCompleted("live", evaluation: completionEvaluation)
+                    })
                 }
             } catch {
                 ProductAnalytics.submit(ProductAnalytics.failure { analytics in

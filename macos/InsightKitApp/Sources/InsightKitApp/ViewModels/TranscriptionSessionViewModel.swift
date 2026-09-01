@@ -358,13 +358,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     recordsService: self.recordsService
                 ) {
                     if let analyticsContext {
-                        ProductAnalytics.submit { analytics in
+                        ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
                             analytics.exportCompleted(analyticsContext)
                             analytics.workflowCompleted(
                                 analyticsContext,
                                 evaluation: completionEvaluation
                             )
-                        }
+                        })
                     }
                     DispatchQueue.main.async {
                         if let analyticsContext {
@@ -378,13 +378,13 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
                 if let analyticsContext {
-                    ProductAnalytics.submit { analytics in
+                    ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
                         analytics.exportCompleted(analyticsContext)
                         analytics.workflowCompleted(
                             analyticsContext,
                             evaluation: completionEvaluation
                         )
-                    }
+                    })
                 }
                 DispatchQueue.main.async {
                     if let analyticsContext {

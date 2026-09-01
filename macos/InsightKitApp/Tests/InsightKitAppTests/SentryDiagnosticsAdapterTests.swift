@@ -806,6 +806,44 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertNil(observedStack)
     }
 
+    func testCompletionSubmissionCarriesStackOnlyForFailedEvaluation() throws {
+        let fixture = try makeFixture()
+        let analytics = ProductAnalytics(gate: fixture.gate)
+        let successful = MeetingAssetWorkflowSuccess(
+            recordReopenable: true,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        )
+        let failed = MeetingAssetWorkflowSuccess(
+            recordReopenable: false,
+            transcriptSearchable: true,
+            smartMinutesValid: true,
+            exportCompleted: true,
+            hasBlockingError: false
+        )
+        let successCompleted = DispatchSemaphore(value: 0)
+        let failureCompleted = DispatchSemaphore(value: 0)
+        var successStack: [UInt64]?
+        var failureStack: [UInt64]?
+
+        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(successful) { _ in
+            successStack = ProductAnalytics.currentSubmissionFailureStack
+            successCompleted.signal()
+        })
+        XCTAssertEqual(successCompleted.wait(timeout: .now() + 1), .success)
+
+        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(failed) { _ in
+            failureStack = ProductAnalytics.currentSubmissionFailureStack
+            failureCompleted.signal()
+        })
+        XCTAssertEqual(failureCompleted.wait(timeout: .now() + 1), .success)
+
+        XCTAssertNil(successStack)
+        XCTAssertFalse(failureStack?.isEmpty ?? true)
+    }
+
     func testHTTPTransportRejectsAfterCancellationUntilExplicitResume() throws {
         StubSentryURLProtocol.reset()
         let sessionConfiguration = URLSessionConfiguration.ephemeral

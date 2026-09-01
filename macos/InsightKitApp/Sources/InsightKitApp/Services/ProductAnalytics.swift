@@ -365,6 +365,13 @@ final class ProductAnalytics {
         }
     }
 
+    static func completion(
+        _ evaluation: MeetingAssetWorkflowSuccess,
+        _ operation: @escaping (ProductAnalytics) -> Void
+    ) -> (ProductAnalytics) -> Void {
+        evaluation.isSuccessful ? operation : failure(operation)
+    }
+
     static func submit(
         failureStack: [UInt64],
         using analytics: ProductAnalytics?,

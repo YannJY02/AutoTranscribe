@@ -253,10 +253,16 @@ final class ImportSessionViewModel: ObservableObject {
                 let recordPath = persistedRecordPath(for: meetingID)
                 let duration = recordingDuration
                 let hasBlockingError = errorMessage != nil
-                analyticsSubmit { analytics in
+                let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+                    recordPath: recordPath,
+                    duration: duration,
+                    exportCompleted: true,
+                    hasBlockingError: hasBlockingError
+                )
+                analyticsSubmit(ProductAnalytics.completion(completionEvaluation) { analytics in
                     analytics.exportCompleted("import")
-                    analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                }
+                    analytics.workflowCompleted("import", evaluation: completionEvaluation)
+                })
                 isExporting = false
                 return
             }
@@ -278,10 +284,16 @@ final class ImportSessionViewModel: ObservableObject {
                     let recordPath = self.persistedRecordPath(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    self.analyticsSubmit { analytics in
+                    let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
+                        recordPath: recordPath,
+                        duration: duration,
+                        exportCompleted: true,
+                        hasBlockingError: hasBlockingError
+                    )
+                    self.analyticsSubmit(ProductAnalytics.completion(completionEvaluation) { analytics in
                         analytics.exportCompleted("import")
-                        analytics.workflowCompleted("import", evaluation: .evaluate(recordPath: recordPath, duration: duration, exportCompleted: true, hasBlockingError: hasBlockingError))
-                    }
+                        analytics.workflowCompleted("import", evaluation: completionEvaluation)
+                    })
                     self.isExporting = false
                 }
             } catch {
