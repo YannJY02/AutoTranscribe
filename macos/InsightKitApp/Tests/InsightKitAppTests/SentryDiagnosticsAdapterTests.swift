@@ -235,10 +235,27 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
         XCTAssertTrue(transport.waitForAttempt())
         let deadline = Date().addingTimeInterval(1)
-        while adapter.localDeliveryFailureCount == 0, Date() < deadline {
+        while adapter.localDeliveryFailureCount < 2, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         }
-        XCTAssertEqual(adapter.localDeliveryFailureCount, 1)
+        XCTAssertEqual(adapter.localDeliveryFailureCount, 2)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(adapter.localDeliveryFailureCount, 2)
+    }
+
+    func testTransientDeliveryFailureRetriesWithoutAnotherEvent() throws {
+        let fixture = try makeFixture()
+        let transport = FailFirstThenPausingSuccessfulSentryTransport()
+        let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
+
+        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertTrue(transport.waitForFailedAttempt())
+        XCTAssertTrue(transport.waitForDeliveries(1))
+        let deadline = Date().addingTimeInterval(1)
+        while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
     }
 
     func testPersistedEnvelopeRetriesAfterDeliveryCapacityBecomesAvailable() throws {

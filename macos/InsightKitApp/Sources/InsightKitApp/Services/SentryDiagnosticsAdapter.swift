@@ -249,6 +249,7 @@ final class SentryDiagnosticsAdapter {
                 try self.sendQueuedEnvelope(envelope, failureStack: failureStack, acknowledge: acknowledge)
             } catch {
                 self.recordDeliveryFailure()
+                self.markCapacityDrainNeeded()
             }
         }
         return true
