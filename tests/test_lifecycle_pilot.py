@@ -178,6 +178,20 @@ def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: P
     assert not (tmp_path / manifest()["build"]["app_bundle_ref"]).exists()
 
 
+def test_repository_harness_commit_is_bound_separately_from_build(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    value["reconciliation"]["repository"]["harness_commit"] = "0" * 40
+
+    with pytest.raises(PilotValidationError, match="provider evidence is unrelated"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
 def test_local_artifact_verification_is_explicit_and_hash_bound(tmp_path: Path):
     copy_repository_evidence(tmp_path)
     with pytest.raises(PilotValidationError, match="app artifact hash"):

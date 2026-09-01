@@ -420,6 +420,7 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
             "scope",
             "status",
             "checks",
+            "harness_commit",
             "harness_manifest_ref",
             "harness_manifest_sha256",
         },
@@ -519,6 +520,7 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
             or not isinstance(item["checks"], list)
             or not item["checks"]
             or not all(CODE.fullmatch(check) for check in item["checks"])
+            or not SHA.fullmatch(item["harness_commit"])
             or not _repo_ref(item["harness_manifest_ref"])
             or not SHA256.fullmatch(item["harness_manifest_sha256"])
         ):
@@ -598,6 +600,7 @@ def _validate_provider_evidence(
             "scope": item["scope"],
             "status": item["status"],
             "checks": item["checks"],
+            "commit": item["harness_commit"],
             "harness_manifest_ref": item["harness_manifest_ref"],
             "harness_manifest_sha256": item["harness_manifest_sha256"],
         }
@@ -611,7 +614,7 @@ def _validate_provider_evidence(
             or _artifact_sha(harness_path) != item["harness_manifest_sha256"]
             or harness.get("status") != item["status"]
             or harness.get("issue") != 73
-            or harness.get("commit") != item.get("commit", evidence.get("commit"))
+            or harness.get("commit") != item["harness_commit"]
             or harness.get("workspace") != "$WORKSPACE"
             or not isinstance(gates, list)
             or not all(
@@ -625,6 +628,7 @@ def _validate_provider_evidence(
             }
             != {
                 "diff-check": "passed",
+                "harness-tests": "passed",
                 "python-tests": "passed",
                 "swift-tests": "passed",
                 "xcuitests": item["status"],
@@ -1081,7 +1085,12 @@ def verify_manifest(
                 if (
                     not isinstance(evidence, dict)
                     or evidence.get("issue") != "GH-73"
-                    or evidence.get("commit") != build["commit"]
+                    or evidence.get("commit")
+                    != (
+                        item["harness_commit"]
+                        if provider == "repository"
+                        else build["commit"]
+                    )
                     or evidence.get("pilot_id") != manifest["pilot_id"]
                     or evidence.get("evidence_kind")
                     not in {"reconciliation", "inference"}

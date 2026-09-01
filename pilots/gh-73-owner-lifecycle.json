@@ -121,8 +121,9 @@
       "scope": "repository-proof",
       "status": "failed",
       "checks": ["exact-build", "codesign", "harness-doctor", "privacy-safe-provider-readbacks", "focused-pilot-tests", "full-agent-harness"],
+      "harness_commit": "d57033363b32a2135e824a2f2a162fbea8143606",
       "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-      "harness_manifest_sha256": "0e55e9cbd3a00aa7d92b88615c6b2d95eed9bc6e4151364f934e8d702ba58e23"
+      "harness_manifest_sha256": "1dca0b72f728dc3b5c293b952e50da5aeaa5c7474d37045e41da1a4a91000f02"
     }
   },
   "rollback": {

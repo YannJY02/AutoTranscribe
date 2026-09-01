@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-01T23:03:34.419263+00:00",
+  "generated_at": "2026-09-01T23:15:36.754481+00:00",
   "status": "failed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "commit": "d57033363b32a2135e824a2f2a162fbea8143606",
   "branch": "codex/yan-55-owner-lifecycle-pilot",
   "workspace": "$WORKSPACE",
   "changed_files": [
+    ".github/workflows/ci.yml",
     "macos/InsightKitApp/Sources/InsightKitApp/Services/AppConfigStore.swift",
     "macos/InsightKitApp/Tests/InsightKitAppTests/AppConfigStoreTests.swift",
     "macos/InsightKitApp/UITests/InsightKitUITests.swift",
@@ -35,8 +36,15 @@
       "status": "passed",
       "commands": [
         {"command": ["git", "diff", "--check"], "exit_code": 0, "duration_seconds": 0.01, "ok": true},
-        {"command": ["git", "diff", "--cached", "--check"], "exit_code": 0, "duration_seconds": 0.01, "ok": true},
-        {"command": ["git", "diff", "--check", "origin/main...HEAD"], "exit_code": 0, "duration_seconds": 0.009, "ok": true}
+        {"command": ["git", "diff", "--cached", "--check"], "exit_code": 0, "duration_seconds": 0.014, "ok": true},
+        {"command": ["git", "diff", "--check", "origin/main...HEAD"], "exit_code": 0, "duration_seconds": 0.015, "ok": true}
+      ]
+    },
+    {
+      "name": "harness-tests",
+      "status": "passed",
+      "commands": [
+        {"command": [".venv/bin/python", "-m", "pytest", "-q", "tests/test_agent_harness.py", "tests/test_verify_project_normalization.py"], "exit_code": 0, "duration_seconds": 0.912, "ok": true}
       ]
     },
     {
@@ -46,7 +54,7 @@
         {
           "command": [".venv/bin/python", "-m", "pytest", "tests", "-q", "--tb=short", "-m", "not integration and not requires_model and not slow"],
           "exit_code": 0,
-          "duration_seconds": 31.415,
+          "duration_seconds": 33.08,
           "ok": true
         }
       ]
@@ -55,7 +63,7 @@
       "name": "swift-tests",
       "status": "passed",
       "commands": [
-        {"command": ["swift", "test", "--package-path", "macos/InsightKitApp"], "exit_code": 0, "duration_seconds": 25.595, "ok": true}
+        {"command": ["swift", "test", "--package-path", "macos/InsightKitApp"], "exit_code": 0, "duration_seconds": 27.351, "ok": true}
       ]
     },
     {
@@ -65,11 +73,11 @@
         {
           "command": [".venv/bin/python", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "./scripts/run_uitests.sh"],
           "exit_code": 1,
-          "duration_seconds": 82.988,
+          "duration_seconds": 81.233,
           "ok": false
         }
       ]
     }
   ],
-  "finished_at": "2026-09-01T23:05:54.465072+00:00"
+  "finished_at": "2026-09-01T23:17:59.389453+00:00"
 }
