@@ -1,5 +1,13 @@
 import Foundation
+import Darwin
 import MachO
+
+func currentExternalTelemetryFailureStack() -> [UInt64] {
+    var frames = [UnsafeMutableRawPointer?](repeating: nil, count: 64)
+    let count = backtrace(&frames, Int32(frames.count))
+    guard count > 0 else { return [] }
+    return frames.prefix(Int(count)).compactMap { $0.map { UInt64(UInt(bitPattern: $0)) } }
+}
 
 /// Vendor-neutral seam implemented by the local proof transport and, when owner
 /// configuration exists, a Sentry SDK transport. It receives only gate-approved JSON.
@@ -46,7 +54,7 @@ final class SentryDiagnosticsAdapter {
             providerClass: ProviderClass,
             errorCategory: ErrorCategory,
             recoveryResult: RecoveryResult,
-            failureStack: [UInt64] = Thread.callStackReturnAddresses.map(\.uint64Value),
+            failureStack: [UInt64] = currentExternalTelemetryFailureStack(),
             errorMessage: String? = nil,
             breadcrumbs: [String] = [],
             contexts: [String: Any] = [:],

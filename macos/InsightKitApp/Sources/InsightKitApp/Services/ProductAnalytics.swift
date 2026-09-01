@@ -342,7 +342,7 @@ final class ProductAnalytics {
     /// readback, and filesystem setup can never delay a product interaction.
     static func submit(_ operation: @escaping (ProductAnalytics) -> Void) {
         submit(
-            failureStack: Thread.callStackReturnAddresses.map(\.uint64Value),
+            failureStack: currentExternalTelemetryFailureStack(),
             using: nil,
             operation
         )
@@ -1060,7 +1060,7 @@ final class ProductAnalytics {
             errorCategory: category,
             recoveryResult: recoveryResult,
             failureStack: DispatchQueue.getSpecific(key: submissionFailureStackKey)
-                ?? Thread.callStackReturnAddresses.map(\.uint64Value)
+                ?? currentExternalTelemetryFailureStack()
         )
     }
 
