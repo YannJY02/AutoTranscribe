@@ -192,6 +192,26 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertFalse(transport.waitForEnvelope(timeout: 0.1))
     }
 
+    func testEnabledRuntimePurgesConsentWhenPostHogHostIsInvalid() throws {
+        let fixture = try makeFixture()
+        let transport = RecordingSentryTransport()
+
+        _ = SentryDiagnosticsRuntime(
+            environment: [
+                "INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED": "1",
+                "INSIGHTKIT_SENTRY_DSN": "https://public@example.invalid/71",
+                "POSTHOG_DEVELOPMENT_HOST": "not-a-url",
+                "POSTHOG_DEVELOPMENT_PROJECT_KEY": "phc_test",
+                "POSTHOG_DEVELOPMENT_RETENTION_VERIFIED": "1",
+            ],
+            gateOverride: fixture.gate,
+            transportOverride: transport
+        )
+
+        XCTAssertFalse(fixture.gate.consent.isEnabled)
+        XCTAssertFalse(transport.waitForEnvelope(timeout: 0.1))
+    }
+
     func testExplicitDisablePurgesWithoutTelemetryEnvironment() throws {
         let fixture = try makeFixture()
         XCTAssertEqual(fixture.gate.record(event: .init(
@@ -272,9 +292,18 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let transport = FailFirstThenPausingSuccessfulSentryTransport()
         let adapter = SentryDiagnosticsAdapter(gate: fixture.gate, transport: transport)
 
-        XCTAssertEqual(adapter.capture(.syntheticFailure), .accepted)
+        XCTAssertEqual(adapter.capture(.init(
+            workflow: .live,
+            phase: .running,
+            engineClass: .local,
+            providerClass: .none,
+            errorCategory: .runtime,
+            recoveryResult: .succeeded,
+            failureStack: [0x1234]
+        )), .accepted)
         XCTAssertTrue(transport.waitForFailedAttempt())
         XCTAssertTrue(transport.waitForDeliveries(1))
+        XCTAssertEqual(transport.failureStacks, [[0x1234], [0x1234]])
         let deadline = Date().addingTimeInterval(1)
         while try !fixture.gate.queuedEnvelopes().isEmpty, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
@@ -904,6 +933,7 @@ private final class FailFirstThenPausingSuccessfulSentryTransport: SentryDiagnos
     private let lock = NSLock()
     private var attemptCount = 0
     private var recordedEnvelopes: [Data] = []
+    private(set) var failureStacks: [[UInt64]] = []
     private let failedAttempt = DispatchSemaphore(value: 0)
     private let pausedAttempt = DispatchSemaphore(value: 0)
     private let releasePaused = DispatchSemaphore(value: 0)
@@ -921,6 +951,7 @@ private final class FailFirstThenPausingSuccessfulSentryTransport: SentryDiagnos
     func send(envelope: Data, failureStack: [UInt64]) throws {
         lock.lock()
         attemptCount += 1
+        failureStacks.append(failureStack)
         let attempt = attemptCount
         lock.unlock()
         if attempt == 1 {

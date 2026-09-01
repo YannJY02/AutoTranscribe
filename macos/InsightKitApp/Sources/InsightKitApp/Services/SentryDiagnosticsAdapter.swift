@@ -94,6 +94,7 @@ final class SentryDiagnosticsAdapter {
     private var acceptingDelivery: Bool
     private var capacityDrainNeeded = false
     private var capacityDrainScheduled = false
+    private var retainedFailureStacks: [Data: [UInt64]] = [:]
     private var releaseSessionMayStart = true
     private var deliveryFailureCount = 0
     private var consentObservers: [NSObjectProtocol] = []
@@ -130,6 +131,7 @@ final class SentryDiagnosticsAdapter {
         deliveryStateLock.lock()
         acceptingDelivery = false
         capacityDrainNeeded = false
+        retainedFailureStacks.removeAll()
         deliveryStateLock.unlock()
         transport.cancelAll()
         deliveryQueue.async { [weak self] in self?.deliveredRetainedEnvelopes.removeAll() }
@@ -243,6 +245,7 @@ final class SentryDiagnosticsAdapter {
     @discardableResult
     private func scheduleDelivery(_ envelope: Data, failureStack: [UInt64], acknowledge: Bool) -> Bool {
         guard deliverySlots.wait(timeout: .now()) == .success else {
+            retainFailureStack(failureStack, for: envelope)
             markCapacityDrainNeeded()
             return false
         }
@@ -256,6 +259,7 @@ final class SentryDiagnosticsAdapter {
             do {
                 try self.sendQueuedEnvelope(envelope, failureStack: failureStack, acknowledge: acknowledge)
             } catch {
+                self.retainFailureStack(failureStack, for: envelope)
                 self.recordDeliveryFailure()
                 self.markCapacityDrainNeeded()
             }
@@ -304,7 +308,7 @@ final class SentryDiagnosticsAdapter {
             do {
                 try sendQueuedEnvelope(
                     envelope,
-                    failureStack: [],
+                    failureStack: retainedFailureStack(for: envelope),
                     acknowledge: !isReleaseSessionStart(envelope)
                 )
             } catch {
@@ -324,6 +328,7 @@ final class SentryDiagnosticsAdapter {
         try transport.send(envelope: envelope, failureStack: failureStack)
         if acknowledge {
             try gate.acknowledgeQueuedEnvelope(envelope)
+            forgetFailureStack(for: envelope)
             if isReleaseSessionEnd(envelope), let endedSessionID = stringField("app_session_id", in: envelope) {
                 deliveredRetainedEnvelopes = Set(deliveredRetainedEnvelopes.filter {
                     stringField("app_session_id", in: $0) != endedSessionID
@@ -331,7 +336,27 @@ final class SentryDiagnosticsAdapter {
             }
         } else {
             deliveredRetainedEnvelopes.insert(envelope)
+            forgetFailureStack(for: envelope)
         }
+    }
+
+    private func retainFailureStack(_ failureStack: [UInt64], for envelope: Data) {
+        guard !failureStack.isEmpty else { return }
+        deliveryStateLock.lock()
+        retainedFailureStacks[envelope] = failureStack
+        deliveryStateLock.unlock()
+    }
+
+    private func retainedFailureStack(for envelope: Data) -> [UInt64] {
+        deliveryStateLock.lock()
+        defer { deliveryStateLock.unlock() }
+        return retainedFailureStacks[envelope] ?? []
+    }
+
+    private func forgetFailureStack(for envelope: Data) {
+        deliveryStateLock.lock()
+        retainedFailureStacks[envelope] = nil
+        deliveryStateLock.unlock()
     }
 
     private func isReleaseSessionStart(_ envelope: Data) -> Bool {
@@ -704,11 +729,11 @@ final class SentryDiagnosticsRuntime {
             adapter = nil
             return
         }
-        guard ProductAnalytics.configuredPostHogValues(
+        guard let postHog = ProductAnalytics.configuredPostHogValues(
             process: environment,
             bundleInfo: bundle.infoDictionary ?? [:],
             environment: telemetryEnvironment
-        ) != nil else {
+        ), PostHogProductAnalyticsTransport(host: postHog.host, projectKey: postHog.projectKey) != nil else {
             _ = gate.disableAndPurge()
             adapter = nil
             return
