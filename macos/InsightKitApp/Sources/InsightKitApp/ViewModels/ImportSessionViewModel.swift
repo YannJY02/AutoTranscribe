@@ -253,13 +253,14 @@ final class ImportSessionViewModel: ObservableObject {
                 let recordPath = persistedRecordPath(for: meetingID)
                 let duration = recordingDuration
                 let hasBlockingError = errorMessage != nil
-                let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
-                    recordPath: recordPath,
-                    duration: duration,
-                    exportCompleted: true,
-                    hasBlockingError: hasBlockingError
-                )
-                analyticsSubmit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                analyticsSubmit(ProductAnalytics.completion(evaluating: {
+                    MeetingAssetWorkflowSuccess.evaluate(
+                        recordPath: recordPath,
+                        duration: duration,
+                        exportCompleted: true,
+                        hasBlockingError: hasBlockingError
+                    )
+                }) { analytics, completionEvaluation in
                     analytics.exportCompleted("import")
                     analytics.workflowCompleted("import", evaluation: completionEvaluation)
                 })
@@ -284,13 +285,14 @@ final class ImportSessionViewModel: ObservableObject {
                     let recordPath = self.persistedRecordPath(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
-                        recordPath: recordPath,
-                        duration: duration,
-                        exportCompleted: true,
-                        hasBlockingError: hasBlockingError
-                    )
-                    self.analyticsSubmit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                    self.analyticsSubmit(ProductAnalytics.completion(evaluating: {
+                        MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                    }) { analytics, completionEvaluation in
                         analytics.exportCompleted("import")
                         analytics.workflowCompleted("import", evaluation: completionEvaluation)
                     })

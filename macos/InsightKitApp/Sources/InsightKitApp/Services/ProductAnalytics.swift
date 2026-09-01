@@ -366,10 +366,18 @@ final class ProductAnalytics {
     }
 
     static func completion(
-        _ evaluation: MeetingAssetWorkflowSuccess,
-        _ operation: @escaping (ProductAnalytics) -> Void
+        evaluating evaluate: @escaping () -> MeetingAssetWorkflowSuccess,
+        _ operation: @escaping (ProductAnalytics, MeetingAssetWorkflowSuccess) -> Void
     ) -> (ProductAnalytics) -> Void {
-        evaluation.isSuccessful ? operation : failure(operation)
+        let failureStack = currentExternalTelemetryFailureStack()
+        return { analytics in
+            let evaluation = evaluate()
+            if evaluation.isSuccessful {
+                operation(analytics, evaluation)
+            } else {
+                withFailureStack(failureStack) { operation(analytics, evaluation) }
+            }
+        }
     }
 
     static func submit(

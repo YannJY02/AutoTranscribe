@@ -703,13 +703,14 @@ final class LiveSessionViewModel: ObservableObject {
                         let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                         let duration = self.recordingDuration
                         let hasBlockingError = self.errorMessage != nil
-                        let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
-                            recordPath: recordPath,
-                            duration: duration,
-                            exportCompleted: true,
-                            hasBlockingError: hasBlockingError
-                        )
-                        ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                        ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                            MeetingAssetWorkflowSuccess.evaluate(
+                                recordPath: recordPath,
+                                duration: duration,
+                                exportCompleted: true,
+                                hasBlockingError: hasBlockingError
+                            )
+                        }) { analytics, completionEvaluation in
                             analytics.exportCompleted("live")
                             analytics.workflowCompleted("live", evaluation: completionEvaluation)
                         })
@@ -728,13 +729,14 @@ final class LiveSessionViewModel: ObservableObject {
                     let recordPath = self.recordsService?.recordFolderURL(for: meetingID)
                     let duration = self.recordingDuration
                     let hasBlockingError = self.errorMessage != nil
-                    let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
-                        recordPath: recordPath,
-                        duration: duration,
-                        exportCompleted: true,
-                        hasBlockingError: hasBlockingError
-                    )
-                    ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                    ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                        MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                    }) { analytics, completionEvaluation in
                         analytics.exportCompleted("live")
                         analytics.workflowCompleted("live", evaluation: completionEvaluation)
                     })

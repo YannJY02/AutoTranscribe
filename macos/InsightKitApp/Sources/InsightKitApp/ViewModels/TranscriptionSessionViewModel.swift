@@ -340,12 +340,6 @@ final class TranscriptionSessionViewModel: ObservableObject {
         let duration = Double(transcriptSegments.map(\.endMs).max() ?? 0) / 1_000
         let recordPath = recordsService?.recordFolderURL(for: meetingID)
         let hasBlockingError = errorMessage != nil
-        let completionEvaluation = MeetingAssetWorkflowSuccess.evaluate(
-            recordPath: recordPath,
-            duration: duration,
-            exportCompleted: true,
-            hasBlockingError: hasBlockingError
-        )
         if let analyticsContext {
             ProductAnalytics.submit { $0.exportAttempted(analyticsContext) }
         }
@@ -358,7 +352,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                     recordsService: self.recordsService
                 ) {
                     if let analyticsContext {
-                        ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                        ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                            MeetingAssetWorkflowSuccess.evaluate(
+                                recordPath: recordPath,
+                                duration: duration,
+                                exportCompleted: true,
+                                hasBlockingError: hasBlockingError
+                            )
+                        }) { analytics, completionEvaluation in
                             analytics.exportCompleted(analyticsContext)
                             analytics.workflowCompleted(
                                 analyticsContext,
@@ -378,7 +379,14 @@ final class TranscriptionSessionViewModel: ObservableObject {
                 try self.ensureRuntimeReady(requireASR: false, requireProvider: false, allowProviderProbeFailure: false)
                 let result = try self.rpcClient.documentExport(meetingID: meetingID, format: format, outputDir: "")
                 if let analyticsContext {
-                    ProductAnalytics.submit(ProductAnalytics.completion(completionEvaluation) { analytics in
+                    ProductAnalytics.submit(ProductAnalytics.completion(evaluating: {
+                        MeetingAssetWorkflowSuccess.evaluate(
+                            recordPath: recordPath,
+                            duration: duration,
+                            exportCompleted: true,
+                            hasBlockingError: hasBlockingError
+                        )
+                    }) { analytics, completionEvaluation in
                         analytics.exportCompleted(analyticsContext)
                         analytics.workflowCompleted(
                             analyticsContext,

@@ -827,19 +827,24 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         let failureCompleted = DispatchSemaphore(value: 0)
         var successStack: [UInt64]?
         var failureStack: [UInt64]?
+        var successEvaluationRanOnMainThread: Bool?
 
-        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(successful) { _ in
+        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(evaluating: {
+            successEvaluationRanOnMainThread = Thread.isMainThread
+            return successful
+        }) { _, _ in
             successStack = ProductAnalytics.currentSubmissionFailureStack
             successCompleted.signal()
         })
         XCTAssertEqual(successCompleted.wait(timeout: .now() + 1), .success)
 
-        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(failed) { _ in
+        ProductAnalytics.submit(using: analytics, ProductAnalytics.completion(evaluating: { failed }) { _, _ in
             failureStack = ProductAnalytics.currentSubmissionFailureStack
             failureCompleted.signal()
         })
         XCTAssertEqual(failureCompleted.wait(timeout: .now() + 1), .success)
 
+        XCTAssertEqual(successEvaluationRanOnMainThread, false)
         XCTAssertNil(successStack)
         XCTAssertFalse(failureStack?.isEmpty ?? true)
     }
