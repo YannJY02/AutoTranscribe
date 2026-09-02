@@ -7,7 +7,7 @@ import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
 if __package__:
     from .evidence_ledger import _contains_secret
@@ -36,6 +36,20 @@ PRIVATE = re.compile(
     re.IGNORECASE,
 )
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
+
+
+def _contains_private_component(component: str) -> bool:
+    values = [component]
+    values.extend(value for pair in parse_qsl(component, keep_blank_values=True) for value in pair)
+    for value in values:
+        while True:
+            decoded = unquote(value)
+            if PRIVATE.search(decoded):
+                return True
+            if decoded == value:
+                break
+            value = decoded
+    return False
 
 
 def _display(path: Path) -> str:
@@ -91,8 +105,8 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or parsed.password is not None
                         or _contains_secret(decoded_target)
                         or PRIVATE.search(decoded_target)
-                        or PRIVATE.search(unquote(parsed.query))
-                        or PRIVATE.search(unquote(parsed.fragment))
+                        or _contains_private_component(parsed.query)
+                        or _contains_private_component(parsed.fragment)
                     ):
                         errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
                 else:
