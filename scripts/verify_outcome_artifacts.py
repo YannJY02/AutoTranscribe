@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Sequence
+from html import unescape
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlparse
 
@@ -38,9 +39,21 @@ PRIVATE = re.compile(
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
+def _decode_once(value: str) -> str:
+    return unquote(unescape(value))
+
+
+def _fully_decode(value: str) -> str:
+    while True:
+        decoded = _decode_once(value)
+        if decoded == value:
+            return value
+        value = decoded
+
+
 def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False) -> bool:
     while True:
-        decoded = unquote(value)
+        decoded = _decode_once(value)
         if (reject_double_slash and "//" in decoded) or PRIVATE.search(decoded) or _contains_secret(decoded):
             return True
         if decoded == value:
@@ -50,7 +63,7 @@ def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False
 
 def _contains_private_component(component: str) -> bool:
     while True:
-        decoded = unquote(component)
+        decoded = _decode_once(component)
         values = [decoded]
         values.extend(value for pair in parse_qsl(decoded, keep_blank_values=True) for value in pair)
         if any(_contains_private_or_secret(value) for value in values):
@@ -98,22 +111,43 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             if not links:
                 errors.append(f"{_display(artifact)}:{line_number}: missing evidence link")
             for target in links:
-                parsed = urlparse(target)
+                try:
+                    parsed = urlparse(target)
+                except ValueError:
+                    errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
+                    continue
                 if parsed.scheme:
                     try:
-                        port = parsed.port
+                        parsed_urls = (parsed, urlparse(_fully_decode(target)))
+                        allowed_identity = all(
+                            url.scheme == "https"
+                            and url.hostname in ALLOWED_HOSTS
+                            and url.port in {None, 443}
+                            and url.username is None
+                            and url.password is None
+                            for url in parsed_urls
+                        )
                     except ValueError:
-                        port = -1
+                        parsed_urls = (parsed,)
+                        allowed_identity = False
                     if (
-                        parsed.scheme != "https"
-                        or parsed.hostname not in ALLOWED_HOSTS
-                        or port not in {None, 443}
-                        or parsed.username is not None
-                        or parsed.password is not None
+                        not allowed_identity
                         or _contains_private_or_secret(target)
-                        or _contains_private_or_secret(parsed.path.removeprefix("/"), reject_double_slash=True)
-                        or _contains_private_component(parsed.query)
-                        or _contains_private_component(parsed.fragment)
+                        or any(
+                            _contains_private_or_secret(
+                                url.path.removeprefix("/"), reject_double_slash=True
+                            )
+                            for url in parsed_urls
+                        )
+                        or any(
+                            _contains_private_component(component)
+                            for url in parsed_urls
+                            for component in (
+                                url.path.removeprefix("/"),
+                                url.query,
+                                url.fragment,
+                            )
+                        )
                     ):
                         errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
                 else:
