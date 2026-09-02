@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T17:46:03.046883+00:00",
+  "generated_at": "2026-09-02T17:57:15.148452+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "ba51a5500d7cdf319ddd9156b9d98aca8c1d290d",
+  "commit": "a8bc94239da22e070de0e5eaa38ba221598b87d3",
   "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -54,7 +54,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.009,
+          "duration_seconds": 0.008,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.023,
+          "duration_seconds": 0.021,
           "ok": true
         }
       ]
@@ -84,7 +84,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 1.349,
+          "duration_seconds": 0.802,
           "ok": true
         }
       ]
@@ -105,7 +105,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 73.382,
+          "duration_seconds": 73.225,
           "ok": true
         }
       ]
@@ -119,14 +119,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260903-014602/project-normalization"
+            "$WORKSPACE/logs/harness/20260903-015715/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.062,
+          "duration_seconds": 0.061,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T17:47:17.898994+00:00"
+  "finished_at": "2026-09-02T17:58:29.294828+00:00"
 }
