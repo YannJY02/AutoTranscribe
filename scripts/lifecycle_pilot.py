@@ -29,7 +29,6 @@ else:
 ATTEMPT_ORDER = ("live-local", "live-cloud", "import-local", "import-cloud")
 POST_HARNESS_EVIDENCE_REFS = {
     "pilots/evidence/GH-73/full-harness-manifest.json",
-    "pilots/evidence/GH-73/pilot-proof.json",
     "pilots/evidence/GH-73/repository-proof.json",
     "pilots/gh-73-owner-lifecycle.json",
 }

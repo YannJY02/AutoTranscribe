@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts.lifecycle_pilot import (
+    POST_HARNESS_EVIDENCE_REFS,
     PilotValidationError,
     _run_frozen_rollback_checks,
     main,
@@ -17,6 +18,14 @@ from scripts.lifecycle_pilot import (
 ROOT = Path(__file__).resolve().parents[1]
 HEAD = "83746318b85db3b0882e467401e1f1ec5d5b1eaa"
 PILOT = ROOT / "pilots/gh-73-owner-lifecycle.json"
+
+
+def test_post_harness_changes_are_limited_to_bound_evidence():
+    assert POST_HARNESS_EVIDENCE_REFS == {
+        "pilots/evidence/GH-73/full-harness-manifest.json",
+        "pilots/evidence/GH-73/repository-proof.json",
+        "pilots/gh-73-owner-lifecycle.json",
+    }
 
 
 def manifest():
