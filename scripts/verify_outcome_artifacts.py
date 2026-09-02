@@ -41,7 +41,7 @@ LOCAL_PRIVATE_ROOT = re.compile(
     r"(?:^|[=:;_\[(])/(?:private|Applications|Volumes)(?:/|$)[^\s)>,]*",
     re.IGNORECASE,
 )
-HTML_MARKUP = re.compile(r"<!--|</?[A-Za-z][^>\n]*>")
+HTML_MARKUP = re.compile(r"<!--|<\?|<![A-Z]|<!\[CDATA\[|</?[A-Za-z][^>\n]*>")
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
