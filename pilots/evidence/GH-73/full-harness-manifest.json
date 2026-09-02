@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T19:34:46.681565+00:00",
-  "status": "passed",
+  "generated_at": "2026-09-02T19:58:26.648457+00:00",
+  "status": "failed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "a393cb42064e2e7d54921ecc81177c1e58bbe777",
+  "commit": "e379633d12e9b1894fda0701dc97a2335bd425fd",
   "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -43,7 +43,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.009,
+          "duration_seconds": 0.012,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.018,
+          "duration_seconds": 0.021,
           "ok": true
         }
       ]
@@ -84,14 +84,14 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.526,
+          "duration_seconds": 0.785,
           "ok": true
         }
       ]
     },
     {
       "name": "python-tests",
-      "status": "passed",
+      "status": "failed",
       "commands": [
         {
           "command": [
@@ -104,29 +104,12 @@
             "-m",
             "not integration and not requires_model and not slow"
           ],
-          "exit_code": 0,
-          "duration_seconds": 71.483,
-          "ok": true
-        }
-      ]
-    },
-    {
-      "name": "project-normalization",
-      "status": "passed",
-      "commands": [
-        {
-          "command": [
-            "$WORKSPACE/.venv/bin/python",
-            "scripts/verify_project_normalization.py",
-            "--output-root",
-            "$WORKSPACE/logs/harness/20260903-033446/project-normalization"
-          ],
-          "exit_code": 0,
-          "duration_seconds": 0.06,
-          "ok": true
+          "exit_code": 1,
+          "duration_seconds": 48.335,
+          "ok": false
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T19:35:58.803603+00:00"
+  "finished_at": "2026-09-02T19:59:15.827933+00:00"
 }
