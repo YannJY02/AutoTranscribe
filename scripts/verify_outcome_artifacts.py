@@ -38,18 +38,20 @@ PRIVATE = re.compile(
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
+def _contains_private_or_secret(value: str) -> bool:
+    while True:
+        decoded = unquote(value)
+        if PRIVATE.search(decoded) or _contains_secret(decoded):
+            return True
+        if decoded == value:
+            return False
+        value = decoded
+
+
 def _contains_private_component(component: str) -> bool:
     values = [component]
     values.extend(value for pair in parse_qsl(component, keep_blank_values=True) for value in pair)
-    for value in values:
-        while True:
-            decoded = unquote(value)
-            if PRIVATE.search(decoded) or _contains_secret(decoded):
-                return True
-            if decoded == value:
-                break
-            value = decoded
-    return False
+    return any(_contains_private_or_secret(value) for value in values)
 
 
 def _display(path: Path) -> str:
@@ -92,7 +94,6 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             for target in links:
                 parsed = urlparse(target)
                 if parsed.scheme:
-                    decoded_target = unquote(target)
                     try:
                         port = parsed.port
                     except ValueError:
@@ -103,8 +104,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or port not in {None, 443}
                         or parsed.username is not None
                         or parsed.password is not None
-                        or _contains_secret(decoded_target)
-                        or PRIVATE.search(decoded_target)
+                        or _contains_private_or_secret(target)
                         or _contains_private_component(parsed.query)
                         or _contains_private_component(parsed.fragment)
                     ):
