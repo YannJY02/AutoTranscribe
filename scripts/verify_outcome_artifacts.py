@@ -105,6 +105,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or parsed.username is not None
                         or parsed.password is not None
                         or _contains_private_or_secret(target)
+                        or any(_contains_private_or_secret(segment) for segment in parsed.path.split("/"))
                         or _contains_private_component(parsed.query)
                         or _contains_private_component(parsed.fragment)
                     ):
