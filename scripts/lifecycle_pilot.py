@@ -70,6 +70,16 @@ OWNER_PILOT_SIGNING_CERT_SHA256 = (
     "c59c2eeaae7f38f50b04885c679938dc1e0a1fcfb0b7e46c8caa8b852b4676b1"
 )
 OWNER_PILOT_SIGNER_POLICY = "owner-pilot-apple-development-v1"
+ATTEMPT_SCENARIO_FIXTURES = {
+    "synthetic-ui-route": "synthetic",
+}
+ATTEMPT_SCENARIO_HOST_ATTEMPTS = {
+    "synthetic-ui-route": (
+        "developer-signed-exact-app",
+        "synthetic-ui-route",
+        "native-window-capture",
+    ),
+}
 BUILD_PROOF_FIELDS = {
     "status",
     "commit",
@@ -330,12 +340,15 @@ def _git_diff_files(root: Path, base: str, commit: str) -> list[str]:
 
 
 def _git_is_ancestor(root: Path, commit: str) -> bool:
-    return subprocess.run(
-        ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, "HEAD"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, "HEAD"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def _source_sha(root: Path, commit: str) -> str:
@@ -572,8 +585,7 @@ def _verify_source_attestation(
     statement_path, cms_path = paths
     if (
         _artifact_sha(statement_path) != build_proof["source_attestation_sha256"]
-        or _artifact_sha(cms_path)
-        != build_proof["source_attestation_signature_sha256"]
+        or _artifact_sha(cms_path) != build_proof["source_attestation_signature_sha256"]
     ):
         _fail("source attestation digest changed")
     with tempfile.TemporaryDirectory(prefix="insightkit-attestation-") as directory:
@@ -704,7 +716,9 @@ def _verify_source_attestation(
         != "insightkit.local-owner-pilot.developer-attestation/v1"
         or subject != expected_subject
         or any(predicate.get(key) != value for key, value in expected_predicate.items())
-        or not all(isinstance(value, str) and 1 <= len(value) <= 256 for value in toolchain)
+        or not all(
+            isinstance(value, str) and 1 <= len(value) <= 256 for value in toolchain
+        )
     ):
         _fail("source attestation does not bind the frozen app")
 
@@ -868,13 +882,14 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
         )
         if not _repo_ref(item["evidence_ref"]):
             _fail(f"{provider} result requires repository readback evidence")
-        if item["classification"] == "inference":
-            if not item["unknowns"] or not all(
+        if item["classification"] == "inference" and (
+            not item["unknowns"]
+            or not all(
                 isinstance(code, str) and CODE.fullmatch(code)
                 for code in item["unknowns"]
-            ):
-                _fail(f"{provider} inference requires a bounded basis")
-            continue
+            )
+        ):
+            _fail(f"{provider} inference requires a bounded basis")
         if provider == "posthog":
             local, remote = item["local_event_counts"], item["remote_event_counts"]
             if (
@@ -966,15 +981,15 @@ def _validate_provider_evidence(
         or evidence.get("privacy_safe") is not True
     ):
         _fail(f"{provider} evidence is not an accepted readback")
-    observed_at = (
-        _timestamp(evidence.get("observed_at")) if provider != "repository" else None
-    )
+    observed_at = _timestamp(evidence.get("observed_at"))
     if (
         provider != "repository"
         and item["scope"] == "pilot-attempt"
         and not (pilot_window[0] <= observed_at <= pilot_window[1])
     ):
-        label = {"posthog": "PostHog", "sentry": "Sentry", "langfuse": "Langfuse"}[provider]
+        label = {"posthog": "PostHog", "sentry": "Sentry", "langfuse": "Langfuse"}[
+            provider
+        ]
         _fail(f"{label} evidence metadata is outside the pilot window")
     if provider == "posthog":
         expected = {
@@ -1030,7 +1045,9 @@ def _validate_provider_evidence(
         if item["scope"] == "pilot-attempt" and item["build"] != build_version:
             _fail("Sentry pilot-attempt readback does not match the frozen build")
         if item["scope"] == "pilot-attempt":
-            _fail("Sentry pilot-attempt requires pilot-specific immutable event evidence")
+            _fail(
+                "Sentry pilot-attempt requires pilot-specific immutable event evidence"
+            )
     elif provider == "langfuse":
         expected = {
             "scope": item["scope"],
@@ -1050,7 +1067,9 @@ def _validate_provider_evidence(
         if any(evidence.get(key) != value for key, value in expected.items()):
             _fail("Langfuse evidence does not match the reconciled readback")
         if item["scope"] == "pilot-attempt":
-            _fail("Langfuse pilot-attempt readback requires a pilot-specific experiment")
+            _fail(
+                "Langfuse pilot-attempt readback requires a pilot-specific experiment"
+            )
     else:
         expected = {
             "scope": item["scope"],
@@ -1102,7 +1121,9 @@ def _validate_provider_evidence(
                             {"command", "duration_seconds", "exit_code", "ok"},
                             "Harness command",
                         )
-        changed_files = harness.get("changed_files") if isinstance(harness, dict) else None
+        changed_files = (
+            harness.get("changed_files") if isinstance(harness, dict) else None
+        )
         harness_commit = harness.get("commit") if isinstance(harness, dict) else None
         changed_files_valid = (
             isinstance(changed_files, list)
@@ -1121,11 +1142,15 @@ def _validate_provider_evidence(
             python_executable="$WORKSPACE/.venv/bin/python",
         )
         expected_gate_names = [spec.name for spec in specs]
-        actual_gate_states = [
-            (gate.get("name"), gate.get("status"))
-            for gate in gates
-            if isinstance(gate, dict)
-        ] if isinstance(gates, list) else []
+        actual_gate_states = (
+            [
+                (gate.get("name"), gate.get("status"))
+                for gate in gates
+                if isinstance(gate, dict)
+            ]
+            if isinstance(gates, list)
+            else []
+        )
         if len(actual_gate_states) > len(expected_gate_names):
             _fail("repository Harness evidence is invalid")
         expected_gate_states = (
@@ -1158,20 +1183,28 @@ def _validate_provider_evidence(
             for spec in specs
         }
         output_root = re.compile(r"^\$WORKSPACE/logs/harness/\d{8}-\d{6}")
-        actual_commands = {
-            gate["name"]: [
-                [output_root.sub("{output_root}", part) for part in command["command"]]
-                for command in gate["commands"]
-            ]
-            for gate in gates
-            if isinstance(gate, dict)
-            and isinstance(gate.get("commands"), list)
-            and all(
-                isinstance(command, dict) and isinstance(command.get("command"), list)
-                and all(isinstance(part, str) for part in command["command"])
-                for command in gate["commands"]
-            )
-        } if isinstance(gates, list) else {}
+        actual_commands = (
+            {
+                gate["name"]: [
+                    [
+                        output_root.sub("{output_root}", part)
+                        for part in command["command"]
+                    ]
+                    for command in gate["commands"]
+                ]
+                for gate in gates
+                if isinstance(gate, dict)
+                and isinstance(gate.get("commands"), list)
+                and all(
+                    isinstance(command, dict)
+                    and isinstance(command.get("command"), list)
+                    and all(isinstance(part, str) for part in command["command"])
+                    for command in gate["commands"]
+                )
+            }
+            if isinstance(gates, list)
+            else {}
+        )
         if item["status"] == "passed":
             commands_match = all(
                 actual_commands.get(name) == commands
@@ -1190,8 +1223,7 @@ def _validate_provider_evidence(
                 )
                 and bool(failed_commands)
                 and expected_failed_commands is not None
-                and failed_commands
-                == expected_failed_commands[: len(failed_commands)]
+                and failed_commands == expected_failed_commands[: len(failed_commands)]
             )
         command_states_valid = isinstance(gates, list) and all(
             isinstance(gate, dict)
@@ -1216,6 +1248,8 @@ def _validate_provider_evidence(
             or harness.get("issue") != 73
             or harness.get("commit") != item["harness_commit"]
             or harness.get("workspace") != "$WORKSPACE"
+            or _timestamp(harness.get("finished_at")).replace(microsecond=0)
+            != observed_at.replace(microsecond=0)
             or not changed_files_valid
             or not isinstance(gates, list)
             or not all(
@@ -1237,7 +1271,12 @@ def _validate_attempt_evidence(
     build_proof: dict[str, Any],
     pilot_window: tuple[datetime, datetime],
 ) -> None:
+    if attempt["result"] == "passed":
+        _fail("passed attempt requires signed owner consent evidence")
     unknowns = evidence.get("unknowns")
+    scenario = evidence.get("scenario")
+    expected_fixture = ATTEMPT_SCENARIO_FIXTURES.get(scenario)
+    expected_host_attempts = ATTEMPT_SCENARIO_HOST_ATTEMPTS.get(scenario)
     if (
         evidence.get("status") != attempt["result"]
         or evidence.get("evidence_kind")
@@ -1245,32 +1284,16 @@ def _validate_attempt_evidence(
         or evidence.get("privacy_safe") is not True
         or evidence.get("analysis_mode") != attempt["analysis_mode"]
         or not isinstance(evidence.get("analysis_mode_observed"), bool)
-        or (
-            attempt["result"] == "passed"
-            and evidence.get("analysis_mode_observed") is not True
-        )
         or evidence.get("stages") != attempt["stages"]
-        or (
-            attempt["result"] == "passed"
-            and evidence.get("scenario") == "synthetic-ui-route"
-        )
+        or expected_fixture is None
         or not isinstance(unknowns, list)
         or not all(isinstance(code, str) and CODE.fullmatch(code) for code in unknowns)
         or not set(unknowns).issubset(attempt["unknowns"])
     ):
         _fail("attempt evidence does not match the claimed result and stages")
     host_attempts = evidence.get("host_attempts")
-    if (
-        evidence.get("scenario") != "synthetic-ui-route"
-        or not isinstance(host_attempts, list)
-        or not 1 <= len(host_attempts) <= 8
-        or len(host_attempts) != len(set(host_attempts))
-        or not all(isinstance(code, str) and CODE.fullmatch(code) for code in host_attempts)
-        or not (
-            pilot_window[0]
-            <= _timestamp(evidence.get("observed_at"))
-            <= pilot_window[1]
-        )
+    if host_attempts != list(expected_host_attempts or ()) or not (
+        pilot_window[0] <= _timestamp(evidence.get("observed_at")) <= pilot_window[1]
     ):
         _fail("attempt metadata is outside the bounded pilot schema")
     app = evidence.get("app")
@@ -1301,10 +1324,9 @@ def _validate_attempt_evidence(
         or app.get("bundle_sha256") != build_proof["app_bundle_sha256"]
         or app.get("source") != build_proof["build_source"]
         or app.get("cdhash") != build_proof["bundle_cdhash"]
-        or app.get("attestation_sha256")
-        != build_proof["source_attestation_sha256"]
+        or app.get("attestation_sha256") != build_proof["source_attestation_sha256"]
         or app.get("signer_policy") != OWNER_PILOT_SIGNER_POLICY
-        or visual.get("fixture") != "synthetic"
+        or visual.get("fixture") != expected_fixture
         or artifact is None
         or not artifact.is_relative_to(root)
         or not artifact.is_file()
@@ -1356,13 +1378,24 @@ def _validated_attempt_evidence_refs(manifest: dict[str, Any]) -> set[str]:
 
 @_validation_boundary
 def generate_rollback_proof(
-    manifest: dict[str, Any], *, repository_root: Path, native_proof_ref: str
+    manifest: dict[str, Any],
+    *,
+    repository_root: Path,
+    native_proof_ref: str,
+    output_path: Path | None = None,
 ) -> dict[str, Any]:
     build = manifest.get("build") if isinstance(manifest, dict) else None
     verify_manifest(
         manifest,
         expected_commit=build.get("commit") if isinstance(build, dict) else "",
     )
+    if output_path is not None:
+        resolved_output = output_path.resolve()
+        if (
+            not resolved_output.is_relative_to(repository_root.resolve())
+            or resolved_output.exists()
+        ):
+            _fail("rollback output must be a new path inside the repository")
     build = manifest["build"]
     app_path, native_path = (
         repository_root / build["app_bundle_ref"],
@@ -1395,9 +1428,7 @@ def generate_rollback_proof(
         or native_proof.get("commit") != build["commit"]
         or native_proof.get("pilot_id") != manifest["pilot_id"]
         or native_proof.get("evidence_kind")
-        != {"observed": "attempt", "inference": "inference"}[
-            attempt["classification"]
-        ]
+        != {"observed": "attempt", "inference": "inference"}[attempt["classification"]]
         or native_proof.get("subject") != attempt["id"]
     ):
         _fail("rollback input is unrelated to this pilot")
@@ -1607,7 +1638,11 @@ def verify_manifest(
         for values in claims.values()
     ):
         _fail("claims must contain bounded metadata codes")
-    claim_bucket = {"observed": "observed", "inference": "inferred", "unobserved": "unobserved"}
+    claim_bucket = {
+        "observed": "observed",
+        "inference": "inferred",
+        "unobserved": "unobserved",
+    }
     expected_claims = {
         "observed": {"rollback.dry-run"},
         "inferred": set(),
@@ -1699,7 +1734,9 @@ def verify_manifest(
             or not SHA256.fullmatch(str(build_proof.get("app_bundle_sha256", "")))
             or not SHA256.fullmatch(str(build_proof.get("app_archive_sha256", "")))
             or not SHA256.fullmatch(str(build_proof.get("package_script_sha256", "")))
-            or not re.fullmatch(r"[0-9a-f]{40}", str(build_proof.get("bundle_cdhash", "")))
+            or not re.fullmatch(
+                r"[0-9a-f]{40}", str(build_proof.get("bundle_cdhash", ""))
+            )
             or not SHA256.fullmatch(str(build_proof.get("executable_sha256", "")))
             or not SHA256.fullmatch(
                 str(build_proof.get("source_attestation_sha256", ""))
@@ -1707,8 +1744,7 @@ def verify_manifest(
             or not SHA256.fullmatch(
                 str(build_proof.get("source_attestation_signature_sha256", ""))
             )
-            or build_proof.get("signing_team_id")
-            != OWNER_PILOT_SIGNING_TEAM_ID
+            or build_proof.get("signing_team_id") != OWNER_PILOT_SIGNING_TEAM_ID
             or build_proof.get("signing_leaf_certificate_sha256")
             != OWNER_PILOT_SIGNING_CERT_SHA256
         ):
@@ -1837,10 +1873,14 @@ def verify_manifest(
             ):
                 _fail("rollback evidence is unrelated to this pilot")
             _timestamp(evidence.get("observed_at"))
-            native_ref = evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
+            native_ref = (
+                evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
+            )
             if native_ref not in _validated_attempt_evidence_refs(manifest):
                 _fail("native rollback proof is not validated attempt evidence")
-            native_path = (root / native_ref).resolve() if _repo_ref(native_ref) else None
+            native_path = (
+                (root / native_ref).resolve() if _repo_ref(native_ref) else None
+            )
             if (
                 native_path is None
                 or not native_path.is_relative_to(root)
@@ -1873,10 +1913,14 @@ def verify_manifest(
             record
             for record in ledger["records"]
             if (
-            record["source_id"] == manifest["pilot_id"]
-            and record["source_type"] == "pilot"
-            and record["result"] == ledger_result
-            and record["revision"] == build["commit"]
+                record["source_id"] == manifest["pilot_id"]
+                and record["source_type"] == "pilot"
+                and record["linear_issue_id"] == "YAN-55"
+                and record["github_issue_or_pr_id"] == "GH-73"
+                and record["environment"] == "owner-pilot"
+                and record["lifecycle_stage"] == "owner-pilot"
+                and record["result"] == ledger_result
+                and record["revision"] == build["commit"]
             )
         ]
         if not matching_records:
@@ -1904,8 +1948,7 @@ def verify_manifest(
             _walk(artifact_payload)
             artifact_matches |= (
                 artifact_payload == expected_outcome_artifact
-                and record["artifact_sha256"]
-                == f"sha256:{_artifact_sha(artifact)}"
+                and record["artifact_sha256"] == f"sha256:{_artifact_sha(artifact)}"
             )
         if not artifact_matches:
             _fail("ledger outcome artifact is missing or changed")
@@ -1946,12 +1989,10 @@ def _load_json(path: Path) -> Any:
     )
 
 
-def _write(path: Path, value: Any) -> None:
+def _write(path: Path, value: Any, *, exclusive: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
+    with path.open("x" if exclusive else "w", encoding="utf-8") as output:
+        output.write(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1973,6 +2014,7 @@ def main(argv: list[str] | None = None) -> int:
                 _load_json(args.manifest),
                 repository_root=Path.cwd(),
                 native_proof_ref=args.native_proof_ref,
+                output_path=args.output,
             )
         else:
             result = verify_manifest(
@@ -1981,6 +2023,7 @@ def main(argv: list[str] | None = None) -> int:
                 repository_root=Path.cwd(),
                 verify_app_artifact=args.verify_app_artifact,
             )
+        _write(args.output, result, exclusive=args.command == "rollback-dry-run")
     except (
         OSError,
         UnicodeDecodeError,
@@ -1989,7 +2032,6 @@ def main(argv: list[str] | None = None) -> int:
     ) as error:
         print(f"pilot {args.command} failed: {error}", file=sys.stderr)
         return 2
-    _write(args.output, result)
     return 0
 
 

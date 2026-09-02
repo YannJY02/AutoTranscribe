@@ -400,15 +400,41 @@ def test_harness_manifest_uses_the_shared_privacy_boundary(tmp_path: Path):
 def test_harness_manifest_cannot_resolve_outside_the_repository(tmp_path: Path):
     copy_repository_evidence(tmp_path)
     value = manifest()
-    harness_path = tmp_path / value["reconciliation"]["repository"][
-        "harness_manifest_ref"
-    ]
+    harness_path = (
+        tmp_path / value["reconciliation"]["repository"]["harness_manifest_ref"]
+    )
     external = tmp_path.parent / f"{tmp_path.name}-external-harness.json"
     shutil.copy2(harness_path, external)
     harness_path.unlink()
     harness_path.symlink_to(external)
 
     with pytest.raises(PilotValidationError, match="repository Harness evidence"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
+
+
+@pytest.mark.parametrize(
+    "observed_at,error",
+    [
+        ("not-a-time", "pilot timestamps"),
+        ("2026-09-02T00:00:00Z", "repository Harness evidence"),
+    ],
+)
+def test_repository_proof_timestamp_binds_the_harness_completion(
+    tmp_path: Path, observed_at: str, error: str
+):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    proof_path = tmp_path / value["reconciliation"]["repository"]["evidence_ref"]
+    proof = json.loads(proof_path.read_text())
+    proof["observed_at"] = observed_at
+    proof_path.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match=error):
         verify_manifest(
             value,
             expected_commit=HEAD,
@@ -424,7 +450,7 @@ def test_attempt_evidence_semantics_must_match_manifest(tmp_path: Path):
     attempt.update(result="passed", unknowns=[])
     attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
 
-    with pytest.raises(PilotValidationError, match="attempt evidence does not match"):
+    with pytest.raises(PilotValidationError, match="signed owner consent"):
         verify_manifest(
             value,
             expected_commit=HEAD,
@@ -570,7 +596,47 @@ def test_synthetic_attempt_evidence_cannot_be_promoted_to_passed(tmp_path: Path)
     )
     evidence.write_text(json.dumps(payload))
 
-    with pytest.raises(PilotValidationError, match="claimed result and stages"):
+    with pytest.raises(PilotValidationError, match="signed owner consent"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
+
+
+def test_owner_labels_do_not_substitute_signed_consent_evidence(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    attempt = value["attempts"][0]
+    attempt.update(result="passed", unknowns=[])
+    attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
+    evidence_path = tmp_path / attempt["evidence_refs"][0]
+    evidence = json.loads(evidence_path.read_text())
+    evidence.update(
+        status="passed",
+        scenario="owner-lifecycle-route",
+        analysis_mode_observed=True,
+        stages=attempt["stages"],
+        unknowns=[],
+        host_attempts=[
+            "developer-signed-exact-app",
+            "owner-lifecycle-route",
+            "owner-consent-confirmed",
+            "native-window-capture",
+        ],
+    )
+    copied_visual = tmp_path / "pilots/evidence/GH-73/relabelled-owner.jpeg"
+    source_visual = tmp_path / evidence["visual"]["artifact_ref"]
+    copied_visual.write_bytes(source_visual.read_bytes() + b"\0")
+    evidence["visual"] = {
+        "artifact_ref": str(copied_visual.relative_to(tmp_path)),
+        "artifact_sha256": hashlib.sha256(copied_visual.read_bytes()).hexdigest(),
+        "fixture": "owner-consented",
+    }
+    evidence_path.write_text(json.dumps(evidence))
+
+    with pytest.raises(PilotValidationError, match="signed owner consent"):
         verify_manifest(
             value,
             expected_commit=HEAD,
@@ -834,6 +900,38 @@ def test_shared_evidence_ledger_schema_is_enforced(tmp_path: Path):
         )
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("linear_issue_id", "YAN-999"),
+        ("github_issue_or_pr_id", "GH-999"),
+        ("environment", "unrelated"),
+        ("lifecycle_stage", "unrelated"),
+    ],
+)
+def test_ledger_outcome_record_binds_the_pilot_task_identity(
+    tmp_path: Path, field: str, value: str
+):
+    copy_repository_evidence(tmp_path)
+    ledger_path = tmp_path / manifest()["evidence_ledger_ref"]
+    ledger = json.loads(ledger_path.read_text())
+    record = next(
+        item
+        for item in ledger["records"]
+        if item["source_id"] == "gh-73-owner-three-day-v1"
+    )
+    record[field] = value
+    ledger_path.write_text(json.dumps(ledger))
+
+    with pytest.raises(PilotValidationError, match="truthful pilot outcome"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
+
+
 @pytest.mark.parametrize("mutation", ["missing", "changed"])
 def test_ledger_outcome_artifact_must_exist_and_match(tmp_path: Path, mutation):
     copy_repository_evidence(tmp_path)
@@ -917,6 +1015,27 @@ def test_provider_evidence_kind_matches_its_classification(tmp_path: Path):
             repository_root=tmp_path,
             now="2026-09-02T04:00:00Z",
         )
+
+
+def test_provider_inference_still_requires_the_provider_contract():
+    value = manifest()
+    posthog = value["reconciliation"]["posthog"]
+    posthog.update(
+        classification="inference",
+        unknowns=["readback.unverified"],
+        scope="unrelated",
+        project_id="unrelated",
+        schema_version=999,
+        local_event_counts={"irrelevant_event": 1},
+        remote_event_counts={"irrelevant_event": 1},
+        window_start="not-a-time",
+        window_end="not-a-time",
+    )
+    value["claims"]["observed"].remove("reconciliation.posthog")
+    value["claims"]["inferred"].append("reconciliation.posthog")
+
+    with pytest.raises(PilotValidationError, match="PostHog readback identity"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_prerequisite_readback_cannot_be_relabelled_as_current_pilot(tmp_path: Path):
@@ -1073,15 +1192,19 @@ def test_developer_attestation_binds_the_final_app_subject(tmp_path: Path, monke
     proof = json.loads(proof_path.read_text())
     archive_path = tmp_path / proof["app_archive_ref"]
     replacement = archive_path.with_suffix(".replacement.zip")
-    target = "InsightKit.app/Contents/Resources/insightkit_runtime/insightkit/ipc/server.py"
-    with zipfile.ZipFile(archive_path) as source, zipfile.ZipFile(
-        replacement, "w", zipfile.ZIP_DEFLATED
-    ) as destination:
+    target = (
+        "InsightKit.app/Contents/Resources/insightkit_runtime/insightkit/ipc/server.py"
+    )
+    with (
+        zipfile.ZipFile(archive_path) as source,
+        zipfile.ZipFile(replacement, "w", zipfile.ZIP_DEFLATED) as destination,
+    ):
         for info in source.infolist():
             payload = source.read(info) if not info.is_dir() else b""
             destination.writestr(
                 info,
-                payload + (b"\n# tampered after build\n" if info.filename == target else b""),
+                payload
+                + (b"\n# tampered after build\n" if info.filename == target else b""),
             )
     replacement.replace(archive_path)
     attacked_app_sha, _ = _archive_bundle_sha(archive_path)
@@ -1236,6 +1359,42 @@ def test_rollback_cli_failure_is_bounded_and_does_not_echo_private_input(
     stderr = capsys.readouterr().err
     assert "shared privacy boundary" in stderr
     assert "DO-NOT-REFLECT" not in stderr
+
+
+@pytest.mark.parametrize("target", ["manifest", "native-proof", "repository-proof"])
+def test_rollback_cli_never_overwrites_retained_evidence(
+    tmp_path: Path, capsys, monkeypatch, target: str
+):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    source = tmp_path / "pilots/gh-73-owner-lifecycle.json"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(PILOT.read_text())
+    targets = {
+        "manifest": source,
+        "native-proof": tmp_path / value["attempts"][0]["evidence_refs"][0],
+        "repository-proof": tmp_path
+        / value["reconciliation"]["repository"]["evidence_ref"],
+    }
+    output = targets[target]
+    original = output.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        main(
+            [
+                "rollback-dry-run",
+                str(source),
+                "--native-proof-ref",
+                value["attempts"][0]["evidence_refs"][0],
+                "--output",
+                str(output),
+            ]
+        )
+        == 2
+    )
+    assert "output must be a new path" in capsys.readouterr().err
+    assert output.read_bytes() == original
 
 
 def test_non_string_build_commit_is_a_bounded_validation_error():
