@@ -247,6 +247,26 @@ def test_fresh_checkout_verifies_historical_harness_after_later_commits(
     tmp_path: Path,
 ):
     copy_repository_evidence(tmp_path)
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=tmp_path, check=True)
+    later_file = tmp_path / "docs/later-unrelated.md"
+    later_file.parent.mkdir(parents=True, exist_ok=True)
+    later_file.write_text("unrelated successor\n")
+    subprocess.run(["git", "add", str(later_file)], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Harness Test",
+            "-c",
+            "user.email=harness@example.invalid",
+            "commit",
+            "-m",
+            "add unrelated successor",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
     harness_commit = manifest()["reconciliation"]["repository"]["harness_commit"]
     later_changes = subprocess.run(
         ["git", "diff", "--name-only", f"{harness_commit}..HEAD"],
@@ -256,7 +276,7 @@ def test_fresh_checkout_verifies_historical_harness_after_later_commits(
         text=True,
     ).stdout.splitlines()
 
-    assert later_changes
+    assert later_changes == ["docs/later-unrelated.md"]
 
     proof = verify_manifest(
         manifest(),
@@ -282,6 +302,7 @@ def test_later_commit_cannot_change_harness_protected_files(
     protected_ref: str,
 ):
     copy_repository_evidence(tmp_path)
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=tmp_path, check=True)
     protected = tmp_path / protected_ref
     subprocess.run(
         ["git", "checkout", "HEAD", "--", protected_ref],

@@ -33,6 +33,7 @@ def write_artifact(tmp_path: Path, body: str) -> Path:
         ("- [Observed] [api_key=sk-supersecret](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         ("- [Observed] ghp_abcdefghijklmnopqrstuvwxyz1234567890. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         ("- [Observed] [sk-abcdefghijklmnopqrstuvwxyz1234567890](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result. ([Sources: credential](https://github.com/ghp_abcdefghijklmnopqrstuvwxyz1234567890))", "disallowed external link"),
     ],
 )
 def test_validator_rejects_unclassified_unlinked_or_private_claims(tmp_path, body, message):

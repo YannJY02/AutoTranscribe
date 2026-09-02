@@ -83,6 +83,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or parsed.hostname not in ALLOWED_HOSTS
                         or parsed.username is not None
                         or parsed.password is not None
+                        or _contains_secret(unquote(target))
                         or PRIVATE.search(unquote(parsed.query))
                         or PRIVATE.search(unquote(parsed.fragment))
                     ):
