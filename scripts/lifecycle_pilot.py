@@ -1019,14 +1019,28 @@ def validate_rollback_proof(
         _fail("rollback proof evidence input changed")
 
 
+def _validated_attempt_evidence_refs(manifest: dict[str, Any]) -> set[str]:
+    return {
+        ref
+        for attempt in manifest.get("attempts", [])
+        if isinstance(attempt, dict)
+        and attempt.get("classification") in {"observed", "inference"}
+        for ref in attempt.get("evidence_refs", [])
+        if _repo_ref(ref)
+    }
+
+
 def generate_rollback_proof(
     manifest: dict[str, Any], *, repository_root: Path, native_proof_ref: str
 ) -> dict[str, Any]:
+    _validate_attempts(manifest["attempts"])
     build = manifest["build"]
     app_path, native_path = (
         repository_root / build["app_bundle_ref"],
         repository_root / native_proof_ref,
     )
+    if native_proof_ref not in _validated_attempt_evidence_refs(manifest):
+        _fail("rollback input is not validated attempt evidence")
     if not app_path.is_dir() or not native_path.is_file():
         _fail("rollback prerequisite evidence is missing")
     build_proof = _load_json(repository_root / build["proof_ref"])
@@ -1036,13 +1050,38 @@ def generate_rollback_proof(
         or build_proof.get("app_bundle_sha256") != app_sha
     ):
         _fail("rollback target does not match the frozen build proof")
+    attempt = next(
+        item
+        for item in manifest["attempts"]
+        if item["classification"] in {"observed", "inference"}
+        and native_proof_ref in item["evidence_refs"]
+    )
     native_proof = _load_json(native_path)
+    if isinstance(native_proof, dict):
+        _walk(native_proof)
+        _exact_keys(native_proof, ATTEMPT_EVIDENCE_FIELDS, "attempt evidence")
     if (
         not isinstance(native_proof, dict)
-        or native_proof.get("privacy_safe") is not True
+        or native_proof.get("issue") != "GH-73"
         or native_proof.get("commit") != build["commit"]
+        or native_proof.get("pilot_id") != manifest["pilot_id"]
+        or native_proof.get("evidence_kind")
+        != {"observed": "attempt", "inference": "inference"}[
+            attempt["classification"]
+        ]
+        or native_proof.get("subject") != attempt["id"]
     ):
-        _fail("rollback input is not privacy-safe evidence for the frozen build")
+        _fail("rollback input is unrelated to this pilot")
+    _validate_attempt_evidence(
+        attempt,
+        native_proof,
+        root=repository_root.resolve(),
+        build_proof=build_proof,
+        pilot_window=(
+            _timestamp(manifest["window"]["started_at"]),
+            _timestamp(manifest["window"]["ends_at"]),
+        ),
+    )
     evidence_sha = _artifact_sha(native_path)
     _run_frozen_rollback_checks(repository_root, build["commit"])
     if _artifact_sha(native_path) != evidence_sha:
@@ -1398,7 +1437,11 @@ def verify_manifest(
                     )
                     or evidence.get("pilot_id") != manifest["pilot_id"]
                     or evidence.get("evidence_kind")
-                    not in {"reconciliation", "inference"}
+                    != (
+                        "reconciliation"
+                        if item["classification"] == "observed"
+                        else "inference"
+                    )
                     or evidence.get("subject") != provider
                 ):
                     _fail("provider evidence is unrelated to this pilot")
@@ -1427,6 +1470,8 @@ def verify_manifest(
                 _fail("rollback evidence is unrelated to this pilot")
             _timestamp(evidence.get("observed_at"))
             native_ref = evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
+            if native_ref not in _validated_attempt_evidence_refs(manifest):
+                _fail("native rollback proof is not validated attempt evidence")
             native_path = (root / native_ref).resolve() if _repo_ref(native_ref) else None
             if (
                 native_path is None
@@ -1434,6 +1479,7 @@ def verify_manifest(
                 or not native_path.is_file()
             ):
                 _fail("native rollback proof is missing")
+            _walk(_load_json(native_path))
             native_sha = _artifact_sha(native_path)
             validate_rollback_proof(
                 evidence,
@@ -1467,6 +1513,18 @@ def verify_manifest(
         ]
         if not matching_records:
             _fail("evidence ledger does not contain the truthful pilot outcome")
+        expected_outcome_artifact = {
+            "status": ledger_result,
+            "issue": "GH-73",
+            "commit": build["commit"],
+            "pilot_id": manifest["pilot_id"],
+            "observed_at": window["ends_at"],
+            "result": outcome,
+            "observed_attempts": counts["observed"],
+            "unobserved_attempts": counts["unobserved"],
+            "production_readiness_claimed": False,
+            "privacy_safe": True,
+        }
         artifact_matches = False
         for record in matching_records:
             if record["source_ref"] != "pilots/evidence/GH-73/pilot-outcome.json":
@@ -1474,9 +1532,12 @@ def verify_manifest(
             artifact = (root / record["source_ref"]).resolve()
             if not artifact.is_relative_to(root) or not artifact.is_file():
                 continue
-            _walk(_load_json(artifact))
-            artifact_matches |= record["artifact_sha256"] == (
-                f"sha256:{_artifact_sha(artifact)}"
+            artifact_payload = _load_json(artifact)
+            _walk(artifact_payload)
+            artifact_matches |= (
+                artifact_payload == expected_outcome_artifact
+                and record["artifact_sha256"]
+                == f"sha256:{_artifact_sha(artifact)}"
             )
         if not artifact_matches:
             _fail("ledger outcome artifact is missing or changed")

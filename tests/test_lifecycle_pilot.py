@@ -10,6 +10,7 @@ from scripts.lifecycle_pilot import (
     POST_HARNESS_EVIDENCE_REFS,
     PilotValidationError,
     _run_frozen_rollback_checks,
+    generate_rollback_proof,
     main,
     validate_rollback_proof,
     verify_manifest,
@@ -433,12 +434,97 @@ def test_native_rollback_proof_must_exist(tmp_path: Path):
     proof["native_proof_ref"] = "pilots/evidence/GH-73/missing-native-proof.json"
     rollback.write_text(json.dumps(proof))
 
-    with pytest.raises(PilotValidationError, match="native rollback proof is missing"):
+    with pytest.raises(PilotValidationError, match="validated attempt evidence"):
         verify_manifest(
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
             now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_native_rollback_proof_uses_the_shared_privacy_boundary(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    native_ref = manifest()["attempts"][0]["evidence_refs"][0]
+    native = tmp_path / native_ref
+    payload = json.loads(native.read_text())
+    payload["api_key"] = "sk-" + "private-value"
+    native.write_text(json.dumps(payload))
+    rollback_path = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+    rollback = json.loads(rollback_path.read_text())
+    native_sha = hashlib.sha256(native.read_bytes()).hexdigest()
+    rollback["evidence_sha256_before"] = native_sha
+    rollback["evidence_sha256_after"] = native_sha
+    rollback_path.write_text(json.dumps(rollback))
+
+    with pytest.raises(PilotValidationError, match="shared privacy boundary"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_native_rollback_proof_must_be_validated_attempt_evidence(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    native = tmp_path / "pilots/evidence/GH-73/arbitrary-safe.json"
+    native.write_text("{}\n")
+    rollback_path = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+    rollback = json.loads(rollback_path.read_text())
+    rollback["native_proof_ref"] = str(native.relative_to(tmp_path))
+    native_sha = hashlib.sha256(native.read_bytes()).hexdigest()
+    rollback["evidence_sha256_before"] = native_sha
+    rollback["evidence_sha256_after"] = native_sha
+    rollback_path.write_text(json.dumps(rollback))
+
+    with pytest.raises(PilotValidationError, match="validated attempt evidence"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_rollback_generator_validates_the_attempt_evidence(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    build_proof = json.loads((tmp_path / value["build"]["proof_ref"]).read_text())
+    app = tmp_path / value["build"]["app_bundle_ref"]
+    app.parent.mkdir(parents=True, exist_ok=True)
+    shutil.unpack_archive(tmp_path / build_proof["app_archive_ref"], app.parent)
+    native_ref = value["attempts"][0]["evidence_refs"][0]
+    native = tmp_path / native_ref
+    native.write_text(
+        json.dumps(
+            {
+                "privacy_safe": True,
+                "commit": value["build"]["commit"],
+                "api_key": "sk-" + "private-value",
+            }
+        )
+    )
+
+    with pytest.raises(PilotValidationError, match="shared privacy boundary"):
+        generate_rollback_proof(
+            value,
+            repository_root=tmp_path,
+            native_proof_ref=native_ref,
+        )
+
+
+def test_rollback_generator_validates_attempt_semantics(tmp_path: Path):
+    value = manifest()
+    attempt = value["attempts"][0]
+    attempt.update(result="passed", unknowns=[])
+    attempt["stages"] = {stage: "unobserved" for stage in attempt["stages"]}
+
+    with pytest.raises(PilotValidationError, match="observed attempt requires"):
+        generate_rollback_proof(
+            value,
+            repository_root=tmp_path,
+            native_proof_ref=attempt["evidence_refs"][0],
         )
 
 
@@ -573,6 +659,50 @@ def test_ledger_outcome_artifact_must_be_the_expected_json(tmp_path: Path):
     ledger_path.write_text(json.dumps(ledger))
 
     with pytest.raises(PilotValidationError, match="ledger outcome artifact"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_ledger_outcome_artifact_must_match_the_computed_outcome(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    ledger_path = tmp_path / manifest()["evidence_ledger_ref"]
+    ledger = json.loads(ledger_path.read_text())
+    outcome = tmp_path / ledger["records"][0]["source_ref"]
+    payload = json.loads(outcome.read_text())
+    payload.update(
+        status="passed",
+        result="completed",
+        observed_attempts=4,
+        unobserved_attempts=0,
+        production_readiness_claimed=True,
+    )
+    outcome.write_text(json.dumps(payload))
+    ledger["records"][0]["artifact_sha256"] = (
+        "sha256:" + hashlib.sha256(outcome.read_bytes()).hexdigest()
+    )
+    ledger_path.write_text(json.dumps(ledger))
+
+    with pytest.raises(PilotValidationError, match="ledger outcome artifact"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_provider_evidence_kind_matches_its_classification(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    evidence = tmp_path / manifest()["reconciliation"]["posthog"]["evidence_ref"]
+    payload = json.loads(evidence.read_text())
+    payload["evidence_kind"] = "inference"
+    evidence.write_text(json.dumps(payload))
+
+    with pytest.raises(PilotValidationError, match="provider evidence is unrelated"):
         verify_manifest(
             manifest(),
             expected_commit=HEAD,
