@@ -1,16 +1,16 @@
 {
-  "status": "failed",
+  "status": "passed",
   "issue": "GH-73",
-  "commit": "8cca8bc4f30730fca745bc6f96baf7414ce9b01a",
+  "commit": "cd554b0726a0f7a39f5fd2355f6af8643913379b",
   "pilot_id": "gh-73-owner-three-day-v1",
   "evidence_kind": "reconciliation",
   "subject": "repository",
-  "observed_at": "2026-09-02T18:31:52.330729+00:00",
+  "observed_at": "2026-09-02T18:36:17.327232+00:00",
   "scope": "repository-proof",
   "checks": [
     "full-agent-harness"
   ],
   "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-  "harness_manifest_sha256": "baaaeae42ce1b2996f90d5c84d7ed81f5e2c074ce9a3e314b0b8af6cf07acdef",
+  "harness_manifest_sha256": "9ba3ca60eb4350886ac616d476a5fe1fc5fa6c5884343186dd69aeab5a68bfef",
   "privacy_safe": true
 }
