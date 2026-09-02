@@ -100,7 +100,8 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             re.sub(r"[*_`~]", "", decoded_privacy_text),
         )
         if (
-            _contains_private_or_secret(privacy_text)
+            "![" in text
+            or _contains_private_or_secret(privacy_text)
             or any(
                 "<" in rendered_text
                 or ">" in rendered_text

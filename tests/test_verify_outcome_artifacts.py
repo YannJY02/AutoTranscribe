@@ -57,6 +57,8 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         (f"- [Observed] [ghp_**{FAKE_GITHUB_TOKEN.removeprefix('ghp_')}**](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (f"- [Observed] ghp_~~{FAKE_GITHUB_TOKEN.removeprefix('ghp_')}~~. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (f"- [Observed] ghp_<i>{FAKE_GITHUB_TOKEN.removeprefix('ghp_')}</i>. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        (f"- [Observed] ghp_{FAKE_GITHUB_TOKEN.removeprefix('ghp_')[:4]}![](https://github.com/org/repo){FAKE_GITHUB_TOKEN.removeprefix('ghp_')[4:]}. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        (f"- [Observed] [ghp_{FAKE_GITHUB_TOKEN.removeprefix('ghp_')[:4]}![](https://github.com/org/repo){FAKE_GITHUB_TOKEN.removeprefix('ghp_')[4:]}](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         ("- [Observed] path */Users/alice/private.txt*. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (f"- [Observed] [{FAKE_OPENAI_KEY}](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (f"- [Observed] Result. ([Sources: credential](https://github.com/{FAKE_GITHUB_TOKEN}))", "disallowed external link"),
