@@ -1,0 +1,18 @@
+{
+  "status": "failed",
+  "issue": "GH-73",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "pilot_id": "gh-73-owner-three-day-v1",
+  "evidence_kind": "attempt",
+  "subject": "live-local",
+  "observed_at": "2026-09-02T03:25:19Z",
+  "privacy_safe": true,
+  "scenario": "synthetic-ui-route",
+  "analysis_mode": "local",
+  "analysis_mode_observed": false,
+  "stages": {"started": "observed", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "observed", "export_completed": "unobserved", "workflow_completed": "failed"},
+  "app": {"build": "20260902111326", "bundle_sha256": "98f33b0d103e9e11f62f283ed6ac5f0d36d7c45ed9055f3cf75e7fbc52649ee4", "source": "local-workspace-clean", "cdhash": "380416dd7543eec9150f79026f063fa8055d32a7", "attestation_sha256": "579a5c48457a9d1b50e0676e4dee3658254a706415ef255094054a8354aac8e7", "signer_policy": "owner-pilot-apple-development-v1"},
+  "visual": {"artifact_ref": "pilots/evidence/GH-73/live-local-review.jpeg", "artifact_sha256": "472d307083cdd29c793d10ba0bc57fa290e64b1722c2ea4ba6828ea1ffa56d1f", "fixture": "synthetic"},
+  "host_attempts": ["developer-signed-exact-app", "synthetic-ui-route", "native-window-capture"],
+  "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved"]
+}

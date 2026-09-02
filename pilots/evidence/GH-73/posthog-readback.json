@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "issue": "GH-73",
+  "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+  "pilot_id": "gh-73-owner-three-day-v1",
+  "evidence_kind": "reconciliation",
+  "subject": "posthog",
+  "observed_at": "2026-09-01T22:00:00Z",
+  "scope": "prerequisite-synthetic",
+  "project_id": "585182",
+  "region": "us-cloud",
+  "environment": "owner-pilot",
+  "schema_version": 1,
+  "window_start": "2026-08-30T00:00:00Z",
+  "window_end": "2026-09-01T00:00:00Z",
+  "event_count": 14,
+  "event_counts": {"export_completed": 1, "record_reopened": 1, "record_saved": 1, "recovery_attempted": 1, "recovery_completed": 1, "smart_minutes_review_opened": 1, "workflow_completed": 3, "workflow_failed": 1, "workflow_started": 4},
+  "readback": "activity.showing-all-14",
+  "source_issue": "GH-72",
+  "privacy_safe": true
+}

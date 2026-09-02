@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-02T13:22:59.685653+00:00",
+  "status": "passed",
+  "issue": 73,
+  "base": "origin/main",
+  "commit": "b44ef962119419d35635d107fb5166bf4cd68ea2",
+  "branch": "codex/yan-55-owner-lifecycle-pilot",
+  "workspace": "$WORKSPACE",
+  "changed_files": [
+    ".github/workflows/ci.yml",
+    "pilots/evidence/GH-73/InsightKit-exact-build.zip",
+    "pilots/evidence/GH-73/build-proof.json",
+    "pilots/evidence/GH-73/evidence-ledger.json",
+    "pilots/evidence/GH-73/full-harness-manifest.json",
+    "pilots/evidence/GH-73/langfuse-readback.json",
+    "pilots/evidence/GH-73/live-local-proof.json",
+    "pilots/evidence/GH-73/live-local-review.jpeg",
+    "pilots/evidence/GH-73/pilot-outcome.json",
+    "pilots/evidence/GH-73/posthog-readback.json",
+    "pilots/evidence/GH-73/repository-proof.json",
+    "pilots/evidence/GH-73/rollback-proof.json",
+    "pilots/evidence/GH-73/sentry-readback.json",
+    "pilots/evidence/GH-73/source-attestation.cms",
+    "pilots/evidence/GH-73/source-attestation.json",
+    "pilots/gh-73-owner-lifecycle.json",
+    "scripts/lifecycle_pilot.py",
+    "tests/test_lifecycle_pilot.py"
+  ],
+  "gates": [
+    {
+      "name": "diff-check",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.011,
+          "ok": true
+        },
+        {
+          "command": [
+            "git",
+            "diff",
+            "--cached",
+            "--check"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.011,
+          "ok": true
+        },
+        {
+          "command": [
+            "git",
+            "diff",
+            "--check",
+            "origin/main...HEAD"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.028,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "harness-tests",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_agent_harness.py",
+            "tests/test_verify_project_normalization.py"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.992,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "python-tests",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "-m",
+            "pytest",
+            "tests",
+            "-q",
+            "--tb=short",
+            "-m",
+            "not integration and not requires_model and not slow"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 97.113,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "project-normalization",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "scripts/verify_project_normalization.py",
+            "--output-root",
+            "$WORKSPACE/logs/harness/20260902-212259/project-normalization"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.086,
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "finished_at": "2026-09-02T13:24:37.949178+00:00"
+}
