@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T18:19:55.552319+00:00",
-  "status": "passed",
+  "generated_at": "2026-09-02T18:31:05.441932+00:00",
+  "status": "failed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "36862918756e83470c52343726bd904d5ffd6781",
+  "commit": "8cca8bc4f30730fca745bc6f96baf7414ce9b01a",
   "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -43,7 +43,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.009,
+          "duration_seconds": 0.008,
           "ok": true
         },
         {
@@ -54,7 +54,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.008,
+          "duration_seconds": 0.01,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.023,
+          "duration_seconds": 0.032,
           "ok": true
         }
       ]
@@ -84,14 +84,14 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.711,
+          "duration_seconds": 0.705,
           "ok": true
         }
       ]
     },
     {
       "name": "python-tests",
-      "status": "passed",
+      "status": "failed",
       "commands": [
         {
           "command": [
@@ -104,29 +104,12 @@
             "-m",
             "not integration and not requires_model and not slow"
           ],
-          "exit_code": 0,
-          "duration_seconds": 70.902,
-          "ok": true
-        }
-      ]
-    },
-    {
-      "name": "project-normalization",
-      "status": "passed",
-      "commands": [
-        {
-          "command": [
-            "$WORKSPACE/.venv/bin/python",
-            "scripts/verify_project_normalization.py",
-            "--output-root",
-            "$WORKSPACE/logs/harness/20260903-021955/project-normalization"
-          ],
-          "exit_code": 0,
-          "duration_seconds": 0.06,
-          "ok": true
+          "exit_code": 1,
+          "duration_seconds": 46.117,
+          "ok": false
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T18:21:07.282616+00:00"
+  "finished_at": "2026-09-02T18:31:52.330729+00:00"
 }
