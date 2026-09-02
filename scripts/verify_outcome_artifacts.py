@@ -38,10 +38,10 @@ PRIVATE = re.compile(
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
-def _contains_private_or_secret(value: str) -> bool:
+def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False) -> bool:
     while True:
         decoded = unquote(value)
-        if PRIVATE.search(decoded) or _contains_secret(decoded):
+        if (reject_double_slash and "//" in decoded) or PRIVATE.search(decoded) or _contains_secret(decoded):
             return True
         if decoded == value:
             return False
@@ -105,7 +105,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or parsed.username is not None
                         or parsed.password is not None
                         or _contains_private_or_secret(target)
-                        or any(_contains_private_or_secret(segment) for segment in parsed.path.split("/"))
+                        or _contains_private_or_secret(parsed.path.removeprefix("/"), reject_double_slash=True)
                         or _contains_private_component(parsed.query)
                         or _contains_private_component(parsed.fragment)
                     ):
