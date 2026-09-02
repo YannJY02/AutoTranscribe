@@ -12,18 +12,34 @@
     "started_at": "2026-09-02T03:25:13Z",
     "ends_at": "2026-09-02T03:27:19Z"
   },
-  "cohort": {"kind": "owner", "size": 1, "reference_mac": true},
+  "cohort": {
+    "kind": "owner",
+    "size": 1,
+    "reference_mac": true
+  },
   "configuration": {
     "event_schema_version": 1,
     "smart_minutes_dataset": "smart-minutes-v1",
     "consent_default": "off",
-    "attempt_order": ["live-local", "live-cloud", "import-local", "import-cloud"],
+    "attempt_order": [
+      "live-local",
+      "live-cloud",
+      "import-local",
+      "import-cloud"
+    ],
     "quality_thresholds": [],
     "consent_plan": "explicit-enable-then-disable",
-    "rollout_steps": ["exact-build", "serialized-attempts", "reconcile", "rollback"],
+    "rollout_steps": [
+      "exact-build",
+      "serialized-attempts",
+      "reconcile",
+      "rollback"
+    ],
     "rollback_trigger": "privacy-or-quality-gate-failure",
     "human_gates": [],
-    "sql_refs": ["analytics/sql/v1/posthog/reconciliation.hogql"]
+    "sql_refs": [
+      "analytics/sql/v1/posthog/reconciliation.hogql"
+    ]
   },
   "attempts": [
     {
@@ -40,8 +56,14 @@
         "export_completed": "unobserved",
         "workflow_completed": "failed"
       },
-      "evidence_refs": ["pilots/evidence/GH-73/live-local-proof.json"],
-      "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved"]
+      "evidence_refs": [
+        "pilots/evidence/GH-73/live-local-proof.json"
+      ],
+      "unknowns": [
+        "analysis-mode.synthetic-ui-route",
+        "record-persistence.unobserved",
+        "export.unobserved"
+      ]
     },
     {
       "id": "live-cloud",
@@ -49,9 +71,18 @@
       "analysis_mode": "cloud",
       "classification": "unobserved",
       "result": "blocked",
-      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "stages": {
+        "started": "unobserved",
+        "record_saved": "unobserved",
+        "record_reopened": "unobserved",
+        "smart_minutes_review_opened": "unobserved",
+        "export_completed": "unobserved",
+        "workflow_completed": "unobserved"
+      },
       "evidence_refs": [],
-      "unknowns": ["provider-path.not-exercised"]
+      "unknowns": [
+        "provider-path.not-exercised"
+      ]
     },
     {
       "id": "import-local",
@@ -59,9 +90,18 @@
       "analysis_mode": "local",
       "classification": "unobserved",
       "result": "blocked",
-      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "stages": {
+        "started": "unobserved",
+        "record_saved": "unobserved",
+        "record_reopened": "unobserved",
+        "smart_minutes_review_opened": "unobserved",
+        "export_completed": "unobserved",
+        "workflow_completed": "unobserved"
+      },
       "evidence_refs": [],
-      "unknowns": ["exclusive-macos.window-exhausted"]
+      "unknowns": [
+        "exclusive-macos.window-exhausted"
+      ]
     },
     {
       "id": "import-cloud",
@@ -69,9 +109,19 @@
       "analysis_mode": "cloud",
       "classification": "unobserved",
       "result": "blocked",
-      "stages": {"started": "unobserved", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "unobserved", "export_completed": "unobserved", "workflow_completed": "unobserved"},
+      "stages": {
+        "started": "unobserved",
+        "record_saved": "unobserved",
+        "record_reopened": "unobserved",
+        "smart_minutes_review_opened": "unobserved",
+        "export_completed": "unobserved",
+        "workflow_completed": "unobserved"
+      },
       "evidence_refs": [],
-      "unknowns": ["exclusive-macos.window-exhausted", "provider-path.not-exercised"]
+      "unknowns": [
+        "exclusive-macos.window-exhausted",
+        "provider-path.not-exercised"
+      ]
     }
   ],
   "reconciliation": {
@@ -81,8 +131,28 @@
       "scope": "prerequisite-synthetic",
       "project_id": "585182",
       "state": "complete",
-      "local_event_counts": {"export_completed": 1, "record_reopened": 1, "record_saved": 1, "recovery_attempted": 1, "recovery_completed": 1, "smart_minutes_review_opened": 1, "workflow_completed": 3, "workflow_failed": 1, "workflow_started": 4},
-      "remote_event_counts": {"export_completed": 1, "record_reopened": 1, "record_saved": 1, "recovery_attempted": 1, "recovery_completed": 1, "smart_minutes_review_opened": 1, "workflow_completed": 3, "workflow_failed": 1, "workflow_started": 4},
+      "local_event_counts": {
+        "export_completed": 1,
+        "record_reopened": 1,
+        "record_saved": 1,
+        "recovery_attempted": 1,
+        "recovery_completed": 1,
+        "smart_minutes_review_opened": 1,
+        "workflow_completed": 3,
+        "workflow_failed": 1,
+        "workflow_started": 4
+      },
+      "remote_event_counts": {
+        "export_completed": 1,
+        "record_reopened": 1,
+        "record_saved": 1,
+        "recovery_attempted": 1,
+        "recovery_completed": 1,
+        "smart_minutes_review_opened": 1,
+        "workflow_completed": 3,
+        "workflow_failed": 1,
+        "workflow_started": 4
+      },
       "schema_version": 1,
       "environment": "owner-pilot",
       "window_start": "2026-08-30T00:00:00Z",
@@ -111,7 +181,11 @@
       "experiment_name": "smart-minutes-v1-20260831T005732440827Z",
       "item_count": 4,
       "score_count": 9,
-      "score_names": ["failure_behavior", "latency", "source_evidence_linkage"],
+      "score_names": [
+        "failure_behavior",
+        "latency",
+        "source_evidence_linkage"
+      ],
       "score_environment": "owner-pilot",
       "observation_environment": "sdk-experiment"
     },
@@ -120,10 +194,12 @@
       "evidence_ref": "pilots/evidence/GH-73/repository-proof.json",
       "scope": "repository-proof",
       "status": "passed",
-      "checks": ["full-agent-harness"],
-      "harness_commit": "b3ba1d582c4f4b27ac341811f730b0fca0979520",
+      "checks": [
+        "full-agent-harness"
+      ],
+      "harness_commit": "b44ef962119419d35635d107fb5166bf4cd68ea2",
       "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-      "harness_manifest_sha256": "0c8a8e3512d20031a8f8d43d721f93ef4e428349a2658e0690ce9009c9b0d125"
+      "harness_manifest_sha256": "617243cc91bc8578fed76bbb22a27216f713bb9ee26098988006efbd81b8c102"
     }
   },
   "rollback": {
@@ -133,13 +209,31 @@
     "queues_purged": true,
     "app_target_verified": true,
     "evidence_preserved": true,
-    "evidence_refs": ["pilots/evidence/GH-73/rollback-proof.json"]
+    "evidence_refs": [
+      "pilots/evidence/GH-73/rollback-proof.json"
+    ]
   },
   "claims": {
-    "observed": ["attempt.live-local", "reconciliation.posthog", "reconciliation.sentry", "reconciliation.langfuse", "reconciliation.repository", "rollback.dry-run"],
+    "observed": [
+      "attempt.live-local",
+      "reconciliation.posthog",
+      "reconciliation.sentry",
+      "reconciliation.langfuse",
+      "reconciliation.repository",
+      "rollback.dry-run"
+    ],
     "inferred": [],
-    "unobserved": ["attempt.live-cloud", "attempt.import-local", "attempt.import-cloud", "production-readiness", "external-user-validation"]
+    "unobserved": [
+      "attempt.live-cloud",
+      "attempt.import-local",
+      "attempt.import-cloud",
+      "production-readiness",
+      "external-user-validation"
+    ]
   },
-  "deviations": ["analysis-mode.synthetic-ui-route", "pilot-outcome.partial"],
+  "deviations": [
+    "analysis-mode.synthetic-ui-route",
+    "pilot-outcome.partial"
+  ],
   "evidence_ledger_ref": "pilots/evidence/GH-73/evidence-ledger.json"
 }

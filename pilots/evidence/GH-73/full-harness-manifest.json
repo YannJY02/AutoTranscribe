@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T04:06:03.666059+00:00",
+  "generated_at": "2026-09-02T13:22:59.685653+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "b3ba1d582c4f4b27ac341811f730b0fca0979520",
+  "commit": "b44ef962119419d35635d107fb5166bf4cd68ea2",
   "branch": "codex/yan-55-owner-lifecycle-pilot",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -17,7 +17,6 @@
     "pilots/evidence/GH-73/live-local-proof.json",
     "pilots/evidence/GH-73/live-local-review.jpeg",
     "pilots/evidence/GH-73/pilot-outcome.json",
-    "pilots/evidence/GH-73/pilot-proof.json",
     "pilots/evidence/GH-73/posthog-readback.json",
     "pilots/evidence/GH-73/repository-proof.json",
     "pilots/evidence/GH-73/rollback-proof.json",
@@ -51,7 +50,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.009,
+          "duration_seconds": 0.011,
           "ok": true
         },
         {
@@ -62,7 +61,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.024,
+          "duration_seconds": 0.028,
           "ok": true
         }
       ]
@@ -81,7 +80,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.968,
+          "duration_seconds": 0.992,
           "ok": true
         }
       ]
@@ -102,7 +101,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 87.422,
+          "duration_seconds": 97.113,
           "ok": true
         }
       ]
@@ -116,14 +115,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260902-120603/project-normalization"
+            "$WORKSPACE/logs/harness/20260902-212259/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.066,
+          "duration_seconds": 0.086,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T04:07:32.186384+00:00"
+  "finished_at": "2026-09-02T13:24:37.949178+00:00"
 }
