@@ -35,7 +35,7 @@ PRIVATE = re.compile(
     r")",
     re.IGNORECASE,
 )
-ALLOWED_HOSTS = {"github.com", "linear.app"}
+ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
 def _display(path: Path) -> str:
