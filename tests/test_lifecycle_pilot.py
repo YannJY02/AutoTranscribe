@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 import subprocess
@@ -58,6 +59,8 @@ def copy_repository_evidence(destination: Path) -> None:
     ]
     refs += value["rollback"]["evidence_refs"]
     refs += [value["reconciliation"]["repository"]["harness_manifest_ref"]]
+    ledger = json.loads((ROOT / value["evidence_ledger_ref"]).read_text())
+    refs += [record["source_ref"] for record in ledger["records"]]
     refs += [
         json.loads((ROOT / value["build"]["proof_ref"]).read_text())["app_archive_ref"]
     ]
@@ -95,7 +98,15 @@ def test_completed_requires_all_four_paths_and_all_provider_readbacks():
         verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
             "pilot_outcome"
         ]
-        == "completed"
+        == "partial"
+    )
+
+    value["reconciliation"]["repository"]["status"] = "passed"
+    assert (
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
+            "pilot_outcome"
+        ]
+        == "partial"
     )
 
     value["reconciliation"]["sentry"] = {
@@ -198,6 +209,90 @@ def test_repository_harness_commit_is_bound_separately_from_build(tmp_path: Path
         )
 
 
+def test_non_string_repository_harness_commit_is_a_bounded_validation_error():
+    value = manifest()
+    value["reconciliation"]["repository"]["harness_commit"] = 42
+
+    with pytest.raises(PilotValidationError, match="repository readback"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty-commands",
+        "empty-changed-files",
+        "failed-command-marked-passed",
+        "self-selected-base",
+        "unavailable-commit",
+    ],
+)
+def test_repository_harness_must_match_the_executed_plan(tmp_path: Path, mutation):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    harness_ref = value["reconciliation"]["repository"]["harness_manifest_ref"]
+    harness_path = tmp_path / harness_ref
+    harness = json.loads(harness_path.read_text())
+    if mutation == "empty-commands":
+        for gate in harness["gates"]:
+            gate["commands"] = []
+    elif mutation == "empty-changed-files":
+        harness["changed_files"] = []
+        harness["gates"] = harness["gates"][:1]
+        harness["gates"][0]["commands"] = []
+    elif mutation == "failed-command-marked-passed":
+        harness["gates"][0]["commands"][0].update(exit_code=1, ok=False)
+    elif mutation == "self-selected-base":
+        harness["base"] = "HEAD"
+        harness["changed_files"] = []
+        harness["gates"] = harness["gates"][:1]
+        harness["gates"][0]["commands"][2]["command"][3] = "HEAD...HEAD"
+    else:
+        harness["commit"] = "f" * 40
+        value["reconciliation"]["repository"]["harness_commit"] = "f" * 40
+    harness_path.write_text(json.dumps(harness))
+    harness_sha = hashlib.sha256(harness_path.read_bytes()).hexdigest()
+    value["reconciliation"]["repository"]["harness_manifest_sha256"] = harness_sha
+    repository_proof = tmp_path / value["reconciliation"]["repository"]["evidence_ref"]
+    proof = json.loads(repository_proof.read_text())
+    proof["harness_manifest_sha256"] = harness_sha
+    if mutation == "unavailable-commit":
+        proof["commit"] = "f" * 40
+    repository_proof.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match="repository Harness evidence"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_harness_manifest_uses_the_shared_privacy_boundary(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    harness_ref = value["reconciliation"]["repository"]["harness_manifest_ref"]
+    harness_path = tmp_path / harness_ref
+    harness = json.loads(harness_path.read_text())
+    harness["api_key"] = "sk-" + "example-secret-value-that-must-not-pass"
+    harness_path.write_text(json.dumps(harness))
+    harness_sha = hashlib.sha256(harness_path.read_bytes()).hexdigest()
+    value["reconciliation"]["repository"]["harness_manifest_sha256"] = harness_sha
+    repository_proof = tmp_path / value["reconciliation"]["repository"]["evidence_ref"]
+    proof = json.loads(repository_proof.read_text())
+    proof["harness_manifest_sha256"] = harness_sha
+    repository_proof.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match="shared privacy boundary"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
 def test_attempt_evidence_semantics_must_match_manifest(tmp_path: Path):
     copy_repository_evidence(tmp_path)
     value = manifest()
@@ -250,6 +345,23 @@ def test_native_rollback_proof_must_exist(tmp_path: Path):
     rollback.write_text(json.dumps(proof))
 
     with pytest.raises(PilotValidationError, match="native rollback proof is missing"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize("field,value", [("status", "failed"), ("commit", "0" * 40)])
+def test_rollback_proof_identity_is_bound(tmp_path: Path, field, value):
+    copy_repository_evidence(tmp_path)
+    rollback = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+    proof = json.loads(rollback.read_text())
+    proof[field] = value
+    rollback.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match="rollback evidence is unrelated"):
         verify_manifest(
             manifest(),
             expected_commit=HEAD,
@@ -333,6 +445,65 @@ def test_shared_evidence_ledger_schema_is_enforced(tmp_path: Path):
     with pytest.raises(PilotValidationError, match="shared schema"):
         verify_manifest(
             manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "changed"])
+def test_ledger_outcome_artifact_must_exist_and_match(tmp_path: Path, mutation):
+    copy_repository_evidence(tmp_path)
+    ledger = json.loads((tmp_path / manifest()["evidence_ledger_ref"]).read_text())
+    outcome = tmp_path / ledger["records"][0]["source_ref"]
+    if mutation == "missing":
+        outcome.unlink()
+    else:
+        outcome.write_text("{}\n")
+
+    with pytest.raises(PilotValidationError, match="ledger outcome artifact"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_ledger_outcome_artifact_must_be_the_expected_json(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    ledger_path = tmp_path / manifest()["evidence_ledger_ref"]
+    ledger = json.loads(ledger_path.read_text())
+    artifact = tmp_path / "pilots/evidence/GH-73/arbitrary-private.bin"
+    artifact.write_text("api_key=sk-" + "example-secret-value-that-must-not-pass")
+    ledger["records"][0]["source_ref"] = str(artifact.relative_to(tmp_path))
+    ledger["records"][0]["recheck_source"] = str(artifact.relative_to(tmp_path))
+    ledger["records"][0]["artifact_sha256"] = (
+        "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+    )
+    ledger_path.write_text(json.dumps(ledger))
+
+    with pytest.raises(PilotValidationError, match="ledger outcome artifact"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_prerequisite_readback_cannot_be_relabelled_as_current_pilot(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    value["reconciliation"]["posthog"]["scope"] = "pilot-attempt"
+    evidence = tmp_path / value["reconciliation"]["posthog"]["evidence_ref"]
+    payload = json.loads(evidence.read_text())
+    payload["scope"] = "pilot-attempt"
+    evidence.write_text(json.dumps(payload))
+
+    with pytest.raises(PilotValidationError, match="pilot window"):
+        verify_manifest(
+            value,
             expected_commit=HEAD,
             repository_root=tmp_path,
             now="2026-09-01T23:00:00Z",
@@ -474,6 +645,14 @@ def test_cli_failure_is_bounded_and_does_not_echo_private_input(tmp_path: Path, 
     stderr = capsys.readouterr().err
     assert "shared privacy boundary" in stderr
     assert "DO-NOT-REFLECT" not in stderr
+
+
+def test_non_string_build_commit_is_a_bounded_validation_error():
+    value = manifest()
+    value["build"]["commit"] = 42
+
+    with pytest.raises(PilotValidationError, match="build freeze"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
 
 
 def test_manifest_rejects_future_end():

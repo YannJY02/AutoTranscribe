@@ -17,14 +17,22 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 if __package__:
+    from .agent_harness import gate_specs as harness_gate_specs
     from .evidence_ledger import EvidenceLedger, ValidationError
     from .evidence_ledger import _walk as _privacy_scan
 else:
+    from agent_harness import gate_specs as harness_gate_specs
     from evidence_ledger import EvidenceLedger, ValidationError
     from evidence_ledger import _walk as _privacy_scan
 
 
 ATTEMPT_ORDER = ("live-local", "live-cloud", "import-local", "import-cloud")
+POST_HARNESS_EVIDENCE_REFS = {
+    "pilots/evidence/GH-73/full-harness-manifest.json",
+    "pilots/evidence/GH-73/pilot-proof.json",
+    "pilots/evidence/GH-73/repository-proof.json",
+    "pilots/gh-73-owner-lifecycle.json",
+}
 STAGES = (
     "started",
     "record_saved",
@@ -256,6 +264,39 @@ def _git_blob(root: Path, commit: str, ref: str) -> bytes:
     if result.returncode != 0:
         _fail("frozen source commit is unavailable")
     return result.stdout
+
+
+def _git_head(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        _fail("repository Harness candidate commit is unavailable")
+    return result.stdout.strip()
+
+
+def _git_diff_files(root: Path, base: str, commit: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "diff", "--name-only", f"{base}...{commit}"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        _fail("repository Harness base diff is unavailable")
+    return sorted({line for line in result.stdout.splitlines() if line})
+
+
+def _git_is_ancestor(root: Path, commit: str) -> bool:
+    return subprocess.run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, "HEAD"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
 
 
 def _source_sha(root: Path, commit: str) -> str:
@@ -590,6 +631,7 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
             item["scope"] != "repository-proof"
             or item["status"] not in {"passed", "failed"}
             or item["checks"] != ["full-agent-harness"]
+            or not isinstance(item["harness_commit"], str)
             or not SHA.fullmatch(item["harness_commit"])
             or not _repo_ref(item["harness_manifest_ref"])
             or not SHA256.fullmatch(item["harness_manifest_sha256"])
@@ -603,7 +645,11 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
 
 
 def _validate_provider_evidence(
-    provider: str, item: dict[str, Any], evidence: Any, root: Path
+    provider: str,
+    item: dict[str, Any],
+    evidence: Any,
+    root: Path,
+    pilot_window: tuple[datetime, datetime],
 ) -> None:
     expected_status = item["status"] if provider == "repository" else "passed"
     if (
@@ -626,6 +672,12 @@ def _validate_provider_evidence(
             evidence.get(key) != value for key, value in expected.items()
         ) or evidence.get("event_count") != sum(item["remote_event_counts"].values()):
             _fail("PostHog evidence does not match the reconciled readback")
+        if item["scope"] == "pilot-attempt" and (
+            evidence.get("source_issue") != "GH-73"
+            or _timestamp(item["window_start"]) < pilot_window[0]
+            or _timestamp(item["window_end"]) > pilot_window[1]
+        ):
+            _fail("PostHog pilot-attempt readback is outside the pilot window")
     elif provider == "sentry":
         expected = {
             "scope": item["scope"],
@@ -647,6 +699,12 @@ def _validate_provider_evidence(
             or evidence.get("classification") != classification
         ):
             _fail("Sentry evidence does not match the reconciled readback")
+        if item["scope"] == "pilot-attempt" and not (
+            pilot_window[0]
+            <= _timestamp(evidence.get("event_created_at"))
+            <= pilot_window[1]
+        ):
+            _fail("Sentry pilot-attempt readback is outside the pilot window")
     elif provider == "langfuse":
         expected = {
             "scope": item["scope"],
@@ -665,6 +723,8 @@ def _validate_provider_evidence(
         }
         if any(evidence.get(key) != value for key, value in expected.items()):
             _fail("Langfuse evidence does not match the reconciled readback")
+        if item["scope"] == "pilot-attempt":
+            _fail("Langfuse pilot-attempt readback requires a pilot-specific experiment")
     else:
         expected = {
             "scope": item["scope"],
@@ -679,6 +739,137 @@ def _validate_provider_evidence(
         harness_path = root / item["harness_manifest_ref"]
         harness = _load_json(harness_path) if harness_path.is_file() else None
         gates = harness.get("gates") if isinstance(harness, dict) else None
+        if isinstance(harness, dict):
+            _walk(harness)
+            _exact_keys(
+                harness,
+                {
+                    "base",
+                    "branch",
+                    "changed_files",
+                    "commit",
+                    "finished_at",
+                    "gates",
+                    "generated_at",
+                    "issue",
+                    "schema_version",
+                    "status",
+                    "workspace",
+                },
+                "repository Harness",
+            )
+        if isinstance(gates, list):
+            for gate in gates:
+                if isinstance(gate, dict):
+                    _exact_keys(gate, {"commands", "name", "status"}, "Harness gate")
+                    for command in gate.get("commands", []):
+                        if not isinstance(command, dict):
+                            _fail("Harness command fields do not match the schema")
+                        _exact_keys(
+                            command,
+                            {"command", "duration_seconds", "exit_code", "ok"},
+                            "Harness command",
+                        )
+        changed_files = harness.get("changed_files") if isinstance(harness, dict) else None
+        harness_commit = harness.get("commit") if isinstance(harness, dict) else None
+        changed_files_valid = (
+            isinstance(changed_files, list)
+            and all(isinstance(path, str) for path in changed_files)
+            and changed_files == sorted(set(changed_files))
+            and harness.get("base") == "origin/main"
+            and isinstance(harness_commit, str)
+            and _git_is_ancestor(root, harness_commit)
+            and set(_git_diff_files(root, harness_commit, "HEAD"))
+            <= POST_HARNESS_EVIDENCE_REFS
+            and changed_files == _git_diff_files(root, "origin/main", _git_head(root))
+        )
+        specs = harness_gate_specs(
+            changed_files if changed_files_valid else [],
+            mode="full",
+            python_executable="$WORKSPACE/.venv/bin/python",
+        )
+        expected_gate_names = [spec.name for spec in specs]
+        actual_gate_states = [
+            (gate.get("name"), gate.get("status"))
+            for gate in gates
+            if isinstance(gate, dict)
+        ] if isinstance(gates, list) else []
+        if len(actual_gate_states) > len(expected_gate_names):
+            _fail("repository Harness evidence is invalid")
+        expected_gate_states = (
+            [(name, "passed") for name in expected_gate_names]
+            if item["status"] == "passed"
+            else (
+                [
+                    *[
+                        (name, "passed")
+                        for name in expected_gate_names[: len(actual_gate_states) - 1]
+                    ],
+                    (expected_gate_names[len(actual_gate_states) - 1], "failed"),
+                ]
+                if actual_gate_states
+                else []
+            )
+        )
+        expected_commands = {
+            spec.name: [
+                list(command)
+                for command in (
+                    spec.commands
+                    + (
+                        (("git", "diff", "--check", f"{harness['base']}...HEAD"),)
+                        if spec.name == "diff-check"
+                        else ()
+                    )
+                )
+            ]
+            for spec in specs
+        }
+        output_root = re.compile(r"^\$WORKSPACE/logs/harness/\d{8}-\d{6}")
+        actual_commands = {
+            gate["name"]: [
+                [output_root.sub("{output_root}", part) for part in command["command"]]
+                for command in gate["commands"]
+            ]
+            for gate in gates
+            if isinstance(gate, dict)
+            and isinstance(gate.get("commands"), list)
+            and all(
+                isinstance(command, dict) and isinstance(command.get("command"), list)
+                and all(isinstance(part, str) for part in command["command"])
+                for command in gate["commands"]
+            )
+        } if isinstance(gates, list) else {}
+        commands_match = all(
+            actual_commands.get(name) == commands
+            for name, commands in expected_commands.items()
+        ) if item["status"] == "passed" else all(
+            actual_commands.get(name) == commands
+            for name, commands in list(expected_commands.items())[:-1]
+        ) and bool(actual_gate_states) and bool(
+            actual_commands.get(actual_gate_states[-1][0])
+        ) and (
+            actual_commands.get(actual_gate_states[-1][0], [])
+            == expected_commands[actual_gate_states[-1][0]][
+                : len(actual_commands.get(actual_gate_states[-1][0], []))
+            ]
+        )
+        command_states_valid = isinstance(gates, list) and all(
+            isinstance(gate, dict)
+            and isinstance(gate.get("commands"), list)
+            and bool(gate["commands"])
+            and gate.get("status")
+            == (
+                "passed"
+                if all(
+                    command.get("exit_code") == 0 and command.get("ok") is True
+                    for command in gate["commands"]
+                    if isinstance(command, dict)
+                )
+                else "failed"
+            )
+            for gate in gates
+        )
         if (
             not isinstance(harness, dict)
             or _artifact_sha(harness_path) != item["harness_manifest_sha256"]
@@ -686,28 +877,15 @@ def _validate_provider_evidence(
             or harness.get("issue") != 73
             or harness.get("commit") != item["harness_commit"]
             or harness.get("workspace") != "$WORKSPACE"
+            or not changed_files_valid
             or not isinstance(gates, list)
             or not all(
                 isinstance(gate, dict) and isinstance(gate.get("commands"), list)
                 for gate in gates
             )
-            or {
-                gate.get("name"): gate.get("status")
-                for gate in gates
-                if isinstance(gate, dict)
-            }
-            != {
-                "diff-check": "passed",
-                "harness-tests": "passed",
-                "python-tests": "passed",
-                "swift-tests": "passed",
-                "xcuitests": item["status"],
-            }
-            or any(
-                command.get("ok") is not (command.get("exit_code") == 0)
-                for gate in gates
-                for command in gate.get("commands", [])
-            )
+            or actual_gate_states != expected_gate_states
+            or not commands_match
+            or not command_states_valid
         ):
             _fail("repository Harness evidence is invalid")
 
@@ -859,7 +1037,8 @@ def verify_manifest(
     )
     _exact_keys(build, {"commit", "app_bundle_ref", "proof_ref"}, "build freeze")
     if (
-        not SHA.fullmatch(build["commit"])
+        not isinstance(build["commit"], str)
+        or not SHA.fullmatch(build["commit"])
         or build["commit"] != expected_commit
         or not _repo_ref(build["app_bundle_ref"])
         or not _repo_ref(build["proof_ref"])
@@ -1007,7 +1186,13 @@ def verify_manifest(
         _fail("deviations or evidence ledger reference is invalid")
     outcome = (
         "completed"
-        if all_attempts_passed and providers_observed
+        if (
+            all_attempts_passed
+            and providers_observed
+            and manifest["reconciliation"]["repository"]["classification"] == "observed"
+            and manifest["reconciliation"]["repository"]["status"] == "passed"
+            and repository_root is not None
+        )
         else ("partial" if counts["observed"] else "blocked")
     )
 
@@ -1121,12 +1306,29 @@ def verify_manifest(
                     or evidence.get("subject") != provider
                 ):
                     _fail("provider evidence is unrelated to this pilot")
-                _validate_provider_evidence(provider, item, evidence, root)
+                _validate_provider_evidence(
+                    provider,
+                    item,
+                    evidence,
+                    root,
+                    pilot_window=(started, ended),
+                )
         source_sha = _source_sha(root, build["commit"])
         for ref in rollback["evidence_refs"]:
             evidence = _load_json(root / ref)
             if isinstance(evidence, dict):
                 _exact_keys(evidence, ROLLBACK_EVIDENCE_FIELDS, "rollback evidence")
+            if (
+                not isinstance(evidence, dict)
+                or evidence.get("status") != "passed"
+                or evidence.get("issue") != "GH-73"
+                or evidence.get("commit") != build["commit"]
+                or evidence.get("pilot_id") != manifest["pilot_id"]
+                or evidence.get("evidence_kind") != "rollback"
+                or evidence.get("subject") != "dry-run"
+            ):
+                _fail("rollback evidence is unrelated to this pilot")
+            _timestamp(evidence.get("observed_at"))
             native_ref = evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
             native_path = (root / native_ref).resolve() if _repo_ref(native_ref) else None
             if (
@@ -1156,14 +1358,31 @@ def verify_manifest(
             "partial": "failed",
             "blocked": "blocked",
         }[outcome]
-        if not any(
+        matching_records = [
+            record
+            for record in ledger["records"]
+            if (
             record["source_id"] == manifest["pilot_id"]
             and record["source_type"] == "pilot"
             and record["result"] == ledger_result
             and record["revision"] == build["commit"]
-            for record in ledger["records"]
-        ):
+            )
+        ]
+        if not matching_records:
             _fail("evidence ledger does not contain the truthful pilot outcome")
+        artifact_matches = False
+        for record in matching_records:
+            if record["source_ref"] != "pilots/evidence/GH-73/pilot-outcome.json":
+                continue
+            artifact = (root / record["source_ref"]).resolve()
+            if not artifact.is_relative_to(root) or not artifact.is_file():
+                continue
+            _walk(_load_json(artifact))
+            artifact_matches |= record["artifact_sha256"] == (
+                f"sha256:{_artifact_sha(artifact)}"
+            )
+        if not artifact_matches:
+            _fail("ledger outcome artifact is missing or changed")
 
     return {
         "schema_version": 1,
