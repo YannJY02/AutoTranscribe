@@ -27,6 +27,7 @@ PRIVATE = re.compile(
     r"(?:"
     r"(?<!\S)/(?!/)[^\s)>,]+"
     r"|[A-Za-z]:\\[^\s]+"
+    r"|(?<!\S)\\(?!\\)[^\s)>,]+"
     r"|\\\\[^\\\s]+\\[^\s]+"
     r"|file://"
     r"|https?://[^/\s:@]+:[^@\s/]+@"
@@ -54,7 +55,12 @@ def _fully_decode(value: str) -> str:
 def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False) -> bool:
     while True:
         decoded = _decode_once(value)
-        if (reject_double_slash and "//" in decoded) or PRIVATE.search(decoded) or _contains_secret(decoded):
+        if (
+            "\\" in decoded
+            or (reject_double_slash and "//" in decoded)
+            or PRIVATE.search(decoded)
+            or _contains_secret(decoded)
+        ):
             return True
         if decoded == value:
             return False
@@ -88,7 +94,20 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             continue
         text = artifact.read_text(encoding="utf-8")
         privacy_text = LINK.sub(lambda match: match.group(1), text)
-        if PRIVATE.search(privacy_text) or _contains_secret(privacy_text):
+        decoded_privacy_text = _fully_decode(privacy_text)
+        rendered_texts = (
+            re.sub(r"[*`~]", "", decoded_privacy_text),
+            re.sub(r"[*_`~]", "", decoded_privacy_text),
+        )
+        if (
+            _contains_private_or_secret(privacy_text)
+            or any(
+                "<" in rendered_text
+                or ">" in rendered_text
+                or _contains_private_or_secret(rendered_text)
+                for rendered_text in rendered_texts
+            )
+        ):
             errors.append(f"{_display(artifact)}: private path or secret-like text")
         claims = 0
         for line_number, line in enumerate(text.splitlines(), 1):
