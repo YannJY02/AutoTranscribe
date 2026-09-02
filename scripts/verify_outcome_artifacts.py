@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 if __package__:
