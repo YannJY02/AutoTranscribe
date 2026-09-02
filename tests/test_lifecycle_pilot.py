@@ -9,6 +9,7 @@ import pytest
 
 from scripts.lifecycle_pilot import (
     POST_HARNESS_EVIDENCE_REFS,
+    PROTECTED_HARNESS_RUNTIME_REFS,
     PilotValidationError,
     _archive_bundle_sha,
     _run_frozen_rollback_checks,
@@ -23,11 +24,17 @@ HEAD = "83746318b85db3b0882e467401e1f1ec5d5b1eaa"
 PILOT = ROOT / "pilots/gh-73-owner-lifecycle.json"
 
 
-def test_post_harness_changes_are_limited_to_bound_evidence():
+def test_post_harness_evidence_exceptions_are_exact():
     assert POST_HARNESS_EVIDENCE_REFS == {
         "pilots/evidence/GH-73/full-harness-manifest.json",
         "pilots/evidence/GH-73/repository-proof.json",
         "pilots/gh-73-owner-lifecycle.json",
+    }
+    assert PROTECTED_HARNESS_RUNTIME_REFS == {
+        "scripts/agent_harness.py",
+        "scripts/evidence_ledger.py",
+        "scripts/lifecycle_pilot.py",
+        "scripts/verify_secret_hygiene.py",
     }
 
 
@@ -236,8 +243,42 @@ def test_prerequisite_sentry_event_cannot_be_relabelled_as_current_pilot(
         )
 
 
-def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: Path):
+def test_fresh_checkout_verifies_historical_harness_after_later_commits(
+    tmp_path: Path,
+):
     copy_repository_evidence(tmp_path)
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=tmp_path, check=True)
+    later_file = tmp_path / "docs/later-unrelated.md"
+    later_file.parent.mkdir(parents=True, exist_ok=True)
+    later_file.write_text("unrelated successor\n")
+    subprocess.run(["git", "add", str(later_file)], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Harness Test",
+            "-c",
+            "user.email=harness@example.invalid",
+            "commit",
+            "-m",
+            "add unrelated successor",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    harness_commit = manifest()["reconciliation"]["repository"]["harness_commit"]
+    later_changes = subprocess.run(
+        ["git", "diff", "--name-only", f"{harness_commit}..HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+    assert set(later_changes) - POST_HARNESS_EVIDENCE_REFS == {
+        "docs/later-unrelated.md"
+    }
 
     proof = verify_manifest(
         manifest(),
@@ -248,6 +289,53 @@ def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: P
 
     assert proof["pilot_outcome"] == "partial"
     assert not (tmp_path / manifest()["build"]["app_bundle_ref"]).exists()
+
+
+@pytest.mark.parametrize(
+    "protected_ref",
+    [
+        "scripts/lifecycle_pilot.py",
+        "scripts/evidence_ledger.py",
+        "scripts/agent_harness.py",
+    ],
+)
+def test_later_commit_cannot_change_harness_protected_files(
+    tmp_path: Path,
+    protected_ref: str,
+):
+    copy_repository_evidence(tmp_path)
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=tmp_path, check=True)
+    protected = tmp_path / protected_ref
+    subprocess.run(
+        ["git", "checkout", "HEAD", "--", protected_ref],
+        cwd=tmp_path,
+        check=True,
+    )
+    protected.write_text(protected.read_text() + "\n# tampered after Harness\n")
+    subprocess.run(["git", "add", str(protected)], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Harness Test",
+            "-c",
+            "user.email=harness@example.invalid",
+            "commit",
+            "-m",
+            "tamper protected file",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    with pytest.raises(PilotValidationError, match="repository Harness evidence"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
 
 
 def test_fresh_checkout_does_not_require_origin_main_ref(tmp_path: Path):
