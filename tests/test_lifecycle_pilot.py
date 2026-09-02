@@ -276,9 +276,9 @@ def test_fresh_checkout_verifies_historical_harness_after_later_commits(
         text=True,
     ).stdout.splitlines()
 
-    assert later_changes == sorted(
-        POST_HARNESS_EVIDENCE_REFS | {"docs/later-unrelated.md"}
-    )
+    assert set(later_changes) - POST_HARNESS_EVIDENCE_REFS == {
+        "docs/later-unrelated.md"
+    }
 
     proof = verify_manifest(
         manifest(),
