@@ -184,6 +184,58 @@ def test_sentry_release_must_bind_the_read_back_build():
         verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
+def test_pilot_scoped_sentry_readback_binds_the_frozen_app_build(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    sentry = value["reconciliation"]["sentry"]
+    sentry.update(scope="pilot-attempt")
+    evidence_path = tmp_path / sentry["evidence_ref"]
+    evidence = json.loads(evidence_path.read_text())
+    evidence.update(
+        scope="pilot-attempt",
+        observed_at="2026-09-02T03:26:00Z",
+        event_created_at="2026-09-02T03:26:00Z",
+    )
+    evidence_path.write_text(json.dumps(evidence))
+
+    with pytest.raises(PilotValidationError, match="frozen build"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
+
+
+def test_prerequisite_sentry_event_cannot_be_relabelled_as_current_pilot(
+    tmp_path: Path,
+):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    build_proof = json.loads((tmp_path / value["build"]["proof_ref"]).read_text())
+    build_version = build_proof["build_version"]
+    release = f"com.yannjy.insightkit@1.0+{build_version}"
+    sentry = value["reconciliation"]["sentry"]
+    sentry.update(scope="pilot-attempt", build=build_version, release=release)
+    evidence_path = tmp_path / sentry["evidence_ref"]
+    evidence = json.loads(evidence_path.read_text())
+    evidence.update(
+        scope="pilot-attempt",
+        release=release,
+        observed_at="2026-09-02T03:26:00Z",
+        event_created_at="2026-09-02T03:26:00Z",
+    )
+    evidence_path.write_text(json.dumps(evidence))
+
+    with pytest.raises(PilotValidationError, match="pilot-specific immutable event"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
+
+
 def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: Path):
     copy_repository_evidence(tmp_path)
 
@@ -288,6 +340,37 @@ def test_repository_harness_must_match_the_executed_plan(tmp_path: Path, mutatio
             repository_root=tmp_path,
             now="2026-09-02T04:00:00Z",
         )
+
+
+def test_repository_harness_accepts_a_failure_at_an_early_planned_gate(
+    tmp_path: Path,
+):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    repository = value["reconciliation"]["repository"]
+    repository["status"] = "failed"
+    harness_path = tmp_path / repository["harness_manifest_ref"]
+    harness = json.loads(harness_path.read_text())
+    harness["status"] = "failed"
+    harness["gates"] = harness["gates"][:2]
+    harness["gates"][-1]["status"] = "failed"
+    harness["gates"][-1]["commands"][0].update(exit_code=1, ok=False)
+    harness_path.write_text(json.dumps(harness))
+    harness_sha = hashlib.sha256(harness_path.read_bytes()).hexdigest()
+    repository["harness_manifest_sha256"] = harness_sha
+    proof_path = tmp_path / repository["evidence_ref"]
+    proof = json.loads(proof_path.read_text())
+    proof.update(status="failed", harness_manifest_sha256=harness_sha)
+    proof_path.write_text(json.dumps(proof))
+
+    result = verify_manifest(
+        value,
+        expected_commit=HEAD,
+        repository_root=tmp_path,
+        now="2026-09-02T04:00:00Z",
+    )
+
+    assert result["external_readbacks"]["repository"]["status"] == "failed"
 
 
 def test_harness_manifest_uses_the_shared_privacy_boundary(tmp_path: Path):
@@ -625,6 +708,32 @@ def test_rollback_generator_validates_the_complete_manifest_before_execution(
         )
 
     assert executed is False
+
+
+@pytest.mark.parametrize("field", ["app_bundle_ref", "proof_ref"])
+def test_rollback_generator_rejects_absolute_build_references(
+    tmp_path: Path, field: str
+):
+    value = manifest()
+    value["build"][field] = str(tmp_path / "external")
+
+    with pytest.raises(PilotValidationError, match="build freeze"):
+        generate_rollback_proof(
+            value,
+            repository_root=tmp_path,
+            native_proof_ref="pilots/evidence/GH-73/live-local-proof.json",
+        )
+
+
+def test_rollback_generator_rejects_an_absolute_native_proof_reference(
+    tmp_path: Path,
+):
+    with pytest.raises(PilotValidationError, match="validated attempt evidence"):
+        generate_rollback_proof(
+            manifest(),
+            repository_root=tmp_path,
+            native_proof_ref=str(tmp_path / "external.json"),
+        )
 
 
 @pytest.mark.parametrize("field,value", [("status", "failed"), ("commit", "0" * 40)])

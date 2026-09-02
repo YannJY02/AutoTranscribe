@@ -957,6 +957,7 @@ def _validate_provider_evidence(
     root: Path,
     pilot_window: tuple[datetime, datetime],
     base_commit: str,
+    build_version: str,
 ) -> None:
     expected_status = item["status"] if provider == "repository" else "passed"
     if (
@@ -1026,6 +1027,10 @@ def _validate_provider_evidence(
             <= pilot_window[1]
         ):
             _fail("Sentry pilot-attempt readback is outside the pilot window")
+        if item["scope"] == "pilot-attempt" and item["build"] != build_version:
+            _fail("Sentry pilot-attempt readback does not match the frozen build")
+        if item["scope"] == "pilot-attempt":
+            _fail("Sentry pilot-attempt requires pilot-specific immutable event evidence")
     elif provider == "langfuse":
         expected = {
             "scope": item["scope"],
@@ -1167,20 +1172,27 @@ def _validate_provider_evidence(
                 for command in gate["commands"]
             )
         } if isinstance(gates, list) else {}
-        commands_match = all(
-            actual_commands.get(name) == commands
-            for name, commands in expected_commands.items()
-        ) if item["status"] == "passed" else all(
-            actual_commands.get(name) == commands
-            for name, commands in list(expected_commands.items())[:-1]
-        ) and bool(actual_gate_states) and bool(
-            actual_commands.get(actual_gate_states[-1][0])
-        ) and (
-            actual_commands.get(actual_gate_states[-1][0], [])
-            == expected_commands[actual_gate_states[-1][0]][
-                : len(actual_commands.get(actual_gate_states[-1][0], []))
-            ]
-        )
+        if item["status"] == "passed":
+            commands_match = all(
+                actual_commands.get(name) == commands
+                for name, commands in expected_commands.items()
+            )
+        else:
+            failed_name = actual_gate_states[-1][0] if actual_gate_states else None
+            failed_commands = actual_commands.get(failed_name, [])
+            expected_failed_commands = expected_commands.get(failed_name)
+            commands_match = (
+                all(
+                    actual_commands.get(name) == commands
+                    for name, commands in list(expected_commands.items())[
+                        : len(actual_gate_states) - 1
+                    ]
+                )
+                and bool(failed_commands)
+                and expected_failed_commands is not None
+                and failed_commands
+                == expected_failed_commands[: len(failed_commands)]
+            )
         command_states_valid = isinstance(gates, list) and all(
             isinstance(gate, dict)
             and isinstance(gate.get("commands"), list)
@@ -1807,6 +1819,7 @@ def verify_manifest(
                     root,
                     pilot_window=(started, ended),
                     base_commit=build["commit"],
+                    build_version=build_proof["build_version"],
                 )
         source_sha = _source_sha(root, build["commit"])
         for ref in rollback["evidence_refs"]:
