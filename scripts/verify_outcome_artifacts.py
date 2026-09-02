@@ -11,9 +11,9 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlparse
 
 if __package__:
-    from .evidence_ledger import PRIVATE_PATH, _contains_secret
+    from .evidence_ledger import _contains_secret
 else:
-    from evidence_ledger import PRIVATE_PATH, _contains_secret
+    from evidence_ledger import _contains_secret
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = (
@@ -37,12 +37,14 @@ PRIVATE = re.compile(
     r")",
     re.IGNORECASE,
 )
-LOCAL_PRIVATE_ROOT = re.compile(
-    r"(?:^|[=:;_\[(])/(?:private|Applications|Volumes)(?:/|$)[^\s)>,]*",
+URL_PRIVATE_ROOT = re.compile(
+    r"(?:^|[=:;_\[(])/(?:Users|home|private|Applications|Volumes)(?:/|$)[^\s)>,]*",
     re.IGNORECASE,
 )
+TEXT_PRIVATE_PATH = re.compile(r"(?<!:/)(?<![A-Za-z0-9])/(?![/\s])[^\s)>,]+")
 HTML_MARKUP = re.compile(r"<!--|<\?|<![A-Z]|<!\[CDATA\[|</?[A-Za-z][^>\n]*>")
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
+MAX_DECODE_PASSES = 8
 
 
 def _decode_once(value: str) -> str:
@@ -50,32 +52,41 @@ def _decode_once(value: str) -> str:
 
 
 def _fully_decode(value: str) -> str:
-    while True:
+    for _ in range(MAX_DECODE_PASSES):
         decoded = _decode_once(value)
         if decoded == value:
             return value
         value = decoded
+    if _decode_once(value) == value:
+        return value
+    raise ValueError("excessively nested encoding")
 
 
-def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False) -> bool:
-    while True:
+def _contains_private_or_secret(
+    value: str,
+    *,
+    reject_backslash: bool = False,
+    reject_double_slash: bool = False,
+    private_root: re.Pattern[str] | None = URL_PRIVATE_ROOT,
+) -> bool:
+    for _ in range(MAX_DECODE_PASSES):
         decoded = _decode_once(value)
         if (
-            "\\" in decoded
+            (reject_backslash and "\\" in decoded)
             or (reject_double_slash and "//" in decoded)
             or PRIVATE.search(decoded)
-            or PRIVATE_PATH.search(decoded)
-            or LOCAL_PRIVATE_ROOT.search(decoded)
+            or (private_root is not None and private_root.search(decoded))
             or _contains_secret(decoded)
         ):
             return True
         if decoded == value:
             return False
         value = decoded
+    return _decode_once(value) != value
 
 
 def _contains_private_component(component: str) -> bool:
-    while True:
+    for _ in range(MAX_DECODE_PASSES):
         decoded = _decode_once(component)
         values = [decoded]
         values.extend(value for pair in parse_qsl(decoded, keep_blank_values=True) for value in pair)
@@ -84,6 +95,23 @@ def _contains_private_component(component: str) -> bool:
         if decoded == component:
             return False
         component = decoded
+    return _decode_once(component) != component
+
+
+def _render_markdown_escapes(value: str) -> str:
+    return re.sub(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])", r"\1", value)
+
+
+def _contains_raw_html(value: str) -> bool:
+    for match in HTML_MARKUP.finditer(value):
+        backslashes = 0
+        cursor = match.start() - 1
+        while cursor >= 0 and value[cursor] == "\\":
+            backslashes += 1
+            cursor -= 1
+        if backslashes % 2 == 0:
+            return True
+    return False
 
 
 def _display(path: Path) -> str:
@@ -101,17 +129,23 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             continue
         text = artifact.read_text(encoding="utf-8")
         privacy_text = LINK.sub(lambda match: match.group(1), text)
-        decoded_privacy_text = _fully_decode(privacy_text)
+        try:
+            decoded_privacy_text = _fully_decode(privacy_text)
+            excessive_encoding = False
+        except ValueError:
+            decoded_privacy_text = privacy_text
+            excessive_encoding = True
+        rendered_privacy_text = _render_markdown_escapes(decoded_privacy_text)
         rendered_texts = (
-            re.sub(r"[*`~]", "", decoded_privacy_text),
-            re.sub(r"[*_`~]", "", decoded_privacy_text),
+            re.sub(r"[*`~]", "", rendered_privacy_text),
+            re.sub(r"[*_`~]", "", rendered_privacy_text),
         )
         if (
             "![" in text
-            or _contains_private_or_secret(privacy_text)
+            or excessive_encoding
+            or _contains_raw_html(decoded_privacy_text)
             or any(
-                HTML_MARKUP.search(rendered_text)
-                or _contains_private_or_secret(rendered_text)
+                _contains_private_or_secret(rendered_text, private_root=TEXT_PRIVATE_PATH)
                 for rendered_text in rendered_texts
             )
         ):
@@ -158,10 +192,17 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         allowed_identity = False
                     if (
                         not allowed_identity
-                        or _contains_private_or_secret(target)
+                        or _contains_private_or_secret(
+                            target,
+                            reject_backslash=True,
+                            private_root=None,
+                        )
                         or any(
                             _contains_private_or_secret(
-                                url.path.removeprefix("/"), reject_double_slash=True
+                                url.path.removeprefix("/"),
+                                reject_backslash=True,
+                                reject_double_slash=True,
+                                private_root=None,
                             )
                             for url in parsed_urls
                         )

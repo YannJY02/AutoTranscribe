@@ -23,10 +23,11 @@ def write_artifact(tmp_path: Path, body: str) -> Path:
 def test_validator_allows_exact_figma_evidence_host(tmp_path):
     artifact = write_artifact(
         tmp_path,
-        "- [Observed] Latency < 200 ms and accuracy > 90%. ([Sources: FigJam](https://www.figma.com/board/example); "
+        r"- [Observed] C\+\+ latency < 200 ms, accuracy > 90%, literal \<i\>. ([Sources: FigJam](https://www.figma.com/board/example); "
         "[safe path value](https://www.figma.com/board/view=example); "
         "[safe punctuation](https://www.figma.com/board/foo-/bar); "
         "[safe repository](https://github.com/org/private/issues/1); "
+        "[safe home route](https://github.com/org/repo/blob/main/home/alice/readme.md); "
         "[safe Linear route](https://linear.app/team/Applications/issue/YAN-56))",
     )
 
@@ -43,6 +44,13 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         ("- [Observed] Result from /private/tmp/run. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         ("- [Observed] Result from /Applications/App.app. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         ("- [Observed] Result from /secret.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path-/Users/alice/report.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path,/Users/alice/report.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path—/home/alice/report.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path//Users/alice/report.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path//home/alice/report.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path-/secret.txt. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
+        ("- [Observed] Result from path,/tmp/run.log. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (r"- [Observed] Result from C:\Temp\run.log. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (r"- [Observed] Result from \Users\alice\Documents\report.pdf. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (r"- [Observed] Result from \\server\share\run.log. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
@@ -95,6 +103,7 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path=%252Fprivate%252Ftmp%252Frun))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path=%25252FUsers%25252Falice%25252Fprivate.txt))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2FUsers%2Falice%2Fprivate.txt))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2Fusers%2Falice%2Fprivate.txt))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path;%252Fprivate%252Ftmp%252Frun))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path[%25252FUsers%25252Falice%25252Fprivate.txt]))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path_%25252FUsers%25252Falice%25252Fprivate.txt))", "disallowed external link"),
@@ -115,3 +124,27 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
 def test_validator_rejects_unclassified_unlinked_or_private_claims(tmp_path, body, message):
     errors = validate((write_artifact(tmp_path, body),))
     assert any(message in error for error in errors)
+
+
+def test_validator_rejects_excessively_nested_encoding(tmp_path):
+    nested_slash = "/"
+    for _ in range(20):
+        nested_slash = nested_slash.replace("%", "%25").replace("/", "%2F")
+    artifact = write_artifact(
+        tmp_path,
+        f"- [Observed] Result. ([Sources: path](https://www.figma.com/board/path={nested_slash}private/tmp))",
+    )
+
+    assert any("disallowed external link" in error for error in validate((artifact,)))
+
+
+def test_validator_allows_eight_encoding_layers(tmp_path):
+    nested_value = "%41"
+    for _ in range(7):
+        nested_value = nested_value.replace("%", "%25")
+    artifact = write_artifact(
+        tmp_path,
+        f"- [Observed] Result. ([Sources: path](https://www.figma.com/board/value={nested_value}))",
+    )
+
+    assert validate((artifact,)) == []
