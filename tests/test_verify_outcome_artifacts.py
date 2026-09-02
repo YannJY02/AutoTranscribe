@@ -24,7 +24,9 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
     artifact = write_artifact(
         tmp_path,
         "- [Observed] Journey source. ([Sources: FigJam](https://www.figma.com/board/example); "
-        "[safe path value](https://www.figma.com/board/view=example))",
+        "[safe path value](https://www.figma.com/board/view=example); "
+        "[safe punctuation](https://www.figma.com/board/foo-/bar); "
+        "[safe repository](https://github.com/org/repo-/issues/1))",
     )
 
     assert validate((artifact,)) == []
@@ -88,6 +90,13 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path=%2FUsers%2Falice%2Fprivate.txt))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path=%252Fprivate%252Ftmp%252Frun))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path=%25252FUsers%25252Falice%25252Fprivate.txt))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2FUsers%2Falice%2Fprivate.txt))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path;%252Fprivate%252Ftmp%252Frun))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path[%25252FUsers%25252Falice%25252Fprivate.txt]))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path_%25252FUsers%25252Falice%25252Fprivate.txt))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2Fhome%2Falice%2Fprivate.txt))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2FApplications%2FPrivate.app))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: path](https://www.figma.com/board/path:%2FVolumes%2FPrivate%2Freport.pdf))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/%2FUsers%2Falice%2Fprivate.txt))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/%252Fprivate%252Ftmp%252Frun))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://www.figma.com/%25252FUsers%25252Falice%25252Fprivate.txt))", "disallowed external link"),

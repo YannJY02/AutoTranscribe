@@ -11,9 +11,9 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlparse
 
 if __package__:
-    from .evidence_ledger import _contains_secret
+    from .evidence_ledger import PRIVATE_PATH, _contains_secret
 else:
-    from evidence_ledger import _contains_secret
+    from evidence_ledger import PRIVATE_PATH, _contains_secret
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = (
@@ -37,6 +37,7 @@ PRIVATE = re.compile(
     r")",
     re.IGNORECASE,
 )
+LOCAL_PRIVATE_ROOT = re.compile(r"/(?:private|Applications|Volumes)(?:/|$)[^\s)>,]*", re.IGNORECASE)
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
@@ -59,6 +60,8 @@ def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False
             "\\" in decoded
             or (reject_double_slash and "//" in decoded)
             or PRIVATE.search(decoded)
+            or PRIVATE_PATH.search(decoded)
+            or LOCAL_PRIVATE_ROOT.search(decoded)
             or _contains_secret(decoded)
         ):
             return True
