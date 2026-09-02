@@ -49,9 +49,15 @@ def _contains_private_or_secret(value: str, *, reject_double_slash: bool = False
 
 
 def _contains_private_component(component: str) -> bool:
-    values = [component]
-    values.extend(value for pair in parse_qsl(component, keep_blank_values=True) for value in pair)
-    return any(_contains_private_or_secret(value) for value in values)
+    while True:
+        decoded = unquote(component)
+        values = [decoded]
+        values.extend(value for pair in parse_qsl(decoded, keep_blank_values=True) for value in pair)
+        if any(_contains_private_or_secret(value) for value in values):
+            return True
+        if decoded == component:
+            return False
+        component = decoded
 
 
 def _display(path: Path) -> str:
