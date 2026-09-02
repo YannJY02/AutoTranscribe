@@ -9,6 +9,11 @@ from pathlib import Path
 from collections.abc import Sequence
 from urllib.parse import unquote, urlparse
 
+if __package__:
+    from .evidence_ledger import _contains_secret
+else:
+    from evidence_ledger import _contains_secret
+
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = (
     ROOT / "docs/outcomes/GH-74/outcome-review.md",
@@ -16,7 +21,7 @@ ARTIFACTS = (
 )
 LABELS = {"Observed", "Accepted intent", "Inference", "Unknown", "Future work"}
 CLAIM = re.compile(r"^- \[([^]]+)] (.+)$")
-LINK = re.compile(r"\[[^]]+]\(([^)]+)\)")
+LINK = re.compile(r"\[([^]]+)]\(([^)]+)\)")
 PRIVATE = re.compile(
     r"(?:"
     r"(?<!\S)/(?!/)[^\s)>,]+"
@@ -47,8 +52,8 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             errors.append(f"missing artifact: {_display(artifact)}")
             continue
         text = artifact.read_text(encoding="utf-8")
-        privacy_text = LINK.sub("", text)
-        if PRIVATE.search(privacy_text):
+        privacy_text = LINK.sub(lambda match: match.group(1), text)
+        if PRIVATE.search(privacy_text) or _contains_secret(privacy_text):
             errors.append(f"{_display(artifact)}: private path or secret-like text")
         claims = 0
         for line_number, line in enumerate(text.splitlines(), 1):
@@ -67,7 +72,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                 errors.append(f"{_display(artifact)}:{line_number}: invalid claim label {label!r}")
             if "([Sources:" not in body:
                 errors.append(f"{_display(artifact)}:{line_number}: missing Sources block")
-            links = LINK.findall(body)
+            links = [target for _, target in LINK.findall(body)]
             if not links:
                 errors.append(f"{_display(artifact)}:{line_number}: missing evidence link")
             for target in links:

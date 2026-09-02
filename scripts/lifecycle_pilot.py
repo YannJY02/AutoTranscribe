@@ -33,6 +33,12 @@ POST_HARNESS_EVIDENCE_REFS = {
     "pilots/evidence/GH-73/repository-proof.json",
     "pilots/gh-73-owner-lifecycle.json",
 }
+PROTECTED_HARNESS_RUNTIME_REFS = {
+    "scripts/agent_harness.py",
+    "scripts/evidence_ledger.py",
+    "scripts/lifecycle_pilot.py",
+    "scripts/verify_secret_hygiene.py",
+}
 STAGES = (
     "started",
     "record_saved",
@@ -1125,16 +1131,29 @@ def _validate_provider_evidence(
             harness.get("changed_files") if isinstance(harness, dict) else None
         )
         harness_commit = harness.get("commit") if isinstance(harness, dict) else None
+        harness_commit_is_ancestor = (
+            isinstance(harness_commit, str)
+            and _git_is_ancestor(root, harness_commit)
+        )
+        later_changes = (
+            set(_git_diff_files(root, harness_commit, "HEAD"))
+            if harness_commit_is_ancestor
+            else set()
+        )
         changed_files_valid = (
             isinstance(changed_files, list)
             and all(isinstance(path, str) for path in changed_files)
             and changed_files == sorted(set(changed_files))
             and harness.get("base") == "origin/main"
-            and isinstance(harness_commit, str)
-            and _git_is_ancestor(root, harness_commit)
-            and set(_git_diff_files(root, harness_commit, "HEAD"))
-            <= POST_HARNESS_EVIDENCE_REFS
-            and changed_files == _git_diff_files(root, base_commit, _git_head(root))
+            and harness_commit_is_ancestor
+            and changed_files == _git_diff_files(root, base_commit, harness_commit)
+            and not (
+                later_changes
+                & (
+                    (set(changed_files) - POST_HARNESS_EVIDENCE_REFS)
+                    | PROTECTED_HARNESS_RUNTIME_REFS
+                )
+            )
         )
         specs = harness_gate_specs(
             changed_files if changed_files_valid else [],

@@ -29,9 +29,9 @@
 ## Results and product decision
 
 - [Observed] The attempt proved the app could start the synthetic route and present Smart Minutes review, but it did not prove Record save, reopen, export, or observed local analysis mode. ([Sources: live/local proof](../../../pilots/evidence/GH-73/live-local-proof.json))
-- [Observed] The safety path proved consent disablement, queue purge, app-target verification, and evidence preservation in a dry run. ([Sources: rollback proof](../../../pilots/evidence/GH-73/rollback-proof.json))
+- [Observed] The safety dry-run verified the frozen app target and passed tests for consent revocation, deterministic queue-purge readback, Sentry disablement, and evidence preservation; it did not act on or read back the current owner runtime. ([Sources: rollback proof](../../../pilots/evidence/GH-73/rollback-proof.json))
 - [Inference] The evidence supports **iterate**: repair or explain the failed route, then rerun the same bounded segment matrix before any rollout, parity, or portfolio-impact claim. ([Sources: outcome review](outcome-review.md), [pilot manifest](../../../pilots/gh-73-owner-lifecycle.json))
-- [Unknown] Baseline deltas, segment parity, user value from owner or external-user observation, market demand, retention, willingness to pay, and public distribution readiness remain unknown. ([Sources: pilot outcome](../../../pilots/evidence/GH-73/pilot-outcome.json), [ADR 0003](../../adr/0003-separate-local-readiness-from-public-distribution-readiness.md))
+- [Unknown] Current owner-runtime consent and queue state, baseline deltas, segment parity, user value from owner or external-user observation, market demand, retention, willingness to pay, and public distribution readiness remain unknown. ([Sources: rollback proof](../../../pilots/evidence/GH-73/rollback-proof.json), [pilot outcome](../../../pilots/evidence/GH-73/pilot-outcome.json), [ADR 0003](../../adr/0003-separate-local-readiness-from-public-distribution-readiness.md))
 
 ## Lessons
 
