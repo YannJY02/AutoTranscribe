@@ -53,6 +53,8 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         ("- [Observed] Result. ([Sources: path](https://github.com/org/repo#%2Fprivate%2Ftmp%2Frun))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://github.com/org/repo?path=%2FUsers%2Falice%2Fprivate.txt))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: path](https://github.com/org/repo#path=%2Fprivate%2Ftmp))", "disallowed external link"),
+        (f"- [Observed] Result. ([Sources: credential](https://github.com/org/repo?value=%2567{FAKE_GITHUB_TOKEN[1:]}))", "disallowed external link"),
+        (f"- [Observed] Result. ([Sources: credential](https://github.com/org/repo#value=%2567{FAKE_GITHUB_TOKEN[1:]}))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: port](https://www.figma.com:444/board/1))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: port](https://www.figma.com:bad/board/1))", "disallowed external link"),
     ],

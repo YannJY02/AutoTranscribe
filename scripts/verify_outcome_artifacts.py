@@ -44,7 +44,7 @@ def _contains_private_component(component: str) -> bool:
     for value in values:
         while True:
             decoded = unquote(value)
-            if PRIVATE.search(decoded):
+            if PRIVATE.search(decoded) or _contains_secret(decoded):
                 return True
             if decoded == value:
                 break
