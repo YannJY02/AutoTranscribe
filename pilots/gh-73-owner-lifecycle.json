@@ -121,9 +121,9 @@
       "scope": "repository-proof",
       "status": "passed",
       "checks": ["full-agent-harness"],
-      "harness_commit": "2571ce74ed291d87aa0fcef815bbf46733ae2e36",
+      "harness_commit": "ef4f67e9bc9602431a8e0cfe8a8e80b85c2f611a",
       "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-      "harness_manifest_sha256": "e9a1a1a06aa3f8f5c98c48abd124ab55e3badc281fbfb474ad95760968f3758c"
+      "harness_manifest_sha256": "0f0f4e3b58b5807a3bd50b9abc2f4092e1751b62ab9b5504c73fd4fa17d83306"
     }
   },
   "rollback": {
