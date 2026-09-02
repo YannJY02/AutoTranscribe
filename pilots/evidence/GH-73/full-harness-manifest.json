@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T18:50:46.317928+00:00",
-  "status": "failed",
+  "generated_at": "2026-09-02T18:53:10.655961+00:00",
+  "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "ba633f10e7dd72283a4de9a8441c9f013158ab11",
+  "commit": "9209cacd25449bbd05ec37309e23bc03f371fc7c",
   "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -43,7 +43,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.01,
+          "duration_seconds": 0.009,
           "ok": true
         },
         {
@@ -54,7 +54,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.009,
+          "duration_seconds": 0.01,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.021,
+          "duration_seconds": 0.023,
           "ok": true
         }
       ]
@@ -84,14 +84,14 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.665,
+          "duration_seconds": 0.727,
           "ok": true
         }
       ]
     },
     {
       "name": "python-tests",
-      "status": "failed",
+      "status": "passed",
       "commands": [
         {
           "command": [
@@ -104,12 +104,29 @@
             "-m",
             "not integration and not requires_model and not slow"
           ],
-          "exit_code": 1,
-          "duration_seconds": 44.415,
-          "ok": false
+          "exit_code": 0,
+          "duration_seconds": 71.533,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "project-normalization",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "scripts/verify_project_normalization.py",
+            "--output-root",
+            "$WORKSPACE/logs/harness/20260903-025310/project-normalization"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.059,
+          "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T18:51:31.460174+00:00"
+  "finished_at": "2026-09-02T18:54:23.035209+00:00"
 }
