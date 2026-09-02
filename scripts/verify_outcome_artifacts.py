@@ -6,8 +6,9 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Sequence
+from html import unescape
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
 if __package__:
     from .evidence_ledger import _contains_secret
@@ -26,6 +27,7 @@ PRIVATE = re.compile(
     r"(?:"
     r"(?<!\S)/(?!/)[^\s)>,]+"
     r"|[A-Za-z]:\\[^\s]+"
+    r"|(?<!\S)\\(?!\\)[^\s)>,]+"
     r"|\\\\[^\\\s]+\\[^\s]+"
     r"|file://"
     r"|https?://[^/\s:@]+:[^@\s/]+@"
@@ -35,7 +37,81 @@ PRIVATE = re.compile(
     r")",
     re.IGNORECASE,
 )
-ALLOWED_HOSTS = {"github.com", "linear.app"}
+URL_PRIVATE_ROOT = re.compile(
+    r"(?:^|[=:;_\[(])/(?:Users|home|private|Applications|Volumes)(?:/|$)[^\s)>,]*",
+    re.IGNORECASE,
+)
+TEXT_PRIVATE_PATH = re.compile(r"(?<!:/)(?<![A-Za-z0-9])/(?![/\s])[^\s)>,]+")
+HTML_MARKUP = re.compile(r"<!--|<\?|<![A-Z]|<!\[CDATA\[|</?[A-Za-z][^>\n]*>")
+ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
+MAX_DECODE_PASSES = 8
+
+
+def _decode_once(value: str) -> str:
+    return unquote(unescape(value))
+
+
+def _fully_decode(value: str) -> str:
+    for _ in range(MAX_DECODE_PASSES):
+        decoded = _decode_once(value)
+        if decoded == value:
+            return value
+        value = decoded
+    if _decode_once(value) == value:
+        return value
+    raise ValueError("excessively nested encoding")
+
+
+def _contains_private_or_secret(
+    value: str,
+    *,
+    reject_backslash: bool = False,
+    reject_double_slash: bool = False,
+    private_root: re.Pattern[str] | None = URL_PRIVATE_ROOT,
+) -> bool:
+    for _ in range(MAX_DECODE_PASSES):
+        decoded = _decode_once(value)
+        if (
+            (reject_backslash and "\\" in decoded)
+            or (reject_double_slash and "//" in decoded)
+            or PRIVATE.search(decoded)
+            or (private_root is not None and private_root.search(decoded))
+            or _contains_secret(decoded)
+        ):
+            return True
+        if decoded == value:
+            return False
+        value = decoded
+    return _decode_once(value) != value
+
+
+def _contains_private_component(component: str) -> bool:
+    for _ in range(MAX_DECODE_PASSES):
+        decoded = _decode_once(component)
+        values = [decoded]
+        values.extend(value for pair in parse_qsl(decoded, keep_blank_values=True) for value in pair)
+        if any(_contains_private_or_secret(value) for value in values):
+            return True
+        if decoded == component:
+            return False
+        component = decoded
+    return _decode_once(component) != component
+
+
+def _render_markdown_escapes(value: str) -> str:
+    return re.sub(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])", r"\1", value)
+
+
+def _contains_raw_html(value: str) -> bool:
+    for match in HTML_MARKUP.finditer(value):
+        backslashes = 0
+        cursor = match.start() - 1
+        while cursor >= 0 and value[cursor] == "\\":
+            backslashes += 1
+            cursor -= 1
+        if backslashes % 2 == 0:
+            return True
+    return False
 
 
 def _display(path: Path) -> str:
@@ -53,7 +129,26 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             continue
         text = artifact.read_text(encoding="utf-8")
         privacy_text = LINK.sub(lambda match: match.group(1), text)
-        if PRIVATE.search(privacy_text) or _contains_secret(privacy_text):
+        try:
+            decoded_privacy_text = _fully_decode(privacy_text)
+            excessive_encoding = False
+        except ValueError:
+            decoded_privacy_text = privacy_text
+            excessive_encoding = True
+        rendered_privacy_text = _render_markdown_escapes(decoded_privacy_text)
+        rendered_texts = (
+            re.sub(r"[*`~]", "", rendered_privacy_text),
+            re.sub(r"[*_`~]", "", rendered_privacy_text),
+        )
+        if (
+            "![" in text
+            or excessive_encoding
+            or _contains_raw_html(decoded_privacy_text)
+            or any(
+                _contains_private_or_secret(rendered_text, private_root=TEXT_PRIVATE_PATH)
+                for rendered_text in rendered_texts
+            )
+        ):
             errors.append(f"{_display(artifact)}: private path or secret-like text")
         claims = 0
         for line_number, line in enumerate(text.splitlines(), 1):
@@ -76,16 +171,50 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             if not links:
                 errors.append(f"{_display(artifact)}:{line_number}: missing evidence link")
             for target in links:
-                parsed = urlparse(target)
+                try:
+                    parsed = urlparse(target)
+                except ValueError:
+                    errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
+                    continue
                 if parsed.scheme:
+                    try:
+                        parsed_urls = (parsed, urlparse(_fully_decode(target)))
+                        allowed_identity = all(
+                            url.scheme == "https"
+                            and url.hostname in ALLOWED_HOSTS
+                            and url.port in {None, 443}
+                            and url.username is None
+                            and url.password is None
+                            for url in parsed_urls
+                        )
+                    except ValueError:
+                        parsed_urls = (parsed,)
+                        allowed_identity = False
                     if (
-                        parsed.scheme != "https"
-                        or parsed.hostname not in ALLOWED_HOSTS
-                        or parsed.username is not None
-                        or parsed.password is not None
-                        or _contains_secret(unquote(target))
-                        or PRIVATE.search(unquote(parsed.query))
-                        or PRIVATE.search(unquote(parsed.fragment))
+                        not allowed_identity
+                        or _contains_private_or_secret(
+                            target,
+                            reject_backslash=True,
+                            private_root=None,
+                        )
+                        or any(
+                            _contains_private_or_secret(
+                                url.path.removeprefix("/"),
+                                reject_backslash=True,
+                                reject_double_slash=True,
+                                private_root=None,
+                            )
+                            for url in parsed_urls
+                        )
+                        or any(
+                            _contains_private_component(component)
+                            for url in parsed_urls
+                            for component in (
+                                url.path.removeprefix("/"),
+                                url.query,
+                                url.fragment,
+                            )
+                        )
                     ):
                         errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
                 else:
