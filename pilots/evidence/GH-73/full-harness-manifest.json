@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T14:29:24.708960+00:00",
+  "generated_at": "2026-09-02T16:50:12.674722+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "d33e5836027f71faba13c7882fec0c9dc519b378",
-  "branch": "codex/yan-56-outcome-review",
+  "commit": "89f1cac11e8ea47d601d2334a224014658cdd7e9",
+  "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
     ".github/workflows/ci.yml",
@@ -43,7 +43,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.01,
+          "duration_seconds": 0.009,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.023,
+          "duration_seconds": 0.02,
           "ok": true
         }
       ]
@@ -84,7 +84,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.685,
+          "duration_seconds": 0.604,
           "ok": true
         }
       ]
@@ -105,7 +105,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 141.619,
+          "duration_seconds": 77.252,
           "ok": true
         }
       ]
@@ -119,14 +119,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260902-222924/project-normalization"
+            "$WORKSPACE/logs/harness/20260903-005012/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.059,
+          "duration_seconds": 0.061,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T15:13:44.801021+00:00"
+  "finished_at": "2026-09-02T16:51:30.645424+00:00"
 }
