@@ -62,6 +62,11 @@ def copy_repository_evidence(destination: Path) -> None:
     ]
     refs += [ref for attempt in value["attempts"] for ref in attempt["evidence_refs"]]
     refs += [
+        json.loads((ROOT / ref).read_text())["visual"]["artifact_ref"]
+        for attempt in value["attempts"]
+        for ref in attempt["evidence_refs"]
+    ]
+    refs += [
         item["evidence_ref"]
         for item in value["reconciliation"].values()
         if item.get("evidence_ref")
@@ -338,6 +343,32 @@ def test_attempt_evidence_kind_and_unknowns_are_bound(tmp_path: Path, field, val
         )
 
 
+@pytest.mark.parametrize("mutation", ["missing-visual", "wrong-app-build"])
+def test_attempt_attachments_are_bound_to_the_frozen_build(tmp_path: Path, mutation):
+    copy_repository_evidence(tmp_path)
+    evidence_path = tmp_path / manifest()["attempts"][0]["evidence_refs"][0]
+    evidence = json.loads(evidence_path.read_text())
+    if mutation == "missing-visual":
+        (tmp_path / evidence["visual"]["artifact_ref"]).unlink()
+    else:
+        evidence["app"]["build"] = "unrelated"
+        evidence_path.write_text(json.dumps(evidence))
+        evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+        rollback_path = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+        rollback = json.loads(rollback_path.read_text())
+        rollback["evidence_sha256_before"] = evidence_sha
+        rollback["evidence_sha256_after"] = evidence_sha
+        rollback_path.write_text(json.dumps(rollback))
+
+    with pytest.raises(PilotValidationError, match="attempt attachment"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
 def test_claims_exactly_match_attempt_and_reconciliation_classifications():
     value = manifest()
     value["claims"]["observed"].append("attempt.live-cloud")
@@ -569,6 +600,63 @@ def test_durable_app_archive_binds_default_fresh_checkout(tmp_path: Path):
     proof_path.write_text(json.dumps(proof))
 
     with pytest.raises(PilotValidationError, match="exact build identity"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("distribution", "untrusted"),
+        ("signing", "unsigned"),
+        ("verification", []),
+    ],
+)
+def test_build_proof_signing_assertions_are_bound(tmp_path: Path, field, value):
+    copy_repository_evidence(tmp_path)
+    proof_path = tmp_path / manifest()["build"]["proof_ref"]
+    proof = json.loads(proof_path.read_text())
+    proof[field] = value
+    proof_path.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match="build proof"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_archived_app_signature_is_verified(tmp_path: Path, monkeypatch):
+    copy_repository_evidence(tmp_path)
+    original_run = subprocess.run
+
+    def fail_codesign(command, *args, **kwargs):
+        if command[0] == "codesign":
+            return subprocess.CompletedProcess(command, 1)
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fail_codesign)
+    with pytest.raises(PilotValidationError, match="archive signature"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_reconciliation_sql_is_bound_to_the_frozen_commit(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    sql = tmp_path / manifest()["configuration"]["sql_refs"][0]
+    sql.write_text("SELECT 0\n")
+
+    with pytest.raises(PilotValidationError, match="reconciliation SQL"):
         verify_manifest(
             manifest(),
             expected_commit=HEAD,

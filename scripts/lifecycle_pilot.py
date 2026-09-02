@@ -409,6 +409,31 @@ def _archive_bundle_sha(path: Path) -> tuple[str, dict[str, Any]]:
     return digest.hexdigest(), info
 
 
+def _verify_archive_signature(path: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="insightkit-archive-") as directory:
+        extracted = Path(directory)
+        unpacked = subprocess.run(
+            ["ditto", "-x", "-k", str(path), str(extracted)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        verified = subprocess.run(
+            [
+                "codesign",
+                "--verify",
+                "--deep",
+                "--strict",
+                str(extracted / "InsightKit.app"),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if unpacked.returncode != 0 or verified.returncode != 0:
+            _fail("frozen app archive signature is invalid")
+
+
 def _validate_attempts(attempts: Any) -> tuple[dict[str, int], bool]:
     if not isinstance(attempts, list) or [
         item.get("id") for item in attempts if isinstance(item, dict)
@@ -889,7 +914,13 @@ def _validate_provider_evidence(
             _fail("repository Harness evidence is invalid")
 
 
-def _validate_attempt_evidence(attempt: dict[str, Any], evidence: dict[str, Any]) -> None:
+def _validate_attempt_evidence(
+    attempt: dict[str, Any],
+    evidence: dict[str, Any],
+    *,
+    root: Path,
+    build_proof: dict[str, Any],
+) -> None:
     unknowns = evidence.get("unknowns")
     if (
         evidence.get("status") != attempt["result"]
@@ -908,6 +939,29 @@ def _validate_attempt_evidence(attempt: dict[str, Any], evidence: dict[str, Any]
         or not set(unknowns).issubset(attempt["unknowns"])
     ):
         _fail("attempt evidence does not match the claimed result and stages")
+    app = evidence.get("app")
+    visual = evidence.get("visual")
+    if not isinstance(app, dict) or not isinstance(visual, dict):
+        _fail("attempt attachment identity is invalid")
+    _exact_keys(app, {"build", "bundle_sha256", "source"}, "attempt app")
+    _exact_keys(
+        visual,
+        {"artifact_ref", "artifact_sha256", "fixture"},
+        "attempt visual",
+    )
+    artifact_ref = visual.get("artifact_ref")
+    artifact = (root / artifact_ref).resolve() if _repo_ref(artifact_ref) else None
+    if (
+        app.get("build") != build_proof["build_version"]
+        or app.get("bundle_sha256") != build_proof["app_bundle_sha256"]
+        or app.get("source") != build_proof["build_source"]
+        or visual.get("fixture") != "synthetic"
+        or artifact is None
+        or not artifact.is_relative_to(root)
+        or not artifact.is_file()
+        or _artifact_sha(artifact) != visual.get("artifact_sha256")
+    ):
+        _fail("attempt attachment is missing or unrelated to the frozen build")
 
 
 def validate_rollback_proof(
@@ -1231,6 +1285,14 @@ def verify_manifest(
             or build_proof.get("source_clean") is not True
             or build_proof.get("build_source") != "local-workspace-clean"
             or build_proof.get("git_revision_short") != build["commit"][:7]
+            or build_proof.get("distribution") != "local"
+            or build_proof.get("signing") != "adhoc"
+            or build_proof.get("verification")
+            != [
+                "codesign.deep-strict",
+                "info-plist.source-binding",
+                "bundle-content-sha256",
+            ]
             or not _repo_ref(build_proof.get("app_archive_ref"))
             or not SHA256.fullmatch(str(build_proof.get("app_bundle_sha256", "")))
             or not SHA256.fullmatch(str(build_proof.get("app_archive_sha256", "")))
@@ -1258,6 +1320,10 @@ def verify_manifest(
             or app_info.get("InsightKitBuildSource") != build_proof["build_source"]
         ):
             _fail("frozen app archive does not match the exact build identity")
+        _verify_archive_signature(archive_path)
+        for ref in config["sql_refs"]:
+            if (root / ref).read_bytes() != _git_blob(root, build["commit"], ref):
+                _fail("reconciliation SQL changed after the frozen commit")
         if verify_app_artifact:
             app_path = root / build["app_bundle_ref"]
             if not app_path.is_dir() or _artifact_sha(app_path) != app_sha:
@@ -1280,7 +1346,12 @@ def verify_manifest(
                     or evidence.get("subject") != attempt["id"]
                 ):
                     _fail("attempt evidence is unrelated to this pilot")
-                _validate_attempt_evidence(attempt, evidence)
+                _validate_attempt_evidence(
+                    attempt,
+                    evidence,
+                    root=root,
+                    build_proof=build_proof,
+                )
         for provider, item in manifest["reconciliation"].items():
             if item["classification"] in {"observed", "inference"}:
                 evidence = _load_json(root / item["evidence_ref"])
