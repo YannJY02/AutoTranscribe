@@ -78,14 +78,19 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             for target in links:
                 parsed = urlparse(target)
                 if parsed.scheme:
+                    decoded_target = unquote(target)
+                    try:
+                        port = parsed.port
+                    except ValueError:
+                        port = -1
                     if (
                         parsed.scheme != "https"
                         or parsed.hostname not in ALLOWED_HOSTS
+                        or port not in {None, 443}
                         or parsed.username is not None
                         or parsed.password is not None
-                        or _contains_secret(unquote(target))
-                        or PRIVATE.search(unquote(parsed.query))
-                        or PRIVATE.search(unquote(parsed.fragment))
+                        or _contains_secret(decoded_target)
+                        or PRIVATE.search(decoded_target)
                     ):
                         errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
                 else:

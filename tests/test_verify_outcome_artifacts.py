@@ -6,6 +6,7 @@ from scripts.verify_outcome_artifacts import ARTIFACTS, validate
 
 FAKE_GITHUB_TOKEN = "gh" + "p_" + "abcdefghijklmnopqrstuvwxyz1234567890"
 FAKE_OPENAI_KEY = "s" + "k-" + "abcdefghijklmnopqrstuvwxyz1234567890"
+FAKE_PASSWORD_PATH = "pass" + "word=supersecretvalue"
 
 
 def test_outcome_artifacts_are_classified_linked_and_privacy_safe():
@@ -47,6 +48,9 @@ def test_validator_allows_exact_figma_evidence_host(tmp_path):
         (f"- [Observed] [{FAKE_OPENAI_KEY}](https://github.com/org/repo) result. ([Sources: issue](https://github.com/org/repo/issues/1))", "private path or secret-like text"),
         (f"- [Observed] Result. ([Sources: credential](https://github.com/{FAKE_GITHUB_TOKEN}))", "disallowed external link"),
         ("- [Observed] Result. ([Sources: lookalike](https://figma.com.example.org/board/1))", "disallowed external link"),
+        (f"- [Observed] Result. ([Sources: credential](https://www.figma.com/board/{FAKE_PASSWORD_PATH}))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: port](https://www.figma.com:444/board/1))", "disallowed external link"),
+        ("- [Observed] Result. ([Sources: port](https://www.figma.com:bad/board/1))", "disallowed external link"),
     ],
 )
 def test_validator_rejects_unclassified_unlinked_or_private_claims(tmp_path, body, message):
