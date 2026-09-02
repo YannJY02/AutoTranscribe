@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T17:34:04.665331+00:00",
+  "generated_at": "2026-09-02T17:46:03.046883+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "a1119e2ccf688df4abc6ef0c66b754c8104cfd65",
+  "commit": "ba51a5500d7cdf319ddd9156b9d98aca8c1d290d",
   "branch": "codex/yan-56-figjam-evidence",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -43,7 +43,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.012,
+          "duration_seconds": 0.01,
           "ok": true
         },
         {
@@ -54,7 +54,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.01,
+          "duration_seconds": 0.009,
           "ok": true
         },
         {
@@ -65,7 +65,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.024,
+          "duration_seconds": 0.023,
           "ok": true
         }
       ]
@@ -84,7 +84,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.773,
+          "duration_seconds": 1.349,
           "ok": true
         }
       ]
@@ -105,7 +105,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 72.553,
+          "duration_seconds": 73.382,
           "ok": true
         }
       ]
@@ -119,14 +119,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260903-013404/project-normalization"
+            "$WORKSPACE/logs/harness/20260903-014602/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.059,
+          "duration_seconds": 0.062,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T17:35:18.113637+00:00"
+  "finished_at": "2026-09-02T17:47:17.898994+00:00"
 }
