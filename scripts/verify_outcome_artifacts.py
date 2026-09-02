@@ -91,6 +91,8 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
                         or parsed.password is not None
                         or _contains_secret(decoded_target)
                         or PRIVATE.search(decoded_target)
+                        or PRIVATE.search(unquote(parsed.query))
+                        or PRIVATE.search(unquote(parsed.fragment))
                     ):
                         errors.append(f"{_display(artifact)}:{line_number}: disallowed external link {target}")
                 else:
