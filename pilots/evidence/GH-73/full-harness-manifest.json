@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T00:36:46.068508+00:00",
+  "generated_at": "2026-09-02T00:42:33.193134+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "0d3ef1a240ea4a39635a61dbaaf439c3fdd1d56a",
+  "commit": "d5de38ff3266a002c7597ecafba627648e659e8f",
   "branch": "codex/yan-55-owner-lifecycle-pilot",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -49,7 +49,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.012,
+          "duration_seconds": 0.011,
           "ok": true
         },
         {
@@ -79,7 +79,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.754,
+          "duration_seconds": 0.998,
           "ok": true
         }
       ]
@@ -100,7 +100,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 51.567,
+          "duration_seconds": 53.162,
           "ok": true
         }
       ]
@@ -114,14 +114,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260902-083646/project-normalization"
+            "$WORKSPACE/logs/harness/20260902-084233/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.074,
+          "duration_seconds": 0.067,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T00:37:38.523564+00:00"
+  "finished_at": "2026-09-02T00:43:27.476845+00:00"
 }
