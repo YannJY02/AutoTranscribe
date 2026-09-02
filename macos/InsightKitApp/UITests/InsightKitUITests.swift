@@ -26,11 +26,6 @@ class InsightKitUITests: XCTestCase {
             .appendingPathComponent("InsightKitUITestEvidence-\(UUID().uuidString)")
         app.launchEnvironment["INSIGHTKIT_UI_TEST_MODE"] = "1"
         app.launchEnvironment["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"] = captureRoot.path
-        for key in ["INSIGHTKIT_UI_TEST_ROUTE", "INSIGHTKIT_UI_TEST_ANALYSIS_MODE"] {
-            if let value = ProcessInfo.processInfo.environment[key] {
-                app.launchEnvironment[key] = value
-            }
-        }
         for (key, value) in launchEnvironmentOverrides {
             app.launchEnvironment[key] = value
         }

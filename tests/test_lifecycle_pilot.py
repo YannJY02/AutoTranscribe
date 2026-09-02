@@ -1,18 +1,14 @@
-import hashlib
 import json
 import shutil
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from scripts.lifecycle_pilot import (
-    ATTEMPT_ORDER,
-    ROLLBACK_SOURCE_REFS,
     PilotValidationError,
+    _run_frozen_rollback_checks,
     main,
-    run_attempts,
     validate_rollback_proof,
     verify_manifest,
 )
@@ -24,6 +20,22 @@ PILOT = ROOT / "pilots/gh-73-owner-lifecycle.json"
 
 def manifest():
     return json.loads(PILOT.read_text())
+
+
+def promote_attempts(value):
+    for attempt in value["attempts"]:
+        attempt.update(classification="observed", result="passed", unknowns=[])
+        attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
+        attempt["evidence_refs"] = ["pilots/evidence/GH-73/live-local-proof.json"]
+    value["claims"]["observed"] += [
+        "attempt.live-cloud",
+        "attempt.import-local",
+        "attempt.import-cloud",
+    ]
+    value["claims"]["unobserved"] = [
+        "production-readiness",
+        "external-user-validation",
+    ]
 
 
 def copy_repository_evidence(destination: Path) -> None:
@@ -45,7 +57,6 @@ def copy_repository_evidence(destination: Path) -> None:
         if item.get("evidence_ref")
     ]
     refs += value["rollback"]["evidence_refs"]
-    refs += list(ROLLBACK_SOURCE_REFS)
     refs += [value["reconciliation"]["repository"]["harness_manifest_ref"]]
     refs += [
         json.loads((ROOT / value["build"]["proof_ref"]).read_text())["app_archive_ref"]
@@ -76,10 +87,7 @@ def test_failed_observed_attempt_cannot_be_promoted_to_completed():
 
 def test_completed_requires_all_four_paths_and_all_provider_readbacks():
     value = manifest()
-    for attempt in value["attempts"]:
-        attempt.update(classification="observed", result="passed", unknowns=[])
-        attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
-        attempt["evidence_refs"] = ["pilots/evidence/GH-73/live-local-proof.json"]
+    promote_attempts(value)
     for provider in ("posthog", "sentry", "langfuse"):
         value["reconciliation"][provider]["scope"] = "pilot-attempt"
 
@@ -96,6 +104,7 @@ def test_completed_requires_all_four_paths_and_all_provider_readbacks():
         "unknowns": ["readback.unavailable"],
     }
     value["claims"]["observed"].remove("reconciliation.sentry")
+    value["claims"]["unobserved"].append("reconciliation.sentry")
     assert (
         verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
             "pilot_outcome"
@@ -106,10 +115,7 @@ def test_completed_requires_all_four_paths_and_all_provider_readbacks():
 
 def test_prerequisite_readbacks_do_not_close_current_pilot():
     value = manifest()
-    for attempt in value["attempts"]:
-        attempt.update(classification="observed", result="passed", unknowns=[])
-        attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
-        attempt["evidence_refs"] = ["pilots/evidence/GH-73/live-local-proof.json"]
+    promote_attempts(value)
 
     proof = verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
 
@@ -190,6 +196,107 @@ def test_repository_harness_commit_is_bound_separately_from_build(tmp_path: Path
             repository_root=tmp_path,
             now="2026-09-01T23:00:00Z",
         )
+
+
+def test_attempt_evidence_semantics_must_match_manifest(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    attempt = value["attempts"][0]
+    attempt.update(result="passed", unknowns=[])
+    attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
+
+    with pytest.raises(PilotValidationError, match="attempt evidence does not match"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("evidence_kind", "inference"), ("unknowns", {})],
+)
+def test_attempt_evidence_kind_and_unknowns_are_bound(tmp_path: Path, field, value):
+    copy_repository_evidence(tmp_path)
+    evidence = tmp_path / manifest()["attempts"][0]["evidence_refs"][0]
+    payload = json.loads(evidence.read_text())
+    payload[field] = value
+    evidence.write_text(json.dumps(payload))
+
+    with pytest.raises(PilotValidationError, match="attempt evidence does not match"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_claims_exactly_match_attempt_and_reconciliation_classifications():
+    value = manifest()
+    value["claims"]["observed"].append("attempt.live-cloud")
+
+    with pytest.raises(PilotValidationError, match="claim classifications"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+
+
+def test_native_rollback_proof_must_exist(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    rollback = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+    proof = json.loads(rollback.read_text())
+    proof["native_proof_ref"] = "pilots/evidence/GH-73/missing-native-proof.json"
+    rollback.write_text(json.dumps(proof))
+
+    with pytest.raises(PilotValidationError, match="native rollback proof is missing"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+def test_rollback_execution_uses_a_detached_frozen_worktree(
+    tmp_path: Path, monkeypatch
+):
+    copy_repository_evidence(tmp_path)
+    changed = (
+        tmp_path
+        / "macos/InsightKitApp/Sources/InsightKitApp/Services/ProductAnalytics.swift"
+    )
+    changed.parent.mkdir(parents=True, exist_ok=True)
+    changed.write_text("// working-tree dependency drift\n")
+    original_run = subprocess.run
+    observed = {}
+
+    def run(command, *args, **kwargs):
+        if command[0] == "swift":
+            cwd = Path(kwargs["cwd"])
+            observed["commit"] = original_run(
+                ["git", "-C", str(cwd), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            observed["cwd"] = cwd
+            return subprocess.CompletedProcess(command, 0)
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    _run_frozen_rollback_checks(tmp_path, HEAD)
+
+    assert observed["commit"] == HEAD
+    assert observed["cwd"] != tmp_path
+
+
+def test_repository_checks_do_not_claim_unrecorded_gates():
+    value = manifest()
+    value["reconciliation"]["repository"]["checks"].append("codesign")
+
+    with pytest.raises(PilotValidationError, match="repository readback"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
 
 
 def test_local_artifact_verification_is_explicit_and_hash_bound(tmp_path: Path):
@@ -290,18 +397,11 @@ def test_durable_app_archive_binds_default_fresh_checkout(tmp_path: Path):
         )
 
 
-def test_rollback_source_hash_comes_from_frozen_git_commit(tmp_path: Path):
+def test_rollback_proof_binds_frozen_package_hash(tmp_path: Path):
     copy_repository_evidence(tmp_path)
-    changed = tmp_path / ROLLBACK_SOURCE_REFS[0]
-    changed.write_text(changed.read_text() + "\n// tampered after frozen commit\n")
-    digest = hashlib.sha256()
-    for ref in ROLLBACK_SOURCE_REFS:
-        digest.update(ref.encode())
-        digest.update(b"\0")
-        digest.update((tmp_path / ref).read_bytes())
     rollback = tmp_path / manifest()["rollback"]["evidence_refs"][0]
     proof = json.loads(rollback.read_text())
-    proof["test_source_sha256"] = digest.hexdigest()
+    proof["test_source_sha256"] = "0" * 64
     rollback.write_text(json.dumps(proof))
 
     with pytest.raises(PilotValidationError, match="test source changed"):
@@ -335,76 +435,6 @@ def test_rollback_binds_target_test_source_and_unchanged_evidence():
             app_bundle_ref=value["build"]["app_bundle_ref"],
             app_sha=app_sha,
         )
-
-
-def test_runner_executes_exact_locked_order_and_records_each_exit(
-    tmp_path: Path, monkeypatch
-):
-    commands = []
-    lock = [
-        "python3.11",
-        "scripts/agent_harness.py",
-        "lock",
-        "--resource",
-        "installed-app",
-        "--timeout",
-        "1800",
-        "--",
-    ]
-    monkeypatch.setattr(
-        "scripts.lifecycle_pilot.subprocess.run",
-        lambda command, **kwargs: (
-            commands.append(command) or SimpleNamespace(returncode=0)
-        ),
-    )
-
-    proof = run_attempts(manifest(), repository_root=tmp_path)
-
-    assert proof["status"] == "executed"
-    assert [item["id"] for item in proof["results"]] == list(ATTEMPT_ORDER)
-    assert all(command[: len(lock)] == lock for command in commands)
-    assert all(item["execution"] == "succeeded" for item in proof["results"])
-    assert all(item["attempt_result_claimed"] is False for item in proof["results"])
-    assert any(
-        "LiveWorkspaceTests/testSingleEntryGeneratedReviewFlowCoversPrimaryInteractions"
-        in part
-        for part in commands[0]
-    )
-    assert any(
-        "TranscriptionWorkspaceTests/testTranscriptionWorkspaceVisible" in part
-        for part in commands[2]
-    )
-    assert all(
-        any(
-            "NavigationTests/testRunnerAnalysisModeOverride" in part for part in command
-        )
-        for command in commands
-    )
-
-
-def test_runner_rejects_manifest_command_injection_and_secret_like_values(
-    tmp_path: Path,
-):
-    value = manifest()
-    value["attempts"][0]["command"] = ["bash", "-c", "touch escaped"]
-    with pytest.raises(PilotValidationError, match="attempt fields"):
-        run_attempts(value, repository_root=tmp_path)
-
-    value = manifest()
-    value["attempts"][0]["api_key"] = "do-not-accept"
-    with pytest.raises(PilotValidationError, match="shared privacy boundary"):
-        run_attempts(value, repository_root=tmp_path)
-
-
-def test_runner_cli_derives_commands_from_frozen_manifest(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "scripts.lifecycle_pilot.subprocess.run",
-        lambda command, **kwargs: SimpleNamespace(returncode=0),
-    )
-    output = tmp_path / "runner-proof.json"
-
-    assert main(["run-attempts", str(PILOT), "--output", str(output)]) == 0
-    assert json.loads(output.read_text())["status"] == "executed"
 
 
 def test_cli_writes_canonical_proof_from_a_fresh_checkout(tmp_path: Path, monkeypatch):

@@ -8,6 +8,7 @@
   "observed_at": "2026-09-01T21:45:08Z",
   "privacy_safe": true,
   "scenario": "synthetic-ui-route",
+  "analysis_mode": "local",
   "analysis_mode_observed": false,
   "stages": {"started": "observed", "record_saved": "unobserved", "record_reopened": "unobserved", "smart_minutes_review_opened": "observed", "export_completed": "unobserved", "workflow_completed": "failed"},
   "app": {"build": "20260902053055", "bundle_sha256": "b0c6590d3e250a5fca36d953bd4008c4dce660854de4853ba404d32c934b7eee", "source": "local-workspace-clean"},

@@ -66,11 +66,7 @@ final class AppConfigStore: ObservableObject {
             persist()
         }
         let repaired = normalizeCorruptedAnalysisProfilesIfNeeded()
-        let uiTestMode = Self.uiTestAnalysisMode(environment: ProcessInfo.processInfo.environment)
-        if let uiTestMode {
-            config.analysis.mode = uiTestMode
-        }
-        if repaired || uiTestMode != nil {
+        if repaired {
             persist()
         } else {
             writeConfigSnapshot()
@@ -691,10 +687,5 @@ final class AppConfigStore: ObservableObject {
 
     private static var isUITestMode: Bool {
         ProcessInfo.processInfo.environment["INSIGHTKIT_UI_TEST_MODE"] == "1"
-    }
-
-    static func uiTestAnalysisMode(environment: [String: String]) -> AnalysisMode? {
-        guard environment["INSIGHTKIT_UI_TEST_MODE"] == "1" else { return nil }
-        return environment["INSIGHTKIT_UI_TEST_ANALYSIS_MODE"].flatMap(AnalysisMode.init(rawValue:))
     }
 }

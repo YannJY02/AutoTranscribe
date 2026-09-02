@@ -10,6 +10,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -18,11 +19,9 @@ from typing import Any
 if __package__:
     from .evidence_ledger import EvidenceLedger, ValidationError
     from .evidence_ledger import _walk as _privacy_scan
-    from .native_app_proof import LOCK_PREFIX
 else:
     from evidence_ledger import EvidenceLedger, ValidationError
     from evidence_ledger import _walk as _privacy_scan
-    from native_app_proof import LOCK_PREFIX
 
 
 ATTEMPT_ORDER = ("live-local", "live-cloud", "import-local", "import-cloud")
@@ -44,12 +43,7 @@ ROLLBACK_CHECKS = (
     "deterministic-queue-purge-readback",
     "sentry-disable-without-environment",
 )
-ROLLBACK_SOURCE_REFS = (
-    "macos/InsightKitApp/Sources/InsightKitApp/Services/ExternalTelemetryPrivacyGate.swift",
-    "macos/InsightKitApp/Sources/InsightKitApp/Services/SentryDiagnosticsAdapter.swift",
-    "macos/InsightKitApp/Tests/InsightKitAppTests/ExternalTelemetryPrivacyGateTests.swift",
-    "macos/InsightKitApp/Tests/InsightKitAppTests/SentryDiagnosticsAdapterTests.swift",
-)
+ROLLBACK_PACKAGE_REF = "macos/InsightKitApp"
 BUILD_PROOF_FIELDS = {
     "status",
     "commit",
@@ -76,6 +70,7 @@ ATTEMPT_EVIDENCE_FIELDS = {
     "observed_at",
     "privacy_safe",
     "scenario",
+    "analysis_mode",
     "analysis_mode_observed",
     "stages",
     "app",
@@ -264,12 +259,89 @@ def _git_blob(root: Path, commit: str, ref: str) -> bytes:
 
 
 def _source_sha(root: Path, commit: str) -> str:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            commit,
+            "--",
+            ROLLBACK_PACKAGE_REF,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        text=True,
+    )
+    refs = result.stdout.splitlines()
+    if result.returncode != 0 or not refs:
+        _fail("frozen Swift package is unavailable")
     digest = hashlib.sha256()
-    for ref in ROLLBACK_SOURCE_REFS:
+    for ref in refs:
         digest.update(ref.encode())
         digest.update(b"\0")
         digest.update(_git_blob(root, commit, ref))
     return digest.hexdigest()
+
+
+def _run_frozen_rollback_checks(root: Path, commit: str) -> None:
+    filters = (
+        "ExternalTelemetryPrivacyGateTests/testUnifiedConsentRevocationPurgesProductAndSentryQueues",
+        "ExternalTelemetryPrivacyGateTests/testDisablePurgesQueueAndWritesDeterministicReadbackEvidence",
+        "SentryDiagnosticsAdapterTests/testExplicitDisablePurgesWithoutTelemetryEnvironment",
+    )
+    with tempfile.TemporaryDirectory(prefix="insightkit-rollback-") as scratch:
+        worktree = Path(scratch) / "frozen"
+        added = (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(worktree),
+                    commit,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            ).returncode
+            == 0
+        )
+        if not added:
+            _fail("frozen rollback worktree could not be created")
+        try:
+            command = [
+                "swift",
+                "test",
+                "--disable-sandbox",
+                "--package-path",
+                ROLLBACK_PACKAGE_REF,
+                *(part for test in filters for part in ("--filter", test)),
+            ]
+            passed = subprocess.run(command, cwd=worktree, check=False).returncode == 0
+        finally:
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "worktree",
+                    "remove",
+                    "--force",
+                    str(worktree),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        if not passed:
+            _fail("rollback deterministic checks failed")
 
 
 def _archive_bundle_sha(path: Path) -> tuple[str, dict[str, Any]]:
@@ -517,9 +589,7 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
         elif (
             item["scope"] != "repository-proof"
             or item["status"] not in {"passed", "failed"}
-            or not isinstance(item["checks"], list)
-            or not item["checks"]
-            or not all(CODE.fullmatch(check) for check in item["checks"])
+            or item["checks"] != ["full-agent-harness"]
             or not SHA.fullmatch(item["harness_commit"])
             or not _repo_ref(item["harness_manifest_ref"])
             or not SHA256.fullmatch(item["harness_manifest_sha256"])
@@ -642,6 +712,27 @@ def _validate_provider_evidence(
             _fail("repository Harness evidence is invalid")
 
 
+def _validate_attempt_evidence(attempt: dict[str, Any], evidence: dict[str, Any]) -> None:
+    unknowns = evidence.get("unknowns")
+    if (
+        evidence.get("status") != attempt["result"]
+        or evidence.get("evidence_kind")
+        != {"observed": "attempt", "inference": "inference"}[attempt["classification"]]
+        or evidence.get("privacy_safe") is not True
+        or evidence.get("analysis_mode") != attempt["analysis_mode"]
+        or not isinstance(evidence.get("analysis_mode_observed"), bool)
+        or (
+            attempt["result"] == "passed"
+            and evidence.get("analysis_mode_observed") is not True
+        )
+        or evidence.get("stages") != attempt["stages"]
+        or not isinstance(unknowns, list)
+        or not all(isinstance(code, str) and CODE.fullmatch(code) for code in unknowns)
+        or not set(unknowns).issubset(attempt["unknowns"])
+    ):
+        _fail("attempt evidence does not match the claimed result and stages")
+
+
 def validate_rollback_proof(
     proof: Any,
     *,
@@ -697,21 +788,7 @@ def generate_rollback_proof(
     ):
         _fail("rollback input is not privacy-safe evidence for the frozen build")
     evidence_sha = _artifact_sha(native_path)
-    filters = (
-        "ExternalTelemetryPrivacyGateTests/testUnifiedConsentRevocationPurgesProductAndSentryQueues",
-        "ExternalTelemetryPrivacyGateTests/testDisablePurgesQueueAndWritesDeterministicReadbackEvidence",
-        "SentryDiagnosticsAdapterTests/testExplicitDisablePurgesWithoutTelemetryEnvironment",
-    )
-    command = [
-        "swift",
-        "test",
-        "--disable-sandbox",
-        "--package-path",
-        "macos/InsightKitApp",
-        *(part for test in filters for part in ("--filter", test)),
-    ]
-    if subprocess.run(command, cwd=repository_root, check=False).returncode != 0:
-        _fail("rollback deterministic checks failed")
+    _run_frozen_rollback_checks(repository_root, build["commit"])
     if _artifact_sha(native_path) != evidence_sha:
         _fail("rollback checks changed retained evidence")
     return {
@@ -736,65 +813,6 @@ def generate_rollback_proof(
         "test_source_sha256": _source_sha(repository_root, build["commit"]),
         "evidence_sha256_before": evidence_sha,
         "evidence_sha256_after": evidence_sha,
-    }
-
-
-def run_attempts(manifest: Any, *, repository_root: Path) -> dict[str, Any]:
-    _walk(manifest)
-    if (
-        not isinstance(manifest, dict)
-        or manifest.get("schema_version") != 1
-        or manifest.get("pilot_id") != "gh-73-owner-three-day-v1"
-        or manifest.get("issue") != "GH-73"
-    ):
-        _fail("runner manifest is invalid")
-    attempts = manifest.get("attempts")
-    _validate_attempts(attempts)
-    results = []
-    for item in attempts:
-        workflow, analysis_mode = item["workflow"], item["analysis_mode"]
-        route = {"live": "live", "import": "transcription"}[workflow]
-        selected_test = {
-            "live": "LiveWorkspaceTests/testSingleEntryGeneratedReviewFlowCoversPrimaryInteractions",
-            "import": "TranscriptionWorkspaceTests/testTranscriptionWorkspaceVisible",
-        }[workflow]
-        command = [
-            *LOCK_PREFIX,
-            "env",
-            f"INSIGHTKIT_UITEST_PROOF_ROOT=logs/harness/GH-73/{item['id']}",
-            f"INSIGHTKIT_UITEST_SCENARIO=owner-pilot-{item['id']}",
-            f"INSIGHTKIT_UI_TEST_ROUTE={route}",
-            f"INSIGHTKIT_UI_TEST_ANALYSIS_MODE={analysis_mode}",
-            f"INSIGHTKIT_UITEST_SELECTED_TESTS=NavigationTests/testRunnerAnalysisModeOverride,{selected_test}",
-            "./scripts/run_uitests.sh",
-        ]
-        exit_code = subprocess.run(
-            command,
-            cwd=repository_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        results.append(
-            {
-                "id": item["id"],
-                "exit_code": exit_code,
-                "execution": "succeeded" if exit_code == 0 else "failed",
-                "coverage": "synthetic-review-route"
-                if workflow == "live"
-                else "route-entry-only",
-                "manifest_classification": item["classification"],
-                "manifest_result": item["result"],
-                "attempt_result_claimed": False,
-            }
-        )
-    return {
-        "schema_version": 1,
-        "status": "executed"
-        if all(item["exit_code"] == 0 for item in results)
-        else "failed",
-        "attempt_order": list(ATTEMPT_ORDER),
-        "results": results,
     }
 
 
@@ -961,21 +979,26 @@ def verify_manifest(
         for values in claims.values()
     ):
         _fail("claims must contain bounded metadata codes")
-    bound = (
-        {"rollback.dry-run"}
-        | {
-            f"attempt.{item['id']}"
-            for item in manifest["attempts"]
-            if item["classification"] == "observed"
-        }
-        | {
+    claim_bucket = {"observed": "observed", "inference": "inferred", "unobserved": "unobserved"}
+    expected_claims = {
+        "observed": {"rollback.dry-run"},
+        "inferred": set(),
+        "unobserved": {"production-readiness", "external-user-validation"},
+    }
+    for attempt in manifest["attempts"]:
+        expected_claims[claim_bucket[attempt["classification"]]].add(
+            f"attempt.{attempt['id']}"
+        )
+    for name, item in manifest["reconciliation"].items():
+        expected_claims[claim_bucket[item["classification"]]].add(
             f"reconciliation.{name}"
-            for name, item in manifest["reconciliation"].items()
-            if item["classification"] == "observed"
-        }
-    )
-    if any(code not in bound for code in claims["observed"]):
-        _fail("observed claims require bound evidence")
+        )
+    actual_claims = {name: set(values) for name, values in claims.items()}
+    if (
+        any(len(actual_claims[name]) != len(claims[name]) for name in claims)
+        or actual_claims != expected_claims
+    ):
+        _fail("claim classifications must exactly match their evidence")
     if (
         not isinstance(manifest["deviations"], list)
         or not all(CODE.fullmatch(code) for code in manifest["deviations"])
@@ -1073,6 +1096,7 @@ def verify_manifest(
                     or evidence.get("subject") != attempt["id"]
                 ):
                     _fail("attempt evidence is unrelated to this pilot")
+                _validate_attempt_evidence(attempt, evidence)
         for provider, item in manifest["reconciliation"].items():
             if item["classification"] in {"observed", "inference"}:
                 evidence = _load_json(root / item["evidence_ref"])
@@ -1103,14 +1127,15 @@ def verify_manifest(
             evidence = _load_json(root / ref)
             if isinstance(evidence, dict):
                 _exact_keys(evidence, ROLLBACK_EVIDENCE_FIELDS, "rollback evidence")
-            native_ref = (
-                evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
-            )
-            native_sha = (
-                _artifact_sha(root / native_ref)
-                if _repo_ref(native_ref) and (root / native_ref).is_file()
-                else None
-            )
+            native_ref = evidence.get("native_proof_ref") if isinstance(evidence, dict) else None
+            native_path = (root / native_ref).resolve() if _repo_ref(native_ref) else None
+            if (
+                native_path is None
+                or not native_path.is_relative_to(root)
+                or not native_path.is_file()
+            ):
+                _fail("native rollback proof is missing")
+            native_sha = _artifact_sha(native_path)
             validate_rollback_proof(
                 evidence,
                 rollback=rollback,
@@ -1196,9 +1221,6 @@ def main(argv: list[str] | None = None) -> int:
     rollback.add_argument("manifest", type=Path)
     rollback.add_argument("--native-proof-ref", required=True)
     rollback.add_argument("--output", type=Path, required=True)
-    runner = commands.add_parser("run-attempts")
-    runner.add_argument("manifest", type=Path)
-    runner.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "rollback-dry-run":
@@ -1207,8 +1229,6 @@ def main(argv: list[str] | None = None) -> int:
                 repository_root=Path.cwd(),
                 native_proof_ref=args.native_proof_ref,
             )
-        elif args.command == "run-attempts":
-            result = run_attempts(_load_json(args.manifest), repository_root=Path.cwd())
         else:
             result = verify_manifest(
                 _load_json(args.manifest),

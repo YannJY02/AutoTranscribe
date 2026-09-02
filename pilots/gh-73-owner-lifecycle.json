@@ -120,10 +120,10 @@
       "evidence_ref": "pilots/evidence/GH-73/repository-proof.json",
       "scope": "repository-proof",
       "status": "failed",
-      "checks": ["exact-build", "codesign", "harness-doctor", "privacy-safe-provider-readbacks", "focused-pilot-tests", "full-agent-harness"],
-      "harness_commit": "d57033363b32a2135e824a2f2a162fbea8143606",
+      "checks": ["full-agent-harness"],
+      "harness_commit": "027b8b75e2c163ef6d384843a3c06e55c16d0846",
       "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-      "harness_manifest_sha256": "1dca0b72f728dc3b5c293b952e50da5aeaa5c7474d37045e41da1a4a91000f02"
+      "harness_manifest_sha256": "5eccb8b0fa24d550440c0ea109ed8ffab0ed9a6813dae2c47fc39bda5ecf4aad"
     }
   },
   "rollback": {

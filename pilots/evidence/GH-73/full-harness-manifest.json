@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-01T23:15:36.754481+00:00",
+  "generated_at": "2026-09-02T00:01:42.231998+00:00",
   "status": "failed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "d57033363b32a2135e824a2f2a162fbea8143606",
+  "commit": "027b8b75e2c163ef6d384843a3c06e55c16d0846",
   "branch": "codex/yan-55-owner-lifecycle-pilot",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -35,16 +35,57 @@
       "name": "diff-check",
       "status": "passed",
       "commands": [
-        {"command": ["git", "diff", "--check"], "exit_code": 0, "duration_seconds": 0.01, "ok": true},
-        {"command": ["git", "diff", "--cached", "--check"], "exit_code": 0, "duration_seconds": 0.014, "ok": true},
-        {"command": ["git", "diff", "--check", "origin/main...HEAD"], "exit_code": 0, "duration_seconds": 0.015, "ok": true}
+        {
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.009,
+          "ok": true
+        },
+        {
+          "command": [
+            "git",
+            "diff",
+            "--cached",
+            "--check"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.011,
+          "ok": true
+        },
+        {
+          "command": [
+            "git",
+            "diff",
+            "--check",
+            "origin/main...HEAD"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.013,
+          "ok": true
+        }
       ]
     },
     {
       "name": "harness-tests",
       "status": "passed",
       "commands": [
-        {"command": [".venv/bin/python", "-m", "pytest", "-q", "tests/test_agent_harness.py", "tests/test_verify_project_normalization.py"], "exit_code": 0, "duration_seconds": 0.912, "ok": true}
+        {
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_agent_harness.py",
+            "tests/test_verify_project_normalization.py"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.768,
+          "ok": true
+        }
       ]
     },
     {
@@ -52,9 +93,18 @@
       "status": "passed",
       "commands": [
         {
-          "command": [".venv/bin/python", "-m", "pytest", "tests", "-q", "--tb=short", "-m", "not integration and not requires_model and not slow"],
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "-m",
+            "pytest",
+            "tests",
+            "-q",
+            "--tb=short",
+            "-m",
+            "not integration and not requires_model and not slow"
+          ],
           "exit_code": 0,
-          "duration_seconds": 33.08,
+          "duration_seconds": 41.956,
           "ok": true
         }
       ]
@@ -63,7 +113,17 @@
       "name": "swift-tests",
       "status": "passed",
       "commands": [
-        {"command": ["swift", "test", "--package-path", "macos/InsightKitApp"], "exit_code": 0, "duration_seconds": 27.351, "ok": true}
+        {
+          "command": [
+            "swift",
+            "test",
+            "--package-path",
+            "macos/InsightKitApp"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 30.516,
+          "ok": true
+        }
       ]
     },
     {
@@ -71,13 +131,23 @@
       "status": "failed",
       "commands": [
         {
-          "command": [".venv/bin/python", "scripts/agent_harness.py", "lock", "--resource", "installed-app", "--timeout", "1800", "--", "./scripts/run_uitests.sh"],
+          "command": [
+            "$WORKSPACE/.venv/bin/python",
+            "scripts/agent_harness.py",
+            "lock",
+            "--resource",
+            "installed-app",
+            "--timeout",
+            "1800",
+            "--",
+            "./scripts/run_uitests.sh"
+          ],
           "exit_code": 1,
-          "duration_seconds": 81.233,
+          "duration_seconds": 81.074,
           "ok": false
         }
       ]
     }
   ],
-  "finished_at": "2026-09-01T23:17:59.389453+00:00"
+  "finished_at": "2026-09-02T00:04:16.601688+00:00"
 }
