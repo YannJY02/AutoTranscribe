@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T02:48:21.714565+00:00",
+  "generated_at": "2026-09-02T03:47:13.619408+00:00",
   "status": "passed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "ef4f67e9bc9602431a8e0cfe8a8e80b85c2f611a",
+  "commit": "201d622012b3324385a2ae4fe26139dbe6c0a7ed",
   "branch": "codex/yan-55-owner-lifecycle-pilot",
   "workspace": "$WORKSPACE",
   "changed_files": [
@@ -22,6 +22,8 @@
     "pilots/evidence/GH-73/repository-proof.json",
     "pilots/evidence/GH-73/rollback-proof.json",
     "pilots/evidence/GH-73/sentry-readback.json",
+    "pilots/evidence/GH-73/source-attestation.cms",
+    "pilots/evidence/GH-73/source-attestation.json",
     "pilots/gh-73-owner-lifecycle.json",
     "scripts/lifecycle_pilot.py",
     "tests/test_lifecycle_pilot.py"
@@ -38,7 +40,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.011,
+          "duration_seconds": 0.01,
           "ok": true
         },
         {
@@ -49,7 +51,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.011,
+          "duration_seconds": 0.009,
           "ok": true
         },
         {
@@ -60,7 +62,7 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.023,
+          "duration_seconds": 0.021,
           "ok": true
         }
       ]
@@ -79,7 +81,7 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 2.264,
+          "duration_seconds": 1.124,
           "ok": true
         }
       ]
@@ -100,7 +102,7 @@
             "not integration and not requires_model and not slow"
           ],
           "exit_code": 0,
-          "duration_seconds": 75.089,
+          "duration_seconds": 90.109,
           "ok": true
         }
       ]
@@ -114,14 +116,14 @@
             "$WORKSPACE/.venv/bin/python",
             "scripts/verify_project_normalization.py",
             "--output-root",
-            "$WORKSPACE/logs/harness/20260902-104821/project-normalization"
+            "$WORKSPACE/logs/harness/20260902-114713/project-normalization"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.124,
+          "duration_seconds": 0.07,
           "ok": true
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T02:49:39.260826+00:00"
+  "finished_at": "2026-09-02T03:48:44.981786+00:00"
 }
