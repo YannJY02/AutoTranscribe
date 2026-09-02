@@ -13,6 +13,7 @@ import sys
 import tempfile
 import zipfile
 from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -40,6 +41,19 @@ STAGES = (
     "export_completed",
     "workflow_completed",
 )
+PRODUCT_ANALYTICS_EVENTS = {
+    "workflow_started",
+    "record_saved",
+    "record_reopened",
+    "transcript_search_completed",
+    "smart_minutes_review_opened",
+    "export_completed",
+    "workflow_completed",
+    "workflow_failed",
+    "recovery_attempted",
+    "recovery_completed",
+    "telemetry_consent_changed",
+}
 CLASSIFICATIONS = {"observed", "inference", "unobserved"}
 STAGE_RESULTS = {"observed", "failed", "blocked", "unobserved"}
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -51,6 +65,11 @@ ROLLBACK_CHECKS = (
     "sentry-disable-without-environment",
 )
 ROLLBACK_PACKAGE_REF = "macos/InsightKitApp"
+OWNER_PILOT_SIGNING_TEAM_ID = "KBAF95R4C5"
+OWNER_PILOT_SIGNING_CERT_SHA256 = (
+    "c59c2eeaae7f38f50b04885c679938dc1e0a1fcfb0b7e46c8caa8b852b4676b1"
+)
+OWNER_PILOT_SIGNER_POLICY = "owner-pilot-apple-development-v1"
 BUILD_PROOF_FIELDS = {
     "status",
     "commit",
@@ -62,6 +81,14 @@ BUILD_PROOF_FIELDS = {
     "build_source",
     "git_revision_short",
     "package_script_sha256",
+    "bundle_cdhash",
+    "executable_sha256",
+    "source_attestation_ref",
+    "source_attestation_sha256",
+    "source_attestation_signature_ref",
+    "source_attestation_signature_sha256",
+    "signing_team_id",
+    "signing_leaf_certificate_sha256",
     "source_clean",
     "distribution",
     "signing",
@@ -192,6 +219,19 @@ class PilotValidationError(ValueError):
 
 def _fail(message: str) -> None:
     raise PilotValidationError(message)
+
+
+def _validation_boundary(function: Any) -> Any:
+    @wraps(function)
+    def bounded(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return function(*args, **kwargs)
+        except PilotValidationError:
+            raise
+        except (AttributeError, TypeError) as error:
+            raise PilotValidationError("pilot input has invalid value types") from error
+
+    return bounded
 
 
 def _walk(value: Any) -> None:
@@ -327,6 +367,19 @@ def _source_sha(root: Path, commit: str) -> str:
     return digest.hexdigest()
 
 
+def _git_tree(root: Path, commit: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", f"{commit}^{{tree}}"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    tree = result.stdout.strip()
+    if result.returncode != 0 or not SHA.fullmatch(tree):
+        _fail("frozen Git tree is unavailable")
+    return tree
+
+
 def _run_frozen_rollback_checks(root: Path, commit: str) -> None:
     filters = (
         "ExternalTelemetryPrivacyGateTests/testUnifiedConsentRevocationPurgesProductAndSentryQueues",
@@ -409,7 +462,82 @@ def _archive_bundle_sha(path: Path) -> tuple[str, dict[str, Any]]:
     return digest.hexdigest(), info
 
 
-def _verify_archive_signature(path: Path) -> None:
+def _developer_signature_metadata(app: Path) -> dict[str, Any]:
+    requirement = (
+        'anchor apple generic and identifier "com.yannjy.insightkit" '
+        f'and certificate leaf[subject.OU] = "{OWNER_PILOT_SIGNING_TEAM_ID}"'
+    )
+    with tempfile.TemporaryDirectory(prefix="insightkit-signature-") as directory:
+        certificate_prefix = Path(directory) / "certificate"
+        verified = subprocess.run(
+            [
+                "codesign",
+                "--verify",
+                "--deep",
+                "--strict",
+                f"-R={requirement}",
+                str(app),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        details = subprocess.run(
+            ["codesign", "-dv", "--verbose=4", str(app)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        extracted = subprocess.run(
+            [
+                "codesign",
+                "-d",
+                f"--extract-certificates={certificate_prefix}",
+                str(app),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        leaf = Path(f"{certificate_prefix}0")
+        architectures = subprocess.run(
+            ["lipo", "-archs", str(app / "Contents/MacOS/InsightKitApp")],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        fields = dict(
+            re.findall(
+                r"^(Identifier|CDHash|TeamIdentifier)=(.+)$",
+                details.stderr or "",
+                re.MULTILINE,
+            )
+        )
+        leaf_sha = _artifact_sha(leaf) if leaf.is_file() else None
+        archs = architectures.stdout.split()
+        if (
+            verified.returncode != 0
+            or details.returncode != 0
+            or extracted.returncode != 0
+            or architectures.returncode != 0
+            or fields.get("Identifier") != "com.yannjy.insightkit"
+            or fields.get("TeamIdentifier") != OWNER_PILOT_SIGNING_TEAM_ID
+            or not re.fullmatch(r"[0-9a-f]{40}", fields.get("CDHash", ""))
+            or leaf_sha != OWNER_PILOT_SIGNING_CERT_SHA256
+            or archs != ["arm64"]
+        ):
+            _fail("frozen app archive signature is invalid")
+    return {
+        "bundle_id": fields["Identifier"],
+        "cdhash": fields["CDHash"],
+        "team_id": fields["TeamIdentifier"],
+        "leaf_certificate_sha256": leaf_sha,
+        "architectures": archs,
+        "executable_sha256": _artifact_sha(app / "Contents/MacOS/InsightKitApp"),
+    }
+
+
+def _verify_archive_signature(path: Path) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="insightkit-archive-") as directory:
         extracted = Path(directory)
         unpacked = subprocess.run(
@@ -418,20 +546,167 @@ def _verify_archive_signature(path: Path) -> None:
             stderr=subprocess.DEVNULL,
             check=False,
         )
+        if unpacked.returncode != 0:
+            _fail("frozen app archive signature is invalid")
+        return _developer_signature_metadata(extracted / "InsightKit.app")
+
+
+def _verify_source_attestation(
+    root: Path,
+    build: dict[str, Any],
+    build_proof: dict[str, Any],
+    *,
+    app_sha: str,
+    signature: dict[str, Any],
+) -> None:
+    refs = (
+        build_proof.get("source_attestation_ref"),
+        build_proof.get("source_attestation_signature_ref"),
+    )
+    paths = [(root / ref).resolve() if _repo_ref(ref) else None for ref in refs]
+    if any(
+        path is None or not path.is_relative_to(root) or not path.is_file()
+        for path in paths
+    ):
+        _fail("source attestation is missing")
+    statement_path, cms_path = paths
+    if (
+        _artifact_sha(statement_path) != build_proof["source_attestation_sha256"]
+        or _artifact_sha(cms_path)
+        != build_proof["source_attestation_signature_sha256"]
+    ):
+        _fail("source attestation digest changed")
+    with tempfile.TemporaryDirectory(prefix="insightkit-attestation-") as directory:
+        decoded = Path(directory) / "statement.json"
+        signer = Path(directory) / "signer.pem"
+        signer_der = Path(directory) / "signer.der"
         verified = subprocess.run(
             [
-                "codesign",
-                "--verify",
-                "--deep",
-                "--strict",
-                str(extracted / "InsightKit.app"),
+                "openssl",
+                "cms",
+                "-verify",
+                "-inform",
+                "DER",
+                "-in",
+                str(cms_path),
+                "-noverify",
+                "-out",
+                str(decoded),
+                "-signer",
+                str(signer),
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        if unpacked.returncode != 0 or verified.returncode != 0:
-            _fail("frozen app archive signature is invalid")
+        converted = subprocess.run(
+            [
+                "openssl",
+                "x509",
+                "-in",
+                str(signer),
+                "-outform",
+                "DER",
+                "-out",
+                str(signer_der),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if (
+            verified.returncode != 0
+            or converted.returncode != 0
+            or not decoded.is_file()
+            or decoded.read_bytes() != statement_path.read_bytes()
+            or not signer_der.is_file()
+            or _artifact_sha(signer_der) != OWNER_PILOT_SIGNING_CERT_SHA256
+        ):
+            _fail("source attestation signature is invalid")
+    statement = _load_json(statement_path)
+    if not isinstance(statement, dict):
+        _fail("source attestation is invalid")
+    _walk(statement)
+    _exact_keys(
+        statement,
+        {"schema_version", "predicate_type", "subject", "predicate"},
+        "source attestation",
+    )
+    subject = statement.get("subject")
+    predicate = statement.get("predicate")
+    if not isinstance(subject, dict) or not isinstance(predicate, dict):
+        _fail("source attestation is invalid")
+    _exact_keys(
+        subject,
+        {
+            "name",
+            "bundle_sha256",
+            "cdhash",
+            "executable_sha256",
+            "bundle_id",
+            "architectures",
+        },
+        "source attestation subject",
+    )
+    _exact_keys(
+        predicate,
+        {
+            "commit",
+            "git_tree",
+            "package_script_sha256",
+            "build_version",
+            "source_clean",
+            "source_state",
+            "build_argv",
+            "swift_version",
+            "xcode_version",
+            "sdk_version",
+            "signing_team_id",
+            "signing_leaf_certificate_sha256",
+            "provenance_level",
+        },
+        "source attestation predicate",
+    )
+    expected_subject = {
+        "name": "InsightKit.app",
+        "bundle_sha256": app_sha,
+        "cdhash": signature["cdhash"],
+        "executable_sha256": signature["executable_sha256"],
+        "bundle_id": signature["bundle_id"],
+        "architectures": signature["architectures"],
+    }
+    expected_predicate = {
+        "commit": build["commit"],
+        "git_tree": _git_tree(root, build["commit"]),
+        "package_script_sha256": build_proof["package_script_sha256"],
+        "build_version": build_proof["build_version"],
+        "source_clean": True,
+        "source_state": "detached-clean",
+        "build_argv": [
+            "bash",
+            "scripts/package_insightkit_app.sh",
+            "--clean",
+            "--output-dir",
+            "$EVIDENCE_ROOT",
+        ],
+        "signing_team_id": OWNER_PILOT_SIGNING_TEAM_ID,
+        "signing_leaf_certificate_sha256": OWNER_PILOT_SIGNING_CERT_SHA256,
+        "provenance_level": "developer-attested-source-provenance-non-reproducible",
+    }
+    toolchain = (
+        predicate.get("swift_version"),
+        predicate.get("xcode_version"),
+        predicate.get("sdk_version"),
+    )
+    if (
+        statement.get("schema_version") != 1
+        or statement.get("predicate_type")
+        != "insightkit.local-owner-pilot.developer-attestation/v1"
+        or subject != expected_subject
+        or any(predicate.get(key) != value for key, value in expected_predicate.items())
+        or not all(isinstance(value, str) and 1 <= len(value) <= 256 for value in toolchain)
+    ):
+        _fail("source attestation does not bind the frozen app")
 
 
 def _validate_attempts(attempts: Any) -> tuple[dict[str, int], bool]:
@@ -578,7 +853,10 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
             if (
                 item["evidence_ref"] is not None
                 or not item["unknowns"]
-                or not all(CODE.fullmatch(code) for code in item["unknowns"])
+                or not all(
+                    isinstance(code, str) and CODE.fullmatch(code)
+                    for code in item["unknowns"]
+                )
             ):
                 _fail(f"{provider} unobserved result requires bounded unknowns")
             continue
@@ -592,7 +870,8 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
             _fail(f"{provider} result requires repository readback evidence")
         if item["classification"] == "inference":
             if not item["unknowns"] or not all(
-                CODE.fullmatch(code) for code in item["unknowns"]
+                isinstance(code, str) and CODE.fullmatch(code)
+                for code in item["unknowns"]
             ):
                 _fail(f"{provider} inference requires a bounded basis")
             continue
@@ -609,6 +888,7 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
                 or not local
                 or local != remote
                 or sum(local.values()) <= 0
+                or not set(local) <= PRODUCT_ANALYTICS_EVENTS
                 or any(type(value) is not int or value < 0 for value in local.values())
             ):
                 _fail("PostHog non-empty counts do not reconcile")
@@ -617,6 +897,8 @@ def _validate_reconciliation(reconciliation: Any, config: dict[str, Any]) -> boo
                 or item["environment"] != "owner-pilot"
             ):
                 _fail("PostHog readback contract changed")
+            if item["scope"] == "pilot-attempt":
+                _fail("PostHog pilot-attempt requires segmented lifecycle evidence")
             if _timestamp(item["window_end"]) <= _timestamp(item["window_start"]):
                 _fail("PostHog readback window is invalid")
         elif provider == "sentry":
@@ -683,8 +965,13 @@ def _validate_provider_evidence(
         or evidence.get("privacy_safe") is not True
     ):
         _fail(f"{provider} evidence is not an accepted readback")
-    if provider != "repository" and not (
-        pilot_window[0] <= _timestamp(evidence.get("observed_at")) <= pilot_window[1]
+    observed_at = (
+        _timestamp(evidence.get("observed_at")) if provider != "repository" else None
+    )
+    if (
+        provider != "repository"
+        and item["scope"] == "pilot-attempt"
+        and not (pilot_window[0] <= observed_at <= pilot_window[1])
     ):
         label = {"posthog": "PostHog", "sentry": "Sentry", "langfuse": "Langfuse"}[provider]
         _fail(f"{label} evidence metadata is outside the pilot window")
@@ -770,8 +1057,14 @@ def _validate_provider_evidence(
         }
         if any(evidence.get(key) != value for key, value in expected.items()):
             _fail("repository evidence does not match the reconciled readback")
-        harness_path = root / item["harness_manifest_ref"]
-        harness = _load_json(harness_path) if harness_path.is_file() else None
+        harness_path = (root / item["harness_manifest_ref"]).resolve()
+        harness = (
+            _load_json(harness_path)
+            if harness_path.is_relative_to(root) and harness_path.is_file()
+            else None
+        )
+        if not isinstance(harness, dict):
+            _fail("repository Harness evidence is invalid")
         gates = harness.get("gates") if isinstance(harness, dict) else None
         if isinstance(harness, dict):
             _walk(harness)
@@ -945,6 +1238,10 @@ def _validate_attempt_evidence(
             and evidence.get("analysis_mode_observed") is not True
         )
         or evidence.get("stages") != attempt["stages"]
+        or (
+            attempt["result"] == "passed"
+            and evidence.get("scenario") == "synthetic-ui-route"
+        )
         or not isinstance(unknowns, list)
         or not all(isinstance(code, str) and CODE.fullmatch(code) for code in unknowns)
         or not set(unknowns).issubset(attempt["unknowns"])
@@ -968,7 +1265,18 @@ def _validate_attempt_evidence(
     visual = evidence.get("visual")
     if not isinstance(app, dict) or not isinstance(visual, dict):
         _fail("attempt attachment identity is invalid")
-    _exact_keys(app, {"build", "bundle_sha256", "source"}, "attempt app")
+    _exact_keys(
+        app,
+        {
+            "build",
+            "bundle_sha256",
+            "source",
+            "cdhash",
+            "attestation_sha256",
+            "signer_policy",
+        },
+        "attempt app",
+    )
     _exact_keys(
         visual,
         {"artifact_ref", "artifact_sha256", "fixture"},
@@ -980,6 +1288,10 @@ def _validate_attempt_evidence(
         app.get("build") != build_proof["build_version"]
         or app.get("bundle_sha256") != build_proof["app_bundle_sha256"]
         or app.get("source") != build_proof["build_source"]
+        or app.get("cdhash") != build_proof["bundle_cdhash"]
+        or app.get("attestation_sha256")
+        != build_proof["source_attestation_sha256"]
+        or app.get("signer_policy") != OWNER_PILOT_SIGNER_POLICY
         or visual.get("fixture") != "synthetic"
         or artifact is None
         or not artifact.is_relative_to(root)
@@ -1030,10 +1342,15 @@ def _validated_attempt_evidence_refs(manifest: dict[str, Any]) -> set[str]:
     }
 
 
+@_validation_boundary
 def generate_rollback_proof(
     manifest: dict[str, Any], *, repository_root: Path, native_proof_ref: str
 ) -> dict[str, Any]:
-    _validate_attempts(manifest["attempts"])
+    build = manifest.get("build") if isinstance(manifest, dict) else None
+    verify_manifest(
+        manifest,
+        expected_commit=build.get("commit") if isinstance(build, dict) else "",
+    )
     build = manifest["build"]
     app_path, native_path = (
         repository_root / build["app_bundle_ref"],
@@ -1111,6 +1428,7 @@ def generate_rollback_proof(
     }
 
 
+@_validation_boundary
 def verify_manifest(
     manifest: dict[str, Any],
     *,
@@ -1216,6 +1534,7 @@ def verify_manifest(
         or config["human_gates"] != []
         or config["rollout_steps"]
         != ["exact-build", "serialized-attempts", "reconcile", "rollback"]
+        or not isinstance(config["rollback_trigger"], str)
         or not CODE.fullmatch(config["rollback_trigger"])
         or not isinstance(config["sql_refs"], list)
         or not config["sql_refs"]
@@ -1271,7 +1590,8 @@ def verify_manifest(
     )
     _exact_keys(claims, {"observed", "inferred", "unobserved"}, "claims")
     if not all(
-        isinstance(values, list) and all(CODE.fullmatch(code) for code in values)
+        isinstance(values, list)
+        and all(isinstance(code, str) and CODE.fullmatch(code) for code in values)
         for values in claims.values()
     ):
         _fail("claims must contain bounded metadata codes")
@@ -1297,7 +1617,10 @@ def verify_manifest(
         _fail("claim classifications must exactly match their evidence")
     if (
         not isinstance(manifest["deviations"], list)
-        or not all(CODE.fullmatch(code) for code in manifest["deviations"])
+        or not all(
+            isinstance(code, str) and CODE.fullmatch(code)
+            for code in manifest["deviations"]
+        )
         or not _repo_ref(manifest["evidence_ledger_ref"])
     ):
         _fail("deviations or evidence ledger reference is invalid")
@@ -1350,19 +1673,34 @@ def verify_manifest(
             or build_proof.get("build_source") != "local-workspace-clean"
             or build_proof.get("git_revision_short") != build["commit"][:7]
             or build_proof.get("distribution") != "local"
-            or build_proof.get("signing") != "adhoc"
+            or build_proof.get("signing") != "apple-development"
             or build_proof.get("verification")
             != [
                 "codesign.deep-strict",
                 "info-plist.source-binding",
                 "bundle-content-sha256",
+                "developer-source-attestation.cms",
             ]
             or not _repo_ref(build_proof.get("app_archive_ref"))
+            or not _repo_ref(build_proof.get("source_attestation_ref"))
+            or not _repo_ref(build_proof.get("source_attestation_signature_ref"))
             or not SHA256.fullmatch(str(build_proof.get("app_bundle_sha256", "")))
             or not SHA256.fullmatch(str(build_proof.get("app_archive_sha256", "")))
             or not SHA256.fullmatch(str(build_proof.get("package_script_sha256", "")))
+            or not re.fullmatch(r"[0-9a-f]{40}", str(build_proof.get("bundle_cdhash", "")))
+            or not SHA256.fullmatch(str(build_proof.get("executable_sha256", "")))
+            or not SHA256.fullmatch(
+                str(build_proof.get("source_attestation_sha256", ""))
+            )
+            or not SHA256.fullmatch(
+                str(build_proof.get("source_attestation_signature_sha256", ""))
+            )
+            or build_proof.get("signing_team_id")
+            != OWNER_PILOT_SIGNING_TEAM_ID
+            or build_proof.get("signing_leaf_certificate_sha256")
+            != OWNER_PILOT_SIGNING_CERT_SHA256
         ):
-            _fail("build proof is not reproducible or bound to the frozen source")
+            _fail("build proof is not bound to the frozen source")
         app_sha = build_proof["app_bundle_sha256"]
         package_sha = hashlib.sha256(
             _git_blob(root, build["commit"], "scripts/package_insightkit_app.sh")
@@ -1384,7 +1722,22 @@ def verify_manifest(
             or app_info.get("InsightKitBuildSource") != build_proof["build_source"]
         ):
             _fail("frozen app archive does not match the exact build identity")
-        _verify_archive_signature(archive_path)
+        signature = _verify_archive_signature(archive_path)
+        if (
+            build_proof["bundle_cdhash"] != signature["cdhash"]
+            or build_proof["executable_sha256"] != signature["executable_sha256"]
+            or build_proof["signing_team_id"] != signature["team_id"]
+            or build_proof["signing_leaf_certificate_sha256"]
+            != signature["leaf_certificate_sha256"]
+        ):
+            _fail("build proof signer identity changed")
+        _verify_source_attestation(
+            root,
+            build,
+            build_proof,
+            app_sha=app_sha,
+            signature=signature,
+        )
         for ref in config["sql_refs"]:
             if (root / ref).read_bytes() != _git_blob(root, build["commit"], ref):
                 _fail("reconciliation SQL changed after the frozen commit")
@@ -1392,6 +1745,8 @@ def verify_manifest(
             app_path = root / build["app_bundle_ref"]
             if not app_path.is_dir() or _artifact_sha(app_path) != app_sha:
                 _fail("frozen app artifact hash does not match build proof")
+            if _developer_signature_metadata(app_path) != signature:
+                _fail("frozen app artifact signer identity changed")
         for attempt in manifest["attempts"]:
             for ref in (
                 attempt["evidence_refs"]

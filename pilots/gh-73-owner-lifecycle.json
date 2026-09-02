@@ -9,8 +9,8 @@
     "proof_ref": "pilots/evidence/GH-73/build-proof.json"
   },
   "window": {
-    "started_at": "2026-09-01T20:50:00Z",
-    "ends_at": "2026-09-01T22:07:00Z"
+    "started_at": "2026-09-02T03:25:13Z",
+    "ends_at": "2026-09-02T03:27:19Z"
   },
   "cohort": {"kind": "owner", "size": 1, "reference_mac": true},
   "configuration": {
@@ -41,7 +41,7 @@
         "workflow_completed": "failed"
       },
       "evidence_refs": ["pilots/evidence/GH-73/live-local-proof.json"],
-      "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved", "host-ui-automation.unavailable"]
+      "unknowns": ["analysis-mode.synthetic-ui-route", "record-persistence.unobserved", "export.unobserved"]
     },
     {
       "id": "live-cloud",
@@ -140,6 +140,6 @@
     "inferred": [],
     "unobserved": ["attempt.live-cloud", "attempt.import-local", "attempt.import-cloud", "production-readiness", "external-user-validation"]
   },
-  "deviations": ["host-ui-automation.unavailable", "analysis-mode.synthetic-ui-route", "pilot-outcome.partial"],
+  "deviations": ["analysis-mode.synthetic-ui-route", "pilot-outcome.partial"],
   "evidence_ledger_ref": "pilots/evidence/GH-73/evidence-ledger.json"
 }

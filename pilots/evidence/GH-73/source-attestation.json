@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "predicate_type": "insightkit.local-owner-pilot.developer-attestation/v1",
+  "subject": {
+    "name": "InsightKit.app",
+    "bundle_sha256": "98f33b0d103e9e11f62f283ed6ac5f0d36d7c45ed9055f3cf75e7fbc52649ee4",
+    "cdhash": "380416dd7543eec9150f79026f063fa8055d32a7",
+    "executable_sha256": "603ceec40d66a2654f5a95448922821cacee3cf9e18945fa036ab14ca95b26af",
+    "bundle_id": "com.yannjy.insightkit",
+    "architectures": ["arm64"]
+  },
+  "predicate": {
+    "commit": "83746318b85db3b0882e467401e1f1ec5d5b1eaa",
+    "git_tree": "3ea5ae90cb690d69c6ce06cb6911ead1bc1909dc",
+    "package_script_sha256": "4571dab8c828738135e659f5c594a9ef4858ce44f6c097bf8e634b517f820bb1",
+    "build_version": "20260902111326",
+    "source_clean": true,
+    "source_state": "detached-clean",
+    "build_argv": ["bash", "scripts/package_insightkit_app.sh", "--clean", "--output-dir", "$EVIDENCE_ROOT"],
+    "swift_version": "swift-driver 1.168.6; Apple Swift 6.4; swiftlang-6.4.0.33.1; clang-2100.3.33.1; arm64-apple-macosx27.0.0",
+    "xcode_version": "Xcode 27.0; build 27A5252f",
+    "sdk_version": "macOS 27.0",
+    "signing_team_id": "KBAF95R4C5",
+    "signing_leaf_certificate_sha256": "c59c2eeaae7f38f50b04885c679938dc1e0a1fcfb0b7e46c8caa8b852b4676b1",
+    "provenance_level": "developer-attested-source-provenance-non-reproducible"
+  }
+}

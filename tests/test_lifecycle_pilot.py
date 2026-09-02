@@ -2,6 +2,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from scripts.lifecycle_pilot import (
     POST_HARNESS_EVIDENCE_REFS,
     PilotValidationError,
+    _archive_bundle_sha,
     _run_frozen_rollback_checks,
     generate_rollback_proof,
     main,
@@ -76,8 +78,11 @@ def copy_repository_evidence(destination: Path) -> None:
     refs += [value["reconciliation"]["repository"]["harness_manifest_ref"]]
     ledger = json.loads((ROOT / value["evidence_ledger_ref"]).read_text())
     refs += [record["source_ref"] for record in ledger["records"]]
+    build_proof = json.loads((ROOT / value["build"]["proof_ref"]).read_text())
     refs += [
-        json.loads((ROOT / value["build"]["proof_ref"]).read_text())["app_archive_ref"]
+        build_proof["app_archive_ref"],
+        build_proof["source_attestation_ref"],
+        build_proof["source_attestation_signature_ref"],
     ]
     for ref in refs:
         target = destination / ref
@@ -87,7 +92,7 @@ def copy_repository_evidence(destination: Path) -> None:
 
 def test_truthful_manifest_is_partial_not_completed():
     proof = verify_manifest(
-        manifest(), expected_commit=HEAD, now="2026-09-01T23:00:00Z"
+        manifest(), expected_commit=HEAD, now="2026-09-02T04:00:00Z"
     )
 
     assert proof["pilot_outcome"] == "partial"
@@ -100,50 +105,24 @@ def test_failed_observed_attempt_cannot_be_promoted_to_completed():
     value["attempts"][0]["result"] = "passed"
 
     with pytest.raises(PilotValidationError, match="every stage"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
-def test_completed_requires_all_four_paths_and_all_provider_readbacks():
+def test_pilot_readbacks_fail_closed_without_pilot_specific_schemas():
     value = manifest()
     promote_attempts(value)
     for provider in ("posthog", "sentry", "langfuse"):
         value["reconciliation"][provider]["scope"] = "pilot-attempt"
 
-    assert (
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
-            "pilot_outcome"
-        ]
-        == "partial"
-    )
-
-    value["reconciliation"]["repository"]["status"] = "passed"
-    assert (
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
-            "pilot_outcome"
-        ]
-        == "partial"
-    )
-
-    value["reconciliation"]["sentry"] = {
-        "classification": "unobserved",
-        "evidence_ref": None,
-        "unknowns": ["readback.unavailable"],
-    }
-    value["claims"]["observed"].remove("reconciliation.sentry")
-    value["claims"]["unobserved"].append("reconciliation.sentry")
-    assert (
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")[
-            "pilot_outcome"
-        ]
-        == "partial"
-    )
+    with pytest.raises(PilotValidationError, match="segmented lifecycle evidence"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_prerequisite_readbacks_do_not_close_current_pilot():
     value = manifest()
     promote_attempts(value)
 
-    proof = verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+    proof = verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
     assert proof["pilot_outcome"] == "partial"
     assert proof["external_readbacks"]["langfuse"] == {
@@ -164,20 +143,29 @@ def test_shared_privacy_boundary_rejects_secret_fields_and_values(mutation):
     mutation(value)
 
     with pytest.raises(PilotValidationError, match="shared privacy boundary"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_posthog_requires_non_empty_exact_counts():
     value = manifest()
     value["reconciliation"]["posthog"]["remote_event_counts"]["workflow_started"] = 3
     with pytest.raises(PilotValidationError, match="counts do not reconcile"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
+
+
+def test_posthog_rejects_events_outside_the_closed_contract():
+    value = manifest()
+    value["reconciliation"]["posthog"]["local_event_counts"] = {"irrelevant_event": 1}
+    value["reconciliation"]["posthog"]["remote_event_counts"] = {"irrelevant_event": 1}
+
+    with pytest.raises(PilotValidationError, match="counts do not reconcile"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
     value = manifest()
     value["reconciliation"]["posthog"]["local_event_counts"] = {}
     value["reconciliation"]["posthog"]["remote_event_counts"] = {}
     with pytest.raises(PilotValidationError, match="non-empty"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_langfuse_preserves_score_and_observation_environment_distinction():
@@ -185,7 +173,7 @@ def test_langfuse_preserves_score_and_observation_environment_distinction():
     value["reconciliation"]["langfuse"]["observation_environment"] = "owner-pilot"
 
     with pytest.raises(PilotValidationError, match="environment distinction"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_sentry_release_must_bind_the_read_back_build():
@@ -193,7 +181,7 @@ def test_sentry_release_must_bind_the_read_back_build():
     value["reconciliation"]["sentry"]["build"] = "20260902000000"
 
     with pytest.raises(PilotValidationError, match="Sentry readback identity"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: Path):
@@ -203,7 +191,7 @@ def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: P
         manifest(),
         expected_commit=HEAD,
         repository_root=tmp_path,
-        now="2026-09-01T23:00:00Z",
+        now="2026-09-02T04:00:00Z",
     )
 
     assert proof["pilot_outcome"] == "partial"
@@ -222,7 +210,7 @@ def test_fresh_checkout_does_not_require_origin_main_ref(tmp_path: Path):
         manifest(),
         expected_commit=HEAD,
         repository_root=tmp_path,
-        now="2026-09-01T23:00:00Z",
+        now="2026-09-02T04:00:00Z",
     )
 
     assert proof["pilot_outcome"] == "partial"
@@ -238,7 +226,7 @@ def test_repository_harness_commit_is_bound_separately_from_build(tmp_path: Path
             value,
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -247,7 +235,7 @@ def test_non_string_repository_harness_commit_is_a_bounded_validation_error():
     value["reconciliation"]["repository"]["harness_commit"] = 42
 
     with pytest.raises(PilotValidationError, match="repository readback"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 @pytest.mark.parametrize(
@@ -298,7 +286,7 @@ def test_repository_harness_must_match_the_executed_plan(tmp_path: Path, mutatio
             value,
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -322,7 +310,27 @@ def test_harness_manifest_uses_the_shared_privacy_boundary(tmp_path: Path):
             value,
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
+        )
+
+
+def test_harness_manifest_cannot_resolve_outside_the_repository(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    harness_path = tmp_path / value["reconciliation"]["repository"][
+        "harness_manifest_ref"
+    ]
+    external = tmp_path.parent / f"{tmp_path.name}-external-harness.json"
+    shutil.copy2(harness_path, external)
+    harness_path.unlink()
+    harness_path.symlink_to(external)
+
+    with pytest.raises(PilotValidationError, match="repository Harness evidence"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -338,7 +346,7 @@ def test_attempt_evidence_semantics_must_match_manifest(tmp_path: Path):
             value,
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -358,7 +366,7 @@ def test_attempt_evidence_kind_and_unknowns_are_bound(tmp_path: Path, field, val
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -384,7 +392,7 @@ def test_attempt_attachments_are_bound_to_the_frozen_build(tmp_path: Path, mutat
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -415,7 +423,7 @@ def test_attempt_metadata_is_bounded_and_inside_the_pilot_window(
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -424,7 +432,68 @@ def test_claims_exactly_match_attempt_and_reconciliation_classifications():
     value["claims"]["observed"].append("attempt.live-cloud")
 
     with pytest.raises(PilotValidationError, match="claim classifications"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
+
+
+def test_claim_codes_reject_non_strings_with_a_validation_error():
+    value = manifest()
+    value["claims"]["observed"][0] = 42
+
+    with pytest.raises(PilotValidationError, match="bounded metadata codes"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value["attempts"][0].update(classification=[]),
+        lambda value: value["attempts"][0].update(result=[]),
+        lambda value: value["reconciliation"]["posthog"].update(classification=[]),
+        lambda value: value["reconciliation"]["posthog"].update(scope=[]),
+        lambda value: value["reconciliation"]["posthog"].update(
+            local_event_counts={"workflow_started": "1"},
+            remote_event_counts={"workflow_started": "1"},
+        ),
+        lambda value: value["reconciliation"]["sentry"].update(event_id=[]),
+        lambda value: value["reconciliation"]["sentry"].update(release=[]),
+        lambda value: value["reconciliation"]["repository"].update(status=[]),
+        lambda value: value["reconciliation"]["repository"].update(
+            harness_manifest_sha256=[]
+        ),
+        lambda value: value["configuration"].update(attempt_order=42),
+    ],
+)
+def test_untrusted_value_types_never_escape_the_validation_boundary(mutation):
+    value = manifest()
+    mutation(value)
+
+    with pytest.raises(PilotValidationError, match="invalid value types"):
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
+
+
+def test_synthetic_attempt_evidence_cannot_be_promoted_to_passed(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    attempt = value["attempts"][0]
+    attempt.update(result="passed", unknowns=[])
+    attempt["stages"] = {stage: "observed" for stage in attempt["stages"]}
+    evidence = tmp_path / attempt["evidence_refs"][0]
+    payload = json.loads(evidence.read_text())
+    payload.update(
+        status="passed",
+        analysis_mode_observed=True,
+        stages=attempt["stages"],
+        unknowns=[],
+    )
+    evidence.write_text(json.dumps(payload))
+
+    with pytest.raises(PilotValidationError, match="claimed result and stages"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
+        )
 
 
 def test_native_rollback_proof_must_exist(tmp_path: Path):
@@ -439,7 +508,7 @@ def test_native_rollback_proof_must_exist(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -462,7 +531,7 @@ def test_native_rollback_proof_uses_the_shared_privacy_boundary(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -483,7 +552,7 @@ def test_native_rollback_proof_must_be_validated_attempt_evidence(tmp_path: Path
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -528,6 +597,36 @@ def test_rollback_generator_validates_attempt_semantics(tmp_path: Path):
         )
 
 
+@pytest.mark.parametrize(
+    "payload,error",
+    [
+        ({}, "manifest fields"),
+        ({**manifest(), "api_key": "sk-private-value"}, "shared privacy boundary"),
+    ],
+)
+def test_rollback_generator_validates_the_complete_manifest_before_execution(
+    tmp_path: Path, monkeypatch, payload, error
+):
+    executed = False
+
+    def rollback_checks(*_args, **_kwargs):
+        nonlocal executed
+        executed = True
+
+    monkeypatch.setattr(
+        "scripts.lifecycle_pilot._run_frozen_rollback_checks", rollback_checks
+    )
+
+    with pytest.raises(PilotValidationError, match=error):
+        generate_rollback_proof(
+            payload,
+            repository_root=tmp_path,
+            native_proof_ref="pilots/evidence/GH-73/live-local-proof.json",
+        )
+
+    assert executed is False
+
+
 @pytest.mark.parametrize("field,value", [("status", "failed"), ("commit", "0" * 40)])
 def test_rollback_proof_identity_is_bound(tmp_path: Path, field, value):
     copy_repository_evidence(tmp_path)
@@ -541,7 +640,7 @@ def test_rollback_proof_identity_is_bound(tmp_path: Path, field, value):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -583,7 +682,7 @@ def test_repository_checks_do_not_claim_unrecorded_gates():
     value["reconciliation"]["repository"]["checks"].append("codesign")
 
     with pytest.raises(PilotValidationError, match="repository readback"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_local_artifact_verification_is_explicit_and_hash_bound(tmp_path: Path):
@@ -593,7 +692,7 @@ def test_local_artifact_verification_is_explicit_and_hash_bound(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
             verify_app_artifact=True,
         )
 
@@ -605,7 +704,7 @@ def test_local_artifact_verification_is_explicit_and_hash_bound(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
             verify_app_artifact=True,
         )
 
@@ -622,7 +721,7 @@ def test_shared_evidence_ledger_schema_is_enforced(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -641,7 +740,7 @@ def test_ledger_outcome_artifact_must_exist_and_match(tmp_path: Path, mutation):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -663,7 +762,7 @@ def test_ledger_outcome_artifact_must_be_the_expected_json(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -691,7 +790,7 @@ def test_ledger_outcome_artifact_must_match_the_computed_outcome(tmp_path: Path)
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -707,7 +806,7 @@ def test_provider_evidence_kind_matches_its_classification(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -721,19 +820,18 @@ def test_prerequisite_readback_cannot_be_relabelled_as_current_pilot(tmp_path: P
     payload["source_issue"] = "GH-73"
     evidence.write_text(json.dumps(payload))
 
-    with pytest.raises(PilotValidationError, match="pilot window"):
+    with pytest.raises(PilotValidationError, match="segmented lifecycle evidence"):
         verify_manifest(
             value,
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("observed_at", "1999-01-01T00:00:00Z"),
         ("region", "private meeting: Alice discussed acquisition"),
         ("readback", "private meeting: Alice discussed acquisition"),
     ],
@@ -752,7 +850,7 @@ def test_provider_metadata_is_bounded_and_inside_the_pilot_window(
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -768,7 +866,7 @@ def test_referenced_evidence_rejects_unknown_content_fields(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -794,7 +892,7 @@ def test_provider_evidence_must_match_manifest_readback(
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -810,7 +908,7 @@ def test_durable_app_archive_binds_default_fresh_checkout(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -820,6 +918,8 @@ def test_durable_app_archive_binds_default_fresh_checkout(tmp_path: Path):
         ("distribution", "untrusted"),
         ("signing", "unsigned"),
         ("verification", []),
+        ("signing_team_id", "untrusted"),
+        ("signing_leaf_certificate_sha256", "0" * 64),
     ],
 )
 def test_build_proof_signing_assertions_are_bound(tmp_path: Path, field, value):
@@ -834,7 +934,7 @@ def test_build_proof_signing_assertions_are_bound(tmp_path: Path, field, value):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -853,7 +953,61 @@ def test_archived_app_signature_is_verified(tmp_path: Path, monkeypatch):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
+        )
+
+
+def test_developer_attestation_binds_the_final_app_subject(tmp_path: Path, monkeypatch):
+    copy_repository_evidence(tmp_path)
+    value = manifest()
+    proof_path = tmp_path / value["build"]["proof_ref"]
+    proof = json.loads(proof_path.read_text())
+    archive_path = tmp_path / proof["app_archive_ref"]
+    replacement = archive_path.with_suffix(".replacement.zip")
+    target = "InsightKit.app/Contents/Resources/insightkit_runtime/insightkit/ipc/server.py"
+    with zipfile.ZipFile(archive_path) as source, zipfile.ZipFile(
+        replacement, "w", zipfile.ZIP_DEFLATED
+    ) as destination:
+        for info in source.infolist():
+            payload = source.read(info) if not info.is_dir() else b""
+            destination.writestr(
+                info,
+                payload + (b"\n# tampered after build\n" if info.filename == target else b""),
+            )
+    replacement.replace(archive_path)
+    attacked_app_sha, _ = _archive_bundle_sha(archive_path)
+    proof["app_archive_sha256"] = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    proof["app_bundle_sha256"] = attacked_app_sha
+    proof_path.write_text(json.dumps(proof))
+    evidence_path = tmp_path / value["attempts"][0]["evidence_refs"][0]
+    evidence = json.loads(evidence_path.read_text())
+    evidence["app"]["bundle_sha256"] = attacked_app_sha
+    evidence_path.write_text(json.dumps(evidence))
+    evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+    rollback_path = tmp_path / value["rollback"]["evidence_refs"][0]
+    rollback = json.loads(rollback_path.read_text())
+    rollback["rollback_target_sha256"] = attacked_app_sha
+    rollback["evidence_sha256_before"] = evidence_sha
+    rollback["evidence_sha256_after"] = evidence_sha
+    rollback_path.write_text(json.dumps(rollback))
+    monkeypatch.setattr(
+        "scripts.lifecycle_pilot._verify_archive_signature",
+        lambda _: {
+            "bundle_id": "com.yannjy.insightkit",
+            "cdhash": proof["bundle_cdhash"],
+            "team_id": proof["signing_team_id"],
+            "leaf_certificate_sha256": proof["signing_leaf_certificate_sha256"],
+            "architectures": ["arm64"],
+            "executable_sha256": proof["executable_sha256"],
+        },
+    )
+
+    with pytest.raises(PilotValidationError, match="does not bind the frozen app"):
+        verify_manifest(
+            value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -867,7 +1021,7 @@ def test_reconciliation_sql_is_bound_to_the_frozen_commit(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -883,7 +1037,7 @@ def test_rollback_proof_binds_frozen_package_hash(tmp_path: Path):
             manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
-            now="2026-09-01T23:00:00Z",
+            now="2026-09-02T04:00:00Z",
         )
 
 
@@ -950,12 +1104,37 @@ def test_cli_failure_is_bounded_and_does_not_echo_private_input(tmp_path: Path, 
     assert "DO-NOT-REFLECT" not in stderr
 
 
+def test_rollback_cli_failure_is_bounded_and_does_not_echo_private_input(
+    tmp_path: Path, capsys, monkeypatch
+):
+    source = tmp_path / "pilot.json"
+    source.write_text(json.dumps({"api_key": "DO-NOT-REFLECT"}))
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        main(
+            [
+                "rollback-dry-run",
+                str(source),
+                "--native-proof-ref",
+                "pilots/evidence/GH-73/live-local-proof.json",
+                "--output",
+                str(tmp_path / "proof.json"),
+            ]
+        )
+        == 2
+    )
+    stderr = capsys.readouterr().err
+    assert "shared privacy boundary" in stderr
+    assert "DO-NOT-REFLECT" not in stderr
+
+
 def test_non_string_build_commit_is_a_bounded_validation_error():
     value = manifest()
     value["build"]["commit"] = 42
 
     with pytest.raises(PilotValidationError, match="build freeze"):
-        verify_manifest(value, expected_commit=HEAD, now="2026-09-01T23:00:00Z")
+        verify_manifest(value, expected_commit=HEAD, now="2026-09-02T04:00:00Z")
 
 
 def test_manifest_rejects_future_end():
