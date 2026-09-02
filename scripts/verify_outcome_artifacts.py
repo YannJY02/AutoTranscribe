@@ -37,7 +37,11 @@ PRIVATE = re.compile(
     r")",
     re.IGNORECASE,
 )
-LOCAL_PRIVATE_ROOT = re.compile(r"/(?:private|Applications|Volumes)(?:/|$)[^\s)>,]*", re.IGNORECASE)
+LOCAL_PRIVATE_ROOT = re.compile(
+    r"(?:^|[=:;_\[(])/(?:private|Applications|Volumes)(?:/|$)[^\s)>,]*",
+    re.IGNORECASE,
+)
+HTML_MARKUP = re.compile(r"<!--|</?[A-Za-z][^>\n]*>")
 ALLOWED_HOSTS = {"github.com", "linear.app", "www.figma.com"}
 
 
@@ -106,8 +110,7 @@ def validate(artifacts: Sequence[Path] = ARTIFACTS) -> list[str]:
             "![" in text
             or _contains_private_or_secret(privacy_text)
             or any(
-                "<" in rendered_text
-                or ">" in rendered_text
+                HTML_MARKUP.search(rendered_text)
                 or _contains_private_or_secret(rendered_text)
                 for rendered_text in rendered_texts
             )

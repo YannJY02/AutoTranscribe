@@ -23,10 +23,11 @@ def write_artifact(tmp_path: Path, body: str) -> Path:
 def test_validator_allows_exact_figma_evidence_host(tmp_path):
     artifact = write_artifact(
         tmp_path,
-        "- [Observed] Journey source. ([Sources: FigJam](https://www.figma.com/board/example); "
+        "- [Observed] Latency < 200 ms and accuracy > 90%. ([Sources: FigJam](https://www.figma.com/board/example); "
         "[safe path value](https://www.figma.com/board/view=example); "
         "[safe punctuation](https://www.figma.com/board/foo-/bar); "
-        "[safe repository](https://github.com/org/repo-/issues/1))",
+        "[safe repository](https://github.com/org/private/issues/1); "
+        "[safe Linear route](https://linear.app/team/Applications/issue/YAN-56))",
     )
 
     assert validate((artifact,)) == []
