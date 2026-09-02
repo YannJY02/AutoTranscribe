@@ -674,6 +674,7 @@ def _validate_provider_evidence(
     evidence: Any,
     root: Path,
     pilot_window: tuple[datetime, datetime],
+    base_commit: str,
 ) -> None:
     expected_status = item["status"] if provider == "repository" else "passed"
     if (
@@ -682,15 +683,23 @@ def _validate_provider_evidence(
         or evidence.get("privacy_safe") is not True
     ):
         _fail(f"{provider} evidence is not an accepted readback")
+    if provider != "repository" and not (
+        pilot_window[0] <= _timestamp(evidence.get("observed_at")) <= pilot_window[1]
+    ):
+        label = {"posthog": "PostHog", "sentry": "Sentry", "langfuse": "Langfuse"}[provider]
+        _fail(f"{label} evidence metadata is outside the pilot window")
     if provider == "posthog":
         expected = {
             "scope": item["scope"],
             "project_id": item["project_id"],
+            "region": "us-cloud",
             "environment": item["environment"],
             "schema_version": item["schema_version"],
             "window_start": item["window_start"],
             "window_end": item["window_end"],
             "event_counts": item["remote_event_counts"],
+            "readback": f"activity.showing-all-{sum(item['remote_event_counts'].values())}",
+            "source_issue": "GH-73" if item["scope"] == "pilot-attempt" else "GH-72",
         }
         if any(
             evidence.get(key) != value for key, value in expected.items()
@@ -710,6 +719,7 @@ def _validate_provider_evidence(
             "event_id": item["event_id"],
             "environment": item["environment"],
             "release": item["release"],
+            "platform": "native",
         }
         classification = {
             "workflow": "live",
@@ -805,7 +815,7 @@ def _validate_provider_evidence(
             and _git_is_ancestor(root, harness_commit)
             and set(_git_diff_files(root, harness_commit, "HEAD"))
             <= POST_HARNESS_EVIDENCE_REFS
-            and changed_files == _git_diff_files(root, "origin/main", _git_head(root))
+            and changed_files == _git_diff_files(root, base_commit, _git_head(root))
         )
         specs = harness_gate_specs(
             changed_files if changed_files_valid else [],
@@ -920,6 +930,7 @@ def _validate_attempt_evidence(
     *,
     root: Path,
     build_proof: dict[str, Any],
+    pilot_window: tuple[datetime, datetime],
 ) -> None:
     unknowns = evidence.get("unknowns")
     if (
@@ -939,6 +950,20 @@ def _validate_attempt_evidence(
         or not set(unknowns).issubset(attempt["unknowns"])
     ):
         _fail("attempt evidence does not match the claimed result and stages")
+    host_attempts = evidence.get("host_attempts")
+    if (
+        evidence.get("scenario") != "synthetic-ui-route"
+        or not isinstance(host_attempts, list)
+        or not 1 <= len(host_attempts) <= 8
+        or len(host_attempts) != len(set(host_attempts))
+        or not all(isinstance(code, str) and CODE.fullmatch(code) for code in host_attempts)
+        or not (
+            pilot_window[0]
+            <= _timestamp(evidence.get("observed_at"))
+            <= pilot_window[1]
+        )
+    ):
+        _fail("attempt metadata is outside the bounded pilot schema")
     app = evidence.get("app")
     visual = evidence.get("visual")
     if not isinstance(app, dict) or not isinstance(visual, dict):
@@ -1351,6 +1376,7 @@ def verify_manifest(
                     evidence,
                     root=root,
                     build_proof=build_proof,
+                    pilot_window=(started, ended),
                 )
         for provider, item in manifest["reconciliation"].items():
             if item["classification"] in {"observed", "inference"}:
@@ -1382,6 +1408,7 @@ def verify_manifest(
                     evidence,
                     root,
                     pilot_window=(started, ended),
+                    base_commit=build["commit"],
                 )
         source_sha = _source_sha(root, build["commit"])
         for ref in rollback["evidence_refs"]:

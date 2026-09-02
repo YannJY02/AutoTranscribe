@@ -209,6 +209,24 @@ def test_fresh_checkout_verifies_committed_proof_without_ignored_app(tmp_path: P
     assert not (tmp_path / manifest()["build"]["app_bundle_ref"]).exists()
 
 
+def test_fresh_checkout_does_not_require_origin_main_ref(tmp_path: Path):
+    copy_repository_evidence(tmp_path)
+    subprocess.run(
+        ["git", "update-ref", "-d", "refs/remotes/origin/main"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    proof = verify_manifest(
+        manifest(),
+        expected_commit=HEAD,
+        repository_root=tmp_path,
+        now="2026-09-01T23:00:00Z",
+    )
+
+    assert proof["pilot_outcome"] == "partial"
+
+
 def test_repository_harness_commit_is_bound_separately_from_build(tmp_path: Path):
     copy_repository_evidence(tmp_path)
     value = manifest()
@@ -361,6 +379,37 @@ def test_attempt_attachments_are_bound_to_the_frozen_build(tmp_path: Path, mutat
         rollback_path.write_text(json.dumps(rollback))
 
     with pytest.raises(PilotValidationError, match="attempt attachment"):
+        verify_manifest(
+            manifest(),
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("observed_at", "1999-01-01T00:00:00Z"),
+        ("host_attempts", ["private meeting: Alice discussed acquisition"]),
+    ],
+)
+def test_attempt_metadata_is_bounded_and_inside_the_pilot_window(
+    tmp_path: Path, field, value
+):
+    copy_repository_evidence(tmp_path)
+    evidence_path = tmp_path / manifest()["attempts"][0]["evidence_refs"][0]
+    evidence = json.loads(evidence_path.read_text())
+    evidence[field] = value
+    evidence_path.write_text(json.dumps(evidence))
+    evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+    rollback_path = tmp_path / manifest()["rollback"]["evidence_refs"][0]
+    rollback = json.loads(rollback_path.read_text())
+    rollback["evidence_sha256_before"] = evidence_sha
+    rollback["evidence_sha256_after"] = evidence_sha
+    rollback_path.write_text(json.dumps(rollback))
+
+    with pytest.raises(PilotValidationError, match="attempt metadata"):
         verify_manifest(
             manifest(),
             expected_commit=HEAD,
@@ -539,11 +588,38 @@ def test_prerequisite_readback_cannot_be_relabelled_as_current_pilot(tmp_path: P
     evidence = tmp_path / value["reconciliation"]["posthog"]["evidence_ref"]
     payload = json.loads(evidence.read_text())
     payload["scope"] = "pilot-attempt"
+    payload["source_issue"] = "GH-73"
     evidence.write_text(json.dumps(payload))
 
     with pytest.raises(PilotValidationError, match="pilot window"):
         verify_manifest(
             value,
+            expected_commit=HEAD,
+            repository_root=tmp_path,
+            now="2026-09-01T23:00:00Z",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("observed_at", "1999-01-01T00:00:00Z"),
+        ("region", "private meeting: Alice discussed acquisition"),
+        ("readback", "private meeting: Alice discussed acquisition"),
+    ],
+)
+def test_provider_metadata_is_bounded_and_inside_the_pilot_window(
+    tmp_path: Path, field, value
+):
+    copy_repository_evidence(tmp_path)
+    evidence = tmp_path / manifest()["reconciliation"]["posthog"]["evidence_ref"]
+    payload = json.loads(evidence.read_text())
+    payload[field] = value
+    evidence.write_text(json.dumps(payload))
+
+    with pytest.raises(PilotValidationError, match="PostHog evidence"):
+        verify_manifest(
+            manifest(),
             expected_commit=HEAD,
             repository_root=tmp_path,
             now="2026-09-01T23:00:00Z",
