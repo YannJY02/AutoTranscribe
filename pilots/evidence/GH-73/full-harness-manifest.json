@@ -1,14 +1,20 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-02T20:01:50.106804+00:00",
-  "status": "passed",
+  "generated_at": "2026-09-03T04:57:35.938186+00:00",
+  "status": "failed",
   "issue": 73,
   "base": "origin/main",
-  "commit": "56387676924e7d837cba9f1d9533fa29e5bc7a98",
-  "branch": "codex/yan-56-figjam-evidence",
+  "commit": "b949ee68278654ae0f2c366e9f529a10b295c7e6",
+  "branch": "codex/intelligent-workflow-controller",
   "workspace": "$WORKSPACE",
   "changed_files": [
     ".github/workflows/ci.yml",
+    ".github/workflows/controller-handoff.yml",
+    ".gitignore",
+    "AGENTS.md",
+    "WORKFLOW.md",
+    "docs/agents/harness.md",
+    "docs/agents/issue-tracker.md",
     "docs/outcomes/GH-74/ai-product-manager-case.md",
     "docs/outcomes/GH-74/outcome-review.md",
     "pilots/evidence/GH-73/InsightKit-exact-build.zip",
@@ -26,9 +32,16 @@
     "pilots/evidence/GH-73/source-attestation.cms",
     "pilots/evidence/GH-73/source-attestation.json",
     "pilots/gh-73-owner-lifecycle.json",
+    "scripts/agent_harness.py",
+    "scripts/harness_maintenance.py",
     "scripts/lifecycle_pilot.py",
+    "scripts/run_symphony.sh",
+    "scripts/symphony_delivery_controller.py",
     "scripts/verify_outcome_artifacts.py",
+    "tests/test_agent_harness.py",
+    "tests/test_harness_maintenance.py",
     "tests/test_lifecycle_pilot.py",
+    "tests/test_symphony_delivery_controller.py",
     "tests/test_verify_outcome_artifacts.py"
   ],
   "gates": [
@@ -43,7 +56,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.012,
+          "duration_seconds": 0.045,
           "ok": true
         },
         {
@@ -54,7 +67,7 @@
             "--check"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.011,
+          "duration_seconds": 0.009,
           "ok": true
         },
         {
@@ -65,7 +78,23 @@
             "origin/main...HEAD"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.023,
+          "duration_seconds": 0.019,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "automation-syntax",
+      "status": "passed",
+      "commands": [
+        {
+          "command": [
+            "sh",
+            "-n",
+            "scripts/run_symphony.sh"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.006,
           "ok": true
         }
       ]
@@ -84,14 +113,14 @@
             "tests/test_verify_project_normalization.py"
           ],
           "exit_code": 0,
-          "duration_seconds": 0.813,
+          "duration_seconds": 1.16,
           "ok": true
         }
       ]
     },
     {
       "name": "python-tests",
-      "status": "passed",
+      "status": "failed",
       "commands": [
         {
           "command": [
@@ -104,29 +133,12 @@
             "-m",
             "not integration and not requires_model and not slow"
           ],
-          "exit_code": 0,
-          "duration_seconds": 70.333,
-          "ok": true
-        }
-      ]
-    },
-    {
-      "name": "project-normalization",
-      "status": "passed",
-      "commands": [
-        {
-          "command": [
-            "$WORKSPACE/.venv/bin/python",
-            "scripts/verify_project_normalization.py",
-            "--output-root",
-            "$WORKSPACE/logs/harness/20260903-040150/project-normalization"
-          ],
-          "exit_code": 0,
-          "duration_seconds": 0.059,
-          "ok": true
+          "exit_code": 1,
+          "duration_seconds": 48.323,
+          "ok": false
         }
       ]
     }
   ],
-  "finished_at": "2026-09-02T20:03:01.376888+00:00"
+  "finished_at": "2026-09-03T04:58:25.517286+00:00"
 }
