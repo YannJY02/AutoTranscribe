@@ -16,7 +16,7 @@ observability:
   # The HTTP dashboard and structured logs remain available; the terminal renderer is not needed under launchd.
   dashboard_enabled: false
 workspace:
-  root: ~/Developer/Workspaces/AutoTranscribe
+  root: $SYMPHONY_WORKSPACE_ROOT
 hooks:
   timeout_ms: 300000
   after_create: |
@@ -31,6 +31,11 @@ hooks:
     ./scripts/agent_bootstrap.sh
   before_run: |
     "$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony_issue_gate.sh"
+  after_run: |
+    "$SYMPHONY_PYTHON3" "$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony_delivery_controller.py" \
+      --preflight-root "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" \
+      --gh "$SYMPHONY_REAL_GH" \
+      after-run --workspace "$PWD"
 agent:
   # ponytail: two isolated workspaces; exclusive native commands still serialize through the resource lock.
   max_concurrent_agents: 2
@@ -76,7 +81,7 @@ Work only inside this repository copy. This is unattended: do not ask the user q
 5. Reproduce the problem or establish the requested baseline. For visible macOS bugs, use the `native-app-proof` skill and preserve before evidence before editing. Implement the smallest root-cause change and the smallest regression test first for non-trivial behavior.
 6. Run `python3.11 scripts/agent_harness.py verify --issue "{{ issue.identifier }}" --mode full`. Run issue-specific acceptance checks too. For `exclusive-macos`, wrap installed-app, GUI, capture, or performance commands with `agent_harness.py lock --resource installed-app -- ...`; visible behavior requires after evidence and `proof.json`.
 7. Review the diff for correctness, secrets, unrelated changes, architecture conflicts, and missing evidence. If code changed, request one independent agent review and resolve every blocking finding.
-8. Stop with a controller handoff containing the exact changed files, verification commands and results, Harness manifest, and independent-review result. The controller will create the `codex/*` branch, commit, PR, CI, evidence, and human-review handoff. Include any human-only acceptance step.
+8. After a passed Harness manifest and independent review, write the bounded controller handoff with `python3.11 scripts/agent_harness.py handoff --issue "{{ issue.identifier }}" --manifest <manifest-path> --summary "<one-line result>" --review-status clear --human-gate "Review and merge the pull request."`. The host controller validates the manifest against the exact diff, then creates the `codex/*` branch, commit, PR, CI evidence, and human-review handoff. For a verified investigation with no changed files, use `--review-status not-required --no-change`. Do not put command output or secrets in the handoff.
 9. If the issue is an investigation or canary and no repository change is needed, do not manufacture a commit or PR; hand the exact evidence to the controller.
 10. Never merge a PR or close an issue. Do not claim a detailed Linear status change unless it is verified on Linear. The controller owns the synchronized GitHub and Linear handoff after validating your evidence.
 11. If a true external blocker remains after safe fallbacks, report its exact evidence to the controller. Never present incomplete work as complete.

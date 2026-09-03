@@ -153,7 +153,7 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     )
     payload = plistlib.loads(destination.read_bytes())
 
-    assert payload["ProgramArguments"] == ["/bin/sh", str(launcher)]
+    assert payload["ProgramArguments"] == ["/usr/bin/env", "-u", "OPENAI_API_KEY", "/bin/sh", str(launcher)]
     assert payload["WorkingDirectory"] == str(repo)
     assert payload["EnvironmentVariables"]["SYMPHONY_REPO_SOURCE"] == str(repo)
     assert payload["EnvironmentVariables"]["PATH"].split(":")[:3] == ["/first", "/tools", "/last"]

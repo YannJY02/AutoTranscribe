@@ -1,0 +1,56 @@
+name: Controller Handoff
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  transition:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Transition the current controller PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_JSON: ${{ toJSON(github.event.workflow_run) }}
+        run: |
+          set -euo pipefail
+
+          pr_number=$(jq -r '.pull_requests[0].number // empty' <<<"$RUN_JSON")
+          [[ -n "$pr_number" ]] || exit 0
+
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number")
+          branch=$(jq -r '.head.ref' <<<"$pr")
+          head_sha=$(jq -r '.head.sha' <<<"$pr")
+          head_repo=$(jq -r '.head.repo.full_name' <<<"$pr")
+          state=$(jq -r '.state' <<<"$pr")
+          [[ "$head_repo" == "$GITHUB_REPOSITORY" && "$state" == "open" ]] || exit 0
+          [[ "$branch" =~ ^codex/gh-([0-9]+)-[a-z][a-z0-9]*-[0-9]+$ ]] || exit 0
+          issue_number=${BASH_REMATCH[1]}
+
+          run_sha=$(jq -r '.head_sha' <<<"$RUN_JSON")
+          [[ "$run_sha" == "$head_sha" ]] || exit 0
+          conclusion=$(jq -r '.conclusion' <<<"$RUN_JSON")
+          run_url=$(jq -r '.html_url' <<<"$RUN_JSON")
+          if [[ "$conclusion" == "success" ]]; then
+            target=ready-for-human
+          else
+            target=ready-for-agent
+          fi
+
+          mapfile -t labels < <(
+            gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number" --jq \
+              '.labels[].name | select(. != "needs-triage" and . != "needs-info" and . != "ready-for-agent" and . != "ready-for-human" and . != "wontfix")'
+          )
+          labels+=("$target")
+          jq -n --args "${labels[@]}" '{labels: $ARGS.positional}' |
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input -
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
+            --body "Controller CI handoff: [$conclusion]($run_url). Triage state: \`$target\`."

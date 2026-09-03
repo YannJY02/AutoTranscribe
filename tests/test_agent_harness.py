@@ -6,15 +6,22 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from scripts.agent_harness import (
+    TRIAGE_LABELS,
     _run_command,
+    _symphony_snapshot,
     changed_files,
+    installed_app_snapshot,
     doctor,
     gate_specs,
     issue_preflight,
     linear_issue_identifier,
     parse_issue_number,
+    telemetry_snapshot,
     validate_issue,
+    write_controller_handoff,
 )
 
 
@@ -198,10 +205,17 @@ def test_actions_are_deterministic_ci_only():
     workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
     tracked = sorted(path.name for path in workflows.iterdir() if path.is_file())
 
-    assert tracked == ["ci.yml"]
+    assert tracked == ["ci.yml", "controller-handoff.yml"]
     ci = (workflows / "ci.yml").read_text(encoding="utf-8")
+    handoff = (workflows / "controller-handoff.yml").read_text(encoding="utf-8")
     assert "copilot-requests" not in ci
     assert "gh-aw" not in ci
+    assert "workflow_run:" in handoff
+    assert "actions/checkout" not in handoff
+    assert "ready-for-human" in handoff
+    assert "ready-for-agent" in handoff
+    for label in TRIAGE_LABELS:
+        assert f'"{label}"' in handoff
 
 
 def test_command_evidence_never_persists_process_output(tmp_path, monkeypatch):
@@ -227,6 +241,8 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "-u OPENAI_API_KEY" in workflow
     assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
     assert "before_run:" in workflow
+    assert "after_run:" in workflow
+    assert "agent_harness.py handoff" in workflow
     assert "issue-preflight --json" in gate
     assert "--resume" in gate
     assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in workflow
@@ -243,6 +259,91 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "security find-generic-password" in launcher
     assert "proxy-environment" in launcher
     assert "unset OPENAI_API_KEY" in launcher
+    assert "symphony_delivery_controller.py" in workflow
+    assert "runtime-status" in launcher
+    assert "Runtime status refresh failed" in launcher
+    assert 'rm -f "$runtime_status_path"' in launcher
+
+
+def test_installed_app_snapshot_reports_revision_freshness_without_exposing_project_key(tmp_path):
+    import plistlib
+
+    app = tmp_path / "InsightKit.app"
+    plist = app / "Contents" / "Info.plist"
+    plist.parent.mkdir(parents=True)
+    plist.write_bytes(
+        plistlib.dumps(
+            {
+                "CFBundleVersion": "202609030001",
+                "CFBundleShortVersionString": "0.1.0",
+                "InsightKitGitRevision": "abcdef1",
+                "InsightKitPostHogOwnerPilotHost": "https://us.i.posthog.com",
+                "InsightKitPostHogOwnerPilotProjectKey": "secret-project-key",
+                "InsightKitPostHogOwnerPilotRetentionVerified": True,
+            }
+        )
+    )
+
+    snapshot = installed_app_snapshot(app, expected_revision="abcdef123456")
+
+    assert snapshot["freshness"] == "current"
+    assert snapshot["posthog_transport_ready"] is True
+    assert "secret-project-key" not in json.dumps(snapshot)
+
+
+def test_telemetry_snapshot_records_only_bounded_file_state(tmp_path):
+    (tmp_path / "Sentry").mkdir()
+    (tmp_path / "local-evidence-ledger-v1.json").write_text('{"private":"meeting text"}', encoding="utf-8")
+    (tmp_path / "Sentry" / "external-telemetry-disable-evidence-v1.json").write_text(
+        '{"secret":"do-not-copy"}', encoding="utf-8"
+    )
+
+    snapshot = telemetry_snapshot(tmp_path)
+
+    assert snapshot == {
+        "product_analytics_ledger_exists": True,
+        "sentry_disable_evidence_exists": True,
+    }
+    assert "meeting text" not in json.dumps(snapshot)
+
+
+def test_symphony_snapshot_rejects_non_loopback_urls():
+    with pytest.raises(ValueError, match="loopback"):
+        _symphony_snapshot("https://example.com/api/v1/state")
+
+
+def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):
+    manifest = tmp_path / "logs" / "harness" / "run" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "passed",
+                "issue": 95,
+                "workspace": str(tmp_path),
+                "changed_files": ["feature.py"],
+                "gates": [{"name": "python-tests", "status": "passed", "commands": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = write_controller_handoff(
+        root=tmp_path,
+        issue="GH-95",
+        manifest_path=manifest,
+        summary="Close the delivery loop",
+        review_status="clear",
+        human_gates=("Review and merge.",),
+        no_change=False,
+    )
+
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    assert payload["manifest"] == "logs/harness/run/manifest.json"
+    assert payload["kind"] == "changes"
+    assert payload["summary"] == "Close the delivery loop"
+    assert "commands" not in payload
 
 
 def test_app_proof_doctor_checks_full_xcode_and_native_capture_tools():
