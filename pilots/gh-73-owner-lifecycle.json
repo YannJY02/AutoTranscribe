@@ -193,13 +193,13 @@
       "classification": "observed",
       "evidence_ref": "pilots/evidence/GH-73/repository-proof.json",
       "scope": "repository-proof",
-      "status": "failed",
+      "status": "passed",
       "checks": [
         "full-agent-harness"
       ],
-      "harness_commit": "b949ee68278654ae0f2c366e9f529a10b295c7e6",
+      "harness_commit": "ac87aece21c073078589cb96873aed422d61df47",
       "harness_manifest_ref": "pilots/evidence/GH-73/full-harness-manifest.json",
-      "harness_manifest_sha256": "b980306f7bfd64185b74da263bc102e6c716df06178d815d66336be8d50bde73"
+      "harness_manifest_sha256": "40caaf5bf0cdb45a913b3fbe194c2ca261c81a4a8d8da8f9c5d045d47d1fafa1"
     }
   },
   "rollback": {
