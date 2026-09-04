@@ -2,7 +2,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-unset OPENAI_API_KEY
+unset OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN
 symphony_preflight_timeout_seconds=${SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS:-60}
 case "$symphony_preflight_timeout_seconds" in
   ''|*[!0-9]*)
@@ -119,8 +119,9 @@ SYMPHONY_REAL_CODEX=$symphony_real_codex
 export SYMPHONY_REAL_CODEX
 SYMPHONY_REAL_GH=${SYMPHONY_REAL_GH:-$(command -v gh)}
 SYMPHONY_PYTHON3=${SYMPHONY_PYTHON3:-$(command -v python3.11)}
+SYMPHONY_SECURITY=${SYMPHONY_SECURITY:-/usr/bin/security}
 SYMPHONY_CONTROLLER_REPO_ROOT=$repo_root
-export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_CONTROLLER_REPO_ROOT
+export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_SECURITY SYMPHONY_CONTROLLER_REPO_ROOT
 
 if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2
@@ -153,22 +154,7 @@ if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-symphony_agent_github_token=${SYMPHONY_AGENT_GITHUB_TOKEN:-}
-if [ -z "$symphony_agent_github_token" ]; then
-  symphony_agent_github_token=$(/usr/bin/security find-generic-password \
-    -a symphony-agent \
-    -s com.autotranscribe.symphony.agent-github-token \
-    -w 2>/dev/null || true)
-fi
-if [ -z "$symphony_agent_github_token" ]; then
-  echo "Symphony agent GitHub credential is required in macOS Keychain." >&2
-  exit 1
-fi
-GH_TOKEN=$symphony_agent_github_token
-export GH_TOKEN
-unset SYMPHONY_AGENT_GITHUB_TOKEN symphony_agent_github_token
-
-if ! run_with_preflight_timeout gh auth status >/dev/null 2>&1; then
+if ! (GH_TOKEN=$SYMPHONY_GITHUB_TOKEN; export GH_TOKEN; run_with_preflight_timeout gh auth status) >/dev/null 2>&1; then
   echo "Codex's GitHub CLI session is not authenticated. Run: gh auth login" >&2
   exit 1
 fi

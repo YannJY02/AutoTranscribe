@@ -11,11 +11,21 @@ permissions:
   issues: write
   pull-requests: read
 
+concurrency:
+  group: controller-handoff-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
 jobs:
   transition:
     if: github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - name: Check out the trusted controller preflight
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
       - name: Transition the current controller PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -30,8 +40,10 @@ jobs:
           branch=$(jq -r '.head.ref' <<<"$pr")
           head_sha=$(jq -r '.head.sha' <<<"$pr")
           head_repo=$(jq -r '.head.repo.full_name' <<<"$pr")
+          author=$(jq -r '.user.login' <<<"$pr")
           state=$(jq -r '.state' <<<"$pr")
           [[ "$head_repo" == "$GITHUB_REPOSITORY" && "$state" == "open" ]] || exit 0
+          [[ "$author" == "$GITHUB_REPOSITORY_OWNER" ]] || exit 0
           [[ "$branch" =~ ^codex/gh-([0-9]+)-[a-z][a-z0-9]*-[0-9]+$ ]] || exit 0
           issue_number=${BASH_REMATCH[1]}
 
@@ -39,18 +51,50 @@ jobs:
           [[ "$run_sha" == "$head_sha" ]] || exit 0
           conclusion=$(jq -r '.conclusion' <<<"$RUN_JSON")
           run_url=$(jq -r '.html_url' <<<"$RUN_JSON")
-          if [[ "$conclusion" == "success" ]]; then
-            target=ready-for-human
-          else
-            target=ready-for-agent
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number")
+          [[ $(jq -r '.state' <<<"$issue") == open ]] || exit 0
+          [[ $(jq '.assignees | length' <<<"$issue") == 0 ]] || exit 0
+          body_sha=$(jq -j '.body // ""' <<<"$issue" | sha256sum | cut -d' ' -f1)
+          # Only an owner-authored exact-head controller receipt authorizes CI writes.
+          receipts=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$issue_number/comments")
+          receipt=$(jq -r --arg owner "$GITHUB_REPOSITORY_OWNER" --arg sha "$head_sha" \
+            --arg digest "$body_sha" --argjson pr "$pr_number" --argjson issue "$issue_number" \
+            '[.[][] | select(.user.login == $owner) | .body |
+              try (capture("<!-- insightkit-controller:(?<metadata>[^\\n]+) -->").metadata | fromjson) catch empty |
+              select(.head == $sha and .pr == $pr and .issue == $issue and .body_sha256 == $digest)] | length' <<<"$receipts")
+          [[ "$receipt" -gt 0 ]] || exit 0
+          triage=$(jq -r '[.labels[].name | select(. == "needs-triage" or . == "needs-info" or . == "ready-for-agent" or . == "ready-for-human" or . == "wontfix")] | join(", ")' <<<"$issue")
+          if [[ -n "$triage" ]]; then
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
+              --body "Controller CI handoff: [$conclusion]($run_url). Preserving human triage state: \`$triage\`."
+            exit 0
           fi
 
-          mapfile -t labels < <(
-            gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number" --jq \
-              '.labels[].name | select(. != "needs-triage" and . != "needs-info" and . != "ready-for-agent" and . != "ready-for-human" and . != "wontfix")'
-          )
-          labels+=("$target")
-          jq -n --args "${labels[@]}" '{labels: $ARGS.positional}' |
-            gh api --method PUT "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input -
+          if [[ "$conclusion" == "success" ]]; then
+            target=ready-for-human
+          elif [[ "$conclusion" == failure ]] && python3 scripts/agent_harness.py issue-preflight --issue "$issue_number" --retry --json >/dev/null; then
+            target=ready-for-agent
+          else
+            target=needs-triage
+          fi
+
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number")
+          [[ $(jq -r '.state' <<<"$issue") == open ]] || exit 0
+          [[ $(jq '.assignees | length' <<<"$issue") == 0 ]] || exit 0
+          [[ $(jq -j '.body // ""' <<<"$issue" | sha256sum | cut -d' ' -f1) == "$body_sha" ]] || exit 0
+          [[ $(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --jq .head.sha) == "$head_sha" ]] || exit 0
+          triage=$(jq -r '[.labels[].name | select(. == "needs-triage" or . == "needs-info" or . == "ready-for-agent" or . == "ready-for-human" or . == "wontfix")] | join(", ")' <<<"$issue")
+          [[ -z "$triage" ]] || exit 0
+          jq -n --arg target "$target" '{labels: [$target]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input -
+
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number")
+          conflicting_triage=$(jq -r --arg target "$target" '[.labels[].name | select((. == "needs-triage" or . == "needs-info" or . == "ready-for-agent" or . == "ready-for-human" or . == "wontfix") and . != $target)] | join(", ")' <<<"$issue")
+          if [[ -n "$conflicting_triage" || $(jq '.assignees | length' <<<"$issue") != 0 || $(jq -r '.state' <<<"$issue") != open ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels/$target"
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
+              --body "Controller CI handoff: [$conclusion]($run_url). Preserving concurrent human triage state: \`$conflicting_triage\`."
+            exit 0
+          fi
           gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
             --body "Controller CI handoff: [$conclusion]($run_url). Triage state: \`$target\`."

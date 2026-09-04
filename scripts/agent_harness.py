@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import plistlib
@@ -166,11 +167,21 @@ def load_issue(issue_number: int) -> dict[str, Any]:
     )
 
 
-def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str, Any]:
+def issue_preflight(issue_identifier: str, *, resume: bool = False, retry: bool = False) -> dict[str, Any]:
     number = parse_issue_number(issue_identifier)
     payload = load_issue(number)
+    retry_conflict = retry and bool(_label_names(payload) & TRIAGE_LABELS)
+    candidate = dict(payload)
+    if retry:
+        candidate["labels"] = [
+            label
+            for label in payload.get("labels") or []
+            if str(label.get("name", "") if isinstance(label, dict) else label) not in TRIAGE_LABELS
+        ] + [{"name": "ready-for-agent"}]
     current_login = str(_run_json(["gh", "api", "user"]).get("login", "")) if resume else None
-    errors = validate_issue(payload, allowed_assignee_login=current_login)
+    errors = validate_issue(candidate, allowed_assignee_login=current_login)
+    if retry_conflict:
+        errors.append("CI retry preflight requires no active triage label")
     linear_issue = linear_issue_identifier(payload)
     if not linear_issue:
         errors.append("synchronized issue is missing the verified Linear linkback")
@@ -185,6 +196,7 @@ def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str,
         "status": "passed" if not errors else "failed",
         "issue": number,
         "linear_issue": linear_issue,
+        "body_sha256": hashlib.sha256(str(payload.get("body") or "").encode()).hexdigest(),
         "url": payload.get("url"),
         "resource_class": next(
             (
@@ -218,7 +230,9 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
         or path == "scripts/harness_maintenance.py"
         or path == "scripts/native_app_proof.py"
         or path == "scripts/run_symphony.sh"
+        or path == "scripts/symphony_after_run.sh"
         or path == "scripts/symphony_delivery_controller.py"
+        or path == "scripts/symphony_issue_gate.sh"
         or path == "tests/test_agent_harness.py"
         or path == "tests/test_harness_maintenance.py"
         or path == "tests/test_native_app_proof.py"
@@ -254,7 +268,15 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
             GateSpec(
                 "automation-syntax",
                 tuple(
-                    ("sh" if path == "scripts/run_symphony.sh" else "bash", "-n", path)
+                    (
+                        "sh" if path in {
+                            "scripts/run_symphony.sh",
+                            "scripts/symphony_after_run.sh",
+                            "scripts/symphony_issue_gate.sh",
+                        } else "bash",
+                        "-n",
+                        path,
+                    )
                     for path in shell_scripts
                 ),
             )
@@ -364,6 +386,81 @@ def changed_files(base: str) -> list[str]:
     return sorted(paths)
 
 
+def changes_sha256(root: Path, paths: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+
+    def add(value: bytes) -> None:
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+
+    root = root.expanduser().resolve()
+    for relative in sorted(set(paths)):
+        path = Path(relative)
+        if not relative or path.is_absolute() or ".." in path.parts or any(char in relative for char in "\r\n\x00"):
+            raise ValueError(f"unsafe changed path: {relative!r}")
+        candidate = root / path
+        add(relative.encode("utf-8"))
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            add(b"missing")
+            continue
+        if candidate.is_symlink():
+            raise ValueError(f"changed path must not be a symbolic link: {relative}")
+        if not candidate.is_file():
+            raise ValueError(f"changed path is not a regular file: {relative}")
+        add(b"executable" if metadata.st_mode & 0o111 else b"file")
+        digest.update(metadata.st_size.to_bytes(8, "big"))
+        with candidate.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_changes_sha256(root: Path, revision: str, paths: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+
+    def add(value: bytes) -> None:
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+
+    root = root.expanduser().resolve()
+    for relative in sorted(set(paths)):
+        path = Path(relative)
+        if not relative or path.is_absolute() or ".." in path.parts or any(char in relative for char in "\r\n\x00"):
+            raise ValueError(f"unsafe changed path: {relative!r}")
+        tree = subprocess.run(
+            ["git", "ls-tree", "-z", revision, "--", relative],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if tree.returncode != 0:
+            raise ValueError(f"cannot inspect committed path: {relative}")
+        add(relative.encode("utf-8"))
+        if not tree.stdout:
+            add(b"missing")
+            continue
+        header, separator, returned_path = tree.stdout.rstrip(b"\x00").partition(b"\t")
+        fields = header.split()
+        if separator != b"\t" or len(fields) != 3 or returned_path != relative.encode("utf-8"):
+            raise ValueError(f"unexpected Git tree entry: {relative}")
+        mode, kind, object_id = fields
+        if kind != b"blob" or mode not in {b"100644", b"100755"}:
+            raise ValueError(f"committed path must be a regular file: {relative}")
+        blob = subprocess.run(
+            ["git", "cat-file", "blob", object_id.decode("ascii")],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if blob.returncode != 0:
+            raise ValueError(f"cannot read committed path: {relative}")
+        add(b"executable" if mode == b"100755" else b"file")
+        add(blob.stdout)
+    return digest.hexdigest()
+
+
 def _run_command(command: Sequence[str], *, output_root: Path) -> CommandResult:
     rendered = [part.replace("{output_root}", str(output_root)) for part in command]
     env = os.environ.copy()
@@ -448,13 +545,18 @@ def _symphony_snapshot(url: str) -> dict[str, Any]:
 
 def runtime_status(*, app_path: Path, telemetry_root: Path, symphony_url: str) -> dict[str, Any]:
     revision = _git_value("rev-parse", "HEAD")
-    remote = subprocess.run(
-        ["git", "ls-remote", "origin", "refs/heads/main"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    command = ["git", "ls-remote", "origin", "refs/heads/main"]
+    try:
+        remote = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        remote = subprocess.CompletedProcess(command, 124, "", "")
     remote_revision = remote.stdout.split()[0] if remote.returncode == 0 and remote.stdout.split() else ""
     expected_revision = remote_revision or revision
     installed = installed_app_snapshot(app_path, expected_revision=expected_revision)
@@ -524,14 +626,21 @@ def write_controller_handoff(
         raise ValueError(f"cannot read harness manifest: {manifest}") from exc
     issue_number = parse_issue_number(issue)
     changed = evidence.get("changed_files") or []
+    if not isinstance(changed, list) or any(not isinstance(path, str) for path in changed):
+        raise ValueError("manifest changed files must be repository-relative paths")
     if evidence.get("schema_version") != 1:
         raise ValueError("unsupported harness manifest schema version")
     if evidence.get("status") != "passed" or evidence.get("issue") != issue_number:
         raise ValueError("handoff requires a passed manifest for the same issue")
+    if evidence.get("mode") != "full":
+        raise ValueError("handoff requires a full-mode harness manifest")
     if Path(str(evidence.get("workspace") or "")).resolve() != workspace:
         raise ValueError("handoff manifest belongs to a different workspace")
     if no_change != (not changed):
         raise ValueError("--no-change must match the manifest changed files")
+    expected_digest = str(evidence.get("changes_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_digest) or changes_sha256(workspace, changed) != expected_digest:
+        raise ValueError("manifest does not match the verified file contents")
     if review_status not in {"clear", "not-required"} or (changed and review_status != "clear"):
         raise ValueError("changed code requires a clear independent review")
     gates = evidence.get("gates") or []
@@ -580,6 +689,8 @@ def verify_changes(*, base: str, mode: str, issue: str | None, output_root: Path
         "branch": _git_value("branch", "--show-current"),
         "workspace": str(ROOT),
         "changed_files": files,
+        "changes_sha256": changes_sha256(ROOT, files),
+        "mode": mode,
         "gates": [],
     }
     if dry_run:
@@ -628,6 +739,8 @@ def doctor(*, profile: str) -> dict[str, Any]:
         "scripts/agent_bootstrap.sh",
         "scripts/harness_maintenance.py",
         "scripts/native_app_proof.py",
+        "scripts/symphony_issue_gate.sh",
+        "scripts/symphony_after_run.sh",
         "scripts/symphony_delivery_controller.py",
     )
     required_commands = ["git", "python3.11"]
@@ -683,6 +796,8 @@ def doctor(*, profile: str) -> dict[str, Any]:
         ("WORKFLOW.md", "shell_environment_policy.inherit=core", True),
         (".codex/environments/environment.toml", 'script = "./scripts/agent_bootstrap.sh"', True),
         ("scripts/run_symphony.sh", "SYMPHONY_GITHUB_TOKEN", True),
+        ("scripts/run_symphony.sh", "agent-github-token", False),
+        ("scripts/symphony_after_run.sh", "agent-github-token", True),
         ("scripts/run_symphony.sh", "gh auth token", False),
         ("AGENTS.md", "tracked as local markdown files", False),
     )
@@ -752,6 +867,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_parser = subparsers.add_parser("issue-preflight", help="Validate a GitHub issue before unattended execution.")
     issue_parser.add_argument("--issue", required=True)
     issue_parser.add_argument("--resume", action="store_true", help="Allow assignment to the current GitHub user.")
+    issue_parser.add_argument("--retry", action="store_true", help="Validate whether failed CI may safely restore ready-for-agent.")
     issue_parser.add_argument("--json", action="store_true")
 
     verify_parser = subparsers.add_parser("verify", help="Run the narrow deterministic gates for the current diff.")
@@ -810,7 +926,7 @@ def main() -> int:
             print_result(payload, as_json=args.json)
             return 0 if payload["status"] == "passed" else 1
         if args.command == "issue-preflight":
-            payload = issue_preflight(args.issue, resume=args.resume)
+            payload = issue_preflight(args.issue, resume=args.resume, retry=args.retry)
             print_result(payload, as_json=args.json)
             return 0 if payload["status"] == "passed" else 1
         if args.command == "verify":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import asdict
@@ -12,17 +13,21 @@ from scripts.agent_harness import (
     TRIAGE_LABELS,
     _run_command,
     _symphony_snapshot,
+    changes_sha256,
     changed_files,
     installed_app_snapshot,
     doctor,
     gate_specs,
+    git_changes_sha256,
     issue_preflight,
     linear_issue_identifier,
     parse_issue_number,
+    runtime_status,
     telemetry_snapshot,
     validate_issue,
     write_controller_handoff,
 )
+from scripts.symphony_delivery_controller import TRIAGE_LABELS as CONTROLLER_TRIAGE_LABELS
 
 
 def issue_payload(**overrides):
@@ -93,6 +98,63 @@ def test_issue_preflight_rejects_ready_issue_without_linear_linkback(monkeypatch
     result = issue_preflight("12")
 
     assert "synchronized issue is missing the verified Linear linkback" in result["errors"]
+
+
+def test_issue_preflight_can_validate_a_safe_ci_retry_without_mutating_the_issue(monkeypatch):
+    payload = issue_payload(
+        labels=[],
+        assignees=[],
+        comments=[
+            {
+                "author": {"login": "linear-code"},
+                "body": '<!-- linear-linkback --><a href="https://linear.app/yannjy/issue/YAN-62">YAN-62</a>',
+            }
+        ],
+    )
+    monkeypatch.setattr("scripts.agent_harness.load_issue", lambda _number: payload)
+
+    result = issue_preflight("12", retry=True)
+
+    assert result["status"] == "passed"
+    assert payload["labels"] == []
+    assert payload["assignees"] == []
+
+
+def test_issue_preflight_retry_rejects_any_assignee(monkeypatch):
+    payload = issue_payload(
+        labels=[],
+        assignees=[{"login": "human-reviewer"}],
+        comments=[
+            {
+                "author": {"login": "linear-code"},
+                "body": '<!-- linear-linkback --><a href="https://linear.app/yannjy/issue/YAN-62">YAN-62</a>',
+            }
+        ],
+    )
+    monkeypatch.setattr("scripts.agent_harness.load_issue", lambda _number: payload)
+
+    result = issue_preflight("12", retry=True)
+
+    assert result["status"] == "failed"
+    assert any("unassigned" in error for error in result["errors"])
+
+
+def test_issue_preflight_retry_preserves_a_human_triage_decision(monkeypatch):
+    payload = issue_payload(
+        labels=[{"name": "needs-info"}],
+        comments=[
+            {
+                "author": {"login": "linear-code"},
+                "body": '<!-- linear-linkback --><a href="https://linear.app/yannjy/issue/YAN-62">YAN-62</a>',
+            }
+        ],
+    )
+    monkeypatch.setattr("scripts.agent_harness.load_issue", lambda _number: payload)
+
+    result = issue_preflight("12", retry=True)
+
+    assert result["status"] == "failed"
+    assert "CI retry preflight requires no active triage label" in result["errors"]
 
 
 def test_validate_issue_accepts_complete_ready_issue():
@@ -187,6 +249,22 @@ def test_changed_files_includes_staged_paths(monkeypatch):
     assert changed_files("origin/main") == ["committed.py", "staged.py", "unstaged.swift", "untracked.sh"]
 
 
+def test_change_digest_matches_the_committed_tree_and_rejects_symlinks(tmp_path):
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Harness Test"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "harness@example.invalid"], cwd=tmp_path, check=True)
+    regular = tmp_path / "feature.py"
+    regular.write_text("print('verified')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "verified"], cwd=tmp_path, check=True, capture_output=True)
+
+    assert git_changes_sha256(tmp_path, "HEAD", ["feature.py"]) == changes_sha256(tmp_path, ["feature.py"])
+
+    (tmp_path / "linked.py").symlink_to(regular)
+    with pytest.raises(ValueError, match="symbolic link"):
+        changes_sha256(tmp_path, ["linked.py"])
+
+
 def test_gate_specs_route_harness_tests_and_symphony_shell():
     test_names = [
         spec.name
@@ -211,11 +289,17 @@ def test_actions_are_deterministic_ci_only():
     assert "copilot-requests" not in ci
     assert "gh-aw" not in ci
     assert "workflow_run:" in handoff
-    assert "actions/checkout" not in handoff
+    assert "actions/checkout" in handoff
+    assert '"$author" == "$GITHUB_REPOSITORY_OWNER"' in handoff
+    assert "issue-preflight --issue \"$issue_number\" --retry" in handoff
+    assert "Preserving human triage state" in handoff
+    assert "--method PUT" not in handoff
+    assert '--method POST "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels"' in handoff
+    assert '--method DELETE "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels/$target"' in handoff
     assert "ready-for-human" in handoff
     assert "ready-for-agent" in handoff
-    for label in TRIAGE_LABELS:
-        assert f'"{label}"' in handoff
+    workflow_labels = set(re.findall(r'"((?:needs|ready)-[a-z-]+|wontfix)"', handoff))
+    assert workflow_labels == TRIAGE_LABELS == CONTROLLER_TRIAGE_LABELS
 
 
 def test_command_evidence_never_persists_process_output(tmp_path, monkeypatch):
@@ -233,6 +317,7 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
     launcher = (root / "scripts/run_symphony.sh").read_text(encoding="utf-8")
     gate = (root / "scripts/symphony_issue_gate.sh").read_text(encoding="utf-8")
+    after_run = (root / "scripts/symphony_after_run.sh").read_text(encoding="utf-8")
 
     assert "shell_environment_policy.inherit=core" in workflow
     assert "shell_environment_policy.inherit=all" not in workflow
@@ -248,7 +333,12 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in workflow
     assert "SYMPHONY_REAL_CODEX" in launcher
     assert 'PATH="$repo_root/scripts/symphony-bin:$PATH"' not in launcher
-    assert "GH_TOKEN=$symphony_agent_github_token" in launcher
+    assert "agent-github-token" not in launcher
+    assert "agent-github-token" in gate
+    assert "agent-github-token" in after_run
+    assert "--workspace \"$workspace\"" in after_run
+    assert "agent_harness.py\" verify" not in after_run
+    assert "cd \"$SYMPHONY_CONTROLLER_REPO_ROOT\"" in after_run
     assert "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" in launcher
     assert "read_timeout_ms: 120000" in workflow
     assert "dashboard_enabled: false" in workflow
@@ -259,7 +349,8 @@ def test_symphony_configuration_uses_dedicated_token_and_core_environment():
     assert "security find-generic-password" in launcher
     assert "proxy-environment" in launcher
     assert "unset OPENAI_API_KEY" in launcher
-    assert "symphony_delivery_controller.py" in workflow
+    assert "symphony_delivery_controller.py" in after_run
+    assert "symphony_after_run.sh" in workflow
     assert "runtime-status" in launcher
     assert "Runtime status refresh failed" in launcher
     assert 'rm -f "$runtime_status_path"' in launcher
@@ -312,6 +403,37 @@ def test_symphony_snapshot_rejects_non_loopback_urls():
         _symphony_snapshot("https://example.com/api/v1/state")
 
 
+def test_runtime_status_bounds_remote_probe_and_falls_back_to_local_head(tmp_path, monkeypatch):
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append((command, kwargs))
+        if command[:2] == ["git", "ls-remote"]:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        if command[:2] == ["pgrep", "-x"]:
+            return subprocess.CompletedProcess(command, 1)
+        if command[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", run)
+    monkeypatch.setattr(
+        "scripts.agent_harness._git_value",
+        lambda *args: "abcdef123456" if args == ("rev-parse", "HEAD") else "main",
+    )
+    monkeypatch.setattr("scripts.agent_harness._symphony_snapshot", lambda _url: {"healthy": True})
+
+    payload = runtime_status(
+        app_path=tmp_path / "missing.app",
+        telemetry_root=tmp_path,
+        symphony_url="http://127.0.0.1:4000/api/v1/state",
+    )
+
+    assert payload["repository"]["main_revision"] == "abcdef123456"
+    assert payload["repository"]["main_revision_source"] == "local-head-fallback"
+    assert next(kwargs["timeout"] for command, kwargs in commands if command[:2] == ["git", "ls-remote"]) == 10
+
+
 def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):
     manifest = tmp_path / "logs" / "harness" / "run" / "manifest.json"
     manifest.parent.mkdir(parents=True)
@@ -323,6 +445,8 @@ def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(
                 "issue": 95,
                 "workspace": str(tmp_path),
                 "changed_files": ["feature.py"],
+                "changes_sha256": changes_sha256(tmp_path, ["feature.py"]),
+                "mode": "full",
                 "gates": [{"name": "python-tests", "status": "passed", "commands": []}],
             }
         ),
