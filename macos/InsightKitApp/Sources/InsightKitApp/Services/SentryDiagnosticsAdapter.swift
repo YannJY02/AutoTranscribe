@@ -821,9 +821,16 @@ final class SentryDiagnosticsRuntime {
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
         gateOverride: ExternalTelemetryPrivacyGate? = nil,
         transportOverride: SentryDiagnosticsTransport? = nil
     ) {
+        // An inherited disable setting purges consent, queues, and keys. Test
+        // launches must return before constructing any operator telemetry gate.
+        guard UITestStorageContext.resolve(environment: environment, arguments: arguments) == nil else {
+            adapter = nil
+            return
+        }
         let explicitSetting = environment["INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED"]
         guard explicitSetting == "0" || explicitSetting == "1" else {
             adapter = nil

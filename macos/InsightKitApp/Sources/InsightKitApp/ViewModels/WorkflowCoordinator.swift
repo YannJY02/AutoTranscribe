@@ -41,9 +41,10 @@ final class WorkflowCoordinator: ObservableObject {
         self.recordsNavigation = recordsNavigation
         self.capabilityClient = capabilityClient
         self.settingsOpener = settingsOpener
-        if UITestLaunchOptions.isEnabled {
-            recordsService.rootDirectory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("InsightKitRecordsUITests", isDirectory: true)
+        if UITestLaunchOptions.isEnabled,
+           ProcessInfo.processInfo.environment["INSIGHTKIT_UI_TEST_SEED_RECORDS"] != "0" {
+            // RecordsIndexService resolves the run's isolated root without
+            // persisting it as the operator's chosen Records directory.
             recordsService.prepareUITestSeed(recordID: "record-restart-proof")
         }
         // Phase 5: inject recordsService into child ViewModels

@@ -91,6 +91,11 @@ final class RecordsIndexService: ObservableObject {
     }
 
     private static func configuredRootDirectory(environment: [String: String]) -> URL? {
+        if let context = UITestStorageContext.resolve(
+            environment: environment, arguments: ProcessInfo.processInfo.arguments
+        ) {
+            return context.recordsDirectory
+        }
         guard let path = environment["INSIGHTKIT_RECORDS_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               path.hasPrefix("/"),
               path != "/"

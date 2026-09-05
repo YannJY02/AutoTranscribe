@@ -22,10 +22,11 @@ hooks:
   after_create: |
     unset SYMPHONY_AGENT_GITHUB_TOKEN SYMPHONY_GITHUB_TOKEN GITHUB_TOKEN GH_TOKEN OPENAI_API_KEY
     repo_source="${SYMPHONY_REPO_SOURCE:-https://github.com/YannJY02/AutoTranscribe.git}"
-    git clone --depth 1 --no-local "$repo_source" .
+    # Sealed evidence and Harness base diffs require complete main ancestry.
+    git clone --no-local "$repo_source" .
     git remote set-url origin https://github.com/YannJY02/AutoTranscribe.git
     if [ -n "${SYMPHONY_BOOTSTRAP_REF:-}" ]; then
-      git fetch --depth 1 origin "$SYMPHONY_BOOTSTRAP_REF"
+      git fetch origin "$SYMPHONY_BOOTSTRAP_REF"
       git checkout --detach FETCH_HEAD
     fi
     ./scripts/agent_bootstrap.sh
@@ -70,6 +71,17 @@ No description was provided.
 {% endif %}
 
 Work only inside this repository copy. This is unattended: do not ask the user questions and do not touch paths outside the workspace.
+
+Fresh workspaces include full Git history. If this is a resumed workspace from the old shallow bootstrap, refresh its history only inside this credential-free Codex sandbox before repository checks:
+
+```sh
+insightkit_shallow=$(git rev-parse --is-shallow-repository) || exit 1
+if [ "$insightkit_shallow" = true ]; then
+  git fetch --unshallow origin main
+fi
+```
+
+This refresh must preserve HEAD and working files. If it fails or the sandbox denies it, report historical source coverage as unavailable; do not claim a passed full Harness. The controller's `before_run` hook never executes worker Git metadata.
 
 1. The mandatory GitHub/Linear issue preflight and GitHub claim completed in the fatal `before_run` hook. If either had failed, this agent would not have started. Do not repeat that network check inside the Codex sandbox.
 2. Read `AGENTS.md`, `docs/agents/harness.md`, `docs/agents/tool-boundaries.md`, `CONTEXT-MAP.md`, relevant context docs and ADRs, and repository skills that match the task. The synchronized issue description above is the unattended execution contract; do not assume access to Linear-only project, priority, or detailed-status fields.

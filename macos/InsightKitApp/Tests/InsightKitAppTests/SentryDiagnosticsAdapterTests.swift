@@ -454,6 +454,61 @@ final class SentryDiagnosticsAdapterTests: XCTestCase {
         XCTAssertTrue(try fixture.gate.queuedEnvelopes().isEmpty)
     }
 
+    func testUITestRuntimePreservesTelemetryWhenExplicitlyDisabled() throws {
+        try assertUITestRuntimePreservesTelemetry(enabled: "0")
+    }
+
+    func testUITestRuntimePreservesTelemetryWhenExplicitlyEnabled() throws {
+        try assertUITestRuntimePreservesTelemetry(enabled: "1")
+    }
+
+    private func assertUITestRuntimePreservesTelemetry(enabled: String) throws {
+        let launchContexts: [(environment: [String: String], arguments: [String])] = [
+            ([UITestStorageContext.sessionIDEnvironmentKey: UUID().uuidString], []),
+            (["INSIGHTKIT_UI_TEST_MODE": "1"], []),
+            ([:], ["--ui-test-mode"]),
+            ([:], ["-INSIGHTKIT_UI_TEST_MODE", "1"]),
+        ]
+        for context in launchContexts {
+            let fixture = try makeFixture()
+            XCTAssertEqual(fixture.gate.record(event: .init(
+                name: "review_opened",
+                properties: ["workflow": "live", "phase": "reviewing"]
+            )).result, .accepted)
+            let queuedEnvelopes = try fixture.gate.queuedEnvelopes()
+            XCTAssertEqual(queuedEnvelopes.count, 1)
+            let persistedState = try fixture.persistenceState()
+            XCTAssertNotNil(persistedState.queue)
+            XCTAssertNotNil(persistedState.key)
+            let transport = RecordingSentryTransport()
+            var environment = enabledRuntimeEnvironment.merging(context.environment) { _, value in value }
+            environment["INSIGHTKIT_EXTERNAL_TELEMETRY_ENABLED"] = enabled
+            environment["INSIGHTKIT_SENTRY_SYNTHETIC_FAILURE"] = "1"
+
+            let runtime = SentryDiagnosticsRuntime(
+                environment: environment,
+                arguments: context.arguments,
+                gateOverride: fixture.gate,
+                transportOverride: transport
+            )
+            runtime.captureFailure(
+                workflow: .live,
+                phase: .running,
+                providerClass: .none,
+                errorCategory: .runtime,
+                recoveryResult: .notAttempted
+            )
+            runtime.capturePerformance(workflow: .live, phase: .running, milliseconds: 123)
+            runtime.applicationWillTerminate()
+
+            XCTAssertFalse(transport.waitForEnvelope(timeout: 0.05))
+            XCTAssertTrue(transport.envelopes.isEmpty)
+            XCTAssertTrue(fixture.gate.consent.isEnabled)
+            XCTAssertEqual(try fixture.gate.queuedEnvelopes(), queuedEnvelopes)
+            XCTAssertEqual(try fixture.persistenceState(), persistedState)
+        }
+    }
+
     func testSiblingVendorQueueRecoversAfterSharedKeyRotation() throws {
         let fixture = try makeFixture()
         let sentryGate = try fixture.siblingGate(relativePath: "Sentry")
@@ -1390,6 +1445,12 @@ private final class FailNextWrite: @unchecked Sendable {
 }
 
 private final class Fixture {
+    struct PersistenceState: Equatable {
+        let preferences: NSDictionary
+        let queue: Data?
+        let key: Data?
+    }
+
     private(set) var gate: ExternalTelemetryPrivacyGate!
     private let suite: String
     private var defaults: UserDefaults?
@@ -1437,6 +1498,15 @@ private final class Fixture {
         self.defaults = nil
         try? FileManager.default.removeItem(at: directory)
         try? FileManager.default.removeItem(at: preferencesURL)
+    }
+
+    func persistenceState() throws -> PersistenceState {
+        let queueURL = directory.appendingPathComponent("external-telemetry-queue-v1.json")
+        return PersistenceState(
+            preferences: (defaults?.persistentDomain(forName: suite) ?? [:]) as NSDictionary,
+            queue: FileManager.default.fileExists(atPath: queueURL.path) ? try Data(contentsOf: queueURL) : nil,
+            key: keyBox.data
+        )
     }
 
     func restartedGate() throws -> ExternalTelemetryPrivacyGate {

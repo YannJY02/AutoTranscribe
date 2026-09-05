@@ -3019,17 +3019,24 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
         let malformed = try encoder.encode(ExternalTelemetryPrivacyGate.Consent(isEnabled: true, version: 99, grantedAt: Date()))
         let workerObserved = expectation(description: "worker classified malformed consent")
+        let purgeFinished = expectation(description: "invalid worker observation completed its purge")
         let gate = makeGate(onConsentObserved: { point in
-            if point == .persistenceWorker {
-                workerObserved.fulfill()
+            if point == .recordAdmission {
+                // Admission already captured valid consent, but persistence has not
+                // been enqueued yet. The worker must therefore observe these bytes.
+                self.defaults.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
+            } else if point == .persistenceWorker {
+                XCTAssertEqual(self.defaults.data(forKey: "insightkit.external-telemetry.consent.v1"), malformed)
                 self.defaults.set(staleConsent, forKey: "insightkit.external-telemetry.consent.v1")
+                workerObserved.fulfill()
             }
+        }, onRevocationWillComplete: {
+            purgeFinished.fulfill()
         })
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
-        defaults.set(malformed, forKey: "insightkit.external-telemetry.consent.v1")
 
-        wait(for: [workerObserved], timeout: 2)
-        Self.waitUntil { self.queueKey.get() == nil }
+        wait(for: [workerObserved, purgeFinished], timeout: 2)
+        XCTAssertNil(queueKey.get())
         XCTAssertEqual(try makeGate().queuedEnvelopes(), [])
     }
 

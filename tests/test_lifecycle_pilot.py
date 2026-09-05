@@ -22,6 +22,10 @@ from scripts.lifecycle_pilot import (
 ROOT = Path(__file__).resolve().parents[1]
 HEAD = "83746318b85db3b0882e467401e1f1ec5d5b1eaa"
 PILOT = ROOT / "pilots/gh-73-owner-lifecycle.json"
+HARNESS_BUNDLE = ROOT / "tests/fixtures/lifecycle/gh-73-harness.bundle"
+HARNESS_BUNDLE_SHA256 = "8f13b57a111c518c935d3031a015ca7a78f788193793bfccb262c2b2017f6eed"
+HARNESS_BUNDLE_REF = "refs/heads/gh-73-sealed-harness"
+HARNESS_BUNDLE_BASE = "5aba6bf71c67e8f69281f2827a5f772bab00a62a"
 
 
 def test_post_harness_evidence_exceptions_are_exact():
@@ -58,17 +62,42 @@ def promote_attempts(value):
     ]
 
 
-def copy_repository_evidence(destination: Path) -> None:
+def copy_repository_evidence(
+    destination: Path, *, source_repository: Path = ROOT
+) -> None:
     subprocess.run(
-        ["git", "clone", "--shared", "--no-checkout", str(ROOT), str(destination)],
+        ["git", "clone", "--shared", "--no-checkout", str(source_repository), str(destination)],
         check=True,
         capture_output=True,
     )
     value = manifest()
     # These fixtures verify the recorded historical execution, not current HEAD.
-    # Later-code invalidation is exercised explicitly below.
+    # PR #96 was squash-merged, so a fresh main checkout lacks the sealed PR
+    # commit. Restore its real objects locally; never depend on stale refs or
+    # substitute current HEAD. Later-code invalidation is exercised below.
+    assert hashlib.sha256(HARNESS_BUNDLE.read_bytes()).hexdigest() == HARNESS_BUNDLE_SHA256
+    bundled_head = subprocess.run(
+        ["git", "bundle", "list-heads", str(HARNESS_BUNDLE)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    harness_commit = value["reconciliation"]["repository"]["harness_commit"]
+    assert bundled_head == f"{harness_commit} {HARNESS_BUNDLE_REF}"
     subprocess.run(
-        ["git", "update-ref", "--no-deref", "HEAD", value["reconciliation"]["repository"]["harness_commit"]],
+        ["git", "bundle", "verify", str(HARNESS_BUNDLE)],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "fetch", "--no-tags", str(HARNESS_BUNDLE), HARNESS_BUNDLE_REF],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", "--no-deref", "HEAD", harness_commit],
         cwd=destination,
         check=True,
         capture_output=True,
@@ -249,6 +278,57 @@ def test_prerequisite_sentry_event_cannot_be_relabelled_as_current_pilot(
             repository_root=tmp_path,
             now="2026-09-02T04:00:00Z",
         )
+
+
+def test_historical_harness_fixture_restores_objects_absent_from_clean_clone(
+    tmp_path: Path,
+):
+    source = tmp_path / "main-history-only"
+    subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+    # Fetch the durable main ancestor over Git transport, without local clone
+    # hardlinks/alternates that could leak unreachable PR objects into this test.
+    subprocess.run(
+        ["git", "fetch", "--no-tags", str(ROOT), HARNESS_BUNDLE_BASE],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", "--no-deref", "HEAD", HARNESS_BUNDLE_BASE],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    harness_commit = manifest()["reconciliation"]["repository"]["harness_commit"]
+    absent = subprocess.run(
+        ["git", "cat-file", "-e", f"{harness_commit}^{{commit}}"],
+        cwd=source,
+        capture_output=True,
+    )
+    assert absent.returncode != 0
+
+    destination = tmp_path / "historical-proof"
+    copy_repository_evidence(destination, source_repository=source)
+    proof = verify_manifest(
+        manifest(),
+        expected_commit=HEAD,
+        repository_root=destination,
+        now="2026-09-02T04:00:00Z",
+    )
+
+    assert proof["pilot_outcome"] == "partial"
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == harness_commit
+    assert subprocess.run(
+        ["git", "cat-file", "-e", f"{harness_commit}^{{commit}}"],
+        cwd=source,
+        capture_output=True,
+    ).returncode != 0
 
 
 def test_fresh_checkout_verifies_historical_harness_after_later_commits(

@@ -14,6 +14,8 @@ The [InsightKit / AutoTranscribe Linear project](https://linear.app/yannjy/proje
 
 Classify new user input as discussion, question, investigation, bug, or feature. Keep ordinary questions conversational. When discussion converges on repository work, use the Matt workflow to make the task contract explicit, show one concise Linear draft, and ask once whether to formalize and enter automated delivery. After approval, create the Linear task in the canonical project and let native sync create the GitHub mirror; do not ask again for routine in-scope execution. Preserve separate human gates for credentials, destructive actions, product judgment, and merge.
 
+An explicitly authorized continuing improvement loop carries that authorization into its in-scope investigations, fixes, regression checks, Linear updates, and PRs. Read the standing Linear contract, check for existing work, and select one evidence-backed next action; do not repeat intake approval for each iteration. Keep missing observations separate from failures, and ask for product judgment only when the next change depends on a preference the evidence cannot decide. Use `docs/agents/product-iteration.md` for observation and follow-through. Portfolio packaging waits until the owner requests it after demonstrated product improvements.
+
 ### Delivery surface
 
 GitHub Issues mirror Linear tasks and carry repository-native links to branches, PRs, checks, and Symphony dispatch labels. Do not create an independent task state in GitHub Projects. See `docs/agents/tool-boundaries.md`.

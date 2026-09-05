@@ -24,6 +24,8 @@
 
 ## Current InsightKit Surface
 
+Start with the [product and delivery map](docs/product/current-state.md) for the main user flow, source locations, evidence limits, and next verification gates.
+
 | Area | Current surface |
 | --- | --- |
 | Native app | `macos/InsightKitApp` SwiftUI shell |

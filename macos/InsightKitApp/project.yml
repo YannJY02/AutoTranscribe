@@ -50,12 +50,12 @@ targets:
         InsightKitPostHogOwnerPilotProjectKey: "phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo"
         InsightKitPostHogOwnerPilotRetentionVerified: false
         CFBundleURLTypes:
-          - CFBundleURLName: com.yannjy.insightkit.import
+          - CFBundleURLName: com.yannjy.insightkit.uitesthost.import
             CFBundleURLSchemes:
-              - insightkit
+              - insightkit-uitest
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit
+        PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit.uitesthost
         PRODUCT_NAME: InsightKitApp
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -64,7 +64,9 @@ targets:
   InsightKitUITests:
     type: bundle.ui-testing
     platform: macOS
-    sources: UITests
+    sources:
+      - UITests
+      - Sources/InsightKitApp/Services/UITestStorageContext.swift
     dependencies:
       - target: InsightKitApp
     settings:
