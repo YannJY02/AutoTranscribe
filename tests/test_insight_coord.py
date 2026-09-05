@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,7 @@ from unittest import mock
 
 from insightkit.data.store import InsightStore
 from insightkit.insights.provider import RuleBasedProvider
-from insightkit.insights.render import write_insight_pdf
+from insightkit.insights.render import render_insight_html, render_insight_markdown, write_insight_pdf
 from insightkit.insights.service import InsightService, attach_transcript_provenance
 from insightkit.ipc.insight_coord import InsightCoordinator
 
@@ -203,6 +204,12 @@ class TestInsightCoordinator(unittest.TestCase):
                 "text": "确认导出路径在无 WeasyPrint 时仍可归档。",
             }
         ])
+        payload["action_tracks"] = [
+            {"task": "Review the source", "priority": "medium", "status": "open", "needs_review": True},
+        ]
+        payload["decision_ledger"] = [
+            {"decision": "Keep the source", "needs_review": True},
+        ]
         out = Path(self.tmp) / "fallback.pdf"
         with mock.patch.dict("sys.modules", {"weasyprint": None}):
             write_insight_pdf(
@@ -219,6 +226,136 @@ class TestInsightCoordinator(unittest.TestCase):
         self.assertGreater(out.stat().st_size, 0)
         self.assertEqual(out.read_bytes()[:5], b"%PDF-")
         self.assertIn(b"/STSong-Light", out.read_bytes())
+        review_text = "复核：待复核".encode("utf-16-be").hex().upper().encode("ascii")
+        self.assertEqual(out.read_bytes().count(review_text), 2)
+
+
+class TestInsightReviewExports(unittest.TestCase):
+    def review_payload(self):
+        actions = []
+        decisions = []
+        for index, flag in enumerate((True, False, None)):
+            action = {"task": f"Task {index}", "priority": "medium", "status": "open"}
+            decision = {"problem": f"Problem {index}", "decision": f"Decision {index}"}
+            if flag is not None:
+                action["needs_review"] = flag
+                decision["needs_review"] = flag
+            actions.append(action)
+            decisions.append(decision)
+        return {"action_tracks": actions, "decision_ledger": decisions}
+
+    def assert_review_items(self, decisions, actions):
+        self.assertEqual(len(decisions), 3)
+        self.assertEqual(len(actions), 3)
+        for index, (decision, action) in enumerate(zip(decisions, actions)):
+            with self.subTest(index=index):
+                self.assertIn(f"Decision {index}", decision)
+                self.assertIn(f"Task {index}", action)
+                self.assertIn("medium", action)
+                self.assertIn("open", action)
+                for item in (decision, action):
+                    self.assertEqual(item.count("待复核"), 1 if index == 0 else 0)
+                    self.assertNotIn("已确认", item)
+
+    def test_markdown_keeps_review_state_on_its_decision_and_action(self):
+        markdown = render_insight_markdown(self.review_payload(), "Mixed review states")
+        decisions = markdown.split("## 关键决策\n", 1)[1].split("## 待办事项\n", 1)[0]
+        actions = markdown.split("## 待办事项\n", 1)[1].split("## 智能章节\n", 1)[0]
+        self.assert_review_items(decisions.split("- 问题:")[1:], actions.split("- 任务:")[1:])
+
+    def test_html_keeps_review_state_on_its_decision_and_action(self):
+        html = render_insight_html(self.review_payload(), "Mixed review states")
+        decisions = html.split("<h2>关键决策</h2>", 1)[1].split("<h2>待办事项</h2>", 1)[0]
+        actions = html.split("<h2>待办事项</h2>", 1)[1].split("<h2>智能章节</h2>", 1)[0]
+        items = r'<div class="item">(.*?)</div>'
+        self.assert_review_items(re.findall(items, decisions, re.S), re.findall(items, actions, re.S))
+
+
+class TestBuiltinPDFReviewPagination(unittest.TestCase):
+    def export_pages(self, payload):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "review-boundary.pdf"
+            with mock.patch.dict("sys.modules", {"weasyprint": None}):
+                write_insight_pdf(payload, "Review pagination", output)
+            document = output.read_bytes()
+            streams = re.findall(rb"stream\n(.*?)endstream", document, re.S)
+        page_width = float(re.search(rb"/MediaBox \[0 0 ([\d.]+) [\d.]+\]", document)[1])
+        pages = []
+        for stream in streams:
+            self.assertLessEqual(stream.count(b"T*\n"), 52)
+            font_size = float(re.search(rb"/F1 ([\d.]+) Tf", stream)[1])
+            left_margin = float(re.search(rb"([\d.]+) [\d.]+ Td", stream)[1])
+            for value in re.findall(rb"<([0-9A-F]+)> Tj", stream):
+                # No CID /W or /DW is supplied, so each UTF-16 code unit advances
+                # the PDF default of 1000 font units: one font-size in points.
+                right_edge = left_margin + len(value) // 4 * font_size
+                self.assertLessEqual(right_edge, page_width - left_margin)
+            pages.append("\n".join(
+                bytes.fromhex(value.decode("ascii")).decode("utf-16-be")
+                for value in re.findall(rb"<([0-9A-F]+)> Tj", stream)
+            ))
+        return pages
+
+    def test_long_unicode_lines_stay_inside_page_margins(self):
+        for text in ("界" * 160, "🙂" * 80, "🙂" * 26):
+            with self.subTest(text=text):
+                pages = self.export_pages({"action_tracks": [{"task": text, "needs_review": True}]})
+                self.assertEqual("\n".join(pages).count(text[0]), len(text))
+
+    def test_reviewed_items_move_together_at_every_page_boundary(self):
+        for key, field in (("action_tracks", "task"), ("decision_ledger", "decision")):
+            for body in (
+                "Boundary item",
+                "Boundary item " + "wrapped content " * 15,
+                "Boundary item\n- Content with a list\n## Content with a heading",
+            ):
+                for padding in range(52):
+                    with self.subTest(key=key, wrapped=len(body) > 20, padding=padding):
+                        payload = {
+                            "session_overview": {"overview": "\n".join(["padding"] * padding)},
+                            key: [{field: body, "needs_review": True}],
+                        }
+                        pages = self.export_pages(payload)
+                        item_page = next(page for page in pages if "Boundary item" in page)
+                        self.assertIn("复核：待复核", item_page)
+                        self.assertEqual(
+                            " ".join(item_page.split()).count("wrapped content"),
+                            body.count("wrapped content"),
+                        )
+                        if "\n" in body:
+                            self.assertIn("Content with a list", item_page)
+                            self.assertIn("Content with a heading", item_page)
+                        self.assertEqual(sum(page.count("复核：待复核") for page in pages), 1)
+
+    def test_oversized_reviewed_items_keep_content_and_notice_on_each_fragment(self):
+        words = [f"word{index:04d}" for index in range(800)]
+        for key, field in (("action_tracks", "task"), ("decision_ledger", "decision")):
+            with self.subTest(key=key):
+                pages = self.export_pages({key: [{field: " ".join(words), "needs_review": True}]})
+                item_pages = [page for page in pages if re.search(r"word\d{4}", page)]
+                self.assertGreater(len(item_pages), 1)
+                for page in item_pages:
+                    self.assertIn("复核：待复核", page)
+                self.assertEqual(re.findall(r"word\d{4}", "\n".join(pages)), words)
+                for page in pages:
+                    if "复核：待复核" in page:
+                        self.assertGreater(len(page.splitlines()), 1)
+
+    def test_false_and_absent_review_flags_do_not_add_continuation_notices(self):
+        for key, field in (("action_tracks", "task"), ("decision_ledger", "decision")):
+            for flag in (False, None):
+                with self.subTest(key=key, flag=flag):
+                    item = {field: "word " * 800, "status": "open", "priority": "medium"}
+                    if flag is not None:
+                        item["needs_review"] = flag
+                    pages = self.export_pages({key: [item]})
+                    self.assertGreater(len(pages), 1)
+                    text = "\n".join(pages)
+                    self.assertNotIn("待复核", text)
+                    self.assertEqual(text.count("word"), 800)
+                    if key == "action_tracks":
+                        self.assertIn("状态: open", text)
+                        self.assertIn("优先级: medium", text)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,23 @@ enum RecordDocumentExportError: LocalizedError {
 }
 
 enum RecordDocumentExporter {
+    private static let reviewNoticeMarkdown = "  - 复核：待复核"
+
+    private struct DocumentContent {
+        var lines: [String] = []
+        var reviewEntryIndices: Set<Int> = []
+
+        mutating func append(_ line: String, needsReview: Bool = false) {
+            if needsReview { reviewEntryIndices.insert(lines.count) }
+            lines.append(line)
+        }
+    }
+
+    private struct ListItem {
+        let text: String
+        let needsReview: Bool
+    }
+
     static func hasPersistedRecord(meetingID: String?, recordsService: RecordsIndexService?) -> Bool {
         guard let meetingID,
               let recordPath = persistedRecordPath(meetingID: meetingID, recordsService: recordsService)
@@ -40,7 +57,8 @@ enum RecordDocumentExporter {
 
     static func export(format: String, metadata: RecordMetadata, recordPath: URL) throws -> URL {
         let normalized = format.lowercased()
-        let markdown = try renderMarkdown(metadata: metadata, recordPath: recordPath)
+        let document = try renderDocument(metadata: metadata, recordPath: recordPath)
+        let markdown = document.lines.joined(separator: "\n")
         let outputDir = recordPath.appendingPathComponent("exports", isDirectory: true)
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
         let timestamp = filenameTimestamp()
@@ -52,7 +70,7 @@ enum RecordDocumentExporter {
             return url
         case "pdf":
             let url = outputDir.appendingPathComponent("\(metadata.id)-\(timestamp).pdf")
-            try writePDF(text: markdown, to: url)
+            try writePDF(document: document, to: url)
             return url
         default:
             throw RecordDocumentExportError.unsupportedFormat(format)
@@ -78,6 +96,10 @@ enum RecordDocumentExporter {
     }
 
     static func renderMarkdown(metadata: RecordMetadata, recordPath: URL) throws -> String {
+        try renderDocument(metadata: metadata, recordPath: recordPath).lines.joined(separator: "\n")
+    }
+
+    private static func renderDocument(metadata: RecordMetadata, recordPath: URL) throws -> DocumentContent {
         let asset = MeetingAssetSnapshot.load(recordPath: recordPath, duration: metadata.duration)
         let minutes = asset.smartMinutes ?? SmartMinutes()
         let transcript = asset.transcriptEntries
@@ -86,7 +108,7 @@ enum RecordDocumentExporter {
         let title = metadata.displayTitle
         let mediaFile = asset.mediaURL
 
-        var lines: [String] = []
+        var lines = DocumentContent()
         lines.append("# \(title)")
         lines.append("")
         lines.append("- 文档标题：\(title)")
@@ -111,8 +133,14 @@ enum RecordDocumentExporter {
             ? speakerSummaries(from: transcript)
             : minutes.speakerSummaries.map { "\($0.speakerName)：\($0.summary)" }
         appendList(title: "## 发言人总结", items: speakerSummaryItems, fallback: "当前本地记录未包含独立发言人总结；已保留逐字稿说话人标签。", to: &lines)
-        appendList(title: "## 关键决策", items: minutes.keyDecisions, fallback: "当前记录未包含明确关键决策。", to: &lines)
-        appendList(title: "## 待办事项", items: minutes.actionItems, fallback: "当前记录未包含待办事项。", to: &lines)
+        let decisions = asset.insightPackage?.decisionLedger.map {
+            ListItem(text: $0.decision, needsReview: $0.needsReview == true)
+        } ?? minutes.keyDecisions.map { ListItem(text: $0, needsReview: false) }
+        let actions = asset.insightPackage?.actionTracks.map {
+            ListItem(text: $0.task, needsReview: $0.needsReview == true)
+        } ?? minutes.actionItems.map { ListItem(text: $0, needsReview: false) }
+        appendList(title: "## 关键决策", items: decisions, fallback: "当前记录未包含明确关键决策。", to: &lines)
+        appendList(title: "## 待办事项", items: actions, fallback: "当前记录未包含待办事项。", to: &lines)
 
         lines.append("## 智能章节")
         lines.append("")
@@ -153,17 +181,25 @@ enum RecordDocumentExporter {
             }
         }
         lines.append("")
-        return lines.joined(separator: "\n")
+        return lines
     }
 
-    private static func appendList(title: String, items: [String], fallback: String, to lines: inout [String]) {
+    private static func itemWithReviewNotice(_ item: String, needsReview: Bool?) -> String {
+        needsReview == true ? "\(item)\n\(reviewNoticeMarkdown)" : item
+    }
+
+    private static func appendList(title: String, items: [String], fallback: String, to lines: inout DocumentContent) {
+        appendList(title: title, items: items.map { ListItem(text: $0, needsReview: false) }, fallback: fallback, to: &lines)
+    }
+
+    private static func appendList(title: String, items: [ListItem], fallback: String, to lines: inout DocumentContent) {
         lines.append(title)
         lines.append("")
         if items.isEmpty {
             lines.append(fallback)
         } else {
             for item in items {
-                lines.append("- \(item)")
+                lines.append("- \(itemWithReviewNotice(item.text, needsReview: item.needsReview))", needsReview: item.needsReview)
             }
         }
         lines.append("")
@@ -189,7 +225,7 @@ enum RecordDocumentExporter {
         return trimmed.isEmpty ? "未标注" : trimmed
     }
 
-    private static func writePDF(text: String, to url: URL) throws {
+    private static func writePDF(document: DocumentContent, to url: URL) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
         let margin: CGFloat = 48
         let contentWidth = pageRect.width - margin * 2
@@ -217,28 +253,110 @@ enum RecordDocumentExporter {
             context.endPDFPage()
         }
 
-        beginPage()
-        for rawLine in text.components(separatedBy: "\n") {
-            let line = rawLine.isEmpty ? " " : rawLine
-            let attributes = attributesForLine(line)
-            let attributed = NSAttributedString(string: line, attributes: attributes)
-            let height = ceil(attributed.boundingRect(
-                with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading]
-            ).height) + 5
-            if y + height > margin + contentHeight {
-                endPage()
-                beginPage()
-            }
-            attributed.draw(
-                with: CGRect(x: margin, y: y, width: contentWidth, height: height),
+        func draw(_ line: PDFLine) {
+            line.attributed.draw(
+                with: CGRect(x: margin, y: y, width: contentWidth, height: line.height),
                 options: [.usesLineFragmentOrigin, .usesFontLeading]
             )
-            y += height
+            y += line.height
+        }
+        func nextPage() {
+            endPage()
+            beginPage()
+        }
+
+        beginPage()
+        for block in pdfBlocks(from: document) {
+            let lines = block.lines.map { pdfLine($0, width: contentWidth) }
+            guard let reviewNotice = block.reviewNotice else {
+                for line in lines {
+                    if y + line.height > margin + contentHeight { nextPage() }
+                    draw(line)
+                }
+                continue
+            }
+
+            let notice = pdfLine(reviewNotice, width: contentWidth)
+            let blockHeight = lines.reduce(notice.height) { $0 + $1.height }
+            if blockHeight <= contentHeight {
+                if y + blockHeight > margin + contentHeight { nextPage() }
+                lines.forEach(draw)
+                draw(notice)
+                continue
+            }
+
+            // A flagged item larger than one page keeps its review state on every
+            // fragment. Reserve space for the notice before drawing item text.
+            let fragments = lines.flatMap { wrappedPDFLines($0, width: contentWidth) }
+            var index = 0
+            while index < fragments.count {
+                if y + fragments[index].height + notice.height > margin + contentHeight { nextPage() }
+                repeat {
+                    draw(fragments[index])
+                    index += 1
+                } while index < fragments.count
+                    && y + fragments[index].height + notice.height <= margin + contentHeight
+                draw(notice)
+                if index < fragments.count { nextPage() }
+            }
         }
         endPage()
         context.closePDF()
         try data.write(to: url, options: .atomic)
+    }
+
+    private struct PDFBlock {
+        let lines: [String]
+        let reviewNotice: String?
+    }
+
+    private struct PDFLine {
+        let attributed: NSAttributedString
+        let height: CGFloat
+    }
+
+    private static func pdfBlocks(from document: DocumentContent) -> [PDFBlock] {
+        document.lines.enumerated().flatMap { index, entry in
+            var lines = entry.components(separatedBy: "\n")
+            // Preserve the original list-entry boundary even when its text has
+            // embedded paragraphs or literal review notices. Only payload flags
+            // may add repeated review notices when an item spans multiple pages.
+            if document.reviewEntryIndices.contains(index) {
+                lines.removeLast()
+                while lines.count > 1 && lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+                    lines.removeLast()
+                }
+                return [PDFBlock(lines: lines, reviewNotice: reviewNoticeMarkdown)]
+            }
+            return lines.map { PDFBlock(lines: [$0], reviewNotice: nil) }
+        }
+    }
+
+    private static func pdfLine(_ rawLine: String, width: CGFloat) -> PDFLine {
+        let line = rawLine.isEmpty ? " " : rawLine
+        let attributed = NSAttributedString(string: line, attributes: attributesForLine(line))
+        let height = ceil(attributed.boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height) + 5
+        return PDFLine(attributed: attributed, height: height)
+    }
+
+    private static func wrappedPDFLines(_ line: PDFLine, width: CGFloat) -> [PDFLine] {
+        let storage = NSTextStorage(attributedString: line.attributed)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(containerSize: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        var fragments: [PDFLine] = []
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { rect, _, _, range, _ in
+            let characters = layout.characterRange(forGlyphRange: range, actualGlyphRange: nil)
+            fragments.append(PDFLine(attributed: storage.attributedSubstring(from: characters), height: ceil(rect.height)))
+        }
+        guard let last = fragments.popLast() else { return [line] }
+        fragments.append(PDFLine(attributed: last.attributed, height: last.height + 5))
+        return fragments
     }
 
     private static func attributesForLine(_ line: String) -> [NSAttributedString.Key: Any] {
