@@ -1042,46 +1042,67 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         try RecordExportTestFixture.seedRecord(root: recordsRoot, recordID: "retry-review")
         let recordsService = RecordsIndexService()
         recordsService.rootDirectory = recordsRoot
+        let initialReview = expectation(description: "accepted import enters review")
+        let retryWorkerBlocked = expectation(description: "retry RPC work is held before completion")
+        let retryReview = expectation(description: "retry review event is emitted after entering review")
+        let retryStarted = LockedValue(false)
+        let blockNextWorkerSubmission = LockedValue(false)
+        let releaseRetryWorker = DispatchSemaphore(value: 0)
+        defer { releaseRetryWorker.signal() }
+        weak var observedViewModel: ImportSessionViewModel?
         let viewModel = ImportSessionViewModel(
             rpcClient: rpc,
-            analyticsSubmit: { operation in operation(analytics) }
+            analyticsSubmit: { operation in
+                // Hold the serial RPC queue until the processing-state assertions finish.
+                if !Thread.isMainThread, blockNextWorkerSubmission.withValue({ shouldBlock in
+                    defer { shouldBlock = false }
+                    return shouldBlock
+                }) {
+                    retryWorkerBlocked.fulfill()
+                    releaseRetryWorker.wait()
+                }
+                operation(analytics)
+                guard Thread.isMainThread, let viewModel = observedViewModel else { return }
+                if retryStarted.get() {
+                    do {
+                        let hasReview = try self.queuedObjects(gate).contains {
+                            $0["event_name"] as? String == "smart_minutes_review_opened"
+                        }
+                        if hasReview {
+                            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+                            retryReview.fulfill()
+                        }
+                    } catch {
+                        XCTFail("Cannot inspect retry review telemetry: \(error)")
+                    }
+                } else if viewModel.sessionPhase == .reviewing {
+                    initialReview.fulfill()
+                }
+            }
         )
+        observedViewModel = viewModel
         viewModel.recordsService = recordsService
 
         viewModel.loadCompletedArtifacts(meetingID: "retry-review")
-        let retryStarted = expectation(description: "accepted import starts insight retry")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
-            analytics.beginWorkflow("import", provisionalPath: .local)
-            rpc.buildFinalDelaySec = 0.5
-            viewModel.buildFinalInsight()
-            retryStarted.fulfill()
-        }
-        wait(for: [retryStarted], timeout: 1)
+        wait(for: [initialReview], timeout: 2)
+        XCTAssertEqual(viewModel.sessionPhase, .reviewing)
 
-        let stillProcessing = expectation(description: "retry review waits for review surface")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            XCTAssertEqual(viewModel.sessionPhase, .processing)
-            XCTAssertFalse(
-                (try? self.queuedObjects(gate))?.contains {
-                    $0["event_name"] as? String == "smart_minutes_review_opened"
-                } ?? true
-            )
-            stillProcessing.fulfill()
-        }
-        wait(for: [stillProcessing], timeout: 1)
+        analytics.beginWorkflow("import", provisionalPath: .local)
+        retryStarted.set(true)
+        blockNextWorkerSubmission.set(true)
+        viewModel.buildFinalInsight()
+        wait(for: [retryWorkerBlocked], timeout: 2)
+        XCTAssertEqual(viewModel.sessionPhase, .processing)
+        XCTAssertFalse(try queuedObjects(gate).contains {
+            $0["event_name"] as? String == "smart_minutes_review_opened"
+        })
 
-        let reviewing = expectation(description: "retry enters review")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            XCTAssertEqual(viewModel.sessionPhase, .reviewing)
-            XCTAssertTrue(
-                (try? self.queuedObjects(gate))?.contains {
-                    $0["event_name"] as? String == "smart_minutes_review_opened"
-                } ?? false
-            )
-            reviewing.fulfill()
-        }
-        wait(for: [reviewing], timeout: 1)
+        releaseRetryWorker.signal()
+        wait(for: [retryReview], timeout: 2)
+        XCTAssertEqual(viewModel.sessionPhase, .reviewing)
+        XCTAssertEqual(try queuedObjects(gate).filter {
+            $0["event_name"] as? String == "smart_minutes_review_opened"
+        }.count, 1)
     }
 
     func testTelemetryDisclosureNamesBothVendorsWithoutPromisingRemoteRetention() {
