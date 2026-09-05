@@ -4,9 +4,18 @@ import XCTest
 
 final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
     private var cancellables = Set<AnyCancellable>()
+    private let recordsDefaultsSuiteName = "ImportSessionViewModelRecordFallbackTests-\(UUID().uuidString)"
+    private var recordsDefaults: UserDefaults!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        recordsDefaults = try XCTUnwrap(UserDefaults(suiteName: recordsDefaultsSuiteName))
+    }
 
     override func tearDown() {
         cancellables.removeAll()
+        recordsDefaults?.removePersistentDomain(forName: recordsDefaultsSuiteName)
+        recordsDefaults = nil
         super.tearDown()
     }
 
@@ -44,7 +53,7 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedMinimalImportRecord(recordID: recordID, recordPath: recordPath)
 
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         recordsService.rootDirectory = root
         let rpcClient = RPCClientMock()
         rpcClient.documentExportDelaySec = 0.3
@@ -359,7 +368,7 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         )
         try encoder.encode(package).write(to: recordPath.appendingPathComponent("insight_package.json"))
 
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         recordsService.rootDirectory = root
         let viewModel = ImportSessionViewModel(rpcClient: RPCClientMock())
         viewModel.recordsService = recordsService
@@ -414,7 +423,7 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         }
         """.write(to: recordPath.appendingPathComponent("minutes.json"), atomically: true, encoding: .utf8)
 
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         recordsService.rootDirectory = root
         let rpcClient = RPCClientMock()
         let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
@@ -471,7 +480,7 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
         """.write(to: recordPath.appendingPathComponent("minutes.json"), atomically: true, encoding: .utf8)
         try "".write(to: recordPath.appendingPathComponent("notes.md"), atomically: true, encoding: .utf8)
 
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         recordsService.rootDirectory = root
         let rpcClient = RPCClientMock()
         let viewModel = ImportSessionViewModel(rpcClient: rpcClient)
@@ -500,7 +509,7 @@ final class ImportSessionViewModelRecordFallbackTests: XCTestCase {
 
         try seedMinimalImportRecord(recordID: recordID, recordPath: recordPath)
 
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         recordsService.rootDirectory = root
         let rpcClient = RPCClientMock()
         let viewModel = ImportSessionViewModel(rpcClient: rpcClient)

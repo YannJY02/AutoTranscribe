@@ -2,6 +2,8 @@ import Foundation
 
 /// A runner-provided session ID owns preferences and files across app relaunches.
 /// The runner also compiles this type and passes `launchEnvironment` to each launch.
+/// A session ID alone isolates real workflow tests; the separate UI-test mode
+/// flag enables synthetic UI fixtures. The UI runner supplies both markers.
 /// Legacy test-mode flags without a session ID use process-ephemeral storage;
 /// cross-process persistence requires `INSIGHTKIT_UI_TEST_SESSION_ID`.
 struct UITestStorageContext {
