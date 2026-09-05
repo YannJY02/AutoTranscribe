@@ -3,7 +3,16 @@ import SwiftUI
 struct TranscriptionProgressView: View {
     let progress: Double
     let elapsedTime: TimeInterval
-    let totalTime: TimeInterval
+    let sourceMediaDuration: TimeInterval?
+
+    var elapsedTimeText: String { "已用时 \(formatTime(elapsedTime))" }
+
+    var mediaDurationText: String {
+        guard let duration = sourceMediaDuration, duration.isFinite, duration > 0 else {
+            return "媒体时长 未知"
+        }
+        return "媒体时长 \(formatTime(duration))"
+    }
 
     var body: some View {
         VStack(spacing: InsightSpacing.sm) {
@@ -16,7 +25,10 @@ struct TranscriptionProgressView: View {
                     .font(InsightTypography.bodyMedium)
                     .foregroundStyle(InsightTheme.textPrimary)
                 Spacer()
-                Text("已转写 \(formatTime(elapsedTime)) / \(formatTime(totalTime))")
+                Text(elapsedTimeText)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                Text(mediaDurationText)
                     .font(InsightTypography.caption)
                     .foregroundStyle(InsightTheme.textSecondary)
             }
