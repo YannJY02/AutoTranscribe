@@ -469,6 +469,31 @@ def test_runtime_status_binds_running_state_to_requested_bundle(tmp_path, monkey
 def test_installed_app_running_ignores_spoofed_argv0(tmp_path):
     import plistlib
     import shutil
+    import time
+
+    from scripts.native_app_process import executable_process_ids
+
+    def wait_for_fixture_identity(process, expected_executable):
+        started = time.monotonic()
+        matches = None
+        while True:
+            returncode = process.poll()
+            if returncode is None:
+                matches = executable_process_ids(expected_executable)
+                returncode = process.poll()
+            elapsed = time.monotonic() - started
+            observed = None if matches is None else sorted(matches)
+            diagnostic = (
+                f"pid={process.pid}, returncode={returncode}, elapsed={elapsed:.3f}s, "
+                f"expected_executable={expected_executable}, matched_pids={observed}"
+            )
+            if returncode is not None:
+                pytest.fail(f"Process fixture exited before identity was ready: {diagnostic}")
+            if matches is not None and process.pid in matches:
+                return diagnostic
+            if elapsed >= 5:
+                pytest.fail(f"Process fixture identity was not ready within 5s: {diagnostic}")
+            time.sleep(0.02)
 
     app = tmp_path / "Operator Applications" / "HarnessProcessProbe.app"
     executable = app / "Contents" / "MacOS" / "HarnessProcessProbe"
@@ -498,17 +523,29 @@ def test_installed_app_running_ignores_spoofed_argv0(tmp_path):
     assert _installed_app_running(app) is False
     spoof = subprocess.Popen([str(executable), "30"], executable=str(other_executable))
     try:
-        assert _installed_app_running(app) is False
+        spoof_ready = wait_for_fixture_identity(spoof, other_executable)
+        assert _installed_app_running(app) is False, f"Spoofed argv0 matched the app: {spoof_ready}"
+        assert spoof.poll() is None, (
+            f"Spoof fixture exited during the identity check: returncode={spoof.returncode}; {spoof_ready}"
+        )
         actual = subprocess.Popen([str(executable), "30"])
         try:
-            assert _installed_app_running(app) is True
+            actual_ready = wait_for_fixture_identity(actual, executable)
+            actual_state = _installed_app_running(app)
+            assert actual_state is True, (
+                f"App running state={actual_state!r} after fixture identity was ready; "
+                f"current_returncode={actual.poll()}; {actual_ready}"
+            )
         finally:
             actual.terminate()
             actual.wait(timeout=5)
     finally:
         spoof.terminate()
         spoof.wait(timeout=5)
-    assert _installed_app_running(app) is False
+    assert _installed_app_running(app) is False, (
+        f"Exited fixtures still matched: actual_returncode={actual.returncode}, "
+        f"spoof_returncode={spoof.returncode}"
+    )
 
 
 def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):
