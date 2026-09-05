@@ -1419,8 +1419,12 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
 
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
         XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
-        XCTAssertEqual(gate.record(event: validEvent()).result, .queueFull)
-        XCTAssertEqual(try gate.queuedEnvelopes().count, 2)
+        // Readback drains pending admissions; the durable queue's capacity check
+        // then happens on the worker after record() accepts the next admission.
+        let fullQueue = try gate.queuedEnvelopes()
+        XCTAssertEqual(fullQueue.count, 2)
+        XCTAssertEqual(gate.record(event: validEvent()).result, .accepted)
+        XCTAssertEqual(try gate.queuedEnvelopes(), fullQueue)
 
         now.addTimeInterval(86_401)
         XCTAssertEqual(try gate.queuedEnvelopes(), [])
