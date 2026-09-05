@@ -279,6 +279,10 @@ while process_is_running "$symphony_pid"; do
     "http://127.0.0.1:$symphony_port/api/v1/state" \
     >/dev/null; then
     symphony_health_failures=0
+    if ! run_with_preflight_timeout /bin/sh \
+      "$repo_root/scripts/symphony_after_run.sh" --blocked-sweep; then
+      echo "Symphony blocked handoff sweep failed; keeping the healthy service running." >&2
+    fi
   else
     symphony_health_failures=$((symphony_health_failures + 1))
   fi

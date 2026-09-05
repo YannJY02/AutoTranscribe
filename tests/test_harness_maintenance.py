@@ -263,14 +263,16 @@ def test_maintenance_launch_agent_uses_shared_bootstrap(tmp_path, monkeypatch):
 
 
 def _fake_symphony_commands(
-    tmp_path, *, symphony_body=None, curl_body=None, gh_body=None, ps_body=None
+    tmp_path, *, symphony_body=None, curl_body=None, gh_body=None, ps_body=None,
+    python_body=None, security_body=None,
 ):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     commands = {
-        "python3.11": (
+        "python3.11": python_body or (
             '#!/bin/sh\nif [ "${1:-}" = - ]; then exec '
-            f'{shlex.quote(sys.executable)} "$@"; fi\nexit 0\n'
+            f'{shlex.quote(sys.executable)} "$@"; fi\n'
+            'if [ "${6:-}" = blocked-pending ]; then exit 3; fi\nexit 0\n'
         ),
         "codex": (
             '#!/bin/sh\nif [ "${FAKE_CODEX_CHILD_IGNORES_TERM:-0}" = 1 ]; then '
@@ -286,6 +288,7 @@ def _fake_symphony_commands(
         "symphony": symphony_body
         or '#!/bin/sh\nprintf "%s|%s\\n" "$CODEX_HOME" "${OPENAI_API_KEY-unset}"\n',
         "curl": curl_body or "#!/bin/sh\nexit 0\n",
+        "security": security_body or "#!/bin/sh\nexit 1\n",
     }
     if ps_body is not None:
         commands["ps"] = ps_body
@@ -304,6 +307,8 @@ def _run_test_symphony_launcher(
     curl_body=None,
     gh_body=None,
     ps_body=None,
+    python_body=None,
+    security_body=None,
     **extra_env,
 ):
     root = tmp_path / "home"
@@ -317,6 +322,8 @@ def _run_test_symphony_launcher(
         curl_body=curl_body,
         gh_body=gh_body,
         ps_body=ps_body,
+        python_body=python_body,
+        security_body=security_body,
     )
     repo = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
@@ -332,6 +339,10 @@ def _run_test_symphony_launcher(
             "OPENAI_API_KEY": "must-be-unset",
             "SYMPHONY_HEALTH_STARTUP_SECONDS": "0.05",
             "SYMPHONY_HEALTH_INTERVAL_SECONDS": "1",
+            "SYMPHONY_SECURITY": str(bin_dir / "security"),
+            "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT": str(tmp_path / "preflight"),
+            "SYMPHONY_WORKSPACE_ROOT": str(tmp_path / "workspaces"),
+            "SYMPHONY_LOGS_ROOT": str(tmp_path / "logs"),
             **extra_env,
         }
     )
@@ -342,6 +353,7 @@ def _run_test_symphony_launcher(
         text=True,
         capture_output=True,
         check=False,
+        timeout=20,
     )
     return completed, root
 
@@ -643,6 +655,13 @@ def _symphony_issue_gate_environment(tmp_path):
     fake_python.write_text(
         "#!/bin/sh\n"
         f'if [ "${{1:-}}" = -c ]; then exec {shlex.quote(sys.executable)} "$@"; fi\n'
+        'case "${1:-}" in */symphony_delivery_controller.py)\n'
+        'printf "%s|%s|%s|%s\\n" "$6" "$PWD" "${GH_TOKEN-unset}" '
+        '"$(cat "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT/GH-67.claimed" 2>/dev/null || true)" '
+        '>> "$FAKE_ATTEMPT_CALLS"\n'
+        'printf "%s\\n" "$@" > "$FAKE_ATTEMPT_ARGS"\n'
+        'if [ "$6" = invalidate-attempt ]; then exit "${FAKE_INVALIDATE_EXIT:-0}"; fi\n'
+        'exit "${FAKE_ATTEMPT_EXIT:-0}";; esac\n'
         'printf "%s\\n" "$@" > "$FAKE_PREFLIGHT_ARGS"\n'
         'status=${FAKE_PREFLIGHT_EXIT:-0}\n'
         'if [ "${FAKE_PREFLIGHT_EMPTY:-0}" != 1 ]; then '
@@ -664,6 +683,7 @@ def _symphony_issue_gate_environment(tmp_path):
     fake_security.write_text("#!/bin/sh\nprintf 'controller-token\\n'\n", encoding="utf-8")
     fake_security.chmod(0o755)
     env = os.environ.copy()
+    env.pop("GH_TOKEN", None)
     env.update(
         {
             "SYMPHONY_CONTROLLER_REPO_ROOT": str(controller),
@@ -673,9 +693,42 @@ def _symphony_issue_gate_environment(tmp_path):
             "SYMPHONY_SECURITY": str(fake_security),
             "FAKE_PREFLIGHT_ARGS": str(preflight_args),
             "FAKE_GH_ARGS": str(gh_args),
+            "FAKE_ATTEMPT_ARGS": str(tmp_path / "attempt-args"),
+            "FAKE_ATTEMPT_CALLS": str(tmp_path / "attempt-calls"),
         }
     )
     return root / "scripts" / "symphony_issue_gate.sh", workspace, evidence, env
+
+
+def test_symphony_issue_gate_binds_new_attempt_after_claim_without_write_token(tmp_path):
+    gate, workspace, evidence, env = _symphony_issue_gate_environment(tmp_path)
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 0, completed.stderr
+    controller = env["SYMPHONY_CONTROLLER_REPO_ROOT"]
+    assert Path(env["FAKE_ATTEMPT_CALLS"]).read_text().splitlines() == [
+        f"invalidate-attempt|{controller}|unset|",
+        f"begin-attempt|{controller}|unset|claimed",
+    ]
+    assert Path(env["FAKE_ATTEMPT_ARGS"]).read_text().splitlines() == [
+        f"{controller}/scripts/symphony_delivery_controller.py",
+        "--preflight-root", str(evidence), "--gh", env["SYMPHONY_REAL_GH"],
+        "begin-attempt", "--workspace", str(workspace),
+    ]
+
+
+@pytest.mark.parametrize("failure", ["FAKE_INVALIDATE_EXIT", "FAKE_ATTEMPT_EXIT"])
+def test_symphony_issue_gate_attempt_failure_prevents_worker_start(tmp_path, failure):
+    gate, workspace, _evidence, env = _symphony_issue_gate_environment(tmp_path)
+    env[failure] = "2"
+
+    completed = subprocess.run([str(gate)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 2
+    if failure == "FAKE_INVALIDATE_EXIT":
+        assert not Path(env["FAKE_PREFLIGHT_ARGS"]).exists()
+        assert not Path(env["FAKE_GH_ARGS"]).exists()
 
 
 def test_symphony_issue_gate_claims_once_then_resumes(tmp_path):
@@ -778,6 +831,204 @@ def test_symphony_launcher_stops_an_unhealthy_child_for_launchd_restart(tmp_path
     assert completed.returncode != 0
     assert time.monotonic() - started_at < 10
     assert "health probe failed 2 consecutive times" in completed.stderr
+
+
+def _blocked_controller_python():
+    return f'''#!{sys.executable}
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+if sys.argv[1] in ("-", "-c"):
+    os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+if sys.argv[1].endswith("symphony_delivery_controller.py"):
+    command = sys.argv[6]
+elif sys.argv[1].endswith("agent_harness.py") and sys.argv[2] == "runtime-status":
+    command = "runtime-status"
+else:
+    raise SystemExit(0)
+with Path(os.environ["FAKE_CONTROLLER_EVENTS"]).open("a") as stream:
+    stream.write(json.dumps({{"command": command, "args": sys.argv[1:],
+        "cwd": str(Path.cwd()), "gh_token": bool(os.environ.get("GH_TOKEN"))}}) + "\\n")
+if command == "blocked-pending":
+    raise SystemExit(int(os.environ.get("FAKE_PENDING_EXIT", "3")))
+if command == "blocked-sweep":
+    time.sleep(float(os.environ.get("FAKE_SWEEP_DELAY", "0")))
+    raise SystemExit(int(os.environ.get("FAKE_SWEEP_EXIT", "0")))
+'''
+
+
+def _blocked_controller_security():
+    return f'''#!{sys.executable}
+import json
+import os
+from pathlib import Path
+with Path(os.environ["FAKE_CONTROLLER_EVENTS"]).open("a") as stream:
+    stream.write(json.dumps({{"command": "security", "cwd": str(Path.cwd())}}) + "\\n")
+print("fixture-controller-token")
+'''
+
+
+def _controller_events(path):
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def _blocked_shell_environment(tmp_path):
+    root = Path(__file__).resolve().parent.parent
+    controller = tmp_path / "trusted controller"
+    (controller / "scripts").mkdir(parents=True)
+    workspace_root = tmp_path / "worker workspaces"
+    workspace = workspace_root / "GH-67"
+    workspace.mkdir(parents=True)
+    bin_dir = tmp_path / "trusted tools"
+    bin_dir.mkdir()
+    for name, body in (
+        ("python3.11", _blocked_controller_python()),
+        ("security", _blocked_controller_security()),
+    ):
+        script = bin_dir / name
+        script.write_text(body)
+        script.chmod(0o755)
+    evidence = tmp_path / "preflight"
+    evidence.mkdir()
+    events = tmp_path / "controller-events.jsonl"
+    env = os.environ.copy()
+    env.pop("GH_TOKEN", None)
+    env.update({
+        "SYMPHONY_CONTROLLER_REPO_ROOT": str(controller),
+        "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT": str(evidence),
+        "SYMPHONY_WORKSPACE_ROOT": str(workspace_root),
+        "SYMPHONY_PYTHON3": str(bin_dir / "python3.11"),
+        "SYMPHONY_REAL_GH": str(bin_dir / "gh"),
+        "SYMPHONY_SECURITY": str(bin_dir / "security"),
+        "FAKE_CONTROLLER_EVENTS": str(events),
+    })
+    return root / "scripts" / "symphony_after_run.sh", workspace, events, env
+
+
+@pytest.mark.parametrize("pending,sweep,expected", [(3, 0, 0), (2, 0, 2), (0, 0, 0), (0, 2, 2)])
+def test_symphony_blocked_sweep_reads_credential_only_for_pending_report(
+    tmp_path, pending, sweep, expected
+):
+    hook, workspace, events_path, env = _blocked_shell_environment(tmp_path)
+    env.update({"FAKE_PENDING_EXIT": str(pending), "FAKE_SWEEP_EXIT": str(sweep)})
+
+    completed = subprocess.run(
+        [str(hook), "--blocked-sweep"], cwd=workspace.parent, env=env,
+        text=True, capture_output=True,
+    )
+
+    assert completed.returncode == expected, completed.stderr
+    events = _controller_events(events_path)
+    assert [event["command"] for event in events] == (
+        ["blocked-pending", "security", "blocked-sweep"] if pending == 0 else ["blocked-pending"]
+    )
+    assert all(event["cwd"] == env["SYMPHONY_CONTROLLER_REPO_ROOT"] for event in events)
+    assert events[0]["gh_token"] is False
+    expected_args = [
+        f'{env["SYMPHONY_CONTROLLER_REPO_ROOT"]}/scripts/symphony_delivery_controller.py',
+        "--preflight-root", env["SYMPHONY_PREFLIGHT_EVIDENCE_ROOT"],
+        "--gh", env["SYMPHONY_REAL_GH"], "blocked-pending",
+        "--workspace-root", str(workspace.parent),
+    ]
+    assert events[0]["args"] == expected_args
+    if pending == 0:
+        assert events[-1]["gh_token"] is True
+        expected_args[5] = "blocked-sweep"
+        assert events[-1]["args"] == expected_args
+
+
+def test_symphony_after_run_keeps_existing_workspace_delivery(tmp_path):
+    hook, workspace, events_path, env = _blocked_shell_environment(tmp_path)
+    empty = subprocess.run([str(hook)], cwd=workspace, env=env, text=True, capture_output=True)
+    assert empty.returncode == 0, empty.stderr
+    assert _controller_events(events_path) == []
+    (workspace / ".symphony").mkdir()
+    (workspace / ".symphony" / "handoff.json").write_text("{}")
+
+    completed = subprocess.run([str(hook)], cwd=workspace, env=env, text=True, capture_output=True)
+
+    assert completed.returncode == 0, completed.stderr
+    events = _controller_events(events_path)
+    assert [event["command"] for event in events] == ["security", "after-run"]
+    assert events[-1]["args"][-3:] == ["after-run", "--workspace", str(workspace)]
+    assert events[-1]["cwd"] == env["SYMPHONY_CONTROLLER_REPO_ROOT"]
+    assert events[-1]["gh_token"] is True
+
+
+def test_symphony_after_run_rejects_unknown_mode_without_credential(tmp_path):
+    hook, workspace, events_path, env = _blocked_shell_environment(tmp_path)
+
+    completed = subprocess.run(
+        [str(hook), "--unknown"], cwd=workspace, env=env, text=True, capture_output=True
+    )
+
+    assert completed.returncode == 2
+    assert _controller_events(events_path) == []
+
+
+@pytest.mark.parametrize("sweep_exit,sweep_delay", [(0, "0"), (2, "0"), (0, "30")])
+def test_symphony_launcher_sweeps_each_healthy_cycle_and_bounds_failure(
+    tmp_path, sweep_exit, sweep_delay
+):
+    events_path = tmp_path / "controller-events.jsonl"
+    # Two observed cycles prove the sweep is periodic and a failed/timed-out
+    # controller does not stop the otherwise healthy resident process.
+    ps_counter = tmp_path / "process-checks"
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        symphony_body="#!/bin/sh\nexit 0\n",
+        ps_body=(
+            "#!/bin/sh\n"
+            'if [ "${1:-}" != -p ]; then exit 0; fi\n'
+            f"counter={shlex.quote(str(ps_counter))}\n"
+            'count=$(cat "$counter" 2>/dev/null || printf 0)\n'
+            'count=$((count + 1)); printf "%s\\n" "$count" > "$counter"\n'
+            '[ "$count" -le 2 ] && printf "S\\n"\nexit 0\n'
+        ),
+        python_body=_blocked_controller_python(),
+        security_body=_blocked_controller_security(),
+        FAKE_CONTROLLER_EVENTS=str(events_path),
+        FAKE_PENDING_EXIT="0",
+        FAKE_SWEEP_EXIT=str(sweep_exit),
+        FAKE_SWEEP_DELAY=sweep_delay,
+        SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS="1",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    events = _controller_events(events_path)
+    commands = [event["command"] for event in events]
+    assert commands.count("blocked-pending") == 2
+    assert commands.count("blocked-sweep") == 2
+    assert commands.count("runtime-status") == 2
+    assert all(
+        not event["gh_token"] for event in events
+        if event["command"] in ("blocked-pending", "runtime-status")
+    )
+    if sweep_exit or sweep_delay != "0":
+        assert completed.stderr.count("Symphony blocked handoff sweep failed") == 2
+    else:
+        assert "Symphony blocked handoff sweep failed" not in completed.stderr
+
+
+def test_symphony_launcher_skips_blocked_sweep_when_health_probe_fails(tmp_path):
+    events_path = tmp_path / "controller-events.jsonl"
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        symphony_body="#!/bin/sh\nexec sleep 60\n",
+        curl_body="#!/bin/sh\nexit 22\n",
+        python_body=_blocked_controller_python(),
+        security_body=_blocked_controller_security(),
+        FAKE_CONTROLLER_EVENTS=str(events_path),
+        FAKE_PENDING_EXIT="0",
+        SYMPHONY_HEALTH_FAILURE_LIMIT="1",
+        SYMPHONY_TERMINATION_GRACE_SECONDS="0",
+    )
+
+    assert completed.returncode != 0
+    assert [event["command"] for event in _controller_events(events_path)] == ["runtime-status"]
 
 
 def test_symphony_launcher_rejects_invalid_port(tmp_path):
