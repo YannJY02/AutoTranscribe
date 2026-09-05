@@ -5,6 +5,7 @@ import XCTest
 class InsightKitUITests: XCTestCase {
     var app: XCUIApplication!
     var captureRoot: URL!
+    var storageContext: UITestStorageContext!
 
     var launchEnvironmentOverrides: [String: String] {
         [:]
@@ -16,16 +17,20 @@ class InsightKitUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app = XCUIApplication()
+        storageContext = UITestStorageContext(sessionID: UUID())
+        // The test host has its own application preference domain, including
+        // AppKit window state and stores that still use UserDefaults.standard.
+        UserDefaults.standard.removePersistentDomain(forName: UITestStorageContext.hostBundleIdentifier)
+        app = XCUIApplication(bundleIdentifier: UITestStorageContext.hostBundleIdentifier)
         app.launchArguments += [
             "-ApplePersistenceIgnoreState", "YES",
             "--ui-test-mode",
         ]
         app.launchArguments += launchArgumentOverrides
-        captureRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("InsightKitUITestEvidence-\(UUID().uuidString)")
-        app.launchEnvironment["INSIGHTKIT_UI_TEST_MODE"] = "1"
-        app.launchEnvironment["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"] = captureRoot.path
+        captureRoot = storageContext.captureDirectory
+        for (key, value) in storageContext.launchEnvironment {
+            app.launchEnvironment[key] = value
+        }
         for (key, value) in launchEnvironmentOverrides {
             app.launchEnvironment[key] = value
         }
@@ -56,9 +61,12 @@ class InsightKitUITests: XCTestCase {
         }
         app?.terminate()
         app = nil
-        if let captureRoot {
-            try? FileManager.default.removeItem(at: captureRoot)
+        if let storageContext {
+            storageContext.makeDefaults().removePersistentDomain(forName: storageContext.defaultsSuiteName)
+            try? FileManager.default.removeItem(at: storageContext.rootDirectory)
         }
+        UserDefaults.standard.removePersistentDomain(forName: UITestStorageContext.hostBundleIdentifier)
+        storageContext = nil
         captureRoot = nil
     }
 

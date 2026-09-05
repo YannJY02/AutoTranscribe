@@ -119,7 +119,7 @@ final class SidecarManager {
                 env[key] = value
             }
 
-            p.environment = env
+            p.environment = Self.childEnvironment(from: env)
 
             p.standardOutput = sidecarLogHandle ?? FileHandle.nullDevice
             p.standardError = sidecarLogHandle ?? FileHandle.nullDevice
@@ -153,6 +153,13 @@ final class SidecarManager {
         }
 
         throw SidecarError.failedToStart(launchErrors.joined(separator: "\n---\n"))
+    }
+
+    static func childEnvironment(
+        from environment: [String: String],
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [String: String] {
+        PythonRuntimeEnvironment.isolatedForUITesting(from: environment, arguments: arguments)
     }
 
     static func shouldRebootstrapForBuildMismatch(sidecarBuild: String, appBuild: String) -> Bool {
@@ -598,8 +605,12 @@ final class SidecarManager {
         }
     }
 
-    private static func pythonHasASRDeps(for command: String) -> Bool {
+    static func pythonHasASRDeps(
+        for command: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
         let process = Process()
+        process.environment = childEnvironment(from: environment)
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [
             command,
@@ -623,8 +634,12 @@ final class SidecarManager {
         return text == "1"
     }
 
-    private static func pythonVersion(for command: String) -> (Int, Int, Int)? {
+    static func pythonVersion(
+        for command: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> (Int, Int, Int)? {
         let process = Process()
+        process.environment = childEnvironment(from: environment)
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [
             command,
@@ -669,15 +684,25 @@ final class SidecarManager {
         return (major, minor, patch)
     }
 
-    private static func resolveLogPath() -> String {
-        let base = FileManager.default.homeDirectoryForCurrentUser
+    static func resolveLogPath(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> String {
+        if let context = UITestStorageContext.resolve(environment: environment, arguments: arguments) {
+            return context.captureDirectory.appendingPathComponent("diagnostics/sidecar.log").path
+        }
+        let base = homeDirectory
             .appendingPathComponent("Library/Logs/InsightKit")
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("sidecar.log").path
     }
 
     private static func openLogHandle(at path: String) -> FileHandle? {
         let fileManager = FileManager.default
+        try? fileManager.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         if !fileManager.fileExists(atPath: path) {
             fileManager.createFile(atPath: path, contents: nil)
         }

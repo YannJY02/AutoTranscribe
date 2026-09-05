@@ -1300,6 +1300,8 @@ enum UITestLaunchOptions {
         ProcessInfo.processInfo.environment
     }
 
+    /// Enables synthetic UI workflow behavior. Storage, credentials and telemetry
+    /// isolation use UITestStorageContext, including session-ID-only launches.
     static var isEnabled: Bool {
         environment["INSIGHTKIT_UI_TEST_MODE"] == "1"
             || arguments.contains("--ui-test-mode")

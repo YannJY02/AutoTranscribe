@@ -4,9 +4,12 @@ import XCTest
 
 final class RecordsIndexServiceTests: XCTestCase {
     private var tempRoot: URL!
+    private let recordsDefaultsSuiteName = "RecordsIndexServiceTests-\(UUID().uuidString)"
+    private var recordsDefaults: UserDefaults!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        recordsDefaults = try XCTUnwrap(UserDefaults(suiteName: recordsDefaultsSuiteName))
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("InsightKitRecordsTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
@@ -16,7 +19,8 @@ final class RecordsIndexServiceTests: XCTestCase {
         if let tempRoot {
             try? FileManager.default.removeItem(at: tempRoot)
         }
-        UserDefaults.standard.removeObject(forKey: RecordsIndexService.rootDirectoryDefaultsKey)
+        recordsDefaults?.removePersistentDomain(forName: recordsDefaultsSuiteName)
+        recordsDefaults = nil
         try super.tearDownWithError()
     }
 
@@ -86,7 +90,7 @@ final class RecordsIndexServiceTests: XCTestCase {
     }
 
     func testPrepareUITestSeedCreatesRequestedRecord() throws {
-        let service = RecordsIndexService(environment: [
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [
             "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
         ])
 
@@ -97,7 +101,7 @@ final class RecordsIndexServiceTests: XCTestCase {
     }
 
     func testPrepareUITestSeedRejectsUnsafeRecordID() throws {
-        let service = RecordsIndexService(environment: [
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [
             "INSIGHTKIT_RECORDS_ROOT": tempRoot.path,
             "INSIGHTKIT_UI_TEST_MODE": "1",
             "INSIGHTKIT_UI_TEST_SEED_RECORD_ID": "../escape",
@@ -151,7 +155,7 @@ final class RecordsIndexServiceTests: XCTestCase {
             encoding: .utf8
         )
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
 
@@ -179,7 +183,7 @@ final class RecordsIndexServiceTests: XCTestCase {
         let notesURL = recordDir.appendingPathComponent("notes.md")
         try "00:03 cached-search-token".write(to: notesURL, atomically: true, encoding: .utf8)
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
         try FileManager.default.removeItem(at: notesURL)
@@ -218,7 +222,7 @@ final class RecordsIndexServiceTests: XCTestCase {
         }
         """.write(to: legacyDir.appendingPathComponent("metadata.json"), atomically: true, encoding: .utf8)
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
 
@@ -371,7 +375,7 @@ final class RecordsIndexServiceTests: XCTestCase {
         }
         """.write(to: recordDir.appendingPathComponent("metadata.json"), atomically: true, encoding: .utf8)
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
 
         XCTAssertEqual(
@@ -388,7 +392,7 @@ final class RecordsIndexServiceTests: XCTestCase {
             userTags: [],
             autoTags: []
         )
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
 
@@ -526,7 +530,7 @@ final class RecordsIndexServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: blockedDir, withIntermediateDirectories: true)
         try makeFIFO(at: blockedDir.appendingPathComponent("metadata.json"))
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
 
@@ -557,7 +561,7 @@ final class RecordsIndexServiceTests: XCTestCase {
             autoTags: ["旧记录"]
         )
 
-        let service = RecordsIndexService()
+        let service = RecordsIndexService(defaults: recordsDefaults, environment: [:])
         service.rootDirectory = tempRoot
         service.refreshIndex()
         var calendar = Calendar(identifier: .gregorian)

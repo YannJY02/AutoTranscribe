@@ -15,8 +15,9 @@ final class RecordsPersistenceUITests: InsightKitUITests {
         XCTAssertTrue(waitForElement(recordListItem, timeout: 5))
 
         app.terminate()
-        app.launchArguments.removeAll { $0 == "--ui-test-mode" }
-        app.launchEnvironment["INSIGHTKIT_UI_TEST_MODE"] = "0"
+        // Read the record written by the first process; do not seed it again.
+        // Keep storage, telemetry, and credential isolation across the restart.
+        app.launchEnvironment["INSIGHTKIT_UI_TEST_SEED_RECORDS"] = "0"
         app.launch()
         app.activate()
 

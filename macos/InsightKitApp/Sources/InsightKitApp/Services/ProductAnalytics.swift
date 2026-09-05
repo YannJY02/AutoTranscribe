@@ -444,10 +444,24 @@ final class ProductAnalytics {
         return (host, projectKey)
     }
 
+    static func uiTestStorageDirectory(
+        environment: [String: String],
+        arguments: [String]
+    ) -> URL? {
+        guard let context = UITestStorageContext.resolve(environment: environment, arguments: arguments)
+        else { return nil }
+        // Test analytics must stay in the resolved run, even with an inherited capture-root override.
+        return context.captureDirectory.appendingPathComponent("ProductAnalytics", isDirectory: true)
+    }
+
     static let shared: ProductAnalytics = {
         let bundle = Bundle.main
         let process = ProcessInfo.processInfo.environment
-        let isUITest = process["INSIGHTKIT_UI_TEST_MODE"] == "1"
+        let testStorage = uiTestStorageDirectory(
+            environment: process,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+        let isUITest = testStorage != nil
         #if DEBUG
         let defaultEnvironment = TelemetryEnvironment.development
         #else
@@ -460,10 +474,8 @@ final class ProductAnalytics {
         let appBuild = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
         let storage: URL
         let gate: ExternalTelemetryPrivacyGate
-        if isUITest {
-            let root = process["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"].map(URL.init(fileURLWithPath:))
-                ?? FileManager.default.temporaryDirectory
-            storage = root.appendingPathComponent("ProductAnalytics", isDirectory: true)
+        if let testStorage {
+            storage = testStorage
             let queueKeyLock = NSLock()
             var queueKey: Data?
             gate = ExternalTelemetryPrivacyGate(

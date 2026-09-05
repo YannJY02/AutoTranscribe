@@ -404,7 +404,10 @@ final class TranscriptionSessionViewModelTests: XCTestCase {
         try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .imported)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let recordsService = RecordsIndexService()
+        let suiteName = "TranscriptionSessionViewModelTests-records-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let recordsService = RecordsIndexService(defaults: defaults, environment: [:])
         recordsService.rootDirectory = root
         let rpc = RPCClientMock()
         let vm = TranscriptionSessionViewModel(

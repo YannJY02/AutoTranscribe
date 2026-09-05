@@ -45,7 +45,10 @@ final class ChunkAssembler {
         firstChunkDurationSec: Double = 2,
         sampleRate: Int = 16_000,
         chunkDir: URL? = nil,
-        maxRetainedChunkFiles: Int = 1_800
+        maxRetainedChunkFiles: Int = 1_800,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory
     ) {
         self.chunkDurationSec = chunkDurationSec
         self.sampleRate = sampleRate
@@ -55,8 +58,11 @@ final class ChunkAssembler {
 
         if let chunkDir {
             self.chunkDir = chunkDir
+        } else if let context = UITestStorageContext.resolve(environment: environment, arguments: arguments) {
+            let storage = UITestStorageContext(sessionID: context.sessionID, temporaryDirectory: temporaryDirectory)
+            self.chunkDir = storage.rootDirectory.appendingPathComponent("live-chunks", isDirectory: true)
         } else {
-            self.chunkDir = FileManager.default.temporaryDirectory
+            self.chunkDir = temporaryDirectory
                 .appendingPathComponent("insightkit-live-chunks", isDirectory: true)
         }
     }

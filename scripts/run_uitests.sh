@@ -150,7 +150,9 @@ if [[ "$RECORD_TRACE" == "1" ]]; then
         trace_deadline=$((SECONDS + UITEST_TIMEOUT_SEC))
         app_pid=""
         while (( SECONDS < trace_deadline )); do
-            app_pid=$(pgrep -x InsightKitApp | head -n 1 || true)
+            app_pid=$(python3.11 "$SCRIPT_DIR/native_app_process.py" \
+                --derived-data "$DERIVED_DATA_PATH" \
+                --scheme "$XCODEPROJ/xcshareddata/xcschemes/$SCHEME.xcscheme" || true)
             [[ -n "$app_pid" ]] && break
             sleep 1
         done

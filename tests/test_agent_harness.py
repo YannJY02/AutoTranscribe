@@ -11,6 +11,7 @@ import pytest
 
 from scripts.agent_harness import (
     TRIAGE_LABELS,
+    _installed_app_running,
     _run_command,
     _symphony_snapshot,
     changes_sha256,
@@ -432,6 +433,66 @@ def test_runtime_status_bounds_remote_probe_and_falls_back_to_local_head(tmp_pat
     assert payload["repository"]["main_revision"] == "abcdef123456"
     assert payload["repository"]["main_revision_source"] == "local-head-fallback"
     assert next(kwargs["timeout"] for command, kwargs in commands if command[:2] == ["git", "ls-remote"]) == 10
+
+
+@pytest.mark.parametrize("running_bundle, expected", [("test-host", False), ("installed", True), ("multiple", True), ("none", False), ("unavailable", None)])
+def test_runtime_status_binds_running_state_to_requested_bundle(tmp_path, monkeypatch, running_bundle, expected):
+    import plistlib
+
+    app = tmp_path / "Operator Applications" / "InsightKit.app"
+    executable = app / "Contents" / "MacOS" / "InsightKitApp"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "InsightKitApp"}))
+
+    def run(command, **kwargs):
+        if command[:2] == ["git", "ls-remote"]:
+            return subprocess.CompletedProcess(command, 0, "abcdef123456\trefs/heads/main\n", "")
+        if command[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    def process_ids(path):
+        assert path == executable.resolve()
+        return {"test-host": set(), "installed": {123}, "multiple": {123, 456}, "none": set(), "unavailable": None}[running_bundle]
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", run)
+    monkeypatch.setattr("scripts.agent_harness.executable_process_ids", process_ids)
+    monkeypatch.setattr("scripts.agent_harness._git_value", lambda *args: "abcdef123456")
+    monkeypatch.setattr("scripts.agent_harness._symphony_snapshot", lambda _url: {"healthy": True})
+    result = runtime_status(app_path=app, telemetry_root=tmp_path, symphony_url="http://127.0.0.1:4000/api/v1/state")
+
+    assert result["installed_app"]["running"] is expected
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Uses macOS executable identity")
+def test_installed_app_running_ignores_spoofed_argv0(tmp_path):
+    import plistlib
+    import shutil
+
+    app = tmp_path / "Operator Applications" / "InsightKit.app"
+    executable = app / "Contents" / "MacOS" / "InsightKitApp"
+    executable.parent.mkdir(parents=True)
+    shutil.copy("/bin/sleep", executable)
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "InsightKitApp"}))
+    other_executable = tmp_path / "Test Host" / "InsightKitApp"
+    other_executable.parent.mkdir()
+    shutil.copy("/bin/sleep", other_executable)
+
+    assert _installed_app_running(app) is False
+    spoof = subprocess.Popen([str(executable), "30"], executable=str(other_executable))
+    try:
+        assert _installed_app_running(app) is False
+        actual = subprocess.Popen([str(executable), "30"])
+        try:
+            assert _installed_app_running(app) is True
+        finally:
+            actual.terminate()
+            actual.wait(timeout=5)
+    finally:
+        spoof.terminate()
+        spoof.wait(timeout=5)
+    assert _installed_app_running(app) is False
 
 
 def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):

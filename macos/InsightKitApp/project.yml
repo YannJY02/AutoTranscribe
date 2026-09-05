@@ -1,4 +1,8 @@
 name: InsightKitUITestHost
+configs:
+  Debug: debug
+  Release: release
+  UITesting: debug
 options:
   bundleIdPrefix: com.yannjy
   deploymentTarget:
@@ -50,21 +54,28 @@ targets:
         InsightKitPostHogOwnerPilotProjectKey: "phc_CVQhfmR9RZoe5vXWNDs5PmFJFMbFwag5gQeYJrXSjkNo"
         InsightKitPostHogOwnerPilotRetentionVerified: false
         CFBundleURLTypes:
-          - CFBundleURLName: com.yannjy.insightkit.import
+          - CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER).import
             CFBundleURLSchemes:
-              - insightkit
+              - $(INSIGHTKIT_URL_SCHEME)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit
+        INSIGHTKIT_URL_SCHEME: insightkit
         PRODUCT_NAME: InsightKitApp
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
+      configs:
+        UITesting:
+          PRODUCT_BUNDLE_IDENTIFIER: com.yannjy.insightkit.uitesthost
+          INSIGHTKIT_URL_SCHEME: insightkit-uitest
 
   InsightKitUITests:
     type: bundle.ui-testing
     platform: macOS
-    sources: UITests
+    sources:
+      - UITests
+      - Sources/InsightKitApp/Services/UITestStorageContext.swift
     dependencies:
       - target: InsightKitApp
     settings:
@@ -85,6 +96,6 @@ schemes:
     run:
       config: Debug
     test:
-      config: Debug
+      config: UITesting
       targets:
         - InsightKitUITests

@@ -531,8 +531,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .live)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let recordsService = RecordsIndexService()
-        recordsService.rootDirectory = root
+        let recordsService = try makeRecordsService(root: root)
         let rpcClient = RPCClientMock()
         let viewModel = LiveSessionViewModel(
             rpcClient: rpcClient,
@@ -577,8 +576,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         try RecordExportTestFixture.seedRecord(root: root, recordID: recordID, source: .live)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let recordsService = RecordsIndexService()
-        recordsService.rootDirectory = root
+        let recordsService = try makeRecordsService(root: root)
         let rpcClient = RPCClientMock()
         let viewModel = LiveSessionViewModel(
             rpcClient: rpcClient,
@@ -2181,8 +2179,7 @@ final class LiveSessionViewModelTests: XCTestCase {
         ]
         """.write(to: recordPath.appendingPathComponent("transcript.json"), atomically: true, encoding: .utf8)
 
-        let recordsService = RecordsIndexService()
-        recordsService.rootDirectory = root
+        let recordsService = try makeRecordsService(root: root)
         let rpcClient = RPCClientMock()
         let viewModel = LiveSessionViewModel(
             rpcClient: rpcClient,
@@ -2360,6 +2357,15 @@ final class LiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.errorMessage?.contains("分析服务返回格式异常") == true)
         XCTAssertFalse(viewModel.errorMessage?.contains("line 42") == true)
         XCTAssertFalse(viewModel.errorMessage?.contains("char 1169") == true)
+    }
+
+    private func makeRecordsService(root: URL) throws -> RecordsIndexService {
+        let suiteName = "LiveSessionViewModelTests-records-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        let service = RecordsIndexService(defaults: defaults, environment: [:])
+        service.rootDirectory = root
+        return service
     }
 }
 

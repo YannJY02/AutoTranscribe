@@ -10,9 +10,12 @@ final class AppConfigStore: ObservableObject {
     private let defaultsKeyV2 = "insightkit.runtime.config.v2"
     private let defaults: UserDefaults
     private let configSnapshotURL: URL
-    private let keychain = KeychainService()
+    private let keychain: KeychainService?
 
     private static func makeSharedStore() -> AppConfigStore {
+        if let context = UITestStorageContext.current {
+            return makeUITestStore(context: context)
+        }
         guard isRunningTests else {
             return AppConfigStore()
         }
@@ -23,6 +26,14 @@ final class AppConfigStore: ObservableObject {
             .appendingPathComponent(suiteName)
             .appendingPathComponent("runtime_config_v1.json")
         return AppConfigStore(defaults: defaults, configSnapshotURL: snapshotURL)
+    }
+
+    static func makeUITestStore(context: UITestStorageContext) -> AppConfigStore {
+        AppConfigStore(
+            defaults: context.makeDefaults(),
+            configSnapshotURL: context.configSnapshotURL,
+            isolateExternalState: true
+        )
     }
 
     private static var isRunningTests: Bool {
@@ -47,10 +58,12 @@ final class AppConfigStore: ObservableObject {
 
     init(
         defaults: UserDefaults = .standard,
-        configSnapshotURL: URL = AppConfigStore.configSnapshotPath()
+        configSnapshotURL: URL = AppConfigStore.configSnapshotPath(),
+        isolateExternalState: Bool = false
     ) {
         self.defaults = defaults
         self.configSnapshotURL = configSnapshotURL
+        keychain = isolateExternalState ? nil : KeychainService()
         if
             let raw = defaults.data(forKey: defaultsKeyV2),
             let decoded = try? JSONDecoder().decode(RuntimeConfigV2.self, from: raw)
@@ -186,6 +199,7 @@ final class AppConfigStore: ObservableObject {
     }
 
     func setAPIKey(_ key: String, for vendor: ProviderVendor) throws {
+        guard let keychain else { return }
         let account = apiKeyAccount(for: vendor)
         let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let existing = ((try? keychain.readSecret(account: account)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,20 +216,29 @@ final class AppConfigStore: ObservableObject {
     }
 
     func hasAPIKey(for vendor: ProviderVendor) -> Bool {
-        if Self.isUITestMode { return false }
+        guard let keychain, !Self.isUITestMode else { return false }
         return ((try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? "").isEmpty == false
     }
 
     func apiKeyValue(for vendor: ProviderVendor) -> String {
-        if Self.isUITestMode { return "" }
+        guard let keychain, !Self.isUITestMode else { return "" }
         return (try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? ""
     }
 
-    func sidecarEnvironment() -> [String: String] {
-        Self.buildSidecarEnvironment(
+    func sidecarEnvironment(
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var processEnvironment = processEnvironment
+        if keychain == nil {
+            for name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "DOUBAO_API_KEY", "HF_TOKEN", "PYANNOTE_AUTH_TOKEN"] {
+                processEnvironment.removeValue(forKey: name)
+            }
+        }
+        return Self.buildSidecarEnvironment(
             config: config,
-            processEnvironment: ProcessInfo.processInfo.environment
+            processEnvironment: processEnvironment
         ) { [keychain] vendor, allowUserInteraction in
+            guard let keychain else { return "" }
             let account = "vendor.\(vendor.rawValue).api_key"
             let policy: KeychainService.InteractionPolicy = allowUserInteraction ? .allowUI : .failIfInteractionRequired
             return (try? keychain.readSecret(account: account, interactionPolicy: policy)) ?? ""
@@ -686,6 +709,6 @@ final class AppConfigStore: ObservableObject {
     }
 
     private static var isUITestMode: Bool {
-        ProcessInfo.processInfo.environment["INSIGHTKIT_UI_TEST_MODE"] == "1"
+        UITestStorageContext.current != nil
     }
 }
