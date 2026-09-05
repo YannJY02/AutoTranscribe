@@ -23,6 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+if __package__:
+    from .native_app_process import executable_process_ids
+else:
+    from native_app_process import executable_process_ids
+
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_ISSUE_SECTIONS = (
@@ -537,18 +542,10 @@ def _installed_app_running(app_path: Path) -> bool | None:
         executable = (bundle / "Contents" / "MacOS" / executable_name).resolve()
         if not executable.is_file():
             return False
-        # macOS comm reports the executable path, without arguments or environment.
-        # The test host deliberately shares the production executable's basename.
-        processes = subprocess.run(
-            ["ps", "-ww", "-axo", "comm="], capture_output=True, text=True, check=False, timeout=5
-        )
-        if processes.returncode:
-            return None
-        return any(
-            Path(path).is_absolute() and Path(path).resolve() == executable
-            for line in processes.stdout.splitlines()
-            if (path := line.strip())
-        )
+        # Display names and argv[0] can be spoofed; use the same kernel identity
+        # query as trace capture. Multiple matching instances still mean running.
+        process_ids = executable_process_ids(executable)
+        return None if process_ids is None else bool(process_ids)
     except (OSError, ValueError, AttributeError, plistlib.InvalidFileException, subprocess.TimeoutExpired):
         return None
 
