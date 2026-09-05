@@ -1040,7 +1040,7 @@ final class ExternalTelemetryPrivacyGateTests: XCTestCase {
         let rpc = RPCClientMock()
         let recordsRoot = root.appendingPathComponent("RetryRecords", isDirectory: true)
         try RecordExportTestFixture.seedRecord(root: recordsRoot, recordID: "retry-review")
-        let recordsService = RecordsIndexService()
+        let recordsService = RecordsIndexService(defaults: defaults, environment: [:])
         recordsService.rootDirectory = recordsRoot
         let initialReview = expectation(description: "accepted import enters review")
         let retryWorkerBlocked = expectation(description: "retry RPC work is held before completion")

@@ -104,6 +104,9 @@ class InsightStore:
         self.conn.commit()
 
     def _migrate_legacy_db_if_needed(self) -> None:
+        # UI-test sidecars must start without copying operator records into their sandbox.
+        if os.getenv("INSIGHTKIT_UI_TEST_MODE") == "1":
+            return
         if self.db_path.exists():
             return
         if not LEGACY_DB.exists():

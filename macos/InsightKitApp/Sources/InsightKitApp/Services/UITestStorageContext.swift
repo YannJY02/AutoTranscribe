@@ -1,7 +1,9 @@
 import Foundation
 
-/// A UI-test run owns its preferences and files across app relaunches.
-/// The runner also compiles this type so both processes use the same namespace.
+/// A runner-provided session ID owns preferences and files across app relaunches.
+/// The runner also compiles this type and passes `launchEnvironment` to each launch.
+/// Legacy test-mode flags without a session ID use process-ephemeral storage;
+/// cross-process persistence requires `INSIGHTKIT_UI_TEST_SESSION_ID`.
 struct UITestStorageContext {
     static let sessionIDEnvironmentKey = "INSIGHTKIT_UI_TEST_SESSION_ID"
     static let hostBundleIdentifier = "com.yannjy.insightkit.uitesthost"
@@ -33,7 +35,8 @@ struct UITestStorageContext {
         guard environment["INSIGHTKIT_UI_TEST_MODE"] == "1"
             || arguments.contains("--ui-test-mode") || enabledByPair
         else { return nil }
-        // Ad-hoc UI-test launches must also stay away from operator storage.
+        // Ad-hoc launches stay isolated and stable within this process. Without
+        // a supplied run identity, the next process intentionally gets a new UUID.
         return UITestStorageContext(sessionID: fallbackSessionID)
     }
 

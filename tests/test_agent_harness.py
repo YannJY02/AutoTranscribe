@@ -434,6 +434,38 @@ def test_runtime_status_bounds_remote_probe_and_falls_back_to_local_head(tmp_pat
     assert next(kwargs["timeout"] for command, kwargs in commands if command[:2] == ["git", "ls-remote"]) == 10
 
 
+@pytest.mark.parametrize("running_bundle, expected", [("test-host", False), ("installed", True), ("none", False), ("unavailable", None)])
+def test_runtime_status_binds_running_state_to_requested_bundle(tmp_path, monkeypatch, running_bundle, expected):
+    import plistlib
+
+    app = tmp_path / "Operator Applications" / "InsightKit.app"
+    executable = app / "Contents" / "MacOS" / "InsightKitApp"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "InsightKitApp"}))
+    test_executable = tmp_path / "DerivedData" / "InsightKitUITestHost.app" / "Contents" / "MacOS" / "InsightKitApp"
+
+    def run(command, **kwargs):
+        if command[:2] == ["git", "ls-remote"]:
+            return subprocess.CompletedProcess(command, 0, "abcdef123456\trefs/heads/main\n", "")
+        if command[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[0] == "pgrep":
+            # A name-only probe cannot tell these two bundles apart.
+            return subprocess.CompletedProcess(command, 0 if running_bundle != "none" else 1, b"123\n")
+        if command[0] == "ps":
+            paths = {"test-host": str(test_executable), "installed": f"{test_executable}\n{executable}", "none": ""}
+            return subprocess.CompletedProcess(command, 1 if running_bundle == "unavailable" else 0, paths.get(running_bundle, ""), "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr("scripts.agent_harness.subprocess.run", run)
+    monkeypatch.setattr("scripts.agent_harness._git_value", lambda *args: "abcdef123456")
+    monkeypatch.setattr("scripts.agent_harness._symphony_snapshot", lambda _url: {"healthy": True})
+    result = runtime_status(app_path=app, telemetry_root=tmp_path, symphony_url="http://127.0.0.1:4000/api/v1/state")
+
+    assert result["installed_app"]["running"] is expected
+
+
 def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):
     manifest = tmp_path / "logs" / "harness" / "run" / "manifest.json"
     manifest.parent.mkdir(parents=True)

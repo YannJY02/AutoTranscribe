@@ -525,6 +525,34 @@ def telemetry_snapshot(telemetry_root: Path) -> dict[str, bool]:
     }
 
 
+def _installed_app_running(app_path: Path) -> bool | None:
+    bundle = app_path.expanduser().resolve()
+    if not bundle.is_dir():
+        return False
+    try:
+        info = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+        executable_name = info.get("CFBundleExecutable")
+        if not isinstance(executable_name, str) or Path(executable_name).name != executable_name:
+            return None
+        executable = (bundle / "Contents" / "MacOS" / executable_name).resolve()
+        if not executable.is_file():
+            return False
+        # macOS comm reports the executable path, without arguments or environment.
+        # The test host deliberately shares the production executable's basename.
+        processes = subprocess.run(
+            ["ps", "-ww", "-axo", "comm="], capture_output=True, text=True, check=False, timeout=5
+        )
+        if processes.returncode:
+            return None
+        return any(
+            Path(path).is_absolute() and Path(path).resolve() == executable
+            for line in processes.stdout.splitlines()
+            if (path := line.strip())
+        )
+    except (OSError, ValueError, AttributeError, plistlib.InvalidFileException, subprocess.TimeoutExpired):
+        return None
+
+
 def _symphony_snapshot(url: str) -> dict[str, Any]:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
@@ -560,14 +588,10 @@ def runtime_status(*, app_path: Path, telemetry_root: Path, symphony_url: str) -
     remote_revision = remote.stdout.split()[0] if remote.returncode == 0 and remote.stdout.split() else ""
     expected_revision = remote_revision or revision
     installed = installed_app_snapshot(app_path, expected_revision=expected_revision)
-    try:
-        process = subprocess.run(["pgrep", "-x", "InsightKitApp"], capture_output=True, check=False)
-    except OSError:
-        process = subprocess.CompletedProcess(["pgrep"], 1)
     dirty = subprocess.run(
         ["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True, check=False
     )
-    installed["running"] = process.returncode == 0
+    installed["running"] = _installed_app_running(app_path)
     symphony = _symphony_snapshot(symphony_url)
     payload = {
         "schema_version": 1,

@@ -225,10 +225,12 @@ final class AppConfigStore: ObservableObject {
         return (try? keychain.readSecret(account: apiKeyAccount(for: vendor))) ?? ""
     }
 
-    func sidecarEnvironment() -> [String: String] {
-        var processEnvironment = ProcessInfo.processInfo.environment
+    func sidecarEnvironment(
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var processEnvironment = processEnvironment
         if keychain == nil {
-            for name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "DOUBAO_API_KEY"] {
+            for name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "DOUBAO_API_KEY", "HF_TOKEN", "PYANNOTE_AUTH_TOKEN"] {
                 processEnvironment.removeValue(forKey: name)
             }
         }

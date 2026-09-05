@@ -6,9 +6,17 @@ enum AppURLAction: Equatable {
 
 enum AppURLHandler {
     static let scheme = "insightkit"
+    static let uiTestScheme = "insightkit-uitest"
 
-    static func action(from url: URL) -> AppURLAction? {
-        guard url.scheme?.lowercased() == scheme else { return nil }
+    static func action(
+        from url: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> AppURLAction? {
+        let requestedScheme = url.scheme?.lowercased()
+        let isIsolatedUITestURL = requestedScheme == uiTestScheme
+            && UITestStorageContext.resolve(environment: environment, arguments: arguments) != nil
+        guard requestedScheme == scheme || isIsolatedUITestURL else { return nil }
 
         let command = normalizedCommand(from: url)
         switch command {
