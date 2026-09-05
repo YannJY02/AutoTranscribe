@@ -233,6 +233,29 @@ def test_external_evidence_queries_and_fragments_never_reach_packet_or_candidate
     assert reference in (tmp_path / "ledger.json").read_text()
 
 
+@pytest.mark.parametrize("suffix", [
+    "?meeting=board-acquisition#speaker-jane",
+    "?meeting=board-acquisition",
+    "#speaker-jane",
+])
+def test_repository_evidence_queries_and_fragments_never_reach_packet_or_candidates(monkeypatch, tmp_path, suffix):
+    install_sources(monkeypatch)
+    clean = "logs/evidence/result.json"
+    reference = clean + suffix
+    ledger_path = tmp_path / "ledger.json"
+    write_ledger(ledger_path, source_ref=reference)
+    original_ledger = ledger_path.read_bytes()
+
+    packet = iteration.observe(root=tmp_path, ledger_refs=["ledger.json"], now=NOW)
+
+    assert packet["ledgers"][0]["records"][0]["source_ref"] == clean
+    candidate = next(item for item in packet["investigation_candidates"] if clean in item["evidence_refs"])
+    assert candidate["evidence_refs"] == [clean]
+    assert "board-acquisition" not in json.dumps(packet)
+    assert "speaker-jane" not in json.dumps(packet)
+    assert ledger_path.read_bytes() == original_ledger
+
+
 def test_encoded_secret_in_external_path_is_unavailable_without_leaking(monkeypatch, tmp_path):
     install_sources(monkeypatch)
     reference = "https://us.posthog.com/project/1/insights/sk%252D" + "synthetic" * 5

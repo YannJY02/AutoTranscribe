@@ -51,7 +51,7 @@ def _installed_revision(value: Any) -> str | None:
 
 def _safe_reference(value: str) -> str:
     parsed = urlsplit(value)
-    reference = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", "")) if parsed.scheme else value
+    reference = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
     # Query/fragment data is unnecessary for evidence identity. Decode only for
     # privacy validation, keeping the approved host/path and repository refs intact.
     decoded = reference
