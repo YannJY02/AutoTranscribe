@@ -196,7 +196,8 @@ def test_new_attempt_invalidates_an_old_blocked_report(tmp_path):
 
 
 @pytest.mark.parametrize("operation", ["comment", "release", "delete", "triage"])
-def test_blocked_resume_reads_back_ambiguous_writes_without_repeating_them(tmp_path, monkeypatch, operation):
+@pytest.mark.parametrize("failure_timing", ["before", "after"])
+def test_blocked_resume_never_exposes_dispatchable_state_or_repeats_writes(tmp_path, monkeypatch, operation, failure_timing):
     workspace, preflight, _ = _blocked_workspace(tmp_path)
     controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
     github = BlockedGitHub()
@@ -204,13 +205,20 @@ def test_blocked_resume_reads_back_ambiguous_writes_without_repeating_them(tmp_p
 
     def flaky(args, **kwargs):
         nonlocal interrupted
-        result = github(args, **kwargs)
         affected = {
             "comment": args[:2] == ["issue", "comment"],
             "release": args[:2] == ["issue", "edit"],
             "delete": args[:3] == ["api", "--method", "DELETE"],
             "triage": args[:3] == ["api", "--method", "POST"],
         }[operation]
+        if affected and not interrupted and failure_timing == "before":
+            interrupted = True
+            raise DeliveryError("response lost before the server applied the write")
+        result = github(args, **kwargs)
+        labels = {label["name"] for label in github.issue["labels"]}
+        assert github.issue["assignees"] or "ready-for-agent" not in labels, (
+            "a tracker poll could redispatch this failed attempt between writes"
+        )
         if affected and not interrupted:
             interrupted = True
             raise DeliveryError("response lost after the server applied the write")
@@ -223,6 +231,24 @@ def test_blocked_resume_reads_back_ambiguous_writes_without_repeating_them(tmp_p
     assert len(github.comments) == 1
     assert len(github.writes) == 4
     assert {x["name"] for x in github.issue["labels"]} == {"needs-triage", "bug"}
+
+
+def test_blocked_triage_preserves_a_concurrent_ready_label(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    monkeypatch.setattr(controller, "_gh", github)
+    original_set_triage = controller._set_triage
+
+    def rearm_before_final_read(context, target):
+        github.issue["labels"].append({"name": "ready-for-agent"})
+        return original_set_triage(context, target)
+
+    monkeypatch.setattr(controller, "_set_triage", rearm_before_final_read)
+    with pytest.raises(DeliveryError, match="preserving"):
+        controller.process(workspace)
+    assert github.issue["assignees"] == []
+    assert {x["name"] for x in github.issue["labels"]} == {"ready-for-agent", "bug"}
 
 
 def test_concurrent_sweep_and_after_run_process_one_report(tmp_path, monkeypatch):

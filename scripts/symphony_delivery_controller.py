@@ -548,12 +548,20 @@ class DeliveryController:
         issue = self._issue(context)
         labels = {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
         assignees = {person["login"] for person in issue.get("assignees", [])}
-        allowed_labels = [{"ready-for-agent"}]
-        if phase == "triaging":
-            allowed_labels += [set(), {"needs-triage"}]
-        allowed_assignees = [{login}]
-        if phase in {"releasing", "triaging"}:
-            allowed_assignees.append(set())
+        allowed_labels = {
+            "new": [{"ready-for-agent"}],
+            "commenting": [{"ready-for-agent"}],
+            "withdrawing": [{"ready-for-agent"}, set()],
+            "releasing": [set()],
+            "triaging": [set(), {"needs-triage"}],
+        }[phase]
+        allowed_assignees = {
+            "new": [{login}],
+            "commenting": [{login}],
+            "withdrawing": [{login}],
+            "releasing": [{login}, set()],
+            "triaging": [set()],
+        }[phase]
         if issue.get("state") != "open" or labels not in allowed_labels or assignees not in allowed_assignees:
             raise DeliveryError("preserving human issue state or assignment")
         if hashlib.sha256((issue.get("body") or "").encode()).hexdigest() != context.contract_sha256:
@@ -570,7 +578,7 @@ class DeliveryController:
             if same_attempt and state.get("handoff_sha256") != context.handoff_sha256:
                 raise DeliveryError("blocked report changed during processing")
             phase = str(state.get("status")) if same_attempt else "new"
-            if phase not in {"new", "commenting", "releasing", "triaging"}:
+            if phase not in {"new", "commenting", "withdrawing", "releasing", "triaging"}:
                 raise DeliveryError("unrecognized blocked processing state")
             login = self._gh(["api", "user", "--jq", ".login"], cwd=self.source)
             if not login or any(char in login for char in "\r\n\x00"):
@@ -597,12 +605,24 @@ class DeliveryController:
                         "This is a worker failure report, not successful verification or delivery. "
                         "No PR or success receipt is created by this report."
                     ))
+                self._write_blocked_state(context, "withdrawing")
+                phase = "withdrawing"
+            if phase == "withdrawing":
+                issue = self._check_blocked_claim(context, login, phase)
+                if any(label["name"] == "ready-for-agent" for label in issue.get("labels", [])):
+                    self._gh(
+                        ["api", "--method", "DELETE", f"repos/{self.repository}/issues/{context.issue_number}/labels/ready-for-agent"],
+                        cwd=self.source,
+                    )
+                # Keep our claim until a readback proves dispatch is disabled.
+                self._check_blocked_claim(context, login, "releasing")
                 self._write_blocked_state(context, "releasing")
                 phase = "releasing"
-            issue = self._check_blocked_claim(context, login, phase)
-            if issue.get("assignees"):
-                self._release_claim(context)
-            self._write_blocked_state(context, "triaging")
+            if phase == "releasing":
+                issue = self._check_blocked_claim(context, login, phase)
+                if issue.get("assignees"):
+                    self._release_claim(context)
+                self._write_blocked_state(context, "triaging")
             self._check_blocked_claim(context, login, "triaging")
             self._set_triage(context, "needs-triage")
             self._write_blocked_state(context, "blocked-reported")
@@ -715,7 +735,10 @@ class DeliveryController:
                 raise DeliveryError("preserving human issue state or assignment")
             if hashlib.sha256((issue.get("body") or "").encode()).hexdigest() != context.contract_sha256:
                 raise DeliveryError("task contract changed since preflight")
-            return {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
+            labels = {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
+            if isinstance(context, BlockedContext) and "ready-for-agent" in labels:
+                raise DeliveryError("preserving a concurrent dispatch request")
+            return labels
 
         current = active()
         if target and current == {target}:
