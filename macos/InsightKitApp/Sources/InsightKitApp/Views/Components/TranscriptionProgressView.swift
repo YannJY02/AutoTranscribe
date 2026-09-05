@@ -11,7 +11,7 @@ struct TranscriptionProgressView: View {
         guard let duration = sourceMediaDuration, duration.isFinite, duration > 0 else {
             return "媒体时长 未知"
         }
-        return "媒体时长 \(formatTime(duration))"
+        return "媒体时长 \(formatTime(duration.rounded(.toNearestOrAwayFromZero)))"
     }
 
     var body: some View {

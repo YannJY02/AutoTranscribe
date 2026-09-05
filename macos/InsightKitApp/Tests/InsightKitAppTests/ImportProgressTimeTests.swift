@@ -16,6 +16,24 @@ final class ImportProgressTimeTests: XCTestCase {
         XCTAssertEqual(view.mediaDurationText, "媒体时长 5:00")
     }
 
+    func testMediaDurationRoundsFractionalSecondsWithoutRoundingElapsed() {
+        let view = TranscriptionProgressView(progress: 0.82, elapsedTime: 299.932, sourceMediaDuration: 299.932)
+        XCTAssertEqual(view.elapsedTimeText, "已用时 4:59")
+        XCTAssertEqual(view.mediaDurationText, "媒体时长 5:00")
+    }
+
+    func testMediaDurationRoundsAcrossMinuteBoundary() {
+        for (seconds, elapsed, media) in [
+            (59.49, "0:59", "0:59"),
+            (59.5, "0:59", "1:00"),
+            (60.001, "1:00", "1:00"),
+        ] {
+            let view = TranscriptionProgressView(progress: 0, elapsedTime: seconds, sourceMediaDuration: seconds)
+            XCTAssertEqual(view.elapsedTimeText, "已用时 \(elapsed)", "seconds=\(seconds)")
+            XCTAssertEqual(view.mediaDurationText, "媒体时长 \(media)", "seconds=\(seconds)")
+        }
+    }
+
     func testUnknownAndInvalidDurationAreExplicitlyUnknown() {
         for duration: Double? in [nil, 0, -1, .nan, .infinity, -.infinity] {
             let view = TranscriptionProgressView(progress: 0, elapsedTime: 0, sourceMediaDuration: duration)
