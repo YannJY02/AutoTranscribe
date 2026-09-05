@@ -69,7 +69,7 @@ def _related_links(
     return deduped
 
 
-def render_insight_markdown(
+def _insight_markdown_blocks(
     payload: dict[str, Any],
     title: str,
     *,
@@ -77,12 +77,14 @@ def render_insight_markdown(
     transcript: list[dict[str, Any]] | None = None,
     meeting_id: str | None = None,
     source_path: str | None = None,
-) -> str:
+) -> list[tuple[str, bool]]:
+    """Render Markdown while retaining payload-derived review item boundaries."""
     overview = payload.get("session_overview", {})
     speakers = _speakers_from_segments(transcript)
     participant_label = ", ".join(speakers) if speakers else "本地记录未标注参会人；使用说话人标签降级。"
 
     lines: list[str] = []
+    reviewed_ranges: list[tuple[int, int]] = []
     lines.append(f"# {title} - 定稿洞察")
     lines.append("")
 
@@ -126,23 +128,32 @@ def render_insight_markdown(
     lines.append("## 关键决策")
     lines.append("")
     for item in payload.get("decision_ledger", []):
+        item_start = len(lines)
         lines.append(f"- 问题: {item.get('problem', '')}")
         lines.append(f"  - 方案: {', '.join(item.get('options', []))}")
         lines.append(f"  - 决策: {item.get('decision', '')}")
         lines.append(f"  - 依据: {item.get('rationale', '')}")
         lines.append(f"  - Owner: {item.get('owner', '')}")
+        if item.get("needs_review") is True:
+            lines.append("  - 复核：待复核")
         span = item.get("evidence_span", {})
         lines.append(f"  - 证据区间: {span.get('start_ms', 0)}-{span.get('end_ms', 0)}ms")
+        if item.get("needs_review") is True:
+            reviewed_ranges.append((item_start, len(lines)))
     lines.append("")
 
     lines.append("## 待办事项")
     lines.append("")
     for action in payload.get("action_tracks", []):
+        item_start = len(lines)
         lines.append(f"- 任务: {action.get('task', '')}")
         lines.append(f"  - 负责人: {action.get('owner', '')}")
         lines.append(f"  - 截止: {action.get('due_at', '')}")
         lines.append(f"  - 优先级: {action.get('priority', '')}")
         lines.append(f"  - 状态: {action.get('status', '')}")
+        if action.get("needs_review") is True:
+            lines.append("  - 复核：待复核")
+            reviewed_ranges.append((item_start, len(lines)))
     lines.append("")
 
     lines.append("## 智能章节")
@@ -161,7 +172,35 @@ def render_insight_markdown(
         lines.append(f"- {link.get('label', '')}: {link.get('url', '')}")
     lines.append("")
 
-    return "\n".join(lines)
+    blocks: list[tuple[str, bool]] = []
+    previous_end = 0
+    for start, end in reviewed_ranges:
+        if start > previous_end:
+            blocks.append(("\n".join(lines[previous_end:start]) + "\n", False))
+        blocks.append(("\n".join(lines[start:end]) + "\n", True))
+        previous_end = end
+    blocks.append(("\n".join(lines[previous_end:]), False))
+    return blocks
+
+
+def render_insight_markdown(
+    payload: dict[str, Any],
+    title: str,
+    *,
+    meeting: dict[str, Any] | None = None,
+    transcript: list[dict[str, Any]] | None = None,
+    meeting_id: str | None = None,
+    source_path: str | None = None,
+) -> str:
+    blocks = _insight_markdown_blocks(
+        payload,
+        title,
+        meeting=meeting,
+        transcript=transcript,
+        meeting_id=meeting_id,
+        source_path=source_path,
+    )
+    return "".join(block for block, _ in blocks)
 
 
 def render_insight_html(
@@ -226,6 +265,7 @@ def render_insight_html(
         .meta-grid div:nth-child(odd) { background: #f6f8fa; font-weight: 600; }
         .meta-grid div:nth-last-child(-n+2) { border-bottom: 0; }
         .item {
+            break-inside: avoid;
             border-left: 3px solid #3b82f6;
             margin: 8px 0;
             padding: 2px 0 2px 10px;
@@ -290,8 +330,10 @@ def render_insight_html(
             f"<p><strong>依据:</strong> {text(item.get('rationale', ''))}</p>",
             f"<p><strong>Owner:</strong> {text(item.get('owner', ''))}</p>",
             f'<p class="muted">证据区间: {text(span_label(item))}</p>',
-            "</div>",
         ])
+        if item.get("needs_review") is True:
+            parts.append("<p><strong>复核：</strong>待复核</p>")
+        parts.append("</div>")
 
     parts.append("<h2>待办事项</h2>")
     for action in payload.get("action_tracks", []):
@@ -302,8 +344,10 @@ def render_insight_html(
             f"<p><strong>截止:</strong> {text(action.get('due_at', ''))}</p>",
             f"<p><strong>优先级:</strong> {text(action.get('priority', ''))}</p>",
             f"<p><strong>状态:</strong> {text(action.get('status', ''))}</p>",
-            "</div>",
         ])
+        if action.get("needs_review") is True:
+            parts.append("<p><strong>复核：</strong>待复核</p>")
+        parts.append("</div>")
 
     parts.append("<h2>智能章节</h2>")
     for beat in payload.get("timeline_beats", []):
@@ -350,8 +394,10 @@ def _markdown_to_plain_lines(markdown: str) -> list[str]:
     return lines
 
 
-def _wrap_pdf_line(line: str, width: int = 62) -> list[str]:
-    if len(line) <= width:
+def _wrap_pdf_line(line: str, width: int = 49) -> list[str]:
+    # The 595pt page has 50pt margins. The CID font's default 1000-unit
+    # advance at 10pt allows 49 UTF-16 code units within the remaining 495pt.
+    if len(line.encode("utf-16-be", errors="replace")) // 2 <= width:
         return [line]
     wrapped = textwrap.wrap(
         line,
@@ -361,10 +407,18 @@ def _wrap_pdf_line(line: str, width: int = 62) -> list[str]:
     )
     chunks: list[str] = []
     for item in wrapped or [line]:
-        if len(item) <= width:
-            chunks.append(item)
-            continue
-        chunks.extend(item[index:index + width] for index in range(0, len(item), width))
+        chunk = ""
+        occupied = 0
+        for character in item:
+            advance = 2 if ord(character) > 0xFFFF else 1
+            if chunk and occupied + advance > width:
+                chunks.append(chunk)
+                chunk = ""
+                occupied = 0
+            chunk += character
+            occupied += advance
+        if chunk:
+            chunks.append(chunk)
     return chunks
 
 
@@ -372,21 +426,49 @@ def _pdf_text_hex(line: str) -> str:
     return line.encode("utf-16-be", errors="replace").hex().upper()
 
 
-def _write_builtin_text_pdf(lines: list[str], output_path: Path) -> None:
+def _paginate_pdf_blocks(blocks: list[tuple[str, bool]]) -> list[list[str]]:
+    """Keep review notices with their item, including oversized continuations."""
+    lines_per_page = 52
+    review_line = "  - 复核：待复核"
+    pages: list[list[str]] = [[]]
+
+    def append_line(line: str) -> None:
+        if len(pages[-1]) == lines_per_page:
+            pages.append([])
+        pages[-1].append(line)
+
+    for markdown, needs_review in blocks:
+        wrapped = [
+            line for raw in _markdown_to_plain_lines(markdown)
+            for line in _wrap_pdf_line(raw)
+        ]
+        if not needs_review:
+            for line in wrapped:
+                append_line(line)
+            continue
+
+        if len(wrapped) <= lines_per_page:
+            if len(pages[-1]) + len(wrapped) > lines_per_page:
+                pages.append([])
+            pages[-1].extend(wrapped)
+        else:
+            # Reserve a notice line on every page of an oversized item.
+            content = wrapped.copy()
+            # Remove only the renderer's notice; identical source text stays intact.
+            notice_index = len(content) - 1 - content[::-1].index(review_line)
+            content.pop(notice_index)
+            for offset in range(0, len(content), lines_per_page - 1):
+                if pages[-1]:
+                    pages.append([])
+                pages[-1].extend(content[offset:offset + lines_per_page - 1])
+                pages[-1].append(review_line)
+    return pages if any(pages) else [["InsightKit 导出文档"]]
+
+
+def _write_builtin_text_pdf(blocks: list[tuple[str, bool]], output_path: Path) -> None:
     """Write a simple Unicode PDF without optional Python PDF dependencies."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    body_lines: list[str] = []
-    for line in lines:
-        wrapped = _wrap_pdf_line(line)
-        body_lines.extend(wrapped)
-    if not body_lines:
-        body_lines = ["InsightKit 导出文档"]
-
-    lines_per_page = 52
-    pages = [
-        body_lines[index:index + lines_per_page]
-        for index in range(0, len(body_lines), lines_per_page)
-    ]
+    pages = _paginate_pdf_blocks(blocks)
 
     page_count = len(pages)
     page_ids = list(range(5, 5 + page_count))
@@ -466,7 +548,7 @@ def write_insight_pdf(
     try:
         from weasyprint import HTML
     except ImportError:
-        markdown = render_insight_markdown(
+        blocks = _insight_markdown_blocks(
             payload,
             title=title,
             meeting=meeting,
@@ -474,7 +556,7 @@ def write_insight_pdf(
             meeting_id=meeting_id,
             source_path=source_path,
         )
-        _write_builtin_text_pdf(_markdown_to_plain_lines(markdown), output_path)
+        _write_builtin_text_pdf(blocks, output_path)
         return
 
     HTML(
