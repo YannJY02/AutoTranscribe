@@ -470,15 +470,31 @@ def test_installed_app_running_ignores_spoofed_argv0(tmp_path):
     import plistlib
     import shutil
 
-    app = tmp_path / "Operator Applications" / "InsightKit.app"
-    executable = app / "Contents" / "MacOS" / "InsightKitApp"
+    app = tmp_path / "Operator Applications" / "HarnessProcessProbe.app"
+    executable = app / "Contents" / "MacOS" / "HarnessProcessProbe"
     executable.parent.mkdir(parents=True)
     shutil.copy("/bin/sleep", executable)
-    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "InsightKitApp"}))
-    other_executable = tmp_path / "Test Host" / "InsightKitApp"
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({
+        "CFBundleExecutable": executable.name,
+        "CFBundleIdentifier": "local.insightkit.harness-process-probe",
+        "CFBundleName": "HarnessProcessProbe",
+        "CFBundlePackageType": "APPL",
+        "CFBundleVersion": "1",
+    }))
+    other_executable = tmp_path / "Test Host" / executable.name
     other_executable.parent.mkdir()
     shutil.copy("/bin/sleep", other_executable)
 
+    # A system binary's standalone signature does not seal this new bundle.
+    # Sign only our temporary fixture and reject it before execution if invalid.
+    subprocess.run(
+        ["codesign", "--force", "--sign", "-", "--timestamp=none", str(app)],
+        check=True, capture_output=True, text=True,
+    )
+    subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(app)],
+        check=True, capture_output=True, text=True,
+    )
     assert _installed_app_running(app) is False
     spoof = subprocess.Popen([str(executable), "30"], executable=str(other_executable))
     try:
