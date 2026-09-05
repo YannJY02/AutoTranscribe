@@ -1112,7 +1112,7 @@ def _validate_provider_evidence(
                     "schema_version",
                     "status",
                     "workspace",
-                },
+                } | ({"mode", "changes_sha256"} if "mode" in harness or "changes_sha256" in harness else set()),
                 "repository Harness",
             )
         if isinstance(gates, list):
@@ -1145,6 +1145,12 @@ def _validate_provider_evidence(
             and all(isinstance(path, str) for path in changed_files)
             and changed_files == sorted(set(changed_files))
             and harness.get("base") == "origin/main"
+            # Historical manifests predate these fields; their exact full gate
+            # plan and immutable commit are still validated below.
+            and ("mode" not in harness or (
+                harness["mode"] == "full"
+                and SHA256.fullmatch(str(harness.get("changes_sha256") or "")) is not None
+            ))
             and harness_commit_is_ancestor
             and changed_files == _git_diff_files(root, base_commit, harness_commit)
             and not (

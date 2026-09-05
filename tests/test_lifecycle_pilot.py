@@ -65,6 +65,14 @@ def copy_repository_evidence(destination: Path) -> None:
         capture_output=True,
     )
     value = manifest()
+    # These fixtures verify the recorded historical execution, not current HEAD.
+    # Later-code invalidation is exercised explicitly below.
+    subprocess.run(
+        ["git", "update-ref", "--no-deref", "HEAD", value["reconciliation"]["repository"]["harness_commit"]],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+    )
     refs = [
         value["build"]["proof_ref"],
         value["evidence_ledger_ref"],

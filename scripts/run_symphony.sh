@@ -2,7 +2,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-unset OPENAI_API_KEY
+unset OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN
 symphony_preflight_timeout_seconds=${SYMPHONY_PREFLIGHT_TIMEOUT_SECONDS:-60}
 case "$symphony_preflight_timeout_seconds" in
   ''|*[!0-9]*)
@@ -119,8 +119,9 @@ SYMPHONY_REAL_CODEX=$symphony_real_codex
 export SYMPHONY_REAL_CODEX
 SYMPHONY_REAL_GH=${SYMPHONY_REAL_GH:-$(command -v gh)}
 SYMPHONY_PYTHON3=${SYMPHONY_PYTHON3:-$(command -v python3.11)}
+SYMPHONY_SECURITY=${SYMPHONY_SECURITY:-/usr/bin/security}
 SYMPHONY_CONTROLLER_REPO_ROOT=$repo_root
-export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_CONTROLLER_REPO_ROOT
+export SYMPHONY_REAL_GH SYMPHONY_PYTHON3 SYMPHONY_SECURITY SYMPHONY_CONTROLLER_REPO_ROOT
 
 if ! codex_login_status=$(run_with_preflight_timeout codex login status 2>&1); then
   echo "Symphony Codex home does not contain a valid ChatGPT login: $symphony_codex_home/auth.json" >&2
@@ -153,22 +154,7 @@ if [ -z "${SYMPHONY_GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-symphony_agent_github_token=${SYMPHONY_AGENT_GITHUB_TOKEN:-}
-if [ -z "$symphony_agent_github_token" ]; then
-  symphony_agent_github_token=$(/usr/bin/security find-generic-password \
-    -a symphony-agent \
-    -s com.autotranscribe.symphony.agent-github-token \
-    -w 2>/dev/null || true)
-fi
-if [ -z "$symphony_agent_github_token" ]; then
-  echo "Symphony agent GitHub credential is required in macOS Keychain." >&2
-  exit 1
-fi
-GH_TOKEN=$symphony_agent_github_token
-export GH_TOKEN
-unset SYMPHONY_AGENT_GITHUB_TOKEN symphony_agent_github_token
-
-if ! run_with_preflight_timeout gh auth status >/dev/null 2>&1; then
+if ! (GH_TOKEN=$SYMPHONY_GITHUB_TOKEN; export GH_TOKEN; run_with_preflight_timeout gh auth status) >/dev/null 2>&1; then
   echo "Codex's GitHub CLI session is not authenticated. Run: gh auth login" >&2
   exit 1
 fi
@@ -181,6 +167,9 @@ SYMPHONY_PREFLIGHT_EVIDENCE_ROOT=${SYMPHONY_PREFLIGHT_EVIDENCE_ROOT:-"$repo_root
 mkdir -p "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT"
 chmod 700 "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT"
 export SYMPHONY_PREFLIGHT_EVIDENCE_ROOT
+SYMPHONY_WORKSPACE_ROOT=${SYMPHONY_WORKSPACE_ROOT:-"$HOME/Developer/Workspaces/AutoTranscribe"}
+mkdir -p "$SYMPHONY_WORKSPACE_ROOT"
+export SYMPHONY_WORKSPACE_ROOT
 
 symphony_port=${SYMPHONY_PORT:-4000}
 symphony_health_startup_seconds=${SYMPHONY_HEALTH_STARTUP_SECONDS:-180}
@@ -236,31 +225,35 @@ case "$symphony_termination_grace_seconds" in
     ;;
 esac
 
+symphony_logs_root=${SYMPHONY_LOGS_ROOT:-$repo_root/logs/symphony}
+mkdir -p "$symphony_logs_root"
+runtime_status_path="$symphony_logs_root/runtime-status.json"
+
 symphony \
   --i-understand-that-this-will-be-running-without-the-usual-guardrails \
   --port "$symphony_port" \
-  --logs-root "${SYMPHONY_LOGS_ROOT:-$repo_root/logs/symphony}" \
+  --logs-root "$symphony_logs_root" \
   "$repo_root/WORKFLOW.md" &
 symphony_pid=$!
 
-symphony_is_running() {
-  symphony_state=$(ps -p "$symphony_pid" -o state= 2>/dev/null || true)
-  case "$symphony_state" in
+process_is_running() {
+  process_state=$(ps -p "$1" -o state= 2>/dev/null || true)
+  case "$process_state" in
     ''|*[Zz]*) return 1 ;;
     *) return 0 ;;
   esac
 }
 
 cleanup_symphony() {
-  if symphony_is_running; then
+  if process_is_running "$symphony_pid"; then
     kill "$symphony_pid" 2>/dev/null || true
     symphony_termination_waited=0
-    while symphony_is_running && \
+    while process_is_running "$symphony_pid" && \
       [ "$symphony_termination_waited" -lt "$symphony_termination_grace_seconds" ]; do
       sleep 1
       symphony_termination_waited=$((symphony_termination_waited + 1))
     done
-    if symphony_is_running; then
+    if process_is_running "$symphony_pid"; then
       kill -KILL "$symphony_pid" 2>/dev/null || true
     fi
   fi
@@ -277,7 +270,7 @@ trap terminate_symphony HUP INT TERM
 sleep "$symphony_health_startup_seconds"
 symphony_health_failures=0
 # ponytail: process-wide restart; use a control-plane probe if Symphony exposes one.
-while symphony_is_running; do
+while process_is_running "$symphony_pid"; do
   if curl \
     --silent \
     --show-error \
@@ -288,10 +281,17 @@ while symphony_is_running; do
     symphony_health_failures=0
   else
     symphony_health_failures=$((symphony_health_failures + 1))
-    if [ "$symphony_health_failures" -ge "$symphony_health_failure_limit" ]; then
-      echo "Symphony health probe failed $symphony_health_failures consecutive times; stopping child for LaunchAgent restart." >&2
-      exit 1
-    fi
+  fi
+  if ! "$SYMPHONY_PYTHON3" "$repo_root/scripts/agent_harness.py" runtime-status \
+    --symphony-url "http://127.0.0.1:$symphony_port/api/v1/state" \
+    --output "$runtime_status_path" \
+    --json >/dev/null; then
+    echo "Runtime status refresh failed; removing the stale snapshot." >&2
+    rm -f "$runtime_status_path"
+  fi
+  if [ "$symphony_health_failures" -ge "$symphony_health_failure_limit" ]; then
+    echo "Symphony health probe failed $symphony_health_failures consecutive times; stopping child for LaunchAgent restart." >&2
+    exit 1
   fi
   sleep "$symphony_health_interval_seconds"
 done

@@ -6,6 +6,7 @@ umask 077
 : "${SYMPHONY_PREFLIGHT_EVIDENCE_ROOT:?SYMPHONY_PREFLIGHT_EVIDENCE_ROOT is required}"
 : "${SYMPHONY_PYTHON3:?SYMPHONY_PYTHON3 is required}"
 : "${SYMPHONY_REAL_GH:?SYMPHONY_REAL_GH is required}"
+: "${SYMPHONY_SECURITY:?SYMPHONY_SECURITY is required}"
 
 issue_identifier=$(basename "$PWD")
 issue_number=${issue_identifier#GH-}
@@ -55,18 +56,34 @@ if [ "$preflight_status" -ne 0 ]; then
   exit "$preflight_status"
 fi
 
+baseline_path="$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT/$issue_identifier.base"
+if [ ! -f "$baseline_path" ]; then
+  git -C "$SYMPHONY_CONTROLLER_REPO_ROOT" rev-parse refs/heads/main > "$baseline_path"
+fi
+
 if [ ! -f "$claim_marker" ]; then
   printf 'pending\n' > "$claim_marker_tmp"
   mv "$claim_marker_tmp" "$claim_marker"
 fi
 
-if ! "$SYMPHONY_REAL_GH" issue edit "$issue_number" \
+controller_token=$("$SYMPHONY_SECURITY" find-generic-password \
+  -a symphony-agent \
+  -s com.autotranscribe.symphony.agent-github-token \
+  -w 2>/dev/null || true)
+trap 'unset controller_token GH_TOKEN; if [ -f "$preflight_tmp" ]; then unlink "$preflight_tmp"; fi; if [ -f "$claim_marker_tmp" ]; then unlink "$claim_marker_tmp"; fi' EXIT
+if [ -z "$controller_token" ]; then
+  echo "Symphony controller GitHub credential is required in macOS Keychain." >&2
+  exit 1
+fi
+
+if ! GH_TOKEN=$controller_token "$SYMPHONY_REAL_GH" issue edit "$issue_number" \
   --repo YannJY02/AutoTranscribe --add-assignee @me; then
   printf '{"status":"failed","stage":"assignment","issue":"%s"}\n' \
     "$issue_identifier" > "$preflight_tmp"
   mv "$preflight_tmp" "$preflight_path"
   exit 1
 fi
+unset controller_token
 
 printf 'claimed\n' > "$claim_marker_tmp"
 mv "$claim_marker_tmp" "$claim_marker"

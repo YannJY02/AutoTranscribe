@@ -309,7 +309,7 @@ def install_symphony_launch_agent(
     destination = launch_agents / f"{SYMPHONY_LAUNCH_AGENT_LABEL}.plist"
     payload = {
         "Label": SYMPHONY_LAUNCH_AGENT_LABEL,
-        "ProgramArguments": ["/bin/sh", str(launcher)],
+        "ProgramArguments": ["/usr/bin/env", "-u", "OPENAI_API_KEY", "/bin/sh", str(launcher)],
         "WorkingDirectory": str(repo_root),
         "EnvironmentVariables": {
             "PATH": runtime_path,

@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,11 +167,21 @@ def load_issue(issue_number: int) -> dict[str, Any]:
     )
 
 
-def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str, Any]:
+def issue_preflight(issue_identifier: str, *, resume: bool = False, retry: bool = False) -> dict[str, Any]:
     number = parse_issue_number(issue_identifier)
     payload = load_issue(number)
+    retry_conflict = retry and bool(_label_names(payload) & TRIAGE_LABELS)
+    candidate = dict(payload)
+    if retry:
+        candidate["labels"] = [
+            label
+            for label in payload.get("labels") or []
+            if str(label.get("name", "") if isinstance(label, dict) else label) not in TRIAGE_LABELS
+        ] + [{"name": "ready-for-agent"}]
     current_login = str(_run_json(["gh", "api", "user"]).get("login", "")) if resume else None
-    errors = validate_issue(payload, allowed_assignee_login=current_login)
+    errors = validate_issue(candidate, allowed_assignee_login=current_login)
+    if retry_conflict:
+        errors.append("CI retry preflight requires no active triage label")
     linear_issue = linear_issue_identifier(payload)
     if not linear_issue:
         errors.append("synchronized issue is missing the verified Linear linkback")
@@ -181,6 +196,7 @@ def issue_preflight(issue_identifier: str, *, resume: bool = False) -> dict[str,
         "status": "passed" if not errors else "failed",
         "issue": number,
         "linear_issue": linear_issue,
+        "body_sha256": hashlib.sha256(str(payload.get("body") or "").encode()).hexdigest(),
         "url": payload.get("url"),
         "resource_class": next(
             (
@@ -214,9 +230,13 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
         or path == "scripts/harness_maintenance.py"
         or path == "scripts/native_app_proof.py"
         or path == "scripts/run_symphony.sh"
+        or path == "scripts/symphony_after_run.sh"
+        or path == "scripts/symphony_delivery_controller.py"
+        or path == "scripts/symphony_issue_gate.sh"
         or path == "tests/test_agent_harness.py"
         or path == "tests/test_harness_maintenance.py"
         or path == "tests/test_native_app_proof.py"
+        or path == "tests/test_symphony_delivery_controller.py"
         for path in files
     )
     shell_scripts = tuple(path for path in files if path.endswith(".sh"))
@@ -248,7 +268,15 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
             GateSpec(
                 "automation-syntax",
                 tuple(
-                    ("sh" if path == "scripts/run_symphony.sh" else "bash", "-n", path)
+                    (
+                        "sh" if path in {
+                            "scripts/run_symphony.sh",
+                            "scripts/symphony_after_run.sh",
+                            "scripts/symphony_issue_gate.sh",
+                        } else "bash",
+                        "-n",
+                        path,
+                    )
                     for path in shell_scripts
                 ),
             )
@@ -358,6 +386,81 @@ def changed_files(base: str) -> list[str]:
     return sorted(paths)
 
 
+def changes_sha256(root: Path, paths: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+
+    def add(value: bytes) -> None:
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+
+    root = root.expanduser().resolve()
+    for relative in sorted(set(paths)):
+        path = Path(relative)
+        if not relative or path.is_absolute() or ".." in path.parts or any(char in relative for char in "\r\n\x00"):
+            raise ValueError(f"unsafe changed path: {relative!r}")
+        candidate = root / path
+        add(relative.encode("utf-8"))
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            add(b"missing")
+            continue
+        if candidate.is_symlink():
+            raise ValueError(f"changed path must not be a symbolic link: {relative}")
+        if not candidate.is_file():
+            raise ValueError(f"changed path is not a regular file: {relative}")
+        add(b"executable" if metadata.st_mode & 0o111 else b"file")
+        digest.update(metadata.st_size.to_bytes(8, "big"))
+        with candidate.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_changes_sha256(root: Path, revision: str, paths: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+
+    def add(value: bytes) -> None:
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+
+    root = root.expanduser().resolve()
+    for relative in sorted(set(paths)):
+        path = Path(relative)
+        if not relative or path.is_absolute() or ".." in path.parts or any(char in relative for char in "\r\n\x00"):
+            raise ValueError(f"unsafe changed path: {relative!r}")
+        tree = subprocess.run(
+            ["git", "ls-tree", "-z", revision, "--", relative],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if tree.returncode != 0:
+            raise ValueError(f"cannot inspect committed path: {relative}")
+        add(relative.encode("utf-8"))
+        if not tree.stdout:
+            add(b"missing")
+            continue
+        header, separator, returned_path = tree.stdout.rstrip(b"\x00").partition(b"\t")
+        fields = header.split()
+        if separator != b"\t" or len(fields) != 3 or returned_path != relative.encode("utf-8"):
+            raise ValueError(f"unexpected Git tree entry: {relative}")
+        mode, kind, object_id = fields
+        if kind != b"blob" or mode not in {b"100644", b"100755"}:
+            raise ValueError(f"committed path must be a regular file: {relative}")
+        blob = subprocess.run(
+            ["git", "cat-file", "blob", object_id.decode("ascii")],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if blob.returncode != 0:
+            raise ValueError(f"cannot read committed path: {relative}")
+        add(b"executable" if mode == b"100755" else b"file")
+        add(blob.stdout)
+    return digest.hexdigest()
+
+
 def _run_command(command: Sequence[str], *, output_root: Path) -> CommandResult:
     rendered = [part.replace("{output_root}", str(output_root)) for part in command]
     env = os.environ.copy()
@@ -374,6 +477,192 @@ def _run_command(command: Sequence[str], *, output_root: Path) -> CommandResult:
 def _git_value(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True, check=False)
     return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+def installed_app_snapshot(app_path: Path, *, expected_revision: str) -> dict[str, Any]:
+    plist_path = app_path.expanduser() / "Contents" / "Info.plist"
+    if not plist_path.is_file():
+        return {
+            "installed": False,
+            "path": str(app_path.expanduser()),
+            "freshness": "missing",
+            "posthog_transport_ready": False,
+        }
+    try:
+        info = plistlib.loads(plist_path.read_bytes())
+    except (OSError, plistlib.InvalidFileException, ValueError):
+        return {
+            "installed": True,
+            "path": str(app_path.expanduser()),
+            "freshness": "unknown",
+            "posthog_transport_ready": False,
+        }
+
+    installed_revision = str(info.get("InsightKitGitRevision") or "")
+    revision_matches = bool(installed_revision and expected_revision != "unknown") and (
+        expected_revision.startswith(installed_revision) or installed_revision.startswith(expected_revision)
+    )
+    return {
+        "installed": True,
+        "path": str(app_path.expanduser()),
+        "short_version": str(info.get("CFBundleShortVersionString") or ""),
+        "build_version": str(info.get("CFBundleVersion") or ""),
+        "git_revision": installed_revision,
+        "freshness": "current" if revision_matches else "stale" if installed_revision else "unknown",
+        "posthog_transport_ready": bool(
+            info.get("InsightKitPostHogOwnerPilotHost")
+            and info.get("InsightKitPostHogOwnerPilotProjectKey")
+            and info.get("InsightKitPostHogOwnerPilotRetentionVerified") is True
+        ),
+    }
+
+
+def telemetry_snapshot(telemetry_root: Path) -> dict[str, bool]:
+    root = telemetry_root.expanduser()
+    return {
+        "product_analytics_ledger_exists": (root / "local-evidence-ledger-v1.json").is_file(),
+        "sentry_disable_evidence_exists": (root / "Sentry" / "external-telemetry-disable-evidence-v1.json").is_file(),
+    }
+
+
+def _symphony_snapshot(url: str) -> dict[str, Any]:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError("Symphony status URL must use HTTP on a loopback host")
+    try:
+        with urllib.request.urlopen(url, timeout=2) as response:  # noqa: S310 - loopback URL is operator supplied.
+            payload = json.loads(response.read(1_000_000))
+    except (OSError, ValueError, urllib.error.URLError):
+        return {"healthy": False}
+    state = payload.get("state", payload) if isinstance(payload, dict) else {}
+    return {
+        "healthy": True,
+        "running_count": len(state.get("running") or []),
+        "blocked_count": len(state.get("blocked") or []),
+        "retrying_count": len(state.get("retrying") or []),
+    }
+
+
+def runtime_status(*, app_path: Path, telemetry_root: Path, symphony_url: str) -> dict[str, Any]:
+    revision = _git_value("rev-parse", "HEAD")
+    command = ["git", "ls-remote", "origin", "refs/heads/main"]
+    try:
+        remote = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        remote = subprocess.CompletedProcess(command, 124, "", "")
+    remote_revision = remote.stdout.split()[0] if remote.returncode == 0 and remote.stdout.split() else ""
+    expected_revision = remote_revision or revision
+    installed = installed_app_snapshot(app_path, expected_revision=expected_revision)
+    try:
+        process = subprocess.run(["pgrep", "-x", "InsightKitApp"], capture_output=True, check=False)
+    except OSError:
+        process = subprocess.CompletedProcess(["pgrep"], 1)
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True, check=False
+    )
+    installed["running"] = process.returncode == 0
+    symphony = _symphony_snapshot(symphony_url)
+    payload = {
+        "schema_version": 1,
+        "observed_at": utc_now(),
+        "repository": {
+            "revision": revision,
+            "branch": _git_value("branch", "--show-current"),
+            "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
+            "main_revision": expected_revision,
+            "main_revision_source": "remote" if remote_revision else "local-head-fallback",
+            "checkout_current": revision == expected_revision,
+        },
+        "installed_app": installed,
+        "telemetry": telemetry_snapshot(telemetry_root),
+        "symphony": symphony,
+    }
+    payload["status"] = "passed" if installed["freshness"] == "current" and symphony["healthy"] else "degraded"
+    return payload
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
+    return path
+
+
+def _bounded_text(value: str, *, name: str, maximum: int) -> str:
+    text = value.strip()
+    if not text or len(text) > maximum or any(character in text for character in "\r\n\x00"):
+        raise ValueError(f"{name} must be one non-empty line of at most {maximum} characters")
+    return text
+
+
+def write_controller_handoff(
+    *,
+    root: Path,
+    issue: str,
+    manifest_path: Path,
+    summary: str,
+    review_status: str,
+    human_gates: Sequence[str],
+    no_change: bool,
+) -> Path:
+    workspace = root.expanduser().resolve()
+    manifest = manifest_path.expanduser().resolve()
+    try:
+        relative_manifest = manifest.relative_to(workspace)
+    except ValueError as exc:
+        raise ValueError("manifest must stay inside the workspace") from exc
+    try:
+        evidence = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read harness manifest: {manifest}") from exc
+    issue_number = parse_issue_number(issue)
+    changed = evidence.get("changed_files") or []
+    if not isinstance(changed, list) or any(not isinstance(path, str) for path in changed):
+        raise ValueError("manifest changed files must be repository-relative paths")
+    if evidence.get("schema_version") != 1:
+        raise ValueError("unsupported harness manifest schema version")
+    if evidence.get("status") != "passed" or evidence.get("issue") != issue_number:
+        raise ValueError("handoff requires a passed manifest for the same issue")
+    if evidence.get("mode") != "full":
+        raise ValueError("handoff requires a full-mode harness manifest")
+    if Path(str(evidence.get("workspace") or "")).resolve() != workspace:
+        raise ValueError("handoff manifest belongs to a different workspace")
+    if no_change != (not changed):
+        raise ValueError("--no-change must match the manifest changed files")
+    expected_digest = str(evidence.get("changes_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_digest) or changes_sha256(workspace, changed) != expected_digest:
+        raise ValueError("manifest does not match the verified file contents")
+    if review_status not in {"clear", "not-required"} or (changed and review_status != "clear"):
+        raise ValueError("changed code requires a clear independent review")
+    gates = evidence.get("gates") or []
+    if not isinstance(gates, list) or not gates or any(
+        not isinstance(gate, dict) or gate.get("status") != "passed" for gate in gates
+    ):
+        raise ValueError("all manifest gates must pass before handoff")
+
+    payload = {
+        "schema_version": 1,
+        "status": "ready",
+        "issue": f"GH-{issue_number}",
+        "summary": _bounded_text(summary, name="summary", maximum=200),
+        "kind": "no-change" if no_change else "changes",
+        "manifest": relative_manifest.as_posix(),
+        "review_status": review_status,
+        "human_gates": [
+            _bounded_text(gate, name="human gate", maximum=300) for gate in human_gates
+        ],
+        "generated_at": utc_now(),
+    }
+    return _write_json_atomic(workspace / ".symphony" / "handoff.json", payload)
 
 
 def verify_changes(*, base: str, mode: str, issue: str | None, output_root: Path, dry_run: bool) -> dict[str, Any]:
@@ -400,6 +689,8 @@ def verify_changes(*, base: str, mode: str, issue: str | None, output_root: Path
         "branch": _git_value("branch", "--show-current"),
         "workspace": str(ROOT),
         "changed_files": files,
+        "changes_sha256": changes_sha256(ROOT, files),
+        "mode": mode,
         "gates": [],
     }
     if dry_run:
@@ -444,9 +735,13 @@ def doctor(*, profile: str) -> dict[str, Any]:
         ".agents/skills/promote-feedback/SKILL.md",
         ".github/ISSUE_TEMPLATE/agent-task.yml",
         ".github/workflows/ci.yml",
+        ".github/workflows/controller-handoff.yml",
         "scripts/agent_bootstrap.sh",
         "scripts/harness_maintenance.py",
         "scripts/native_app_proof.py",
+        "scripts/symphony_issue_gate.sh",
+        "scripts/symphony_after_run.sh",
+        "scripts/symphony_delivery_controller.py",
     )
     required_commands = ["git", "python3.11"]
     if profile in {"local", "symphony"}:
@@ -501,6 +796,8 @@ def doctor(*, profile: str) -> dict[str, Any]:
         ("WORKFLOW.md", "shell_environment_policy.inherit=core", True),
         (".codex/environments/environment.toml", 'script = "./scripts/agent_bootstrap.sh"', True),
         ("scripts/run_symphony.sh", "SYMPHONY_GITHUB_TOKEN", True),
+        ("scripts/run_symphony.sh", "agent-github-token", False),
+        ("scripts/symphony_after_run.sh", "agent-github-token", True),
         ("scripts/run_symphony.sh", "gh auth token", False),
         ("AGENTS.md", "tracked as local markdown files", False),
     )
@@ -570,6 +867,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_parser = subparsers.add_parser("issue-preflight", help="Validate a GitHub issue before unattended execution.")
     issue_parser.add_argument("--issue", required=True)
     issue_parser.add_argument("--resume", action="store_true", help="Allow assignment to the current GitHub user.")
+    issue_parser.add_argument("--retry", action="store_true", help="Validate whether failed CI may safely restore ready-for-agent.")
     issue_parser.add_argument("--json", action="store_true")
 
     verify_parser = subparsers.add_parser("verify", help="Run the narrow deterministic gates for the current diff.")
@@ -578,6 +876,26 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--issue")
     verify_parser.add_argument("--output-root", type=Path, default=None)
     verify_parser.add_argument("--dry-run", action="store_true")
+
+    handoff_parser = subparsers.add_parser("handoff", help="Write a bounded handoff for the host controller.")
+    handoff_parser.add_argument("--issue", required=True)
+    handoff_parser.add_argument("--manifest", type=Path, required=True)
+    handoff_parser.add_argument("--summary", required=True)
+    handoff_parser.add_argument("--review-status", choices=("clear", "not-required"), required=True)
+    handoff_parser.add_argument("--human-gate", action="append", default=[])
+    handoff_parser.add_argument("--no-change", action="store_true")
+
+    runtime_parser = subparsers.add_parser("runtime-status", help="Snapshot installed-app and automation freshness.")
+    runtime_parser.add_argument("--app", type=Path, default=Path("~/Applications/InsightKit.app"))
+    runtime_parser.add_argument(
+        "--telemetry-root",
+        type=Path,
+        default=Path("~/Library/Application Support/InsightKit/Telemetry"),
+    )
+    runtime_parser.add_argument("--symphony-url", default="http://127.0.0.1:4000/api/v1/state")
+    runtime_parser.add_argument("--output", type=Path)
+    runtime_parser.add_argument("--require-fresh", action="store_true")
+    runtime_parser.add_argument("--json", action="store_true")
 
     lock_parser = subparsers.add_parser("lock", help="Run a command while holding a cross-worktree resource lock.")
     lock_parser.add_argument("--resource", required=True)
@@ -608,7 +926,7 @@ def main() -> int:
             print_result(payload, as_json=args.json)
             return 0 if payload["status"] == "passed" else 1
         if args.command == "issue-preflight":
-            payload = issue_preflight(args.issue, resume=args.resume)
+            payload = issue_preflight(args.issue, resume=args.resume, retry=args.retry)
             print_result(payload, as_json=args.json)
             return 0 if payload["status"] == "passed" else 1
         if args.command == "verify":
@@ -624,6 +942,28 @@ def main() -> int:
             if not args.dry_run:
                 print(f"manifest: {output_root / 'manifest.json'}")
             return 0 if payload["status"] in {"passed", "planned"} else 1
+        if args.command == "handoff":
+            path = write_controller_handoff(
+                root=ROOT,
+                issue=args.issue,
+                manifest_path=args.manifest,
+                summary=args.summary,
+                review_status=args.review_status,
+                human_gates=args.human_gate,
+                no_change=args.no_change,
+            )
+            print(path)
+            return 0
+        if args.command == "runtime-status":
+            payload = runtime_status(
+                app_path=args.app.expanduser(),
+                telemetry_root=args.telemetry_root.expanduser(),
+                symphony_url=args.symphony_url,
+            )
+            if args.output:
+                _write_json_atomic(args.output.expanduser(), payload)
+            print_result(payload, as_json=args.json)
+            return 1 if args.require_fresh and payload["status"] != "passed" else 0
         if args.command == "lock":
             command = list(args.remainder)
             if command and command[0] == "--":

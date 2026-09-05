@@ -32,6 +32,9 @@ python3.11 scripts/agent_harness.py issue-preflight --issue <number>
 
 ## Operations and intake
 
+- Start in discussion mode. Classify the request as a question, investigation, bug, or feature; only work-shaped outcomes become tasks.
+- When the outcome is actionable, discuss Goal, Context, Boundary, Acceptance, Verification, Resource class, Blockers, and Human gates, then show one concise draft and ask once before the first Linear write. These fields are the repository's deterministic dispatch contract, not a requirement for every conversational prompt.
+- After that approval, create the task in the canonical Linear project, allow native sync to create the GitHub mirror, and move it to `ready-for-agent` only after preflight passes.
 - Preferred create/update: use the Linear connector in team `YannJY`, assign the canonical project, and set the shared labels there.
 - GitHub ingress: `gh issue create --title "..." --body-file <file>`; then triage the synchronized Linear issue into the project.
 - Execution read: `gh issue view <number> --comments`.

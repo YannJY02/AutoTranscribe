@@ -36,7 +36,7 @@ jobs:
         run: |
           .venv/bin/python -m compileall -q insightkit scripts
           bash -n scripts/agent_bootstrap.sh
-          sh -n scripts/run_symphony.sh
+          sh -n scripts/run_symphony.sh scripts/symphony_after_run.sh scripts/symphony_issue_gate.sh
 
       - name: Verify harness and governance
         env:

@@ -10,6 +10,8 @@ python3.11 scripts/agent_harness.py doctor
 python3.11 scripts/agent_harness.py doctor --profile app-proof
 python3.11 scripts/agent_harness.py issue-preflight --issue <number>
 python3.11 scripts/agent_harness.py verify --issue <number> --mode full
+python3.11 scripts/agent_harness.py handoff --issue <number> --manifest <path> --summary <result> --review-status clear
+python3.11 scripts/agent_harness.py runtime-status --json
 python3.11 scripts/harness_maintenance.py plan --task due
 python3.11 scripts/harness_maintenance.py enqueue --task due
 python3.11 scripts/harness_maintenance.py install-launch-agent --repo-root <canonical-main-checkout>
@@ -19,7 +21,7 @@ python3.11 scripts/harness_maintenance.py install-symphony-launch-agent --repo-r
 
 `agent_harness.py` is the single Interface for local harness checks. Its implementation reuses existing tests and verifiers rather than duplicating release logic.
 
-Before starting Symphony, create a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. Supply it as `SYMPHONY_GITHUB_TOKEN` or store it in macOS Keychain under service `com.autotranscribe.symphony.github-token` and account `symphony`. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. It explicitly removes `OPENAI_API_KEY`, so Codex uses the operator's ChatGPT login. Codex's own GitHub writes use its separately authenticated `gh` session.
+Before starting Symphony, create a dedicated fine-grained token limited to this repository with read-only Issues and metadata access. Supply it as `SYMPHONY_GITHUB_TOKEN` or store it in macOS Keychain under service `com.autotranscribe.symphony.github-token` and account `symphony`. Store a second repository-limited controller token with Contents, Issues, and Pull requests read/write under service `com.autotranscribe.symphony.agent-github-token` and account `symphony-agent`. The launcher does not reuse the operator's broad `gh` token, and Codex inherits only the native core shell environment. The LaunchAgent and launcher both remove `OPENAI_API_KEY`, so Codex uses the operator's ChatGPT login. Only the trusted claim and after-run hook children receive the write credential, read transiently from Keychain.
 
 ## Control and feedback flow
 
@@ -28,9 +30,10 @@ Before starting Symphony, create a dedicated fine-grained token limited to this 
 3. Symphony creates an isolated clone from the locally synchronized canonical `main`, resets `origin` to GitHub, and resumes the Codex App Server thread on retry.
 4. Codex implements or investigates using repository Context, ADRs, skills, and tools.
 5. Visible macOS work records XCUITest screenshots, optional video, unified logs, JSON metrics, optional Instruments trace, and `proof.json`.
-6. Harness verification records commands and results in `logs/harness/<run>/manifest.json`; an independent local Codex review examines code changes.
-7. GitHub Actions reruns deterministic build, test, UI, package, and release checks only.
-8. The shared label moves to `ready-for-human`. A linked PR may update detailed status through configured native PR automation; otherwise a human updates Linear during handoff, accepts, and merges. Do not claim a detailed Linear status change unless it is verified on Linear.
+6. The worker runs the full Harness and an independent local Codex review, then writes a bounded `.symphony/handoff.json`.
+7. After the worker exits, the trusted host hook validates its advisory manifest and copies only its digest-bound regular files into a temporary protected clone. The immutable preflight base is stored outside the worker; worker Git history, configuration, hooks, and executables are never used for delivery. Only the hook children receive the write credential from Keychain; the resident Symphony process and Codex worker retain read-only or no GitHub credentials. Temporary delivery clones are removed after each attempt.
+8. GitHub Actions reruns deterministic build, test, UI, package, and release checks on an isolated runner. A serialized current-head `workflow_run` requires an owner-created PR and owner-authored receipt binding the issue, PR, commit, and unchanged task body before moving passed work to `ready-for-human`. Failed work returns to `ready-for-agent` only if retry preflight still passes; assignees and human triage labels are checked again and preserved. The host does not rerun untrusted worker code with access to the operator's files or Keychain.
+9. A human reviews product results and merges. A linked PR may update detailed status through configured native PR automation; otherwise a human updates Linear during handoff. Do not claim a detailed Linear status change unless it is verified on Linear.
 
 ## Resource isolation
 
@@ -46,7 +49,9 @@ The standard-library file lock is released automatically if the process exits.
 
 ## Evidence contract
 
-Every handoff names the issue, commit, changed files, gate commands and results, CI checks, PR or no-change conclusion, and unresolved human-only acceptance. Manifests never include environment variables, credentials, or full process environments.
+Every handoff names the issue, commit, changed files, their content digest, full-mode gate commands and results, CI checks, PR or no-change conclusion, and unresolved human-only acceptance. Worker reports are advisory, not proof of execution; the controller enforces the complete full-mode gate plan and exact delivered bytes, while isolated CI and independent review establish acceptance evidence. `logs/symphony/preflight/GH-<issue>.base` pins the trusted baseline and `logs/symphony/delivery/GH-<issue>.json` records stable per-content delivery state. Historical Harness manifests without digest/mode remain usable only by the lifecycle verifier's existing exact-plan and immutable-commit checks; they cannot authorize new controller delivery. Manifests never include environment variables, credentials, or full process environments.
+
+The resident launcher also refreshes `logs/symphony/runtime-status.json` on each health interval. It compares the installed bundle revision with remote `main` (falling back explicitly to local `HEAD` if the remote is unavailable), records whether the checkout is current, checks only bounded telemetry-evidence file presence, and reports PostHog transport configuration as a boolean. This is a freshness monitor, not automatic installation, telemetry delivery proof, or release approval.
 
 ## Native application legibility
 

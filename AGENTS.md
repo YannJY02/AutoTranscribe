@@ -10,6 +10,10 @@ Start each new pull-request task in a dedicated Git worktree based on `main`, wi
 
 The [InsightKit / AutoTranscribe Linear project](https://linear.app/yannjy/project/insightkit-autotranscribe-a2f3a38cd145) is the canonical task, PRD, priority, and detailed-status source. Native two-way sync mirrors issues into `YannJY02/AutoTranscribe`; GitHub remains the repository-facing execution surface for Symphony, PRs, CI, and evidence. Resolve conflicting task fields in Linear. Existing `.scratch/` files are historical migration material. See `docs/agents/issue-tracker.md`.
 
+### Proactive intake
+
+Classify new user input as discussion, question, investigation, bug, or feature. Keep ordinary questions conversational. When discussion converges on repository work, use the Matt workflow to make the task contract explicit, show one concise Linear draft, and ask once whether to formalize and enter automated delivery. After approval, create the Linear task in the canonical project and let native sync create the GitHub mirror; do not ask again for routine in-scope execution. Preserve separate human gates for credentials, destructive actions, product judgment, and merge.
+
 ### Delivery surface
 
 GitHub Issues mirror Linear tasks and carry repository-native links to branches, PRs, checks, and Symphony dispatch labels. Do not create an independent task state in GitHub Projects. See `docs/agents/tool-boundaries.md`.

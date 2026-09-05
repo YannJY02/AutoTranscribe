@@ -153,7 +153,7 @@ def test_symphony_launch_agent_uses_local_main_without_model_api_key(tmp_path, m
     )
     payload = plistlib.loads(destination.read_bytes())
 
-    assert payload["ProgramArguments"] == ["/bin/sh", str(launcher)]
+    assert payload["ProgramArguments"] == ["/usr/bin/env", "-u", "OPENAI_API_KEY", "/bin/sh", str(launcher)]
     assert payload["WorkingDirectory"] == str(repo)
     assert payload["EnvironmentVariables"]["SYMPHONY_REPO_SOURCE"] == str(repo)
     assert payload["EnvironmentVariables"]["PATH"].split(":")[:3] == ["/first", "/tools", "/last"]
@@ -358,6 +358,20 @@ def test_symphony_launcher_defaults_to_minimal_isolated_codex_home(tmp_path):
     assert config["features"] == {"apps": False, "plugins": False, "remote_plugin": False}
 
 
+def test_symphony_launcher_keeps_only_the_read_only_tracker_token(tmp_path):
+    completed, _root = _run_test_symphony_launcher(
+        tmp_path,
+        symphony_body=(
+            "#!/bin/sh\n"
+            "printf '%s|%s|%s\\n' \"${GH_TOKEN-unset}\" \"${GITHUB_TOKEN-unset}\" "
+            "\"${SYMPHONY_AGENT_GITHUB_TOKEN-unset}\"\n"
+        ),
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "unset|tracker-token|unset"
+
+
 def test_symphony_launcher_preserves_explicit_codex_home(tmp_path):
     override = tmp_path / "custom-codex-home"
     override.mkdir()
@@ -512,6 +526,7 @@ def test_symphony_agent_github_access_stays_outside_codex():
     root = Path(__file__).resolve().parent.parent
     workflow = (root / "WORKFLOW.md").read_text(encoding="utf-8")
     gate = (root / "scripts" / "symphony_issue_gate.sh").read_text(encoding="utf-8")
+    after_run = (root / "scripts" / "symphony_after_run.sh").read_text(encoding="utf-8")
     launcher = (root / "scripts" / "run_symphony.sh").read_text(encoding="utf-8")
     codex_config = tomllib.loads((root / ".codex" / "symphony.config.toml").read_text(encoding="utf-8"))
 
@@ -519,6 +534,9 @@ def test_symphony_agent_github_access_stays_outside_codex():
     assert "hooks:" in workflow and "before_run:" in workflow
     assert "issue-preflight --json" in gate
     assert '"$SYMPHONY_REAL_GH" issue edit' in gate
+    assert "agent-github-token" in gate
+    assert "agent-github-token" in after_run
+    assert "agent-github-token" not in launcher
     assert "env -u SYMPHONY_AGENT_GITHUB_TOKEN" in workflow
     assert "-u GITHUB_TOKEN -u GH_TOKEN" in workflow
     assert '"$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony-bin/codex"' in workflow
@@ -616,6 +634,8 @@ def _symphony_issue_gate_environment(tmp_path):
     workspace.mkdir()
     evidence = tmp_path / "evidence"
     evidence.mkdir()
+    # This fixture stubs preflight; the immutable base was captured by the host.
+    (evidence / "GH-67.base").write_text("a" * 40 + "\n")
     preflight_args = tmp_path / "preflight-args"
     gh_args = tmp_path / "gh-args"
     fake_python = tmp_path / "python3.11"
@@ -639,6 +659,9 @@ def _symphony_issue_gate_environment(tmp_path):
         encoding="utf-8",
     )
     fake_gh.chmod(0o755)
+    fake_security = tmp_path / "security"
+    fake_security.write_text("#!/bin/sh\nprintf 'controller-token\\n'\n", encoding="utf-8")
+    fake_security.chmod(0o755)
     env = os.environ.copy()
     env.update(
         {
@@ -646,6 +669,7 @@ def _symphony_issue_gate_environment(tmp_path):
             "SYMPHONY_PREFLIGHT_EVIDENCE_ROOT": str(evidence),
             "SYMPHONY_PYTHON3": str(fake_python),
             "SYMPHONY_REAL_GH": str(fake_gh),
+            "SYMPHONY_SECURITY": str(fake_security),
             "FAKE_PREFLIGHT_ARGS": str(preflight_args),
             "FAKE_GH_ARGS": str(gh_args),
         }
