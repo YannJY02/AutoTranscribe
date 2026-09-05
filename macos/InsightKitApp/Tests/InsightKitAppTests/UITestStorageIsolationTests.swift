@@ -1,7 +1,41 @@
+import Darwin
 import XCTest
 @testable import InsightKitApp
 
 final class UITestStorageIsolationTests: XCTestCase {
+    func testUITestInstanceLockIsStableAcrossRelaunchAndIsolatedBetweenRuns() throws {
+        let first = UITestStorageContext(sessionID: UUID())
+        let relaunched = try XCTUnwrap(UITestStorageContext.resolve(environment: first.launchEnvironment))
+        let second = UITestStorageContext(sessionID: UUID())
+        defer { cleanUp(first); cleanUp(second) }
+
+        let firstLockURL = AppLifecycleDelegate.instanceLockURL(uiTestContext: first)
+        let relaunchedLockURL = AppLifecycleDelegate.instanceLockURL(uiTestContext: relaunched)
+        let secondLockURL = AppLifecycleDelegate.instanceLockURL(uiTestContext: second)
+        XCTAssertEqual(firstLockURL.deletingLastPathComponent(), first.rootDirectory)
+        XCTAssertEqual(firstLockURL, relaunchedLockURL)
+        XCTAssertNotEqual(firstLockURL, secondLockURL)
+        XCTAssertNotEqual(firstLockURL, AppLifecycleDelegate.instanceLockURL(uiTestContext: nil))
+
+        guard case .acquired(let firstDescriptor) = AppLifecycleDelegate.claimSingleInstance(at: firstLockURL) else {
+            return XCTFail("First UI-test run must acquire its own instance lock")
+        }
+        defer { close(firstDescriptor) }
+        guard case .contended = AppLifecycleDelegate.claimSingleInstance(at: relaunchedLockURL) else {
+            return XCTFail("The same UI-test run must keep single-instance protection")
+        }
+        guard case .acquired(let secondDescriptor) = AppLifecycleDelegate.claimSingleInstance(at: secondLockURL) else {
+            return XCTFail("Another UI-test run must not contend for the first run's instance lock")
+        }
+        defer { close(secondDescriptor) }
+    }
+
+    func testNormalApplicationKeepsOperatorInstanceLockPath() {
+        let expected = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("InsightKit/insightkit-app.lock")
+        XCTAssertEqual(AppLifecycleDelegate.instanceLockURL(uiTestContext: nil), expected)
+    }
+
     func testUITestBootstrapDoesNotRewriteExistingRecordsPreference() throws {
         let suiteName = "InsightKitOperatorPreferenceRegression-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

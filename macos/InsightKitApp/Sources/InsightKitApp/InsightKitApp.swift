@@ -39,9 +39,16 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         processIDs.first { $0 != currentProcessID }
     }
 
-    static func main() {
-        let lockURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    static func instanceLockURL(uiTestContext: UITestStorageContext? = UITestStorageContext.current) -> URL {
+        if let uiTestContext {
+            return uiTestContext.instanceLockURL
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("InsightKit/insightkit-app.lock")
+    }
+
+    static func main() {
+        let lockURL = instanceLockURL()
         let lockDescriptor: Int32
         switch claimSingleInstance(at: lockURL) {
         case .acquired(let descriptor):
@@ -254,6 +261,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         window.title = "InsightKit 设置"
         window.contentView = NSHostingView(rootView: SettingsView(coordinator: coordinator))
         window.center()

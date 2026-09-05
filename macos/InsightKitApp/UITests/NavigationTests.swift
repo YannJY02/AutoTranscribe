@@ -65,6 +65,33 @@ final class NavigationTests: InsightKitUITests {
         XCTAssertTrue(recordsCard.exists, "转写记录卡片应存在")
     }
 
+    func testSettingsWindowCanCloseAndReopen() throws {
+        let settingsButton = app.buttons["home_open_settings"].firstMatch
+        XCTAssertTrue(waitForElement(settingsButton))
+        settingsButton.click()
+
+        let settingsWindow = app.windows["InsightKit 设置"].firstMatch
+        let analysisMode = settingsWindow.popUpButtons["settings_analysis_mode_picker"].firstMatch
+        XCTAssertTrue(waitForElement(analysisMode))
+        let originalAnalysisMode = stringValue(of: analysisMode)
+        attachScreenshot(named: "settings-before-close", windowTitle: "InsightKit 设置")
+
+        let closeButton = settingsWindow.buttons[XCUIIdentifierCloseWindow].firstMatch
+        XCTAssertTrue(waitForElement(closeButton))
+        closeButton.click()
+        XCTAssertTrue(settingsWindow.waitForNonExistence(timeout: 5), "红色关闭按钮应关闭设置窗口")
+        XCTAssertNotEqual(app.state, .notRunning, "关闭设置窗口不应退出应用")
+        XCTAssertTrue(waitForElement(settingsButton))
+
+        settingsButton.click()
+
+        let reopenedSettings = app.windows["InsightKit 设置"].firstMatch
+        let reopenedAnalysisMode = reopenedSettings.popUpButtons["settings_analysis_mode_picker"].firstMatch
+        XCTAssertTrue(waitForElement(reopenedAnalysisMode), "关闭后应能再次打开可用的设置窗口")
+        XCTAssertEqual(stringValue(of: reopenedAnalysisMode), originalAnalysisMode)
+        attachScreenshot(named: "settings-reopened", windowTitle: "InsightKit 设置")
+    }
+
     func testTelemetryConsentDefaultsOffAndDisclosesDataUse() throws {
         app.buttons["home_open_settings"].firstMatch.click()
         let settingsWindow = app.windows["InsightKit 设置"].firstMatch

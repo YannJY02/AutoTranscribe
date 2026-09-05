@@ -42,6 +42,9 @@ struct UITestStorageContext {
         temporaryDirectory.appendingPathComponent("InsightKitUITest-\(sessionID.uuidString)", isDirectory: true)
     }
     var recordsDirectory: URL { rootDirectory.appendingPathComponent("Records", isDirectory: true) }
+    var instanceLockURL: URL { rootDirectory.appendingPathComponent("insightkit-app.lock") }
+    // Unix socket paths have a short platform limit.
+    var socketPath: String { "/tmp/ik-ui-\(sessionID.uuidString).sock" }
     var configSnapshotURL: URL { rootDirectory.appendingPathComponent("runtime_config_v1.json") }
     var captureDirectory: URL {
         rootDirectory.appendingPathComponent("InsightKitUITestEvidence-\(sessionID.uuidString)", isDirectory: true)
@@ -53,8 +56,7 @@ struct UITestStorageContext {
             "INSIGHTKIT_UI_TEST_MODE": "1",
             "INSIGHTKIT_UI_TEST_CAPTURE_ROOT": captureDirectory.path,
             "INSIGHTKIT_RECORDS_ROOT": recordsDirectory.path,
-            // Unix socket paths have a short platform limit.
-            "INSIGHTKIT_SOCKET": "/tmp/ik-ui-\(sessionID.uuidString).sock",
+            "INSIGHTKIT_SOCKET": socketPath,
         ]
     }
 
