@@ -22,7 +22,11 @@ final class SidecarEnvironmentIsolationTests: XCTestCase {
             let store = AppConfigStore.makeUITestStore(context: context)
             let inherited = syntheticParentEnvironment.merging(launchEnvironment) { _, launch in launch }
             let resolvedContext = try XCTUnwrap(UITestStorageContext.resolve(environment: inherited, arguments: arguments))
-            var merged = PythonRuntimeEnvironment.prepared(from: inherited, runtimeRoot: "/tmp/synthetic-runtime")
+            var merged = PythonRuntimeEnvironment.prepared(
+                from: inherited,
+                runtimeRoot: "/tmp/synthetic-runtime",
+                arguments: arguments
+            )
             let configured = store.sidecarEnvironment(processEnvironment: inherited)
             merged.merge(configured) { _, configured in configured }
             let childEnvironment = SidecarManager.childEnvironment(from: merged, arguments: arguments)
@@ -83,6 +87,40 @@ final class SidecarEnvironmentIsolationTests: XCTestCase {
         XCTAssertEqual(version?.1, 11)
         XCTAssertEqual(version?.2, 0)
         XCTAssertTrue(SidecarManager.pythonHasASRDeps(for: dependencyProbe, environment: environment))
+    }
+
+    func testEveryUITestEntrypointKeepsSidecarLogsInsideItsContext() throws {
+        let syntheticHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitLogPathTests-\(UUID().uuidString)")
+
+        for (launchEnvironment, arguments) in launches {
+            let inherited = syntheticParentEnvironment.merging(launchEnvironment) { _, launch in launch }
+            let context = try XCTUnwrap(UITestStorageContext.resolve(environment: inherited, arguments: arguments))
+
+            let path = SidecarManager.resolveLogPath(
+                environment: inherited,
+                arguments: arguments,
+                homeDirectory: syntheticHome
+            )
+
+            XCTAssertEqual(path, context.captureDirectory.appendingPathComponent("diagnostics/sidecar.log").path)
+            XCTAssertFalse(path.hasPrefix(syntheticHome.path))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: syntheticHome.path), "Path resolution must not create operator directories")
+    }
+
+    func testNonUITestLogPathPreservesTheOperatorLocationWithoutCreatingIt() {
+        let syntheticHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InsightKitLogPathTests-\(UUID().uuidString)")
+
+        let path = SidecarManager.resolveLogPath(
+            environment: syntheticParentEnvironment,
+            arguments: ["InsightKitApp"],
+            homeDirectory: syntheticHome
+        )
+
+        XCTAssertEqual(path, syntheticHome.appendingPathComponent("Library/Logs/InsightKit/sidecar.log").path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: syntheticHome.path))
     }
 
     private let credentialNames = [

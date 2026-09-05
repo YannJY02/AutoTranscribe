@@ -2,6 +2,71 @@ import XCTest
 @testable import InsightKitApp
 
 final class ChunkAssemblerTests: XCTestCase {
+    func testSessionOnlyChunksDoNotOverwriteOrDeleteOtherContexts() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ChunkAssemblerIsolation-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let operatorLike = ChunkAssembler(
+            firstChunkDurationSec: 0.1,
+            environment: [:],
+            arguments: [],
+            temporaryDirectory: temporaryDirectory
+        )
+        let operatorChunk = try XCTUnwrap(operatorLike.append(samples: Array(repeating: 0.1, count: 1_600)).first)
+        let originalData = try Data(contentsOf: operatorChunk.url)
+        XCTAssertEqual(
+            operatorChunk.url.deletingLastPathComponent(),
+            temporaryDirectory.appendingPathComponent("insightkit-live-chunks", isDirectory: true)
+        )
+
+        let firstTest = ChunkAssembler(
+            firstChunkDurationSec: 0.1,
+            environment: [UITestStorageContext.sessionIDEnvironmentKey: UUID().uuidString],
+            arguments: [],
+            temporaryDirectory: temporaryDirectory
+        )
+        let secondTest = ChunkAssembler(
+            firstChunkDurationSec: 0.1,
+            environment: [UITestStorageContext.sessionIDEnvironmentKey: UUID().uuidString],
+            arguments: [],
+            temporaryDirectory: temporaryDirectory
+        )
+        let firstChunk = try XCTUnwrap(firstTest.append(samples: Array(repeating: 0.2, count: 1_600)).first)
+        let secondChunk = try XCTUnwrap(secondTest.append(samples: Array(repeating: 0.3, count: 1_600)).first)
+        let secondData = try Data(contentsOf: secondChunk.url)
+
+        XCTAssertNotEqual(firstChunk.url, operatorChunk.url)
+        XCTAssertNotEqual(firstChunk.url, secondChunk.url)
+        XCTAssertEqual(try? Data(contentsOf: operatorChunk.url), originalData)
+
+        firstTest.reset()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstChunk.url.path))
+        XCTAssertEqual(try? Data(contentsOf: operatorChunk.url), originalData)
+        XCTAssertEqual(try? Data(contentsOf: secondChunk.url), secondData)
+    }
+
+    func testUITestKeepsExplicitChunkDirectory() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ChunkAssemblerInjection-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let explicitDirectory = temporaryDirectory.appendingPathComponent("explicit-chunks", isDirectory: true)
+        let assembler = ChunkAssembler(
+            firstChunkDurationSec: 0.1,
+            chunkDir: explicitDirectory,
+            environment: [UITestStorageContext.sessionIDEnvironmentKey: UUID().uuidString],
+            arguments: [],
+            temporaryDirectory: temporaryDirectory
+        )
+        let chunk = try XCTUnwrap(assembler.append(samples: Array(repeating: 0.1, count: 1_600)).first)
+
+        XCTAssertEqual(chunk.url.deletingLastPathComponent(), explicitDirectory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: chunk.url.path))
+        assembler.reset()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: chunk.url.path))
+    }
+
     func testFirstChunkTwoSecondsThenSteadySixSecondsAndFlush() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ChunkAssemblerTests_\(UUID().uuidString)", isDirectory: true)

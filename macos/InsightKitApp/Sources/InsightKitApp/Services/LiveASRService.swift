@@ -26,17 +26,23 @@ final class LiveASRService {
     private let scriptPath: String
     private let timeoutSec: Int
     private let maxRetries: Int
+    private let environment: [String: String]
+    private let arguments: [String]
 
     init(
         pythonBinary: String = ProcessInfo.processInfo.environment["INSIGHTKIT_PYTHON"] ?? "python3",
         scriptPath: String = LiveASRService.defaultScriptPath(),
         timeoutSec: Int = Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_TIMEOUT_SEC"] ?? "25") ?? 25,
-        maxRetries: Int = Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_MAX_RETRIES"] ?? "1") ?? 1
+        maxRetries: Int = Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_MAX_RETRIES"] ?? "1") ?? 1,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
         self.pythonBinary = pythonBinary
         self.scriptPath = scriptPath
         self.timeoutSec = max(5, timeoutSec)
         self.maxRetries = max(0, maxRetries)
+        self.environment = environment
+        self.arguments = arguments
     }
 
     func transcribe(chunk: AudioChunk, source: String) throws -> [RPCSegmentDelta] {
@@ -69,7 +75,7 @@ final class LiveASRService {
 
         let args = [pythonBinary, scriptPath, "--wav", wavPath, "--offset-ms", "\(offsetMs)"]
         process.arguments = args
-        process.environment = PythonRuntimeEnvironment.prepared(from: ProcessInfo.processInfo.environment)
+        process.environment = PythonRuntimeEnvironment.prepared(from: environment, arguments: arguments)
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

@@ -159,36 +159,8 @@ final class SidecarManager {
         from environment: [String: String],
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> [String: String] {
-        guard let context = UITestStorageContext.resolve(environment: environment, arguments: arguments)
-        else { return environment }
-
-        // Apply the allowlist after the config overlay so inherited or forwarded
-        // operator credentials cannot re-enter the final child environment.
-        var isolated = environment.filter { uiTestChildEnvironmentKeys.contains($0.key) }
-        isolated["INSIGHTKIT_UI_TEST_MODE"] = "1"
-        isolated[UITestStorageContext.sessionIDEnvironmentKey] = context.sessionID.uuidString
-        isolated["INSIGHTKIT_SOCKET"] = context.socketPath
-        isolated["INSIGHTKIT_RECORDS_ROOT"] = context.recordsDirectory.path
-        isolated["INSIGHTKIT_UI_TEST_CAPTURE_ROOT"] = context.captureDirectory.path
-        isolated["INSIGHTKIT_DB_PATH"] = context.rootDirectory.appendingPathComponent("data/insightkit.db").path
-        let huggingFaceHome = context.rootDirectory.appendingPathComponent("cache/huggingface", isDirectory: true)
-        isolated["HF_HOME"] = huggingFaceHome.path
-        isolated["HF_TOKEN_PATH"] = huggingFaceHome.appendingPathComponent("token").path
-        return isolated
+        PythonRuntimeEnvironment.isolatedForUITesting(from: environment, arguments: arguments)
     }
-
-    private static let uiTestChildEnvironmentKeys: Set<String> = [
-        "PATH", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE", "PYTHONIOENCODING", "PYTHONUNBUFFERED",
-        "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "TMP", "TEMP",
-        "INSIGHTKIT_RUNTIME_ROOT", "INSIGHTKIT_PYTHON_RESOLVED", "INSIGHTKIT_BUILD", "INSIGHTKIT_VERSION",
-        "INSIGHTKIT_PROVIDER_VENDOR", "INSIGHTKIT_ANALYSIS_MODE", "INSIGHTKIT_PROVIDER_MODEL", "INSIGHTKIT_STRICT_MODE",
-        "INSIGHTKIT_ASR_ENGINE", "INSIGHTKIT_ASR_MODEL", "INSIGHTKIT_MODEL_DIR", "INSIGHTKIT_VAD_ENABLED",
-        "INSIGHTKIT_DIARIZATION_ENABLED", "INSIGHTKIT_DIARIZATION_ENGINE", "INSIGHTKIT_ASR_STRICT_LOCAL_ONLY",
-        "INSIGHTKIT_FUNASR_ASR_MODEL", "INSIGHTKIT_WHISPER_MODEL", "INSIGHTKIT_QWEN_MLX_MODEL", "INSIGHTKIT_QWEN_ASR_MODEL",
-        "INSIGHTKIT_QWEN_FORCED_ALIGNER_MODEL", "INSIGHTKIT_QWEN_RETURN_TIMESTAMPS", "INSIGHTKIT_APPLE_SPEECH_PROTOTYPE_ENABLED",
-        "INSIGHTKIT_FLUIDAUDIO_CLI", "OPENAI_BASE_URL", "OPENAI_MODEL", "GEMINI_BASE_URL", "GEMINI_MODEL",
-        "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "QWEN_BASE_URL", "QWEN_MODEL", "DOUBAO_BASE_URL", "DOUBAO_MODEL",
-    ]
 
     static func shouldRebootstrapForBuildMismatch(sidecarBuild: String, appBuild: String) -> Bool {
         let lhs = sidecarBuild.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -712,15 +684,25 @@ final class SidecarManager {
         return (major, minor, patch)
     }
 
-    private static func resolveLogPath() -> String {
-        let base = FileManager.default.homeDirectoryForCurrentUser
+    static func resolveLogPath(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> String {
+        if let context = UITestStorageContext.resolve(environment: environment, arguments: arguments) {
+            return context.captureDirectory.appendingPathComponent("diagnostics/sidecar.log").path
+        }
+        let base = homeDirectory
             .appendingPathComponent("Library/Logs/InsightKit")
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("sidecar.log").path
     }
 
     private static func openLogHandle(at path: String) -> FileHandle? {
         let fileManager = FileManager.default
+        try? fileManager.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         if !fileManager.fileExists(atPath: path) {
             fileManager.createFile(atPath: path, contents: nil)
         }
