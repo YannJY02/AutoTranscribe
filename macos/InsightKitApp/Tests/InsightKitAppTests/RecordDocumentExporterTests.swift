@@ -103,14 +103,43 @@ final class RecordDocumentExporterTests: XCTestCase {
         XCTAssertFalse(markdown.contains("已确认"))
     }
 
-    func testPDFPreservesReviewNoticesFromTheSharedDocumentContent() throws {
+    func testPDFPassesIndependentStructureCheckAndPreservesReviewContent() throws {
         let metadata = try seedRecordWithMixedReviewStates()
 
         let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
+
+        // Check the original exporter output before opening it with PDFKit.
+        // Missing qpdf is a failed dependency contract, not a skipped check.
+        let checker = Process()
+        let output = Pipe()
+        checker.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        checker.arguments = ["qpdf", "--check", url.path]
+        checker.standardOutput = output
+        checker.standardError = output
+        do {
+            try checker.run()
+        } catch {
+            XCTFail("Could not launch qpdf --check. Install qpdf and make it available on PATH (brew install qpdf). \(error)")
+            return
+        }
+        let diagnostics = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        checker.waitUntilExit()
+        XCTAssertEqual(
+            checker.terminationStatus, 0,
+            "Original PDF must pass qpdf --check without warnings. qpdf must be on PATH (brew install qpdf).\n\(diagnostics)"
+        )
+
         let text = try XCTUnwrap(PDFDocument(url: url)?.string)
 
         // PDFKit inserts layout whitespace after full-width punctuation.
         let compactText = text.filter { !$0.isWhitespace }
+        XCTAssertTrue(compactText.contains("Mixedreviewstateexport"))
+        XCTAssertTrue(
+            compactText.contains("中文与English混排"),
+            "Synthetic PDF extracted text: \(compactText)"
+        )
+        XCTAssertTrue(compactText.contains("关键决策"))
+        XCTAssertTrue(text.contains("Export evidence is readable."))
         XCTAssertEqual(compactText.components(separatedBy: "复核：待复核").count - 1, 2)
         for item in [
             "Decision requiring review", "Decision with false review flag", "Decision without review flag",
@@ -235,7 +264,7 @@ final class RecordDocumentExporterTests: XCTestCase {
         let metadata = try seedRecord()
         try """
         {
-          "session_overview":{"title":"Review flags","overview":"Mixed review state export","topics":[]},
+          "session_overview":{"title":"Review flags","overview":"Mixed review state export — 中文与English混排","topics":[]},
           "highlight_insights":[],
           "speaker_perspectives":[],
           "decision_ledger":[

@@ -5,6 +5,7 @@ enum RecordDocumentExportError: LocalizedError {
     case unsupportedFormat(String)
     case missingMetadata
     case pdfContextCreationFailed
+    case pdfSerializationFailed
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ enum RecordDocumentExportError: LocalizedError {
             return "记录元数据缺失。"
         case .pdfContextCreationFailed:
             return "无法创建 PDF 导出上下文。"
+        case .pdfSerializationFailed:
+            return "无法生成 PDF 文件。"
         }
     }
 }
@@ -302,7 +305,15 @@ enum RecordDocumentExporter {
         }
         endPage()
         context.closePDF()
-        try data.write(to: url, options: .atomic)
+        // Some Core Graphics font-fallback output marks unused zero-offset
+        // objects as live. Repair only those entries, preserving all page bytes.
+        let serialized: Data
+        do {
+            serialized = try CoreGraphicsPDFCrossReference.repairUnusedEntries(in: data as Data)
+        } catch {
+            throw RecordDocumentExportError.pdfSerializationFailed
+        }
+        try serialized.write(to: url, options: .atomic)
     }
 
     private struct PDFBlock {

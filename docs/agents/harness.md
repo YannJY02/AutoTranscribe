@@ -55,6 +55,11 @@ The resident launcher also refreshes `logs/symphony/runtime-status.json` on each
 
 ## Native application legibility
 
+The Swift export regressions require `qpdf` on `PATH` (`brew install qpdf`).
+They check the generated PDF with an independent parser before PDFKit text
+readback, so a readable document with structural warnings cannot pass unnoticed.
+The Swift CI job installs this test dependency; the installed app does not use it.
+
 `scripts/run_uitests.sh` creates a per-run proof directory next to its `.xcresult`. It contains kept XCTest screenshots, bounded macOS Unified Logging output, test-duration metrics, and `proof.json`. CI also opts into a main-display journey video because the runner is isolated. Local video recording is opt-in because it can capture unrelated screen content. Instruments capture is opt-in for evidenced performance work.
 
 For this native macOS app, these are the application-legibility equivalents:
