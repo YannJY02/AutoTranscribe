@@ -686,6 +686,18 @@ def write_controller_handoff(
     return _write_json_atomic(workspace / ".symphony" / "handoff.json", payload)
 
 
+def write_blocked_handoff(*, root: Path, issue: str, manifest_path: Path) -> Path:
+    # Reuse the bounded data reader; this command has no delivery credentials.
+    if __package__:
+        from .symphony_delivery_controller import DeliveryError, write_blocked_handoff as write_report
+    else:
+        from symphony_delivery_controller import DeliveryError, write_blocked_handoff as write_report
+    try:
+        return write_report(root=root, issue=issue, manifest_path=manifest_path)
+    except DeliveryError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def verify_changes(*, base: str, mode: str, issue: str | None, output_root: Path, dry_run: bool) -> dict[str, Any]:
     files = changed_files(base)
     python_executable = str(ROOT / ".venv/bin/python") if (ROOT / ".venv/bin/python").exists() else sys.executable
@@ -905,6 +917,9 @@ def build_parser() -> argparse.ArgumentParser:
     handoff_parser.add_argument("--review-status", choices=("clear", "not-required"), required=True)
     handoff_parser.add_argument("--human-gate", action="append", default=[])
     handoff_parser.add_argument("--no-change", action="store_true")
+    blocked_parser = subparsers.add_parser("blocked-handoff", help="Report unresolved failed full verification")
+    blocked_parser.add_argument("--issue", required=True)
+    blocked_parser.add_argument("--manifest", type=Path, required=True)
 
     runtime_parser = subparsers.add_parser("runtime-status", help="Snapshot installed-app and automation freshness.")
     runtime_parser.add_argument("--app", type=Path, default=Path("~/Applications/InsightKit.app"))
@@ -963,6 +978,10 @@ def main() -> int:
             if not args.dry_run:
                 print(f"manifest: {output_root / 'manifest.json'}")
             return 0 if payload["status"] in {"passed", "planned"} else 1
+        if args.command == "blocked-handoff":
+            path = write_blocked_handoff(root=ROOT, issue=args.issue, manifest_path=args.manifest)
+            print(path)
+            return 0
         if args.command == "handoff":
             path = write_controller_handoff(
                 root=ROOT,

@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
 import stat
@@ -15,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, replace
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -28,6 +31,7 @@ else:
 WORKSPACE_RE = re.compile(r"^GH-(?P<number>\d+)$")
 LINEAR_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
 GATE_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+ATTEMPT_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class DeliveryError(RuntimeError):
@@ -50,7 +54,19 @@ class DeliveryContext:
     contract_sha256: str
 
 
-def read_worker_file(root: Path, relative: str) -> tuple[bytes, int]:
+@dataclass(frozen=True)
+class BlockedContext:
+    workspace: Path
+    issue_number: int
+    linear_issue: str
+    contract_sha256: str
+    attempt_id: str
+    failed_gate: str
+    exit_code: int
+    handoff_sha256: str
+
+
+def read_worker_file(root: Path, relative: str, *, maximum: int = 100_000_000) -> tuple[bytes, int]:
     """Read regular files via directory descriptors; never follow worker links."""
     parts = Path(relative).parts
     if not parts or Path(relative).is_absolute() or ".." in parts:
@@ -64,14 +80,170 @@ def read_worker_file(root: Path, relative: str) -> tuple[bytes, int]:
         fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
         with os.fdopen(fd, "rb") as handle:
             metadata = os.fstat(handle.fileno())
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 100_000_000:
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum:
                 raise DeliveryError("worker handoff files must be bounded regular files")
-            contents = handle.read(100_000_001)
-            if len(contents) > 100_000_000:
+            contents = handle.read(maximum + 1)
+            if len(contents) > maximum:
                 raise DeliveryError("worker file exceeds delivery limit")
             return contents, 0o755 if metadata.st_mode & 0o111 else 0o644
     finally:
         os.close(directory)
+
+
+def _worker_json(workspace: Path, relative: str, *, maximum: int = 65_536) -> dict[str, Any]:
+    try:
+        contents, _ = read_worker_file(workspace, relative, maximum=maximum)
+        payload = json.loads(contents)
+    except (OSError, ValueError, RecursionError) as exc:
+        raise DeliveryError("cannot read bounded worker report") from exc
+    if not isinstance(payload, dict):
+        raise DeliveryError("worker report must be a JSON object")
+    return payload
+
+
+def _write_worker_json(workspace: Path, name: str, payload: dict[str, Any]) -> Path:
+    """Replace only a fixed report leaf, without following any worker links."""
+    root_fd = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            os.mkdir(".symphony", mode=0o700, dir_fd=root_fd)
+        except FileExistsError:
+            pass
+        directory = os.open(".symphony", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+    finally:
+        os.close(root_fd)
+    temporary = f".{name}.{secrets.token_hex(16)}.tmp"
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+        os.close(directory)
+    return workspace / ".symphony" / name
+
+
+def _blocked_workspace(workspace: Path) -> tuple[Path, int]:
+    workspace = workspace.expanduser().absolute()
+    workspace = workspace.parent.resolve() / workspace.name
+    match = re.fullmatch(r"GH-([1-9][0-9]*)", workspace.name)
+    if not match or workspace.is_symlink():
+        raise DeliveryError("blocked workspace must be a real GH-<issue number> directory")
+    return workspace, int(match[1])
+
+
+def _failed_gate(manifest: dict[str, Any], workspace: Path, issue_number: int) -> tuple[str, int]:
+    if manifest.get("schema_version") != 1 or manifest.get("status") != "failed":
+        raise DeliveryError("blocked handoff requires a failed Harness manifest")
+    if type(manifest.get("issue")) is not int or manifest["issue"] != issue_number:
+        raise DeliveryError("blocked manifest issue does not match the workspace")
+    if manifest.get("mode") != "full":
+        raise DeliveryError("blocked handoff requires a full-mode manifest")
+    if manifest.get("workspace") != str(workspace):
+        raise DeliveryError("blocked manifest belongs to a different workspace")
+    changed = _safe_paths(manifest.get("changed_files"), "manifest changed files")
+    if not ATTEMPT_RE.fullmatch(str(manifest.get("changes_sha256") or "")):
+        raise DeliveryError("blocked manifest requires a file contents digest")
+    plan = gate_specs(changed, mode="full", python_executable="python")
+    gates = manifest.get("gates")
+    if not isinstance(gates, list) or not gates or len(gates) > len(plan):
+        raise DeliveryError("failed manifest must report a nonempty full-plan prefix")
+    for index, gate in enumerate(gates):
+        failed = index == len(gates) - 1
+        if (not isinstance(gate, dict) or gate.get("name") != plan[index].name
+                or gate.get("status") != ("failed" if failed else "passed")):
+            raise DeliveryError("failed manifest must report an ordered full-plan prefix")
+        commands = gate.get("commands")
+        if not isinstance(commands, list) or not commands:
+            raise DeliveryError("failed manifest requires command exit evidence")
+        for command_index, command in enumerate(commands):
+            code = command.get("exit_code") if isinstance(command, dict) else None
+            must_fail = failed and command_index == len(commands) - 1
+            if (type(code) is not int or not -255 <= code <= 255 or (code != 0) != must_fail
+                    or ("ok" in command and command["ok"] is not (code == 0))):
+                raise DeliveryError("failed manifest has inconsistent command exit evidence")
+    return gates[-1]["name"], gates[-1]["commands"][-1]["exit_code"]
+
+
+def _attempt_evidence(workspace: Path, preflight_root: Path) -> dict[str, Any]:
+    workspace, issue_number = _blocked_workspace(workspace)
+    try:
+        preflight = _read_json(preflight_root / f"{workspace.name}.json", "issue preflight")
+        base = (preflight_root / f"{workspace.name}.base").read_text().strip()
+        claimed = (preflight_root / f"{workspace.name}.claimed").read_text().strip()
+    except OSError as exc:
+        raise DeliveryError("missing trusted attempt preflight or claim") from exc
+    if (preflight.get("status") != "passed" or preflight.get("issue") != issue_number
+            or claimed != "claimed" or not re.fullmatch(r"[0-9a-f]{40}", base)):
+        raise DeliveryError("attempt requires passed preflight, immutable base and controller claim")
+    linear_issue = str(preflight.get("linear_issue") or "")
+    contract = str(preflight.get("body_sha256") or "")
+    if not LINEAR_RE.fullmatch(linear_issue) or not ATTEMPT_RE.fullmatch(contract):
+        raise DeliveryError("attempt requires a valid Linear contract")
+    return {"schema_version": 1, "issue": issue_number, "workspace": str(workspace),
+            "linear_issue": linear_issue, "contract_sha256": contract, "base": base}
+
+
+def _current_attempt(workspace: Path, preflight_root: Path) -> dict[str, Any]:
+    expected = _attempt_evidence(workspace, preflight_root)
+    attempt = _read_json(preflight_root / f"{workspace.name}.attempt.json", "trusted attempt")
+    if (any(attempt.get(key) != value for key, value in expected.items())
+            or not ATTEMPT_RE.fullmatch(str(attempt.get("attempt_id") or ""))):
+        raise DeliveryError("blocked report does not match the current trusted attempt")
+    return attempt
+
+
+def load_blocked_context(workspace: Path, preflight_root: Path) -> BlockedContext:
+    workspace, issue_number = _blocked_workspace(workspace)
+    handoff = _worker_json(workspace, ".symphony/handoff.json")
+    if (handoff.get("schema_version") != 1 or handoff.get("status") != "blocked"
+            or handoff.get("kind") != "verification-blocked"
+            or handoff.get("reason_code") != "full-harness-failed"
+            or handoff.get("issue") != workspace.name):
+        raise DeliveryError("unsupported blocked handoff")
+    attempt = _current_attempt(workspace, preflight_root)
+    if handoff.get("attempt_id") != attempt["attempt_id"]:
+        raise DeliveryError("blocked handoff belongs to an old or unknown attempt")
+    manifest_name = handoff.get("manifest")
+    if not isinstance(manifest_name, str) or not manifest_name:
+        raise DeliveryError("blocked handoff requires a local manifest")
+    manifest = _worker_json(workspace, manifest_name, maximum=1_048_576)
+    failed_gate, exit_code = _failed_gate(manifest, workspace, issue_number)
+    identity = {**attempt, "failed_gate": failed_gate, "exit_code": exit_code,
+                "changes_sha256": manifest["changes_sha256"]}
+    return BlockedContext(
+        workspace=workspace, issue_number=issue_number, linear_issue=attempt["linear_issue"],
+        contract_sha256=attempt["contract_sha256"], attempt_id=attempt["attempt_id"],
+        failed_gate=failed_gate, exit_code=exit_code,
+        handoff_sha256=hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest(),
+    )
+
+
+def write_blocked_handoff(*, root: Path, issue: str, manifest_path: Path) -> Path:
+    workspace, issue_number = _blocked_workspace(root)
+    if issue != f"GH-{issue_number}":
+        raise DeliveryError("blocked handoff issue does not match the workspace")
+    try:
+        relative = manifest_path.expanduser().absolute().relative_to(workspace)
+    except ValueError as exc:
+        raise DeliveryError("manifest must stay inside the workspace") from exc
+    attempt = _worker_json(workspace, ".symphony/attempt.json")
+    if (attempt.get("schema_version") != 1 or attempt.get("issue") != issue_number
+            or attempt.get("workspace") != str(workspace)
+            or not ATTEMPT_RE.fullmatch(str(attempt.get("attempt_id") or ""))):
+        raise DeliveryError("missing current controller attempt")
+    manifest = _worker_json(workspace, relative.as_posix(), maximum=1_048_576)
+    _failed_gate(manifest, workspace, issue_number)
+    return _write_worker_json(workspace, "handoff.json", {
+        "schema_version": 1, "status": "blocked", "kind": "verification-blocked",
+        "reason_code": "full-harness-failed", "issue": workspace.name,
+        "attempt_id": attempt["attempt_id"], "manifest": relative.as_posix(),
+    })
 
 
 def _utc_now() -> str:
@@ -153,6 +325,7 @@ def _safe_paths(values: Any, label: str) -> tuple[str, ...]:
         path = Path(value)
         if (
             not value
+            or not path.parts
             or path.is_absolute()
             or ".." in path.parts
             or path.parts[0].casefold() in {".git", ".venv", ".symphony", "logs"}
@@ -314,6 +487,179 @@ class DeliveryController:
         self.gh = gh
         self.source = (source or Path(__file__).resolve().parents[1]).resolve()
 
+    @contextmanager
+    def _issue_lock(self, workspace: Path):
+        workspace, _ = _blocked_workspace(workspace)
+        directory = self.preflight_root.parent / "delivery"
+        directory.mkdir(parents=True, exist_ok=True)
+        fd = os.open(directory / f"{workspace.name}.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(fd)
+
+    def invalidate_attempt(self, workspace: Path) -> None:
+        workspace, _ = _blocked_workspace(workspace)
+        with self._issue_lock(workspace):
+            (self.preflight_root / f"{workspace.name}.attempt.json").unlink(missing_ok=True)
+
+    def begin_attempt(self, workspace: Path) -> str:
+        workspace, _ = _blocked_workspace(workspace)
+        with self._issue_lock(workspace):
+            attempt = _attempt_evidence(workspace, self.preflight_root)
+            attempt["attempt_id"] = secrets.token_hex(32)
+            path = self.preflight_root / f"{workspace.name}.attempt.json"
+            # Publish the trusted identity before making its data-only copy available.
+            with tempfile.NamedTemporaryFile("w", dir=self.preflight_root, delete=False) as handle:
+                json.dump(attempt, handle, sort_keys=True)
+                temporary = Path(handle.name)
+            temporary.replace(path)
+            try:
+                _write_worker_json(workspace, "attempt.json", attempt)
+            except OSError:
+                path.unlink(missing_ok=True)
+                raise
+            return attempt["attempt_id"]
+
+    def _blocked_state_path(self, workspace: Path) -> Path:
+        return self.preflight_root.parent / "delivery" / f"{workspace.name}.blocked.json"
+
+    def _blocked_state(self, workspace: Path) -> dict[str, Any]:
+        path = self._blocked_state_path(workspace)
+        return _read_json(path, "blocked state") if path.is_file() else {}
+
+    def _write_blocked_state(self, context: BlockedContext, phase: str) -> None:
+        path = self._blocked_state_path(context.workspace)
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
+            json.dump({"schema_version": 1, "status": phase, "issue": context.issue_number,
+                       "attempt_id": context.attempt_id, "handoff_sha256": context.handoff_sha256}, handle)
+            temporary = Path(handle.name)
+        temporary.replace(path)
+
+    def _check_blocked_attempt(self, context: BlockedContext) -> None:
+        attempt = _current_attempt(context.workspace, self.preflight_root)
+        if (attempt["attempt_id"] != context.attempt_id
+                or attempt["contract_sha256"] != context.contract_sha256):
+            raise DeliveryError("blocked report belongs to a superseded attempt")
+
+    def _check_blocked_claim(self, context: BlockedContext, login: str, phase: str) -> dict[str, Any]:
+        self._check_blocked_attempt(context)
+        issue = self._issue(context)
+        labels = {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
+        assignees = {person["login"] for person in issue.get("assignees", [])}
+        allowed_labels = {
+            "new": [{"ready-for-agent"}],
+            "commenting": [{"ready-for-agent"}],
+            "withdrawing": [{"ready-for-agent"}, set()],
+            "releasing": [set()],
+            "triaging": [set(), {"needs-triage"}],
+        }[phase]
+        allowed_assignees = {
+            "new": [{login}],
+            "commenting": [{login}],
+            "withdrawing": [{login}],
+            "releasing": [{login}, set()],
+            "triaging": [set()],
+        }[phase]
+        if issue.get("state") != "open" or labels not in allowed_labels or assignees not in allowed_assignees:
+            raise DeliveryError("preserving human issue state or assignment")
+        if hashlib.sha256((issue.get("body") or "").encode()).hexdigest() != context.contract_sha256:
+            raise DeliveryError("task contract changed since preflight")
+        return issue
+
+    def process_blocked(self, workspace: Path) -> bool:
+        with self._issue_lock(workspace):
+            context = load_blocked_context(workspace, self.preflight_root)
+            state = self._blocked_state(context.workspace)
+            same_attempt = state.get("attempt_id") == context.attempt_id
+            if same_attempt and state.get("status") == "blocked-reported":
+                return False
+            if same_attempt and state.get("handoff_sha256") != context.handoff_sha256:
+                raise DeliveryError("blocked report changed during processing")
+            phase = str(state.get("status")) if same_attempt else "new"
+            if phase not in {"new", "commenting", "withdrawing", "releasing", "triaging"}:
+                raise DeliveryError("unrecognized blocked processing state")
+            login = self._gh(["api", "user", "--jq", ".login"], cwd=self.source)
+            if not login or any(char in login for char in "\r\n\x00"):
+                raise DeliveryError("cannot identify the controller GitHub account")
+            self._check_blocked_claim(context, login, phase)
+            if phase in {"new", "commenting"}:
+                marker = "<!-- insightkit-blocked:" + json.dumps(
+                    {"issue": context.issue_number, "attempt": context.attempt_id}, sort_keys=True,
+                ) + " -->"
+                pages = json.loads(self._gh(
+                    ["api", f"repos/{self.repository}/issues/{context.issue_number}/comments", "--paginate", "--slurp"],
+                    cwd=self.source,
+                ))
+                comments = [comment for page in pages for comment in (page if isinstance(page, list) else [page])]
+                recorded = any(isinstance(comment, dict) and comment.get("user", {}).get("login") == login
+                               and str(comment.get("body", "")).startswith(marker) for comment in comments)
+                self._check_blocked_claim(context, login, phase)
+                self._write_blocked_state(context, "commenting")
+                if not recorded:
+                    self._comment(context, (
+                        f"{marker}\nWorker reports full Harness verification blocked for {context.linear_issue}: "
+                        f"`{context.failed_gate}` exited {context.exit_code}.\n\n"
+                        "The controller is withdrawing this attempt from dispatch for triage. "
+                        "This is a worker failure report, not successful verification or delivery. "
+                        "No PR or success receipt is created by this report."
+                    ))
+                self._write_blocked_state(context, "withdrawing")
+                phase = "withdrawing"
+            if phase == "withdrawing":
+                issue = self._check_blocked_claim(context, login, phase)
+                if any(label["name"] == "ready-for-agent" for label in issue.get("labels", [])):
+                    self._gh(
+                        ["api", "--method", "DELETE", f"repos/{self.repository}/issues/{context.issue_number}/labels/ready-for-agent"],
+                        cwd=self.source,
+                    )
+                # Keep our claim until a readback proves dispatch is disabled.
+                self._check_blocked_claim(context, login, "releasing")
+                self._write_blocked_state(context, "releasing")
+                phase = "releasing"
+            if phase == "releasing":
+                issue = self._check_blocked_claim(context, login, phase)
+                if issue.get("assignees"):
+                    self._release_claim(context)
+                self._write_blocked_state(context, "triaging")
+            self._check_blocked_claim(context, login, "triaging")
+            self._set_triage(context, "needs-triage")
+            self._write_blocked_state(context, "blocked-reported")
+            return True
+
+    def pending_blocked_workspaces(self, workspace_root: Path) -> list[Path]:
+        workspace_root = workspace_root.expanduser().resolve()
+        pending = []
+        for marker in sorted(self.preflight_root.glob("GH-*.claimed")):
+            identifier = marker.name.removesuffix(".claimed")
+            if not re.fullmatch(r"GH-[1-9][0-9]*", identifier) or marker.read_text().strip() != "claimed":
+                continue
+            workspace = workspace_root / identifier
+            if not (workspace / ".symphony/handoff.json").exists():
+                continue
+            try:
+                if _worker_json(workspace, ".symphony/handoff.json").get("status") != "blocked":
+                    continue
+                context = load_blocked_context(workspace, self.preflight_root)
+                state = self._blocked_state(workspace)
+                if state.get("attempt_id") == context.attempt_id and state.get("status") == "blocked-reported":
+                    continue
+                pending.append(workspace)
+            except (DeliveryError, OSError, ValueError):
+                print(f"Rejected blocked report for {identifier}.", file=sys.stderr)
+        return pending
+
+    def sweep_blocked(self, workspace_root: Path) -> bool:
+        failed = False
+        for workspace in self.pending_blocked_workspaces(workspace_root):
+            try:
+                self.process_blocked(workspace)
+            except (DeliveryError, OSError, ValueError):
+                print(f"Blocked report processing failed for {workspace.name}.", file=sys.stderr)
+                failed = True
+        return not failed
+
     def _snapshot(self, context: DeliveryContext, destination: Path, state: dict[str, Any]) -> DeliveryContext:
         # Never run Git or any other executable in the worker's repository.
         base = (self.preflight_root / f"GH-{context.issue_number}.base").read_text().strip()
@@ -380,14 +726,19 @@ class DeliveryController:
         temporary.chmod(0o600)
         temporary.replace(path)
 
-    def _set_triage(self, context: DeliveryContext, target: str | None) -> None:
+    def _set_triage(self, context: DeliveryContext | BlockedContext, target: str | None) -> None:
         def active() -> set[str]:
+            if isinstance(context, BlockedContext):
+                self._check_blocked_attempt(context)
             issue = self._issue(context)
             if issue.get("state") != "open" or issue.get("assignees"):
                 raise DeliveryError("preserving human issue state or assignment")
             if hashlib.sha256((issue.get("body") or "").encode()).hexdigest() != context.contract_sha256:
                 raise DeliveryError("task contract changed since preflight")
-            return {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
+            labels = {label["name"] for label in issue.get("labels", [])} & TRIAGE_LABELS
+            if isinstance(context, BlockedContext) and "ready-for-agent" in labels:
+                raise DeliveryError("preserving a concurrent dispatch request")
+            return labels
 
         current = active()
         if target and current == {target}:
@@ -424,7 +775,7 @@ class DeliveryController:
             )
             raise DeliveryError(f"preserving concurrent triage state: {', '.join(sorted(conflicts))}")
 
-    def _release_claim(self, context: DeliveryContext) -> None:
+    def _release_claim(self, context: DeliveryContext | BlockedContext) -> None:
         login = self._gh(["api", "user", "--jq", ".login"], cwd=context.workspace)
         if not login or any(character in login for character in "\r\n\x00"):
             raise DeliveryError("cannot identify the controller GitHub account")
@@ -433,14 +784,14 @@ class DeliveryController:
             cwd=context.workspace,
         )
 
-    def _comment(self, context: DeliveryContext, body: str) -> None:
+    def _comment(self, context: DeliveryContext | BlockedContext, body: str) -> None:
         self._gh(
             ["issue", "comment", str(context.issue_number), "--repo", self.repository, "--body-file", "-"],
             cwd=context.workspace,
             input_text=body,
         )
 
-    def _issue(self, context: DeliveryContext) -> dict[str, Any]:
+    def _issue(self, context: DeliveryContext | BlockedContext) -> dict[str, Any]:
         return json.loads(self._gh(
             ["api", f"repos/{self.repository}/issues/{context.issue_number}"], cwd=self.source,
         ))
@@ -532,6 +883,12 @@ class DeliveryController:
             Path(body_path).unlink(missing_ok=True)
 
     def process(self, workspace: Path) -> bool:
+        if _worker_json(workspace, ".symphony/handoff.json").get("status") == "blocked":
+            return self.process_blocked(workspace)
+        with self._issue_lock(workspace):
+            return self._process_ready(workspace)
+
+    def _process_ready(self, workspace: Path) -> bool:
         context = load_delivery_context(workspace, self.preflight_root)
         state_path = self._state_path(context.workspace)
         state = _read_json(state_path, "delivery state") if state_path.is_file() else {}
@@ -588,6 +945,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     after_parser = subparsers.add_parser("after-run")
     after_parser.add_argument("--workspace", type=Path, required=True)
+    for name in ("begin-attempt", "invalidate-attempt"):
+        subparsers.add_parser(name).add_argument("--workspace", type=Path, required=True)
+    for name in ("blocked-pending", "blocked-sweep"):
+        subparsers.add_parser(name).add_argument("--workspace-root", type=Path, required=True)
     return parser
 
 
@@ -595,6 +956,16 @@ def main() -> int:
     args = build_parser().parse_args()
     controller = DeliveryController(preflight_root=args.preflight_root, repository=args.repo, gh=args.gh)
     try:
+        if args.command == "begin-attempt":
+            controller.begin_attempt(args.workspace)
+            return 0
+        if args.command == "invalidate-attempt":
+            controller.invalidate_attempt(args.workspace)
+            return 0
+        if args.command == "blocked-pending":
+            return 0 if controller.pending_blocked_workspaces(args.workspace_root) else 3
+        if args.command == "blocked-sweep":
+            return 0 if controller.sweep_blocked(args.workspace_root) else 2
         if not (args.workspace.expanduser() / ".symphony" / "handoff.json").is_file():
             return 0
         controller.process(args.workspace)

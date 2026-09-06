@@ -7,8 +7,10 @@ umask 077
 : "${SYMPHONY_PYTHON3:?SYMPHONY_PYTHON3 is required}"
 : "${SYMPHONY_REAL_GH:?SYMPHONY_REAL_GH is required}"
 : "${SYMPHONY_SECURITY:?SYMPHONY_SECURITY is required}"
+unset GH_TOKEN SYMPHONY_AGENT_GITHUB_TOKEN
 
-issue_identifier=$(basename "$PWD")
+workspace=$(pwd -P)
+issue_identifier=$(basename "$workspace")
 issue_number=${issue_identifier#GH-}
 case "$issue_identifier" in
   GH-*) ;;
@@ -31,6 +33,14 @@ claim_marker_tmp="$claim_marker.tmp.$$"
 trap 'if [ -f "$preflight_tmp" ]; then unlink "$preflight_tmp"; fi; if [ -f "$claim_marker_tmp" ]; then unlink "$claim_marker_tmp"; fi' EXIT
 PATH="$(dirname "$SYMPHONY_REAL_GH"):/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH
+cd "$SYMPHONY_CONTROLLER_REPO_ROOT"
+
+# Retire the previous attempt before a fresh claim can become routable.
+"$SYMPHONY_PYTHON3" \
+  "$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony_delivery_controller.py" \
+  --preflight-root "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" \
+  --gh "$SYMPHONY_REAL_GH" \
+  invalidate-attempt --workspace "$workspace"
 
 set +e
 if [ -f "$claim_marker" ]; then
@@ -87,3 +97,9 @@ unset controller_token
 
 printf 'claimed\n' > "$claim_marker_tmp"
 mv "$claim_marker_tmp" "$claim_marker"
+
+"$SYMPHONY_PYTHON3" \
+  "$SYMPHONY_CONTROLLER_REPO_ROOT/scripts/symphony_delivery_controller.py" \
+  --preflight-root "$SYMPHONY_PREFLIGHT_EVIDENCE_ROOT" \
+  --gh "$SYMPHONY_REAL_GH" \
+  begin-attempt --workspace "$workspace"

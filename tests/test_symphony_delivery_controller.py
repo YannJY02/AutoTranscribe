@@ -6,11 +6,14 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from scripts.agent_harness import changes_sha256
+from scripts import symphony_delivery_controller as delivery
 from scripts.symphony_delivery_controller import (
     DeliveryController,
     DeliveryError,
@@ -90,6 +93,230 @@ def _workspace(tmp_path: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     return workspace, preflight_root, worker_manifest
+
+
+def _blocked_workspace(tmp_path):
+    workspace, preflight, manifest_path = _workspace(tmp_path)
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(status="failed", gates=[{
+        "name": "diff-check", "status": "failed",
+        "commands": [{"exit_code": 1, "ok": False}],
+    }])
+    manifest_path.write_text(json.dumps(manifest))
+    attempt = {
+        "schema_version": 1, "attempt_id": "a" * 64, "issue": 95,
+        "workspace": str(workspace), "linear_issue": "YAN-62",
+        "contract_sha256": hashlib.sha256(b"contract").hexdigest(),
+        "base": (preflight / "GH-95.base").read_text(),
+    }
+    (preflight / "GH-95.claimed").write_text("claimed\n")
+    (preflight / "GH-95.attempt.json").write_text(json.dumps(attempt))
+    (workspace / ".symphony/attempt.json").write_text(json.dumps(attempt))
+    (workspace / ".symphony/handoff.json").write_text(json.dumps({
+        "schema_version": 1, "status": "blocked", "kind": "verification-blocked",
+        "reason_code": "full-harness-failed", "attempt_id": attempt["attempt_id"],
+        "issue": "GH-95", "manifest": "logs/harness/run/manifest.json",
+    }))
+    return workspace, preflight, manifest_path
+
+
+class BlockedGitHub:
+    def __init__(self):
+        self.issue = {"state": "open", "body": "contract",
+                      "labels": [{"name": "ready-for-agent"}, {"name": "bug"}],
+                      "assignees": [{"login": "controller"}]}
+        self.comments = []
+        self.writes = []
+
+    def __call__(self, args, *, cwd, input_text=None):
+        if args == ["api", "user", "--jq", ".login"]:
+            return "controller"
+        if args[0] == "api" and "--method" not in args:
+            return json.dumps(self.comments if args[1].endswith("/comments") else self.issue)
+        self.writes.append((args, input_text))
+        if args[:2] == ["issue", "comment"]:
+            self.comments.append({"body": input_text, "user": {"login": "controller"}})
+        elif args[:2] == ["issue", "edit"]:
+            assert args[-2:] == ["--remove-assignee", "controller"]
+            self.issue["assignees"] = []
+        elif args[:3] == ["api", "--method", "DELETE"]:
+            label = args[3].rsplit("/", 1)[-1]
+            self.issue["labels"] = [x for x in self.issue["labels"] if x["name"] != label]
+        elif args[:3] == ["api", "--method", "POST"]:
+            self.issue["labels"] += [{"name": x} for x in json.loads(input_text)["labels"]]
+        else:
+            pytest.fail(f"unexpected blocked side effect: {args}")
+        return ""
+
+
+def test_failed_handoff_only_withdraws_dispatch_without_delivery(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    monkeypatch.setattr(controller, "_gh", github)
+    for method in ("_snapshot", "_deliver_changes", "_git", "_prepare_branch"):
+        monkeypatch.setattr(controller, method, lambda *a, **k: pytest.fail("blocked entered delivery"))
+
+    assert controller.process(workspace) is True
+    assert github.issue["assignees"] == []
+    assert {x["name"] for x in github.issue["labels"]} == {"needs-triage", "bug"}
+    assert len(github.comments) == 1
+    assert "insightkit-controller:" not in github.comments[0]["body"]
+    writes = list(github.writes)
+    assert controller.process(workspace) is False
+    assert github.writes == writes
+
+
+def test_blocked_manifest_accepts_only_failed_full_plan_prefix(tmp_path):
+    workspace, preflight, manifest_path = _blocked_workspace(tmp_path)
+    context = delivery.load_blocked_context(workspace, preflight)
+    assert (context.failed_gate, context.exit_code) == ("diff-check", 1)
+    original = json.loads(manifest_path.read_text())
+    for mutation in (
+        {"status": "passed"}, {"mode": "quick"}, {"gates": []},
+        {"gates": [{"name": "swift-tests", "status": "failed", "commands": [{"exit_code": 1}]}]},
+        {"gates": [{"name": "diff-check", "status": "failed", "commands": [{"exit_code": 0}]}]},
+    ):
+        manifest_path.write_text(json.dumps(original | mutation))
+        with pytest.raises(DeliveryError):
+            delivery.load_blocked_context(workspace, preflight)
+
+
+def test_new_attempt_invalidates_an_old_blocked_report(tmp_path):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    controller.invalidate_attempt(workspace)
+    with pytest.raises(DeliveryError):
+        delivery.load_blocked_context(workspace, preflight)
+    attempt_id = controller.begin_attempt(workspace)
+    assert attempt_id != "a" * 64
+    assert json.loads((workspace / ".symphony/attempt.json").read_text())["attempt_id"] == attempt_id
+    with pytest.raises(DeliveryError, match="attempt"):
+        delivery.load_blocked_context(workspace, preflight)
+
+
+@pytest.mark.parametrize("operation", ["comment", "release", "delete", "triage"])
+@pytest.mark.parametrize("failure_timing", ["before", "after"])
+def test_blocked_resume_never_exposes_dispatchable_state_or_repeats_writes(tmp_path, monkeypatch, operation, failure_timing):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    interrupted = False
+
+    def flaky(args, **kwargs):
+        nonlocal interrupted
+        affected = {
+            "comment": args[:2] == ["issue", "comment"],
+            "release": args[:2] == ["issue", "edit"],
+            "delete": args[:3] == ["api", "--method", "DELETE"],
+            "triage": args[:3] == ["api", "--method", "POST"],
+        }[operation]
+        if affected and not interrupted and failure_timing == "before":
+            interrupted = True
+            raise DeliveryError("response lost before the server applied the write")
+        result = github(args, **kwargs)
+        labels = {label["name"] for label in github.issue["labels"]}
+        assert github.issue["assignees"] or "ready-for-agent" not in labels, (
+            "a tracker poll could redispatch this failed attempt between writes"
+        )
+        if affected and not interrupted:
+            interrupted = True
+            raise DeliveryError("response lost after the server applied the write")
+        return result
+
+    monkeypatch.setattr(controller, "_gh", flaky)
+    with pytest.raises(DeliveryError, match="response lost"):
+        controller.process(workspace)
+    assert controller.process(workspace) is True
+    assert len(github.comments) == 1
+    assert len(github.writes) == 4
+    assert {x["name"] for x in github.issue["labels"]} == {"needs-triage", "bug"}
+
+
+def test_blocked_triage_preserves_a_concurrent_ready_label(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    monkeypatch.setattr(controller, "_gh", github)
+    original_set_triage = controller._set_triage
+
+    def rearm_before_final_read(context, target):
+        github.issue["labels"].append({"name": "ready-for-agent"})
+        return original_set_triage(context, target)
+
+    monkeypatch.setattr(controller, "_set_triage", rearm_before_final_read)
+    with pytest.raises(DeliveryError, match="preserving"):
+        controller.process(workspace)
+    assert github.issue["assignees"] == []
+    assert {x["name"] for x in github.issue["labels"]} == {"ready-for-agent", "bug"}
+
+
+def test_concurrent_sweep_and_after_run_process_one_report(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def pause_first_request(args, **kwargs):
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(3)
+        return github(args, **kwargs)
+
+    monkeypatch.setattr(controller, "_gh", pause_first_request)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        after_run = pool.submit(controller.process, workspace)
+        assert entered.wait(3)
+        sweep = pool.submit(controller.process_blocked, workspace)
+        release.set()
+        assert sorted([after_run.result(timeout=3), sweep.result(timeout=3)]) == [False, True]
+    assert len(github.comments) == 1
+    assert len(github.writes) == 4
+
+
+def test_blocked_sweep_requires_trusted_claim_and_never_delivers_ready_report(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+    monkeypatch.setattr(controller, "_gh", github)
+    monkeypatch.setattr(controller, "_process_ready", lambda *a: pytest.fail("sweep delivered a ready handoff"))
+    assert controller.pending_blocked_workspaces(tmp_path) == [workspace]
+    assert github.writes == []
+    marker = preflight / "GH-95.claimed"
+    marker.unlink()
+    assert controller.pending_blocked_workspaces(tmp_path) == []
+    assert controller.sweep_blocked(tmp_path) is True
+    assert github.writes == []
+    marker.write_text("claimed\n")
+    handoff_path = workspace / ".symphony/handoff.json"
+    handoff = json.loads(handoff_path.read_text())
+    handoff_path.write_text(json.dumps(handoff | {"status": "ready"}))
+    assert controller.pending_blocked_workspaces(tmp_path) == []
+    assert controller.sweep_blocked(tmp_path) is True
+    assert github.writes == []
+    handoff_path.write_text(json.dumps(handoff))
+    assert controller.sweep_blocked(tmp_path) is True
+    assert controller.pending_blocked_workspaces(tmp_path) == []
+
+
+def test_blocked_report_cannot_remove_a_concurrent_human_assignment(tmp_path, monkeypatch):
+    workspace, preflight, _ = _blocked_workspace(tmp_path)
+    controller = DeliveryController(preflight_root=preflight, repository="owner/repo", gh="gh")
+    github = BlockedGitHub()
+
+    def human_intervenes(args, **kwargs):
+        result = github(args, **kwargs)
+        if args[:2] == ["issue", "comment"]:
+            github.issue["assignees"].append({"login": "owner"})
+        return result
+
+    monkeypatch.setattr(controller, "_gh", human_intervenes)
+    with pytest.raises(DeliveryError, match="preserving human"):
+        controller.process(workspace)
+    assert len(github.writes) == 1  # only the bounded comment preceded the human change
+    assert {x["login"] for x in github.issue["assignees"]} == {"controller", "owner"}
+    assert {x["name"] for x in github.issue["labels"]} == {"ready-for-agent", "bug"}
 
 
 def test_load_delivery_context_requires_passed_manifest_and_exact_current_diff(tmp_path: Path):
