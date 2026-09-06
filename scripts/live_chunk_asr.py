@@ -11,6 +11,7 @@ from pathlib import Path
 
 # Allow importing project modules when run directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from transcriber import transcribe_audio_chunk  # noqa: E402
 

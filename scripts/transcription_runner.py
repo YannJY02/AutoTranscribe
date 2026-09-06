@@ -16,6 +16,7 @@ except ModuleNotFoundError:
 
 from insightkit.records.record_writer import RecordWriter, detect_media_type, detect_duration
 from insightkit.insights.service import attach_transcript_provenance
+from insightkit.phase_timing import Phase, phase
 
 _DEFAULT_RECORDS_ROOT = str(Path.home() / "Documents" / "InsightKit" / "Records")
 
@@ -59,80 +60,86 @@ def run_transcription_job(
 
     check_cancel()
     progress(25, "transcribing")
-    result = transcribe(src)
+    with phase(Phase.TRANSCRIPTION):
+        result = transcribe(src)
     segments = result.get("segments", [])
 
     check_cancel()
     progress(60, "persisting")
     transcript_rows: list[dict[str, Any]] = []
-    for seg in segments:
-        text = str(seg.get("text", "") or "").strip()
-        if not text:
-            continue
-        start_ms = int(seg.get("start", 0) or 0)
-        end_ms = int(seg.get("end", 0) or 0)
-        if end_ms <= start_ms:
-            end_ms = start_ms + 1200
-        speaker = str(seg.get("speaker", "") or "")
-        store.insert_segment(
-            meeting_id=meeting_id,
-            start_ms=start_ms,
-            end_ms=end_ms,
-            speaker=speaker,
-            source="file",
-            text=text,
-            confidence=float(seg.get("confidence", 0.0) or 0.0),
-        )
-        transcript_rows.append(
-            {
-                "start_ms": start_ms,
-                "end_ms": end_ms,
-                "speaker": speaker,
-                "source": "file",
-                "text": text,
-            }
-        )
+    with phase(Phase.PERSIST_SEGMENTS):
+        for seg in segments:
+            text = str(seg.get("text", "") or "").strip()
+            if not text:
+                continue
+            start_ms = int(seg.get("start", 0) or 0)
+            end_ms = int(seg.get("end", 0) or 0)
+            if end_ms <= start_ms:
+                end_ms = start_ms + 1200
+            speaker = str(seg.get("speaker", "") or "")
+            store.insert_segment(
+                meeting_id=meeting_id,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                speaker=speaker,
+                source="file",
+                text=text,
+                confidence=float(seg.get("confidence", 0.0) or 0.0),
+            )
+            transcript_rows.append(
+                {
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "speaker": speaker,
+                    "source": "file",
+                    "text": text,
+                }
+            )
 
     check_cancel()
     progress(82, "building_final")
     try:
-        package = insight_service.build_final(
-            transcript_rows,
-            provider_vendor=provider_vendor,
-            provider_model=provider_model,
-            strict_mode=strict_mode,
-        )
+        with phase(Phase.FINAL_GENERATION):
+            package = insight_service.build_final(
+                transcript_rows,
+                provider_vendor=provider_vendor,
+                provider_model=provider_model,
+                strict_mode=strict_mode,
+            )
     except Exception:
-        package = insight_service.build_local_extractive(transcript_rows)
-    package = attach_transcript_provenance(package, meeting_id)
-    call_meta = insight_service.last_call_meta
-    store.upsert_insight_package(
-        meeting_id,
-        package,
-        datetime.now(timezone.utc).isoformat(),
-    )
+        with phase(Phase.FINAL_GENERATION_FALLBACK):
+            package = insight_service.build_local_extractive(transcript_rows)
+    with phase(Phase.PERSIST_FINAL):
+        package = attach_transcript_provenance(package, meeting_id)
+        call_meta = insight_service.last_call_meta
+        store.upsert_insight_package(
+            meeting_id,
+            package,
+            datetime.now(timezone.utc).isoformat(),
+        )
 
     # ── Write record folder ───────────────────────────────────────────────
     records_root = os.getenv("INSIGHTKIT_RECORDS_ROOT", _DEFAULT_RECORDS_ROOT)
     media_type = detect_media_type(str(src))
     duration_sec = detect_duration(segs=transcript_rows)
-    record_path = RecordWriter().write_record(
-        root_dir=records_root,
-        meeting_id=meeting_id,
-        title=title,
-        source_path=str(src),
-        segments=transcript_rows,
-        insight_package=package,
-        media_type=media_type,
-        record_source="imported",
-        duration_sec=duration_sec,
-        analysis_meta={
-            "provider": str(call_meta.get("vendor", "")),
-            "model": str(call_meta.get("model", "")),
-            "strict_mode": bool(call_meta.get("strict_mode", False)),
-            "source": "final",
-        },
-    )
+    with phase(Phase.RECORD_WRITE):
+        record_path = RecordWriter().write_record(
+            root_dir=records_root,
+            meeting_id=meeting_id,
+            title=title,
+            source_path=str(src),
+            segments=transcript_rows,
+            insight_package=package,
+            media_type=media_type,
+            record_source="imported",
+            duration_sec=duration_sec,
+            analysis_meta={
+                "provider": str(call_meta.get("vendor", "")),
+                "model": str(call_meta.get("model", "")),
+                "strict_mode": bool(call_meta.get("strict_mode", False)),
+                "source": "final",
+            },
+        )
 
     progress(100, "completed")
     store.update_meeting_status(meeting_id, "stopped")

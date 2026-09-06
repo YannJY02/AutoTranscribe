@@ -23,8 +23,11 @@ import time
 import wave
 import importlib.util
 from concurrent.futures import Future
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
+
+from insightkit.phase_timing import Outcome, Phase, TimingRecorder, TimingSpan, current_timing, phase
 
 try:
     from .asr_model_catalog import (
@@ -151,8 +154,11 @@ _prewarm_key: tuple[str, str] | None = None
 class _QwenMLXWorker:
     def __init__(self, model_source: str):
         self.model_source = model_source
-        self._requests: queue.Queue[tuple[str, dict[str, Any], Future[Any]] | None] = queue.Queue()
+        self._requests: queue.Queue[
+            tuple[str, dict[str, Any], Future[Any], TimingRecorder | None, TimingSpan | None] | None
+        ] = queue.Queue()
         self._failed: BaseException | None = None
+        self._initialization_timing: tuple[int, int, Outcome] | None = None
         self._thread = threading.Thread(
             target=self._run,
             name="qwen-mlx-worker",
@@ -174,36 +180,61 @@ class _QwenMLXWorker:
         self._requests.put(None)
 
     def _submit(self, action: str, payload: dict[str, Any]) -> Any:
-        if self._failed is not None:
-            raise RuntimeError("Qwen MLX worker failed") from self._failed
-        future: Future[Any] = Future()
-        self._requests.put((action, payload, future))
-        return future.result()
+        # Only this request owns a recorder; nothing is added to Session kwargs.
+        recorder = current_timing() if action == "transcribe" else None
+        waiting = recorder.start(Phase.QWEN_WORKER_WAIT) if recorder is not None else None
+        try:
+            if self._failed is not None:
+                raise RuntimeError("Qwen MLX worker failed") from self._failed
+            future: Future[Any] = Future()
+            self._requests.put((action, payload, future, recorder, waiting))
+            return future.result()
+        except BaseException:
+            if waiting is not None:
+                waiting.finish("failed")
+            raise
 
     def _run(self) -> None:
+        initialized_at = time.monotonic_ns()
         try:
             session = _create_qwen_mlx_session(self.model_source)
         except BaseException as exc:  # noqa: BLE001 - propagate worker startup failure to callers.
+            self._initialization_timing = (initialized_at, time.monotonic_ns(), "failed")
             self._failed = exc
             self._drain_failed(exc)
             return
+        self._initialization_timing = (initialized_at, time.monotonic_ns(), "completed")
 
         while True:
             item = self._requests.get()
             if item is None:
                 return
-            action, payload, future = item
+            action, payload, future, recorder, waiting = item
             if not future.set_running_or_notify_cancel():
+                if waiting is not None:
+                    waiting.finish("cancelled")
+                del item, recorder, waiting, future
                 continue
+            if waiting is not None:
+                waiting.finish()
             try:
                 if action == "warm":
                     future.set_result(None)
                 elif action == "transcribe":
-                    future.set_result(session.transcribe(**payload))
+                    with (recorder.start(Phase.QWEN_SESSION_TRANSCRIBE) if recorder is not None else nullcontext()):
+                        result = session.transcribe(**payload)
+                    # Publish only after the actual-call span has finished.
+                    try:
+                        future.set_result(result)
+                    finally:
+                        del result
                 else:
                     future.set_exception(RuntimeError(f"unknown Qwen MLX worker action: {action}"))
             except BaseException as exc:  # noqa: BLE001 - preserve MLX runtime errors for the caller.
                 future.set_exception(exc)
+            finally:
+                # An idle cached worker must not retain the previous job's recorder.
+                del item, recorder, waiting, future
 
     def _drain_failed(self, exc: BaseException) -> None:
         while True:
@@ -213,7 +244,9 @@ class _QwenMLXWorker:
                 return
             if item is None:
                 continue
-            _, _, future = item
+            _, _, future, _, waiting = item
+            if waiting is not None:
+                waiting.finish("failed")
             if future.set_running_or_notify_cancel():
                 future.set_exception(exc)
 
@@ -800,17 +833,29 @@ def _create_qwen_mlx_session(model_source: str):
 
 
 def _load_qwen_mlx_session() -> _QwenMLXWorker:
-    model_source = _resolve_qwen_mlx_source()
-    cache_key = (QWEN_MLX_ENGINE, str(model_source))
-    with _model_registry_lock:
-        cached = _models.get(cache_key)
-        if isinstance(cached, _QwenMLXWorker) and cached.is_alive:
-            worker = cached
-        else:
-            worker = _QwenMLXWorker(str(model_source))
-            _models[cache_key] = worker
-    worker.ensure_loaded()
-    return worker
+    recorder = current_timing()
+    worker: _QwenMLXWorker | None = None
+    created_here = False
+    with phase(Phase.QWEN_SESSION_READY):
+        try:
+            model_source = _resolve_qwen_mlx_source()
+            cache_key = (QWEN_MLX_ENGINE, str(model_source))
+            with _model_registry_lock:
+                cached = _models.get(cache_key)
+                if isinstance(cached, _QwenMLXWorker) and cached.is_alive:
+                    worker = cached
+                else:
+                    worker = _QwenMLXWorker(str(model_source))
+                    _models[cache_key] = worker
+                    created_here = True
+            worker.ensure_loaded()
+            return worker
+        finally:
+            # Prewarm or another job may own a reused worker's initialization.
+            if created_here and recorder is not None and worker is not None:
+                receipt = worker._initialization_timing
+                if receipt is not None:
+                    recorder.record_interval(Phase.QWEN_SESSION_INITIALIZE, *receipt)
 
 
 def _speech_exists(audio_path: Path) -> bool:
@@ -1083,12 +1128,15 @@ def _apply_speaker_spans(
 
 
 def _attach_diarization_labels(audio_path: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not DIARIZATION_ENABLED or not segments or _segments_have_speaker_labels(segments):
-        return segments
-    spans = _diarize(audio_path)
-    if not spans:
-        return segments
-    return _apply_speaker_spans(segments, spans)
+    with phase(Phase.SPEAKER_ATTACHMENT) as timing:
+        if not DIARIZATION_ENABLED or not segments or _segments_have_speaker_labels(segments):
+            if timing is not None:
+                timing.finish("skipped")
+            return segments
+        spans = _diarize(audio_path)
+        if not spans:
+            return segments
+        return _apply_speaker_spans(segments, spans)
 
 
 def _confidence_from_logprob(avg_logprob: float | None) -> float:
@@ -1364,8 +1412,9 @@ def _qwen_segments_from_result(result: Any) -> list[dict[str, Any]]:
 
 
 def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
-    if not _speech_exists(audio_path):
-        return "unknown", []
+    with phase(Phase.SPEECH_DETECTION):
+        if not _speech_exists(audio_path):
+            return "unknown", []
 
     worker = _load_qwen_mlx_session()
     diarize = attach_diarization and _qwen_diarization_ready()
@@ -1392,7 +1441,8 @@ def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> t
         kwargs["max_new_tokens"] = int(max_new_tokens)
 
     result = worker.transcribe(**kwargs)
-    segments = _qwen_segments_from_result(result)
+    with phase(Phase.SEGMENT_CONVERSION):
+        segments = _qwen_segments_from_result(result)
     if attach_diarization:
         segments = _attach_diarization_labels(audio_path, segments)
     _mark_warm_ready()
@@ -1604,8 +1654,9 @@ def transcribe(input_path: Path) -> dict[str, Any]:
     """
     audio_path = None
     try:
-        audio_path = extract_audio(input_path)
-        duration = _get_audio_duration(str(audio_path))
+        with phase(Phase.AUDIO_PREPARATION):
+            audio_path = extract_audio(input_path)
+            duration = _get_audio_duration(str(audio_path))
         lang, segments = _transcribe_active(audio_path)
         return {
             "lang": lang,
