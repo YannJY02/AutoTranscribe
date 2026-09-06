@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "issue": {
+    "linear": "YAN-10",
+    "github_number": 6,
+    "url": "https://github.com/YannJY02/AutoTranscribe/issues/6"
+  },
+  "status": "exploratory-evidence-complete-canonical-baseline-incomplete",
+  "cohort_id": "issue-6-short-zh-exploratory-013347",
+  "created_at": "2026-09-06T01:47:33.762310+00:00",
+  "finalized_at": "2026-09-06T02:28:55.303660+00:00",
+  "source_revision": "9e59643a9815a84d787f74fa05df15ee2fd12b02",
+  "installed_app": {
+    "path": "$HOME/Applications/InsightKit.app",
+    "version": "0.1.0",
+    "build": "20260906091332",
+    "revision_metadata": {
+      "InsightKitGitRevision": "9e59643"
+    },
+    "executable_sha256": "314876d6b69387f00db400bd7e82d42fb4460bfa04a7930e3d4390515df4a2fa",
+    "bundle_inventory_sha256": "da3d36eb0e296504a3cdabc2d14e55876b26044760e96913b74087cdee17627b",
+    "code_directory_cdhash": "3824994fc4b1de9911db95646d3ac989fa26fcf0"
+  },
+  "fixture": {
+    "id": "short-zh",
+    "path": "$HOME/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-zh.m4a",
+    "sha256": "6667c134f3af4c8f8920cd3e367e341f8d220667c79014e63b3bdf20aa936d9d",
+    "corpus_verification": {
+      "fixture_assets_verified": 6,
+      "record_folders_verified": 1100,
+      "status": "passed"
+    },
+    "duration_seconds": 300.0,
+    "reference_sha256": "9f527ca45dbe65168b0656822f824917ec2c8a67f2ef2335d49f36d6bfaaf0d2",
+    "reference_raw_copy": "raw/fixture-reference.json"
+  },
+  "configuration": {
+    "asr_engine": "qwen-mlx",
+    "asr_model": "Qwen3-ASR-1.7B-MLX-4bit",
+    "asr_observation": "Coordinator runtime status readback during the run; MLX native sample stacks retained",
+    "analysis": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "source": "final",
+      "strictMode": true
+    }
+  },
+  "classification": {
+    "canonical_baseline": false,
+    "cold": false,
+    "warm": false,
+    "reset": "No reboot or cache purge. App already open in current boot. Before selection, sampled app process had no sidecar descendant; the new sidecar was observed with launch time 01:49:03.206 UTC.",
+    "background_workload": "Existing normal workload retained; no unrelated processes closed.",
+    "thermal_state_before": {
+      "source": "Foundation.ProcessInfo.thermalState.rawValue",
+      "value": 0,
+      "meaning": "nominal"
+    },
+    "power": "AC",
+    "duration_bound_seconds": 1800,
+    "pre_run_sample_target_seconds": 60,
+    "profiling_may_affect_timing": true,
+    "sudo_available_noninteractive": false,
+    "no_optimization": true
+  },
+  "environment": {
+    "macos": {
+      "exit": 0,
+      "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a\n",
+      "stderr": ""
+    },
+    "xcode": {
+      "exit": 0,
+      "stdout": "Xcode 27.0\nBuild version 27A5252f\n",
+      "stderr": ""
+    },
+    "python": {
+      "exit": 0,
+      "stdout": "Python 3.11.14\n",
+      "stderr": ""
+    },
+    "power": {
+      "source": "AC Power",
+      "charge_percent": 100,
+      "charging_state": "charged",
+      "raw_receipt": "raw/cohort-manifest-initial.json"
+    },
+    "boot": {
+      "same_boot": true,
+      "reboot_for_this_run": false,
+      "raw_receipt": "raw/cohort-manifest-initial.json"
+    }
+  },
+  "environment_not_frozen": [
+    "Low Power Mode",
+    "display connections",
+    "brightness",
+    "network type"
+  ],
+  "profiling": {
+    "py_spy": {
+      "version": "0.4.2",
+      "exit": 1,
+      "status": "unavailable-requires-root",
+      "sudo_noninteractive_available": false
+    },
+    "native_sample": {
+      "pid": 54029,
+      "duration_seconds": 10,
+      "interval_ms": 10,
+      "path": "raw/sidecar-sample-early.txt",
+      "status": "captured"
+    },
+    "native_sample_middle": {
+      "duration_seconds": 10,
+      "interval_ms": 10,
+      "path": "raw/sidecar-sample-middle.txt"
+    },
+    "vmmap_middle": "raw/sidecar-vmmap-middle.txt",
+    "max_thermal_state": "not-measured-continuously"
+  },
+  "sample_counts": {
+    "resource_periodic": 360,
+    "resource_final": 1,
+    "job_poll": 272
+  },
+  "resource_metric_contract": {
+    "host_swap_rate_unit": "MiB/s",
+    "direction": "informational",
+    "component": "whole-host",
+    "start_event": "Previous vm_stat sample",
+    "stop_event": "Current vm_stat sample",
+    "clock": "monotonic",
+    "page_size_bytes": 16384,
+    "phase": "assigned from recorded event times, not production signposts",
+    "source": "raw/runtime-samples.jsonl and raw/recovery-end-sample.json",
+    "ps_cpu_pct": "ps reported value, not integrated job CPU time",
+    "ps_rss": "ps RSS; not physical footprint"
+  },
+  "known_capture_corrections": [
+    "Resource jobs probes used the CLI socket and are invalid as installed-app state; separate poll_job.py uses the observed installed endpoint.",
+    "current-job.json is an early immutable snapshot despite its filename; job-samples.jsonl owns completion evidence.",
+    "First progress timestamp is a derived automation-return bound; review capture is not earliest transition.",
+    "The earlier record_reopen_observed event actually reached the list; explicit matching row later opened Record Review.",
+    "Nominal handwritten annotation time is explicitly corrected in ui-events.jsonl and never used in metrics.",
+    "Five-minute recovery endpoint was exceeded by the final snapshot; recovery is descriptive, not canonical."
+  ],
+  "raw_artifact_root": "$REPO/logs/diagnostics/performance/20260906/issue-6-short-zh-exploratory-013347",
+  "raw_artifacts": [
+    {
+      "path": "RECOVERY_STARTED",
+      "byte_size": 88,
+      "sha256": "e49076d202386322ec5e0590dfb4c503fa1afb4f7178fc06684c2f8f145dc21e"
+    },
+    {
+      "path": "SELECTION_REQUESTED",
+      "byte_size": 192,
+      "sha256": "99a4eb47028b3549fd2f10ad65df72c223a7b9d24eec5baf8a792bf5a6a92223"
+    },
+    {
+      "path": "STOP",
+      "byte_size": 83,
+      "sha256": "10c6f41b61f3c3150dbfe36b21cea85f8b4786e05d8604b072e62fa7b59a32e6"
+    },
+    {
+      "path": "build_evidence.py",
+      "byte_size": 13393,
+      "sha256": "0ac42f19b84b8027d9bd35962ed63bbe7926b3e98187b7b3033672449d7f3608"
+    },
+    {
+      "path": "capture_runtime.py",
+      "byte_size": 4879,
+      "sha256": "3baf1b796e972be2a1edbf8ccaa5c5baaad7aefe1be47d0c03e09290422a882e"
+    },
+    {
+      "path": "derive_resources.py",
+      "byte_size": 5241,
+      "sha256": "0e96a957eeb19653283d6388c8afd036ee5119815eb16f06da2dc29376386cf4"
+    },
+    {
+      "path": "plot_resources.py",
+      "byte_size": 2860,
+      "sha256": "cdf4c8099328f55bbac3d978312c0cced0d6f8d036a11d372b0548ef6537aac0"
+    },
+    {
+      "path": "poll_job.py",
+      "byte_size": 2012,
+      "sha256": "1d0ca855a51a544dcbab841d336cf69bb10b1a1d247925b37a725c4cbe155200"
+    },
+    {
+      "path": "quality-audit.py",
+      "byte_size": 22098,
+      "sha256": "37ceff9d0a5d623edde73300d80e019bca40eede90c1278d9335df20e7fa90db"
+    },
+    {
+      "path": "raw/cohort-manifest-initial.json",
+      "byte_size": 4912,
+      "sha256": "6d987e0c2d9ab2c7ffd17b2b67425ccffbe0dc7fcf99182483df12173761aef2"
+    },
+    {
+      "path": "raw/current-job.json",
+      "byte_size": 477,
+      "sha256": "2be64170d1b92577507b1c54a1820e995cb51727ae3fa405a33c4ee27ae70af7"
+    },
+    {
+      "path": "raw/export-checks.json",
+      "byte_size": 1569,
+      "sha256": "48e1db284b8e8848a60f4254a8cbe05597f4ad664e135ce8b38f34e8c7f6529b"
+    },
+    {
+      "path": "raw/export-pdf-page-1.png",
+      "byte_size": 232090,
+      "sha256": "ec60e8111a8b6c9d0339f91b8fd5f9540e19fa2e4a11a80ddaaabe19aea09421"
+    },
+    {
+      "path": "raw/export-pdf-page-2.png",
+      "byte_size": 203424,
+      "sha256": "e7518d3af86127aa38e8eec52b4d30debd4a84c60c37c7eca2c0732e725face7"
+    },
+    {
+      "path": "raw/export-pdf-page-3.png",
+      "byte_size": 341358,
+      "sha256": "2aa868d4a6d04134a3f231218d0b6ad46bb3f149ff2af971c7357dde42399d47"
+    },
+    {
+      "path": "raw/export-pdf-text.txt",
+      "byte_size": 48440,
+      "sha256": "2b3c4bd24e951166d6e0d30c3fa6cdf99e602b1baf2b4992efc8893f08da7dc1"
+    },
+    {
+      "path": "raw/export.md",
+      "byte_size": 6153,
+      "sha256": "2896492338222690e8b8b9b89f4ca0dca1807a09b90196fe78bd99bf0985c594"
+    },
+    {
+      "path": "raw/export.pdf",
+      "byte_size": 121836,
+      "sha256": "ef49ce317da6ac1c1a537e7608086e29cbdb2a0149c0c5ad4ad5599de542b7ca"
+    },
+    {
+      "path": "raw/fixture-reference.json",
+      "byte_size": 10157,
+      "sha256": "9f527ca45dbe65168b0656822f824917ec2c8a67f2ef2335d49f36d6bfaaf0d2"
+    },
+    {
+      "path": "raw/formal-schema-check.json",
+      "byte_size": 542,
+      "sha256": "a6f88de288684cf22952478b3edcf36c5c353460a7500ddb3e9d813236ccef19"
+    },
+    {
+      "path": "raw/installed-bundle-inventory.json",
+      "byte_size": 21019,
+      "sha256": "cb75eeee5839276aa841b2e8bddf909256d5fadc0caa817ebfcb02d03180ceec"
+    },
+    {
+      "path": "raw/job-samples.jsonl",
+      "byte_size": 100709,
+      "sha256": "6170b8259fa7cbbeb29cd0e95324ee43ec273e8deb58910c2a3d854b2c87f6ce"
+    },
+    {
+      "path": "raw/monitor-start.json",
+      "byte_size": 99,
+      "sha256": "01426e6de5dda2895b1be90f22b03a6f025e802e13a619d5d19a2affd5bef1ac"
+    },
+    {
+      "path": "raw/plot-tool.json",
+      "byte_size": 174,
+      "sha256": "8c1a319a6fbcb871a6bb4d6ad3ea40aa733356c5b80148d6f7f68534a066195a"
+    },
+    {
+      "path": "raw/process-inventory-before.json",
+      "byte_size": 188164,
+      "sha256": "1fc6cda781f79b4297d6af1768086e3154ebeb12d6190fbf90a55c26a183657d"
+    },
+    {
+      "path": "raw/py-spy-attempt.json",
+      "byte_size": 408,
+      "sha256": "661f093845d02b5d31dd7b2d38b06231153850ca399e706bb653e4aadf5da799"
+    },
+    {
+      "path": "raw/quality-audit.json",
+      "byte_size": 38912,
+      "sha256": "0385d2f0ba982e8943abee92f3a5fc51868b9d64aa82af2218bf7f0b29dc22d0"
+    },
+    {
+      "path": "raw/record-insight_package.json",
+      "byte_size": 5675,
+      "sha256": "71f6095033d479071ba131a48053b7e25281bc792c95b33cf51e252c11f3e8cd"
+    },
+    {
+      "path": "raw/record-metadata.json",
+      "byte_size": 763,
+      "sha256": "6fadd43516535a6d6b53368f2c7e274816cc246d1118ff2dcb47c68cbb856be1"
+    },
+    {
+      "path": "raw/record-minutes.json",
+      "byte_size": 2022,
+      "sha256": "6704a4bb489bccfcef67770a5c602cd65a6e614f6613cb83003483cb968eaeef"
+    },
+    {
+      "path": "raw/record-transcript.json",
+      "byte_size": 5691,
+      "sha256": "a6f67a8e89fd7f1ef4b87d2b7d944952d8668473f225a91a0d3ed374ce134736"
+    },
+    {
+      "path": "raw/recovery-end-sample.json",
+      "byte_size": 1458,
+      "sha256": "e9cee3928129c662a790e24ddbd3c4c2ec98529711103c027825d56d859eaa51"
+    },
+    {
+      "path": "raw/resource-derived.json",
+      "byte_size": 2399,
+      "sha256": "66f9fe1d2faab1ab1de4d4744e9bc57e33cbffde2cc28afa9ef3b4992d7ccaff"
+    },
+    {
+      "path": "raw/resource-observation.png",
+      "byte_size": 187565,
+      "sha256": "4a16afa44e3db708dcc9daa00a9be0e096568ec5d1c691c06d60b491ae6e54d8"
+    },
+    {
+      "path": "raw/resource-series.csv",
+      "byte_size": 40756,
+      "sha256": "d7cce4eb5c136291c959ae9bcb3b5a9b43546b3889e47a2906873c076e12960b"
+    },
+    {
+      "path": "raw/runtime-samples.jsonl",
+      "byte_size": 4596674,
+      "sha256": "0c0dccab75be5e6b92e2984e32c34f65f997d8887644b62394a8eff14b0999b7"
+    },
+    {
+      "path": "raw/sidecar-sample-early.txt",
+      "byte_size": 145173,
+      "sha256": "d2aa443fbdab8125b4b9f84d5d657cb88d864038ae74fb5abf0a111842686ca1"
+    },
+    {
+      "path": "raw/sidecar-sample-middle.txt",
+      "byte_size": 133921,
+      "sha256": "7aafd070bbcd98e5e478319298c27845b803230c445da7fa5d6c0798e4d66768"
+    },
+    {
+      "path": "raw/sidecar-vmmap-middle.txt",
+      "byte_size": 6745,
+      "sha256": "ecb6efc7f6831bdb621ea39299a02ab909a5388c4f9efbaf1f9255055fbf97e4"
+    },
+    {
+      "path": "raw/ui-events.jsonl",
+      "byte_size": 2622,
+      "sha256": "6548479819451f8d76d9813b255cd11d6e8d17fec4f8a3672e6b0f9d221ed2b9"
+    },
+    {
+      "path": "raw/ui-record-reopened.png",
+      "byte_size": 152266,
+      "sha256": "4fab06bf29f213fd8334a30ed331810f838ad8a8822a51eee3e3e07c8b7f045b"
+    },
+    {
+      "path": "raw/ui-record-reopened.txt",
+      "byte_size": 15545,
+      "sha256": "4f49fdecdb33e24f72258c4268b3d97ace9069f86456a3b6c075bfa76ef9b85b"
+    },
+    {
+      "path": "raw/ui-record-review.png",
+      "byte_size": 184251,
+      "sha256": "ee76cef26273d160b4d07018f6a797b38be612ca062a510c2ada6774a183b740"
+    },
+    {
+      "path": "raw/ui-record-review.txt",
+      "byte_size": 8557,
+      "sha256": "c0c537fcd49a122e6c259de125757eb9df1d27a383ed87eb0bf254687596afed"
+    },
+    {
+      "path": "raw/ui-reviewing.png",
+      "byte_size": 140916,
+      "sha256": "d4af5bed8779e08f79bd773206170cec92abd33810435a71e495174c4d3d74bd"
+    },
+    {
+      "path": "raw/ui-reviewing.txt",
+      "byte_size": 560,
+      "sha256": "b4bc9b6bc03cc5e96f24a21c494fd57135495ca5c2ce5be63f9ef86311f0be63"
+    }
+  ],
+  "public_artifacts": [
+    "quality.json",
+    "resource-observation.svg",
+    "resource-series.csv",
+    "runs.jsonl",
+    "summary.md"
+  ],
+  "privacy": {
+    "private_records_used_as_inputs": false,
+    "raw_process_inventory_published": false,
+    "native_screenshots_published": false,
+    "note": "Local native captures include surrounding navigation labels; only aggregate counters, synthetic quality examples and file hashes are published."
+  },
+  "completion": {
+    "canonical_baseline": false,
+    "task_should_close": false,
+    "quality_acceptable": false,
+    "next_action": "Add and validate minimal correlated monotonic phase timing before a subsequent run; preserve the decision-negation quality case."
+  },
+  "path_templates": {
+    "HOME": "Operator home directory",
+    "REPO": "Canonical AutoTranscribe checkout; raw absolute paths and full host metadata remain in the hashed local raw/cohort-manifest-initial.json receipt"
+  },
+  "publication_transforms": [
+    "Canonical local paths use explicit HOME/REPO templates in this public copy; raw absolute paths stay local.",
+    "Power and boot metadata are parsed; full initial outputs stay in the hashed local receipt.",
+    "Public CSV line endings normalized to LF and SVG trailing line whitespace removed; data rows and SVG path tokens unchanged."
+  ]
+}
