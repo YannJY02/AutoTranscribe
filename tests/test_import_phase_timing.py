@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import json
+import sqlite3
 import threading
 from types import SimpleNamespace
 from unittest import mock
@@ -326,6 +327,44 @@ def test_job_failure_keeps_completed_and_failed_spans(queue_env, monkeypatch, fa
         assert span_named(snapshot, Phase.TRANSCRIPTION)["outcome"] == "completed"
         assert span_named(snapshot, Phase.PERSIST_FINAL)["outcome"] == "completed"
     assert current_timing() is None
+
+
+def test_initial_worker_persistence_failure_closes_execution_before_reraising(queue_env, monkeypatch):
+    env = queue_env
+    job_id = enqueue(env)
+    env.clock.advance(5)
+    failure = sqlite3.OperationalError("synthetic database write failure")
+
+    def fail_running_state_write(_job):
+        env.clock.advance(11)
+        raise failure
+
+    persist = mock.Mock(side_effect=fail_running_state_write)
+    invoke_runner = mock.Mock()
+    monkeypatch.setattr(env.queue, "_persist_job_locked", persist)
+    monkeypatch.setattr(job_queue, "run_transcription_job", invoke_runner)
+
+    with pytest.raises(sqlite3.OperationalError) as raised:
+        env.queue._worker_loop()
+    assert raised.value is failure
+    persist.assert_called_once()
+    invoke_runner.assert_not_called()
+
+    recorder = env.queue._jobs[job_id]["_phase_timing"]
+    first = recorder.snapshot()
+    assert span_named(first, Phase.QUEUE_WAIT) == {
+        "phase": "queue_wait", "start_offset_ns": 0, "end_offset_ns": 5,
+        "duration_ns": 5, "outcome": "completed",
+    }
+    assert span_named(first, Phase.JOB_EXECUTION) == {
+        "phase": "job_execution", "start_offset_ns": 5, "end_offset_ns": 16,
+        "duration_ns": 11, "outcome": "failed",
+    }
+    for elapsed in (100, 200):
+        env.clock.advance(elapsed)
+        later = recorder.snapshot()
+        assert later["spans"] == first["spans"]
+        assert_snapshot_consistent(later)
 
 
 def test_queued_cancellation_closes_wait_without_inventing_execution(queue_env):

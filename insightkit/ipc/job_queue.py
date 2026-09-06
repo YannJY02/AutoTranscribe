@@ -214,7 +214,13 @@ class JobQueue:
                     job["state"] = "running"
                     job["stage"] = "running"
                     job["progress"] = max(int(job.get("progress", 0)), 5)
-                    self._persist_job_locked(job)
+                    try:
+                        self._persist_job_locked(job)
+                    except BaseException:
+                        # This write precedes the runner's terminal handling.
+                        if execution_span is not None:
+                            execution_span.finish("failed")
+                        raise
             if job is None:
                 time.sleep(0.2)
                 continue
