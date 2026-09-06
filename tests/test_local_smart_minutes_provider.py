@@ -164,6 +164,38 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             "我负责检查文件哈希，不是截止2026-09-30。", "",
             id="zh-negated-calendar-deadline",
         ),
+        pytest.param(
+            "我负责检查文件哈希，截止日期暂定2026-09-30。", "",
+            id="zh-tentative-calendar-deadline",
+        ),
+        pytest.param(
+            "我负责检查文件哈希，截止时间可能为2026-09-30。", "",
+            id="zh-possible-calendar-deadline",
+        ),
+        pytest.param(
+            "我负责检查文件哈希，截止日期暂定为周五。", "",
+            id="zh-tentative-named-deadline",
+        ),
+        pytest.param(
+            "I own the file-hash check. The deadline must not be after Friday.", "friday",
+            id="en-not-after-friday-upper-bound",
+        ),
+        pytest.param(
+            "I own the file-hash check. There is no Friday deadline.", "",
+            id="en-no-friday-deadline",
+        ),
+        pytest.param(
+            "我负责检查文件哈希，没有周五截止的约定。", "",
+            id="zh-no-friday-deadline",
+        ),
+        pytest.param(
+            "I own the file-hash check. The deadline is tentatively due Friday.", "",
+            id="en-tentative-due-friday",
+        ),
+        pytest.param(
+            "I own the file-hash check. Friday isn't confirmed.", "",
+            id="en-date-not-confirmed",
+        ),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
