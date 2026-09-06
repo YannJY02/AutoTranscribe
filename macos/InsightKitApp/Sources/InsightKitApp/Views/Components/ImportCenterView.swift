@@ -72,7 +72,7 @@ struct ImportCenterView<DataSource: CenterStageDataSource>: View {
             TranscriptionProgressView(
                 progress: importViewModel.importProgress,
                 elapsedTime: importViewModel.importElapsed,
-                totalTime: importViewModel.recordingDuration
+                sourceMediaDuration: importViewModel.sourceMediaDuration
             )
             .padding(.horizontal, InsightSpacing.panelPadding)
 

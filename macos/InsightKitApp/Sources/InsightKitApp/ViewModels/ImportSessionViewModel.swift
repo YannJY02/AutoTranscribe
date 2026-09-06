@@ -16,6 +16,7 @@ final class ImportSessionViewModel: ObservableObject {
     @Published var mediaURL: URL?
     @Published var importProgress: Double = 0
     @Published var importElapsed: TimeInterval = 0
+    @Published private(set) var sourceMediaDuration: TimeInterval?
     @Published var errorMessage: String?
     @Published var importStatusMessage: String?
     @Published var analysisStatusMessage: String?
@@ -26,6 +27,8 @@ final class ImportSessionViewModel: ObservableObject {
 
     private let rpcClient: InsightRPCClientProtocol
     private let sidecarManager: SidecarManager
+    private let mediaAssetInspector: MediaAssetInspecting
+    private let prepareRuntime: () throws -> Void
     private let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
     private let rpcQueue = DispatchQueue(label: "InsightKit.ImportSession.RPC", qos: .userInitiated)
     private let fetchLock = NSLock()
@@ -33,6 +36,8 @@ final class ImportSessionViewModel: ObservableObject {
     private var currentMeetingID: String?
     private var pollTask: Task<Void, Never>?
     private var importStartTime: Date?
+    private var sourceDurationAttemptID: UUID?
+    private(set) var sourceDurationTask: Task<Void, Never>?
 
     // Phase 5: injected by WorkflowCoordinator
     var recordsService: RecordsIndexService?
@@ -59,10 +64,18 @@ final class ImportSessionViewModel: ObservableObject {
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
         sidecarManager: SidecarManager = SidecarManager(),
+        mediaAssetInspector: MediaAssetInspecting = AVFoundationMediaAssetInspector(),
+        prepareRuntime: (() throws -> Void)? = nil,
         analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
+        self.mediaAssetInspector = mediaAssetInspector
+        self.prepareRuntime = prepareRuntime ?? {
+            try sidecarManager.startIfNeeded {
+                _ = try rpcClient.ensureReady(timeoutSec: 6)
+            }
+        }
         self.analyticsSubmit = analyticsSubmit
     }
 
@@ -71,6 +84,7 @@ final class ImportSessionViewModel: ObservableObject {
     }
 
     func shutdown() {
+        invalidateSourceMediaDuration()
         pollTask?.cancel()
         pollTask = nil
         sidecarManager.stop()
@@ -88,6 +102,7 @@ final class ImportSessionViewModel: ObservableObject {
             }
             return
         }
+        readSourceMediaDuration(url: url)
         mediaURL = url
         sessionPhase = .processing
         importProgress = 0
@@ -105,10 +120,7 @@ final class ImportSessionViewModel: ObservableObject {
         rpcQueue.async { [weak self] in
             guard let self else { return }
             do {
-                try self.sidecarManager.startIfNeeded(ensureReady: { [weak self] in
-                    guard let self else { return }
-                    _ = try self.rpcClient.ensureReady(timeoutSec: 6)
-                })
+                try self.prepareRuntime()
                 let analyticsPath = self.refreshAnalysisStatusForImport()
                 self.analyticsSubmit { $0.resolveWorkflow("import", path: analyticsPath) }
                 let title = url.deletingPathExtension().lastPathComponent
@@ -137,6 +149,32 @@ final class ImportSessionViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func readSourceMediaDuration(url: URL) {
+        sourceDurationTask?.cancel()
+        let attemptID = UUID()
+        sourceDurationAttemptID = attemptID
+        sourceMediaDuration = nil
+        let inspector = mediaAssetInspector
+        // Import can publish a late duration without waiting for it to submit
+        // work, or inheriting the synchronous inspector's three-second limit.
+        sourceDurationTask = Task(priority: .utility) { [weak self] in
+            guard !Task.isCancelled else { return }
+            let duration = await inspector.loadDurationSec(url: url)
+            await MainActor.run { [weak self] in
+                guard !Task.isCancelled,
+                      let self, self.sourceDurationAttemptID == attemptID else { return }
+                self.sourceMediaDuration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+            }
+        }
+    }
+
+    private func invalidateSourceMediaDuration() {
+        sourceDurationTask?.cancel()
+        sourceDurationTask = nil
+        sourceDurationAttemptID = nil
+        sourceMediaDuration = nil
     }
 
     func cancelImport(reason: String = "cancelled_by_user") {
@@ -183,6 +221,7 @@ final class ImportSessionViewModel: ObservableObject {
             exportStatusMessage = "导出正在完成，请稍候再新建导入。"
             return
         }
+        invalidateSourceMediaDuration()
         let analyticsPhase = sessionPhase == .reviewing ? "reviewing" : "running"
         analyticsSubmit { $0.workflowCancelled("import", phase: analyticsPhase) }
         pollTask?.cancel()
