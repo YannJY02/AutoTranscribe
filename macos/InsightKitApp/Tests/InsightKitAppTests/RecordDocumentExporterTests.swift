@@ -29,6 +29,7 @@ final class RecordDocumentExporterTests: XCTestCase {
         )
 
         let markdown = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(markdown.hasPrefix("# \(metadata.displayTitle)\n"))
         XCTAssertTrue(markdown.contains("AI 免责声明"))
         XCTAssertTrue(markdown.contains("## 长文版结构化总结"))
         XCTAssertTrue(markdown.contains("## 会议金句"))
@@ -36,6 +37,8 @@ final class RecordDocumentExporterTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## 关键决策"))
         XCTAssertTrue(markdown.contains("## 待办事项"))
         XCTAssertTrue(markdown.contains("## 智能章节"))
+        XCTAssertTrue(markdown.contains("## 相关链接"))
+        XCTAssertTrue(markdown.contains("## 时间绑定笔记"))
         XCTAssertTrue(markdown.contains("## 带时间戳逐字稿"))
         XCTAssertTrue(markdown.contains("[00:03] export note"))
     }
@@ -77,6 +80,20 @@ final class RecordDocumentExporterTests: XCTestCase {
         let data = try Data(contentsOf: url)
         XCTAssertGreaterThan(data.count, 4)
         XCTAssertEqual(String(data: data.prefix(5), encoding: .utf8), "%PDF-")
+
+        let text = try XCTUnwrap(PDFDocument(url: url)?.string)
+        let compactLines = text.components(separatedBy: .newlines).map { $0.filter { !$0.isWhitespace } }
+        for heading in [
+            metadata.displayTitle, "长文版结构化总结", "会议金句", "发言人总结", "关键决策",
+            "待办事项", "智能章节", "相关链接", "时间绑定笔记", "带时间戳逐字稿",
+        ] {
+            let compactHeading = heading.filter { !$0.isWhitespace }
+            XCTAssertTrue(compactLines.contains(compactHeading), "Missing plain built-in PDF heading: \(heading)")
+            XCTAssertFalse(
+                compactLines.contains("#" + compactHeading) || compactLines.contains("##" + compactHeading),
+                "Built-in PDF heading still contains a Markdown prefix: \(heading)"
+            )
+        }
     }
 
     func testMarkdownMarksOnlyExplicitlyFlaggedDecisionsAndActionsForReview() throws {
@@ -133,6 +150,10 @@ final class RecordDocumentExporterTests: XCTestCase {
                 )
                 let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
                 let document = try XCTUnwrap(PDFDocument(url: url))
+                try assertHeading(
+                    isAction ? "待办事项" : "关键决策", sharesPageWith: item, in: document,
+                    context: "Short review item with \(fillerCount) summary lines"
+                )
                 let itemPage = try XCTUnwrap((0..<document.pageCount).first {
                     document.page(at: $0)?.string?.contains(item) == true
                 })
@@ -141,35 +162,103 @@ final class RecordDocumentExporterTests: XCTestCase {
                 XCTAssertTrue(text.contains("复核：待复核"), "Detached \(item) notice with \(fillerCount) padding lines")
                 let allText = try XCTUnwrap(document.string).filter { !$0.isWhitespace }
                 XCTAssertEqual(allText.components(separatedBy: "复核：待复核").count - 1, 1)
+                XCTAssertEqual(
+                    allText.components(separatedBy: "Summarypadding").count - 1, fillerCount,
+                    "Summary content lost for \(item) with \(fillerCount) padding lines"
+                )
             }
         }
+    }
+
+    func testPDFKeepsSectionHeadingWithAnOrdinaryFirstItemAtPageBoundary() throws {
+        // One decision and one action exercise ordinary blocks without
+        // multiplying the existing review-item boundary matrix.
+        for isAction in [false, true] {
+            let fillerCount = isAction ? 5 : 9
+            let words = (0..<18).map { String(format: "ordinary%02d", $0) }
+            let metadata = try seedRecordWithReviewItem(
+                words.joined(separator: " "),
+                overview: Array(repeating: "Summary padding", count: fillerCount).joined(separator: "\n"),
+                isAction: isAction,
+                reviewFlag: false
+            )
+            let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
+            let document = try XCTUnwrap(PDFDocument(url: url))
+
+            try assertHeading(
+                isAction ? "待办事项" : "关键决策", sharesPageWith: words[0], in: document,
+                context: "Ordinary item with \(fillerCount) summary lines"
+            )
+            let text = try XCTUnwrap(document.string)
+            XCTAssertTrue(words.allSatisfy { text.contains($0) }, "Ordinary item body was truncated: action=\(isAction)")
+            XCTAssertFalse(text.filter { !$0.isWhitespace }.contains("复核：待复核"))
+        }
+    }
+
+    func testPDFKeepsHeadingWithStartOfNearlyPageSizedReviewItem() throws {
+        // Explicit short lines put this block close to one content page. The
+        // heading reservation must agree with the later whole-block/split choice.
+        let words = (0..<35).map { String(format: "nearpage%03d", $0) }
+        let metadata = try seedRecordWithReviewItem(words.joined(separator: "\n"))
+        let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
+        let document = try XCTUnwrap(PDFDocument(url: url))
+
+        try assertHeading("关键决策", sharesPageWith: words[0], in: document, context: "Nearly page-sized review item")
+        let pageTexts = (0..<document.pageCount).compactMap { document.page(at: $0)?.string }
+        let itemPages = pageTexts.filter { $0.contains("nearpage") }
+        for text in itemPages {
+            XCTAssertTrue(text.filter { !$0.isWhitespace }.contains("复核：待复核"), "Review state missing from a near-page item fragment")
+        }
+        let allText = try XCTUnwrap(document.string)
+        XCTAssertTrue(words.allSatisfy { allText.contains($0) }, "Nearly page-sized item body was truncated")
+        XCTAssertEqual(
+            allText.filter { !$0.isWhitespace }.components(separatedBy: "复核：待复核").count - 1,
+            itemPages.count,
+            "A review notice must accompany content, without an orphan or duplicate notice"
+        )
     }
 
     func testPDFKeepsWrappedMultilineItemAndItsReviewNoticeTogether() throws {
         let words = (0..<60).map { String(format: "wrapped%03d", $0) }
         let item = words.prefix(30).joined(separator: " ")
-            + "\n\n# Item detail\n- Embedded bullet\n"
+            + "\n\n# Item detail\n## User item section\n- Embedded bullet\n"
             + words.suffix(30).joined(separator: " ")
         let metadata = try seedRecordWithReviewItem(
             item,
-            overview: Array(repeating: "Summary padding", count: 8).joined(separator: "\n"),
+            overview: Array(repeating: "Summary padding", count: 8).joined(separator: "\n")
+                + "\n# User summary title\n## User summary section",
             isAction: true
         )
         let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
         let document = try XCTUnwrap(PDFDocument(url: url))
         let itemPages = (0..<document.pageCount).compactMap { document.page(at: $0)?.string }.filter { $0.contains("wrapped") }
 
+        try assertHeading("待办事项", sharesPageWith: words[0], in: document, context: "Wrapped multiline review item")
         XCTAssertEqual(itemPages.count, 1)
         let text = try XCTUnwrap(itemPages.first)
-        XCTAssertTrue(text.filter { !$0.isWhitespace }.contains("复核：待复核"))
+        let compactItemText = text.filter { !$0.isWhitespace }
+        XCTAssertTrue(compactItemText.contains("复核：待复核"))
+        XCTAssertTrue(compactItemText.contains("#Itemdetail"), "User item text lost its literal # prefix")
+        XCTAssertTrue(compactItemText.contains("##Useritemsection"), "User item text lost its literal ## prefix")
         XCTAssertTrue(words.allSatisfy { text.contains($0) })
+        let compactDocument = try XCTUnwrap(document.string).filter { !$0.isWhitespace }
+        XCTAssertTrue(compactDocument.contains("#Usersummarytitle"), "User summary text lost its literal # prefix")
+        XCTAssertTrue(compactDocument.contains("##Usersummarysection"), "User summary text lost its literal ## prefix")
+        let markdown = try RecordDocumentExporter.renderMarkdown(metadata: metadata, recordPath: tempRoot)
+        for literal in ["# Item detail", "## User item section", "# User summary title", "## User summary section"] {
+            XCTAssertTrue(markdown.contains(literal), "Markdown body changed literal user text: \(literal)")
+        }
     }
 
     func testPDFKeepsReviewNoticeOnEveryPageOfAnOversizedItem() throws {
         let words = (0..<1_000).map { String(format: "segment%04d", $0) }
-        let metadata = try seedRecordWithReviewItem(words.joined(separator: " "))
+        let metadata = try seedRecordWithReviewItem(
+            words.joined(separator: " "),
+            overview: Array(repeating: "Summary padding", count: 9).joined(separator: "\n")
+        )
         let url = try RecordDocumentExporter.export(format: "pdf", metadata: metadata, recordPath: tempRoot)
         let document = try XCTUnwrap(PDFDocument(url: url))
+        try assertHeading("关键决策", sharesPageWith: words[0], in: document, context: "Oversized review item")
         var itemPageCount = 0
         var allText = ""
         for pageIndex in 0..<document.pageCount {
@@ -228,6 +317,34 @@ final class RecordDocumentExporterTests: XCTestCase {
         XCTAssertEqual(
             dataSource.exportStatusMessage,
             "导出失败：不支持的导出格式：docx"
+        )
+    }
+
+    private func assertHeading(
+        _ heading: String,
+        sharesPageWith firstContent: String,
+        in document: PDFDocument,
+        context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let compactPages = (0..<document.pageCount).map {
+            (document.page(at: $0)?.string ?? "").filter { !$0.isWhitespace }
+        }
+        let compactHeading = heading.filter { !$0.isWhitespace }
+        let compactContent = firstContent.filter { !$0.isWhitespace }
+        let headingPage = try XCTUnwrap(
+            compactPages.firstIndex { $0.contains(compactHeading) },
+            "Missing section heading \(heading): \(context)", file: file, line: line
+        )
+        let contentPage = try XCTUnwrap(
+            compactPages.firstIndex { $0.contains(compactContent) },
+            "Missing first section content \(firstContent): \(context)", file: file, line: line
+        )
+        XCTAssertEqual(
+            headingPage, contentPage,
+            "Orphaned \(heading): heading on page \(headingPage + 1), content \(firstContent) on page \(contentPage + 1); \(context)",
+            file: file, line: line
         )
     }
 

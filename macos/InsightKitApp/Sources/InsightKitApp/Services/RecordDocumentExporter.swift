@@ -21,13 +21,24 @@ enum RecordDocumentExportError: LocalizedError {
 enum RecordDocumentExporter {
     private static let reviewNoticeMarkdown = "  - 复核：待复核"
 
+    private enum HeadingLevel: Int {
+        case title = 1
+        case section = 2
+    }
+
     private struct DocumentContent {
         var lines: [String] = []
         var reviewEntryIndices: Set<Int> = []
+        var headingLevels: [Int: HeadingLevel] = [:]
 
         mutating func append(_ line: String, needsReview: Bool = false) {
             if needsReview { reviewEntryIndices.insert(lines.count) }
             lines.append(line)
+        }
+
+        mutating func appendHeading(_ title: String, level: HeadingLevel = .section) {
+            headingLevels[lines.count] = level
+            lines.append("\(String(repeating: "#", count: level.rawValue)) \(title)")
         }
     }
 
@@ -109,7 +120,7 @@ enum RecordDocumentExporter {
         let mediaFile = asset.mediaURL
 
         var lines = DocumentContent()
-        lines.append("# \(title)")
+        lines.appendHeading(title, level: .title)
         lines.append("")
         lines.append("- 文档标题：\(title)")
         lines.append("- 记录 ID：\(metadata.id)")
@@ -123,26 +134,26 @@ enum RecordDocumentExporter {
         lines.append("> AI 免责声明：以下内容由 InsightKit 根据本地逐字稿和记录文件生成，可能存在识别或总结误差；归档、分享或决策前请回看原始媒体并核对关键事实。")
         lines.append("")
 
-        lines.append("## 长文版结构化总结")
+        lines.appendHeading("长文版结构化总结")
         lines.append("")
         lines.append(minutes.structuredSummary.isEmpty ? "当前记录尚未生成结构化总结。" : minutes.structuredSummary)
         lines.append("")
 
-        appendList(title: "## 会议金句", items: minutes.highlights, fallback: "当前记录未包含会议金句。", to: &lines)
+        appendList(title: "会议金句", items: minutes.highlights, fallback: "当前记录未包含会议金句。", to: &lines)
         let speakerSummaryItems = minutes.speakerSummaries.isEmpty
             ? speakerSummaries(from: transcript)
             : minutes.speakerSummaries.map { "\($0.speakerName)：\($0.summary)" }
-        appendList(title: "## 发言人总结", items: speakerSummaryItems, fallback: "当前本地记录未包含独立发言人总结；已保留逐字稿说话人标签。", to: &lines)
+        appendList(title: "发言人总结", items: speakerSummaryItems, fallback: "当前本地记录未包含独立发言人总结；已保留逐字稿说话人标签。", to: &lines)
         let decisions = asset.insightPackage?.decisionLedger.map {
             ListItem(text: $0.decision, needsReview: $0.needsReview == true)
         } ?? minutes.keyDecisions.map { ListItem(text: $0, needsReview: false) }
         let actions = asset.insightPackage?.actionTracks.map {
             ListItem(text: $0.task, needsReview: $0.needsReview == true)
         } ?? minutes.actionItems.map { ListItem(text: $0, needsReview: false) }
-        appendList(title: "## 关键决策", items: decisions, fallback: "当前记录未包含明确关键决策。", to: &lines)
-        appendList(title: "## 待办事项", items: actions, fallback: "当前记录未包含待办事项。", to: &lines)
+        appendList(title: "关键决策", items: decisions, fallback: "当前记录未包含明确关键决策。", to: &lines)
+        appendList(title: "待办事项", items: actions, fallback: "当前记录未包含待办事项。", to: &lines)
 
-        lines.append("## 智能章节")
+        lines.appendHeading("智能章节")
         lines.append("")
         if minutes.chapters.isEmpty {
             lines.append("当前记录未包含智能章节。")
@@ -153,14 +164,14 @@ enum RecordDocumentExporter {
         }
         lines.append("")
 
-        lines.append("## 相关链接")
+        lines.appendHeading("相关链接")
         lines.append("")
         lines.append("- 原始记录：\(mediaFile?.lastPathComponent ?? "未找到媒体文件")")
         lines.append("- 文字记录：transcript.json")
         lines.append("- 媒体回放：打开本记录文件夹并使用 InsightKit 记录详情页回放")
         lines.append("")
 
-        lines.append("## 时间绑定笔记")
+        lines.appendHeading("时间绑定笔记")
         lines.append("")
         if notes.isEmpty {
             lines.append("当前记录暂无笔记。")
@@ -171,7 +182,7 @@ enum RecordDocumentExporter {
         }
         lines.append("")
 
-        lines.append("## 带时间戳逐字稿")
+        lines.appendHeading("带时间戳逐字稿")
         lines.append("")
         if transcript.isEmpty {
             lines.append("当前记录未包含逐字稿。")
@@ -193,7 +204,7 @@ enum RecordDocumentExporter {
     }
 
     private static func appendList(title: String, items: [ListItem], fallback: String, to lines: inout DocumentContent) {
-        lines.append(title)
+        lines.appendHeading(title)
         lines.append("")
         if items.isEmpty {
             lines.append(fallback)
@@ -265,40 +276,59 @@ enum RecordDocumentExporter {
             beginPage()
         }
 
-        beginPage()
-        for block in pdfBlocks(from: document) {
-            let lines = block.lines.map { pdfLine($0, width: contentWidth) }
-            guard let reviewNotice = block.reviewNotice else {
-                for line in lines {
-                    if y + line.height > margin + contentHeight { nextPage() }
-                    draw(line)
-                }
-                continue
+        func drawLayout(_ layout: PDFLayout) {
+            if layout.keepsTogether {
+                if y + layout.height > margin + contentHeight { nextPage() }
+                layout.lines.forEach(draw)
+                if let notice = layout.reviewNotice { draw(notice) }
+                return
             }
 
-            let notice = pdfLine(reviewNotice, width: contentWidth)
-            let blockHeight = lines.reduce(notice.height) { $0 + $1.height }
-            if blockHeight <= contentHeight {
-                if y + blockHeight > margin + contentHeight { nextPage() }
-                lines.forEach(draw)
-                draw(notice)
-                continue
-            }
-
-            // A flagged item larger than one page keeps its review state on every
-            // fragment. Reserve space for the notice before drawing item text.
-            let fragments = lines.flatMap { wrappedPDFLines($0, width: contentWidth) }
+            // Split items reserve their review notice on every page. The same
+            // fragments also let an ordinary long paragraph start with its heading.
+            let noticeHeight = layout.reviewNotice?.height ?? 0
             var index = 0
-            while index < fragments.count {
-                if y + fragments[index].height + notice.height > margin + contentHeight { nextPage() }
+            while index < layout.lines.count {
+                if y + layout.lines[index].height + noticeHeight > margin + contentHeight { nextPage() }
                 repeat {
-                    draw(fragments[index])
+                    draw(layout.lines[index])
                     index += 1
-                } while index < fragments.count
-                    && y + fragments[index].height + notice.height <= margin + contentHeight
-                draw(notice)
-                if index < fragments.count { nextPage() }
+                } while index < layout.lines.count
+                    && y + layout.lines[index].height + noticeHeight <= margin + contentHeight
+                if let notice = layout.reviewNotice { draw(notice) }
+                if index < layout.lines.count { nextPage() }
             }
+        }
+
+        let blocks = pdfBlocks(from: document)
+        beginPage()
+        var index = 0
+        while index < blocks.count {
+            if blocks[index].headingLevel != nil {
+                var contentIndex = index + 1
+                while contentIndex < blocks.count && blocks[contentIndex].isBlank {
+                    contentIndex += 1
+                }
+                if contentIndex < blocks.count && blocks[contentIndex].headingLevel == nil {
+                    let heading = blocks[index..<contentIndex].map {
+                        pdfLayout(for: $0, width: contentWidth, maximumHeight: contentHeight)
+                    }
+                    let headingHeight = heading.reduce(CGFloat.zero) { $0 + $1.height }
+                    // Decide whole-block versus fragment layout before reserving
+                    // space, so a near-page item cannot move away from its heading.
+                    let content = pdfLayout(
+                        for: blocks[contentIndex], width: contentWidth,
+                        maximumHeight: contentHeight - headingHeight
+                    )
+                    if y + headingHeight + content.minimumStartHeight > margin + contentHeight { nextPage() }
+                    heading.forEach(drawLayout)
+                    drawLayout(content)
+                    index = contentIndex + 1
+                    continue
+                }
+            }
+            drawLayout(pdfLayout(for: blocks[index], width: contentWidth, maximumHeight: contentHeight))
+            index += 1
         }
         endPage()
         context.closePDF()
@@ -308,6 +338,26 @@ enum RecordDocumentExporter {
     private struct PDFBlock {
         let lines: [String]
         let reviewNotice: String?
+        let headingLevel: HeadingLevel?
+
+        var isBlank: Bool {
+            headingLevel == nil && reviewNotice == nil
+                && lines.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+    }
+
+    private struct PDFLayout {
+        let lines: [PDFLine]
+        let reviewNotice: PDFLine?
+        let keepsTogether: Bool
+
+        var height: CGFloat {
+            lines.reduce(reviewNotice?.height ?? 0) { $0 + $1.height }
+        }
+
+        var minimumStartHeight: CGFloat {
+            keepsTogether ? height : (lines.first?.height ?? 0) + (reviewNotice?.height ?? 0)
+        }
     }
 
     private struct PDFLine {
@@ -317,6 +367,12 @@ enum RecordDocumentExporter {
 
     private static func pdfBlocks(from document: DocumentContent) -> [PDFBlock] {
         document.lines.enumerated().flatMap { index, entry in
+            if let level = document.headingLevels[index] {
+                // Only remove the prefix that appendHeading generated. Body text
+                // may contain literal Markdown-looking lines and remains untouched.
+                let title = String(entry.dropFirst(level.rawValue + 1))
+                return [PDFBlock(lines: title.components(separatedBy: "\n"), reviewNotice: nil, headingLevel: level)]
+            }
             var lines = entry.components(separatedBy: "\n")
             // Preserve the original list-entry boundary even when its text has
             // embedded paragraphs or literal review notices. Only payload flags
@@ -326,15 +382,27 @@ enum RecordDocumentExporter {
                 while lines.count > 1 && lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
                     lines.removeLast()
                 }
-                return [PDFBlock(lines: lines, reviewNotice: reviewNoticeMarkdown)]
+                return [PDFBlock(lines: lines, reviewNotice: reviewNoticeMarkdown, headingLevel: nil)]
             }
-            return lines.map { PDFBlock(lines: [$0], reviewNotice: nil) }
+            return lines.map { PDFBlock(lines: [$0], reviewNotice: nil, headingLevel: nil) }
         }
     }
 
-    private static func pdfLine(_ rawLine: String, width: CGFloat) -> PDFLine {
+    private static func pdfLayout(for block: PDFBlock, width: CGFloat, maximumHeight: CGFloat) -> PDFLayout {
+        let lines = block.lines.map { pdfLine($0, width: width, headingLevel: block.headingLevel) }
+        let notice = block.reviewNotice.map { pdfLine($0, width: width) }
+        let height = lines.reduce(notice?.height ?? 0) { $0 + $1.height }
+        let keepsTogether = height <= maximumHeight
+        return PDFLayout(
+            lines: keepsTogether ? lines : lines.flatMap { wrappedPDFLines($0, width: width) },
+            reviewNotice: notice,
+            keepsTogether: keepsTogether
+        )
+    }
+
+    private static func pdfLine(_ rawLine: String, width: CGFloat, headingLevel: HeadingLevel? = nil) -> PDFLine {
         let line = rawLine.isEmpty ? " " : rawLine
-        let attributed = NSAttributedString(string: line, attributes: attributesForLine(line))
+        let attributed = NSAttributedString(string: line, attributes: attributesForLine(headingLevel: headingLevel))
         let height = ceil(attributed.boundingRect(
             with: CGSize(width: width, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
@@ -359,13 +427,14 @@ enum RecordDocumentExporter {
         return fragments
     }
 
-    private static func attributesForLine(_ line: String) -> [NSAttributedString.Key: Any] {
+    private static func attributesForLine(headingLevel: HeadingLevel?) -> [NSAttributedString.Key: Any] {
         let font: NSFont
-        if line.hasPrefix("# ") {
+        switch headingLevel {
+        case .title:
             font = .boldSystemFont(ofSize: 18)
-        } else if line.hasPrefix("## ") {
+        case .section:
             font = .boldSystemFont(ofSize: 14)
-        } else {
+        case nil:
             font = .systemFont(ofSize: 11)
         }
         return [
