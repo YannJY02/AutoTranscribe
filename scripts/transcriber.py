@@ -224,7 +224,10 @@ class _QwenMLXWorker:
                     with (recorder.start(Phase.QWEN_SESSION_TRANSCRIBE) if recorder is not None else nullcontext()):
                         result = session.transcribe(**payload)
                     # Publish only after the actual-call span has finished.
-                    future.set_result(result)
+                    try:
+                        future.set_result(result)
+                    finally:
+                        del result
                 else:
                     future.set_exception(RuntimeError(f"unknown Qwen MLX worker action: {action}"))
             except BaseException as exc:  # noqa: BLE001 - preserve MLX runtime errors for the caller.

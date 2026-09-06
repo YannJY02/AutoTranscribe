@@ -1,7 +1,9 @@
 """Qwen timing boundaries with fake sessions, controlled clocks and real workers."""
 
+import gc
 import json
 import threading
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -299,6 +301,39 @@ def test_legacy_call_without_diagnostics_keeps_result_and_skip_behavior(monkeypa
             "start": 0, "end": 1000, "text": "private-transcript", "speaker": "", "confidence": 0.0,
         }],
     }
+
+
+def test_idle_cached_worker_releases_request_recorder_and_result(monkeypatch, clock):
+    call_finished = threading.Event()
+    idle = threading.Event()
+
+    class SessionResult:
+        pass
+
+    def transcribe(_kwargs):
+        call_finished.set()
+        return SessionResult()
+
+    install_session(monkeypatch, clock, transcribe=transcribe)
+    worker = transcriber._load_qwen_mlx_session()
+    original_get = worker._requests.get
+
+    def observe_get(*args, **kwargs):
+        if call_finished.is_set():
+            idle.set()
+        return original_get(*args, **kwargs)
+
+    monkeypatch.setattr(worker._requests, "get", observe_get)
+    recorder = TimingRecorder("job-release", clock_ns=clock)
+    recorder_ref = weakref.ref(recorder)
+    with timing_context(recorder):
+        output = worker.transcribe(audio="private-audio")
+    output_ref = weakref.ref(output)
+    assert idle.wait(timeout=3)
+    del output, recorder
+    gc.collect()
+    assert recorder_ref() is None
+    assert output_ref() is None
 
 
 @pytest.mark.parametrize("mode", ["disabled", "empty", "labelled", "attached", "failed"])
