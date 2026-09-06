@@ -11,7 +11,7 @@
   "finalized_at": "2026-09-06T02:28:55.303660+00:00",
   "source_revision": "9e59643a9815a84d787f74fa05df15ee2fd12b02",
   "installed_app": {
-    "path": "/Users/yann.jy/Applications/InsightKit.app",
+    "path": "$HOME/Applications/InsightKit.app",
     "version": "0.1.0",
     "build": "20260906091332",
     "revision_metadata": {
@@ -23,7 +23,7 @@
   },
   "fixture": {
     "id": "short-zh",
-    "path": "/Users/yann.jy/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-zh.m4a",
+    "path": "$HOME/Library/Application Support/InsightKit/BenchmarkFixtures/v1/media/short-zh.m4a",
     "sha256": "6667c134f3af4c8f8920cd3e367e341f8d220667c79014e63b3bdf20aa936d9d",
     "corpus_verification": {
       "fixture_assets_verified": 6,
@@ -80,14 +80,15 @@
       "stderr": ""
     },
     "power": {
-      "exit": 0,
-      "stdout": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=9306211)\t100%; charged; 0:00 remaining present: true\n",
-      "stderr": ""
+      "source": "AC Power",
+      "charge_percent": 100,
+      "charging_state": "charged",
+      "raw_receipt": "raw/cohort-manifest-initial.json"
     },
     "boot": {
-      "exit": 0,
-      "stdout": "kern.boottime: { sec = 1788487549, usec = 416625 } Fri Sep  4 10:05:49 2026\n",
-      "stderr": ""
+      "same_boot": true,
+      "reboot_for_this_run": false,
+      "raw_receipt": "raw/cohort-manifest-initial.json"
     }
   },
   "environment_not_frozen": [
@@ -144,7 +145,7 @@
     "Nominal handwritten annotation time is explicitly corrected in ui-events.jsonl and never used in metrics.",
     "Five-minute recovery endpoint was exceeded by the final snapshot; recovery is descriptive, not canonical."
   ],
-  "raw_artifact_root": "/Users/yann.jy/Developer/Projects/transcription/logs/diagnostics/performance/20260906/issue-6-short-zh-exploratory-013347",
+  "raw_artifact_root": "$REPO/logs/diagnostics/performance/20260906/issue-6-short-zh-exploratory-013347",
   "raw_artifacts": [
     {
       "path": "RECOVERY_STARTED",
@@ -395,5 +396,14 @@
     "task_should_close": false,
     "quality_acceptable": false,
     "next_action": "Add and validate minimal correlated monotonic phase timing before a subsequent run; preserve the decision-negation quality case."
-  }
+  },
+  "path_templates": {
+    "HOME": "Operator home directory",
+    "REPO": "Canonical AutoTranscribe checkout; raw absolute paths and full host metadata remain in the hashed local raw/cohort-manifest-initial.json receipt"
+  },
+  "publication_transforms": [
+    "Canonical local paths use explicit HOME/REPO templates in this public copy; raw absolute paths stay local.",
+    "Power and boot metadata are parsed; full initial outputs stay in the hashed local receipt.",
+    "Public CSV line endings normalized to LF and SVG trailing line whitespace removed; data rows and SVG path tokens unchanged."
+  ]
 }
