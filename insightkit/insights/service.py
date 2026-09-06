@@ -395,9 +395,45 @@ class InsightService:
 
     @staticmethod
     def _extract_due_hint(text: str) -> str:
-        lower = text.lower()
-        for marker in ["today", "tomorrow", "friday", "monday", "tuesday", "wednesday", "thursday"]:
-            if marker in lower:
-                return marker
-        match = re.search(r"(今天|明天|周[一二三四五六日天]|星期[一二三四五六日天]|本周|下周|截止[^，。,. ]*)", text)
-        return match.group(1) if match else ""
+        dates = re.compile(
+            r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday)\b"
+            r"|今天|明天|(?:本|下)周[一二三四五六日天]?|周[一二三四五六日天]|星期[一二三四五六日天]",
+            re.IGNORECASE,
+        )
+        rejected_prefix = re.compile(
+            r"(?:\b(?:not|never|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
+            r"(?:\s+(?:be|on|by|for|until|before|after|due|this|next))*"
+            r"|\b(?:maybe|perhaps|possibly|probably|tentatively)(?:\s+(?:on|by|this|next))*"
+            r"|不是|并非|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:在|于|定在|定于)?"
+            r"|尚未(?:定在|定于|确定为)|可能|也许|或许|大概|暂定)\s*$",
+            re.IGNORECASE,
+        )
+        rejected_suffix = re.compile(
+            r"^\s*(?:(?:(?:is|was)\s+)?(?:not|never|isn['’]t|wasn['’]t)\s+"
+            r"(?:(?:the|a|our|final)\s+)*(?:deadline|due\s+date)\b"
+            r"|(?:(?:is|was)\s+)?(?:only\s+)?(?:tentative|unconfirmed|undecided)\b"
+            r"|(?:不是|并非|不再是)(?:最终的?)?(?:截止(?:日期|时间)?|期限)"
+            r"|(?:前|之前)?(?:待定|未定|尚未确定|未确认|不确定|可能|也许|暂定))",
+            re.IGNORECASE,
+        )
+
+        for clause in re.split(r"[，,。.;；!?！？\n]", text):
+            # Keep negation attached to the date, so an unrelated prohibition
+            # does not erase an affirmed deadline or a "no later than" limit.
+            for match in dates.finditer(clause):
+                if rejected_prefix.search(clause[:match.start()]) or rejected_suffix.search(clause[match.end():]):
+                    continue
+                return match.group(0).lower()
+
+            # Retain explicit non-weekday hints such as 截止2026-09-30, but
+            # never return a bare label or resurrect a rejected named date.
+            deadline = re.search(r"截止[^\s]*", clause)
+            if deadline is None or rejected_prefix.search(clause[:deadline.start()]):
+                continue
+            hint = re.sub(r"^截止(?:日期|时间)?(?:是|为|到|至)?[:：]?", "", deadline.group(0)).strip()
+            if not hint or dates.search(hint):
+                continue
+            if re.search(r"待定|未定|待确认|尚未|未确定|未确认|未约定|未设定|不确定|没有|不是|并非|未知|不详", hint):
+                continue
+            return deadline.group(0)
+        return ""
