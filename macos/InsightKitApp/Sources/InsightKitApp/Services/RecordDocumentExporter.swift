@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import PDFKit
 
 enum RecordDocumentExportError: LocalizedError {
     case unsupportedFormat(String)
@@ -306,13 +305,12 @@ enum RecordDocumentExporter {
         }
         endPage()
         context.closePDF()
-        // Core Graphics output can contain unused zero-offset xref entries after
-        // CJK font fallback. Re-serialize the completed pages without redrawing them.
-        guard let pdf = PDFDocument(data: data as Data),
-              pdf.pageCount > 0,
-              let serialized = pdf.dataRepresentation(),
-              !serialized.isEmpty
-        else {
+        // Some Core Graphics font-fallback output marks unused zero-offset
+        // objects as live. Repair only those entries, preserving all page bytes.
+        let serialized: Data
+        do {
+            serialized = try CoreGraphicsPDFCrossReference.repairUnusedEntries(in: data as Data)
+        } catch {
             throw RecordDocumentExportError.pdfSerializationFailed
         }
         try serialized.write(to: url, options: .atomic)

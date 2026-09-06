@@ -134,7 +134,10 @@ final class RecordDocumentExporterTests: XCTestCase {
         // PDFKit inserts layout whitespace after full-width punctuation.
         let compactText = text.filter { !$0.isWhitespace }
         XCTAssertTrue(compactText.contains("Mixedreviewstateexport"))
-        XCTAssertTrue(compactText.contains("中文与English混排"))
+        XCTAssertTrue(
+            compactText.contains("中文与English混排"),
+            "Synthetic PDF extracted text: \(compactText)"
+        )
         XCTAssertTrue(compactText.contains("关键决策"))
         XCTAssertTrue(text.contains("Export evidence is readable."))
         XCTAssertEqual(compactText.components(separatedBy: "复核：待复核").count - 1, 2)
