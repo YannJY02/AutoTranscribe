@@ -468,31 +468,121 @@ def test_runtime_status_binds_running_state_to_requested_bundle(tmp_path, monkey
 @pytest.mark.skipif(sys.platform != "darwin", reason="Uses macOS executable identity")
 def test_installed_app_running_ignores_spoofed_argv0(tmp_path):
     import plistlib
+    import select
     import shutil
+    import time
 
-    app = tmp_path / "Operator Applications" / "InsightKit.app"
-    executable = app / "Contents" / "MacOS" / "InsightKitApp"
-    executable.parent.mkdir(parents=True)
-    shutil.copy("/bin/sleep", executable)
-    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "InsightKitApp"}))
-    other_executable = tmp_path / "Test Host" / "InsightKitApp"
-    other_executable.parent.mkdir()
-    shutil.copy("/bin/sleep", other_executable)
+    from scripts.native_app_process import executable_process_ids
 
-    assert _installed_app_running(app) is False
-    spoof = subprocess.Popen([str(executable), "30"], executable=str(other_executable))
-    try:
-        assert _installed_app_running(app) is False
-        actual = subprocess.Popen([str(executable), "30"])
+    def wait_for_fixture_main(process, expected_executable):
+        started = time.monotonic()
+        assert process.stdout is not None
+        readable, _, _ = select.select([process.stdout], [], [], 5)
+        ready = process.stdout.read(1) if readable else None
+        returncode = process.poll()
+        diagnostic = (
+            f"pid={process.pid}, returncode={returncode}, "
+            f"elapsed={time.monotonic() - started:.3f}s, ready={ready!r}, "
+            f"expected_executable={expected_executable}"
+        )
+        if returncode is not None:
+            pytest.fail(f"Process fixture exited before main was ready: {diagnostic}")
+        if not readable:
+            pytest.fail(f"Process fixture main was not ready within 5s: {diagnostic}")
+        if ready != b"R":
+            pytest.fail(f"Process fixture returned EOF or an invalid ready byte: {diagnostic}")
+        matches = executable_process_ids(expected_executable)
+        observed = None if matches is None else sorted(matches)
+        diagnostic += f", matched_pids={observed}, current_returncode={process.poll()}"
+        assert process.returncode is None, f"Process fixture exited after main was ready: {diagnostic}"
+        assert matches is not None and process.pid in matches, diagnostic
+        return diagnostic
+
+    def stop_fixture(process):
         try:
-            assert _installed_app_running(app) is True
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+                raise
         finally:
-            actual.terminate()
-            actual.wait(timeout=5)
-    finally:
-        spoof.terminate()
-        spoof.wait(timeout=5)
+            process.stdout.close()
+
+    compiler = shutil.which("cc")
+    assert compiler is not None, "Synthetic process fixture requires the macOS C compiler"
+    source = tmp_path / "harness_process_probe.c"
+    source.write_text(
+        '#include <unistd.h>\n'
+        'int main(void) {\n'
+        '    if (write(STDOUT_FILENO, "R", 1) != 1) return 1;\n'
+        '    sleep(30);\n'
+        '    return 0;\n'
+        '}\n'
+    )
+    binary = tmp_path / "HarnessProcessProbe"
+    subprocess.run(
+        [compiler, str(source), "-o", str(binary)],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+
+    app = tmp_path / "Operator Applications" / "HarnessProcessProbe.app"
+    executable = app / "Contents" / "MacOS" / "HarnessProcessProbe"
+    executable.parent.mkdir(parents=True)
+    shutil.copy(binary, executable)
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({
+        "CFBundleExecutable": executable.name,
+        "CFBundleIdentifier": "local.insightkit.harness-process-probe",
+        "CFBundleName": "HarnessProcessProbe",
+        "CFBundlePackageType": "APPL",
+        "CFBundleVersion": "1",
+    }))
+    other_executable = tmp_path / "Test Host" / executable.name
+    other_executable.parent.mkdir()
+    shutil.copy(binary, other_executable)
+
+    # Compile our own code: copied Apple binaries retain system launch constraints.
+    # Seal and verify both temporary executable identities before starting either.
+    for target, identifier in (
+        (app, "local.insightkit.harness-process-probe"),
+        (other_executable, "local.insightkit.harness-process-spoof"),
+    ):
+        subprocess.run(
+            ["codesign", "--force", "--sign", "-", "--timestamp=none", "--identifier", identifier, str(target)],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(target)],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
     assert _installed_app_running(app) is False
+    spoof = subprocess.Popen([str(executable)], executable=str(other_executable), stdout=subprocess.PIPE)
+    try:
+        spoof_ready = wait_for_fixture_main(spoof, other_executable)
+        assert _installed_app_running(app) is False, f"Spoofed argv0 matched the app: {spoof_ready}"
+        assert spoof.poll() is None, (
+            f"Spoof fixture exited during the identity check: returncode={spoof.returncode}; {spoof_ready}"
+        )
+        actual = subprocess.Popen([str(executable)], stdout=subprocess.PIPE)
+        try:
+            actual_ready = wait_for_fixture_main(actual, executable)
+            actual_state = _installed_app_running(app)
+            assert actual_state is True, (
+                f"App running state={actual_state!r} after fixture identity was ready; "
+                f"current_returncode={actual.poll()}; {actual_ready}"
+            )
+            assert actual.poll() is None, (
+                f"App fixture exited during the identity check: returncode={actual.returncode}; {actual_ready}"
+            )
+        finally:
+            stop_fixture(actual)
+    finally:
+        stop_fixture(spoof)
+    assert _installed_app_running(app) is False, (
+        f"Exited fixtures still matched: actual_returncode={actual.returncode}, "
+        f"spoof_returncode={spoof.returncode}"
+    )
 
 
 def test_write_controller_handoff_derives_bounded_evidence_from_passed_manifest(tmp_path):
