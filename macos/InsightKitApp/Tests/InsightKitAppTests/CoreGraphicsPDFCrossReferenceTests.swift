@@ -35,8 +35,8 @@ final class CoreGraphicsPDFCrossReferenceTests: XCTestCase {
         let decoy = """
         xref
         0 2
-        0000000000 65535 f 
-        0000000000 00000 n 
+        0000000000 65535 f\u{20}
+        0000000000 00000 n\u{20}
         trailer
         << /Size 2 /Root 7 0 R >>
         startxref
