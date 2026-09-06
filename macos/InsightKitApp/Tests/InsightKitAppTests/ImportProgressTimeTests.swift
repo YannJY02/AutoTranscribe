@@ -44,8 +44,7 @@ final class ImportProgressTimeTests: XCTestCase {
 
     func testProbeDoesNotBlockSubmissionAndPublishesWhileProcessing() {
         let inspector = ControlledImportMediaInspector()
-        let queue = DispatchQueue(label: "ImportProgressTimeTests.probe")
-        let model = makeModel(inspector: inspector, queue: queue)
+        let model = makeModel(inspector: inspector)
         defer { model.shutdown() }
         let submitted = expectation(description: "import submitted while probe is blocked")
         model.$currentJobID.compactMap { $0 }.prefix(1).sink { _ in submitted.fulfill() }
@@ -57,22 +56,45 @@ final class ImportProgressTimeTests: XCTestCase {
         XCTAssertEqual(model.sessionPhase, .processing)
         XCTAssertNil(model.sourceMediaDuration)
         inspector.release(with: 300)
-        drain(queue)
+        drain(model.sourceDurationTask)
 
         XCTAssertEqual(model.sourceMediaDuration, 300)
         XCTAssertEqual(model.recordingDuration, 0)
         XCTAssertEqual(model.sessionPhase, .processing)
     }
 
+    func testAsyncDurationPublishesWhenSynchronousProbeReturnsUnknown() {
+        let inspector = AsyncImportMediaInspector()
+        let url = mediaURL("late-duration")
+        XCTAssertNil(inspector.durationSec(url: url))
+        let model = makeModel(inspector: inspector)
+        defer { model.shutdown() }
+        let submitted = expectation(description: "import submitted while async duration is pending")
+        model.$currentJobID.compactMap { $0 }.prefix(1).sink { _ in submitted.fulfill() }
+            .store(in: &subscriptions)
+        let published = expectation(description: "late async duration published")
+        model.$sourceMediaDuration.compactMap { $0 }.prefix(1).sink { _ in published.fulfill() }
+            .store(in: &subscriptions)
+
+        model.importFile(url: url)
+        wait(for: [inspector.started, submitted], timeout: 2)
+        XCTAssertEqual(model.sessionPhase, .processing)
+        XCTAssertNil(model.sourceMediaDuration)
+        inspector.release(with: 299.932)
+        wait(for: [published], timeout: 2)
+
+        XCTAssertEqual(model.sourceMediaDuration, 299.932)
+        XCTAssertEqual(inspector.synchronousCalls, 1, "Import must use the async duration entry point")
+    }
+
     func testFailedAndInvalidProbesRemainUnknown() {
         for duration: Double? in [nil, 0, -1, .nan, .infinity, -.infinity] {
             let inspector = ControlledImportMediaInspector()
-            let queue = DispatchQueue(label: "ImportProgressTimeTests.invalid")
-            let model = makeModel(inspector: inspector, queue: queue)
+            let model = makeModel(inspector: inspector)
             model.importFile(url: mediaURL("invalid"))
             wait(for: [inspector.started], timeout: 2)
             inspector.release(with: duration)
-            drain(queue)
+            drain(model.sourceDurationTask)
             XCTAssertNil(model.sourceMediaDuration)
             XCTAssertEqual(model.recordingDuration, 0)
             model.shutdown()
@@ -85,14 +107,14 @@ final class ImportProgressTimeTests: XCTestCase {
 
     func testCancelDiscardsPendingProbe() {
         let inspector = ControlledImportMediaInspector()
-        let queue = DispatchQueue(label: "ImportProgressTimeTests.cancel")
-        let model = makeModel(inspector: inspector, queue: queue)
+        let model = makeModel(inspector: inspector)
         defer { model.shutdown() }
         let submitted = expectation(description: "import submitted")
         model.$currentJobID.compactMap { $0 }.prefix(1).sink { _ in submitted.fulfill() }
             .store(in: &subscriptions)
         model.importFile(url: mediaURL("cancel"))
         wait(for: [inspector.started, submitted], timeout: 2)
+        let pendingProbe = model.sourceDurationTask
 
         let cancelled = expectation(description: "cancellation confirmed")
         model.$sessionPhase.filter { $0 == .selecting }.prefix(1)
@@ -100,17 +122,16 @@ final class ImportProgressTimeTests: XCTestCase {
         model.cancelImport()
         wait(for: [cancelled], timeout: 2)
         inspector.release(with: 300)
-        drain(queue)
+        drain(pendingProbe)
         XCTAssertNil(model.sourceMediaDuration)
     }
 
     func testFailedCancellationPreservesKnownAndPendingSourceDuration() {
         for completeProbeBeforeCancel in [true, false] {
             let inspector = ControlledImportMediaInspector()
-            let queue = DispatchQueue(label: "ImportProgressTimeTests.cancelFailure")
             let rpcClient = RPCClientMock()
             rpcClient.transcriptionCancelError = NSError(domain: "ImportProgressTimeTests", code: 1)
-            let model = makeModel(inspector: inspector, queue: queue, rpcClient: rpcClient)
+            let model = makeModel(inspector: inspector, rpcClient: rpcClient)
             let submitted = expectation(description: "import submitted")
             model.$currentJobID.compactMap { $0 }.prefix(1).sink { _ in submitted.fulfill() }
                 .store(in: &subscriptions)
@@ -118,7 +139,7 @@ final class ImportProgressTimeTests: XCTestCase {
             wait(for: [inspector.started, submitted], timeout: 2)
             if completeProbeBeforeCancel {
                 inspector.release(with: 300)
-                drain(queue)
+                drain(model.sourceDurationTask)
                 XCTAssertEqual(model.sourceMediaDuration, 300)
             }
 
@@ -129,7 +150,7 @@ final class ImportProgressTimeTests: XCTestCase {
             wait(for: [failed], timeout: 2)
             if !completeProbeBeforeCancel {
                 inspector.release(with: 300)
-                drain(queue)
+                drain(model.sourceDurationTask)
             }
 
             XCTAssertEqual(model.sessionPhase, .processing)
@@ -141,10 +162,10 @@ final class ImportProgressTimeTests: XCTestCase {
     func testReplacementImportDiscardsOldProbeEvenForSameFile() {
         for replacement in ["first", "second"] {
             let inspector = ControlledImportMediaInspector()
-            let queue = DispatchQueue(label: "ImportProgressTimeTests.replace", attributes: .concurrent)
-            let model = makeModel(inspector: inspector, queue: queue)
+            let model = makeModel(inspector: inspector)
             model.importFile(url: mediaURL("first"))
             wait(for: [inspector.started], timeout: 2)
+            let firstProbe = model.sourceDurationTask
             model.resetToSelecting()
             model.importFile(url: mediaURL(replacement))
             let secondRead = expectation(description: "replacement duration")
@@ -152,7 +173,7 @@ final class ImportProgressTimeTests: XCTestCase {
                 .sink { _ in secondRead.fulfill() }.store(in: &subscriptions)
             wait(for: [secondRead], timeout: 2)
             inspector.release(with: 300)
-            drain(queue)
+            drain(firstProbe)
             XCTAssertEqual(model.sourceMediaDuration, 120)
             model.shutdown()
         }
@@ -178,12 +199,11 @@ final class ImportProgressTimeTests: XCTestCase {
 
         for duration: Double? in [300, nil] {
             let inspector = ControlledImportMediaInspector()
-            let queue = DispatchQueue(label: "ImportProgressTimeTests.metadata")
-            let model = makeModel(inspector: inspector, queue: queue)
+            let model = makeModel(inspector: inspector)
             model.importFile(url: mediaURL("first"))
             wait(for: [inspector.started], timeout: 2)
             inspector.release(with: duration)
-            drain(queue)
+            drain(model.sourceDurationTask)
             model.recordsService = records
             XCTAssertTrue(model.loadPersistedArtifactsForCompletedImport(meetingID: "duration-record"))
             XCTAssertEqual(model.recordingDuration, 298)
@@ -196,25 +216,24 @@ final class ImportProgressTimeTests: XCTestCase {
 
     private func assertPendingProbeIsDiscarded(_ invalidate: (ImportSessionViewModel) -> Void) {
         let inspector = ControlledImportMediaInspector()
-        let queue = DispatchQueue(label: "ImportProgressTimeTests.invalidate")
-        let model = makeModel(inspector: inspector, queue: queue)
+        let model = makeModel(inspector: inspector)
         model.importFile(url: mediaURL("first"))
         wait(for: [inspector.started], timeout: 2)
+        let pendingProbe = model.sourceDurationTask
         invalidate(model)
         inspector.release(with: 300)
-        drain(queue)
+        drain(pendingProbe)
         XCTAssertNil(model.sourceMediaDuration)
         model.shutdown()
     }
 
     private func makeModel(
         inspector: MediaAssetInspecting,
-        queue: DispatchQueue,
         rpcClient: RPCClientMock = RPCClientMock()
     ) -> ImportSessionViewModel {
         ImportSessionViewModel(
             rpcClient: rpcClient, mediaAssetInspector: inspector,
-            sourceDurationQueue: queue, prepareRuntime: {}, analyticsSubmit: { _ in }
+            prepareRuntime: {}, analyticsSubmit: { _ in }
         )
     }
 
@@ -222,12 +241,14 @@ final class ImportProgressTimeTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent("\(name).m4a")
     }
 
-    // Barrier waits for the controlled synchronous inspector to return, then the
-    // main-queue marker runs after all resulting publication callbacks. No sleeps.
-    private func drain(_ queue: DispatchQueue) {
-        queue.sync(flags: .barrier) {}
+    // Await the exact attempt, including its main-actor publication or discard.
+    private func drain(_ task: Task<Void, Never>?) {
+        guard let task else { return XCTFail("Expected a source duration task") }
         let delivered = expectation(description: "probe callbacks delivered")
-        DispatchQueue.main.async { delivered.fulfill() }
+        Task {
+            await task.value
+            delivered.fulfill()
+        }
         wait(for: [delivered], timeout: 2)
     }
 }
@@ -263,5 +284,51 @@ private final class ControlledImportMediaInspector: MediaAssetInspecting {
         released = true
         condition.broadcast()
         condition.unlock()
+    }
+}
+
+private final class AsyncImportMediaInspector: MediaAssetInspecting {
+    let started = XCTestExpectation(description: "async duration probe started")
+    private let lock = NSLock()
+    private var pending: CheckedContinuation<Double?, Never>?
+    private var released = false
+    private var result: Double?
+    private var calls = 0
+
+    var synchronousCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func hasAudioTrack(url: URL) -> Bool { true }
+
+    func durationSec(url: URL) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        calls += 1
+        return nil
+    }
+
+    func loadDurationSec(url: URL) async -> Double? {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            let wasReleased = released
+            let duration = result
+            if !wasReleased { pending = continuation }
+            lock.unlock()
+            started.fulfill()
+            if wasReleased { continuation.resume(returning: duration) }
+        }
+    }
+
+    func release(with duration: Double?) {
+        lock.lock()
+        released = true
+        result = duration
+        let continuation = pending
+        pending = nil
+        lock.unlock()
+        continuation?.resume(returning: duration)
     }
 }
