@@ -105,6 +105,9 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Install PDF structure checker
+        run: brew install qpdf
+
       - name: Run Swift unit tests
         working-directory: macos/InsightKitApp
         run: |

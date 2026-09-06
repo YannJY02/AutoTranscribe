@@ -1,10 +1,12 @@
 import AppKit
 import Foundation
+import PDFKit
 
 enum RecordDocumentExportError: LocalizedError {
     case unsupportedFormat(String)
     case missingMetadata
     case pdfContextCreationFailed
+    case pdfSerializationFailed
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +16,8 @@ enum RecordDocumentExportError: LocalizedError {
             return "记录元数据缺失。"
         case .pdfContextCreationFailed:
             return "无法创建 PDF 导出上下文。"
+        case .pdfSerializationFailed:
+            return "无法生成 PDF 文件。"
         }
     }
 }
@@ -302,7 +306,16 @@ enum RecordDocumentExporter {
         }
         endPage()
         context.closePDF()
-        try data.write(to: url, options: .atomic)
+        // Core Graphics output can contain unused zero-offset xref entries after
+        // CJK font fallback. Re-serialize the completed pages without redrawing them.
+        guard let pdf = PDFDocument(data: data as Data),
+              pdf.pageCount > 0,
+              let serialized = pdf.dataRepresentation(),
+              !serialized.isEmpty
+        else {
+            throw RecordDocumentExportError.pdfSerializationFailed
+        }
+        try serialized.write(to: url, options: .atomic)
     }
 
     private struct PDFBlock {
