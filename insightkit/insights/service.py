@@ -402,10 +402,11 @@ class InsightService:
         )
         uncertain_en = r"(?:may|might|could|maybe|perhaps|possibly|probably|tentatively|tentative|unconfirmed|undecided|tbd)"
         uncertain_zh = r"可能|也许|或许|大概|暂定|待定|未定|待确认|尚未|未确定|未确认|未约定|未设定|不确定|未知|不详"
+        completion_en = r"(?:finish|complete|submit|deliver|send|email|hand\s+over)"
         rejected_prefix = re.compile(
-            r"(?:\b(?:not|no|never|neither|nor|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
-            r"(?:\s+(?:be|on|by|for|until|before|due|this|next))*"
-            rf"|\b{uncertain_en}\b(?:\s+(?:be|on|by|for|until|before|after|due|this|next))*"
+            r"(?:\b(?:not|no|never|neither|nor|don['’]t|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
+            r"(?:\s+(?:be|on|by|for|until|before|due|this|next|every|each))*"
+            rf"|\b{uncertain_en}\b(?:\s+(?:be|on|by|for|until|before|after|due|this|next|every|each))*"
             r"|不是|并非|没有|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:在|于|定在|定于)?"
             rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:为|在|到|是|改为|改到)?)\s*$",
             re.IGNORECASE,
@@ -429,22 +430,25 @@ class InsightService:
             re.IGNORECASE,
         )
         affirmed_prefix = re.compile(
-            r"(?:\bdue(?:\s+(?:on|by))?"
-            r"|\b(?:deadline|due\s+date)(?:\s*:\s*|\s+(?:"
+            r"(?:\bdue(?:\s+(?:on|by)|\s*[:：]\s*)?"
+            r"|\b(?:deadline|due\s+date)"
+            rf"(?:\s+for(?:\s+(?!(?:is|was|will|not|never|{uncertain_en})\b)[\w'-]+){{1,6}})?"
+            r"(?:\s*:\s*|\s+(?:"
             r"(?:is|was|will\s+be)\s+(?:(?:not\s+after|no\s+later\s+than)\s+)?"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
-            r"|\b(?:do\s+)?not\s+(?:finish|complete|submit|deliver)"
+            rf"|\b(?:(?:do\s+)?not|don['’]t)\s+{completion_en}"
             r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+after"
-            r"|\b(?:finish|complete|submit|deliver)"
+            rf"|\b{completion_en}"
             r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+"
             r"(?:(?:by|on|before|not\s+after|no\s+later\s+than)\s+)?"
             r"|\bno\s+later\s+than"
             r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于|最[迟晚])"
-            r"\s*(?:(?:this|next)\s+)?$",
+            r"\s*(?:(?:this|next|every|each)\s+)?$",
             re.IGNORECASE,
         )
         affirmed_suffix = re.compile(
-            r"^\s*(?:\b(?:is|will\s+be)\s+(?:(?:the|our|final)\s+)?(?:deadline|due\s+date)"
+            r"^\s*(?:\b(?:is|will\s+be|remains)\s+(?:still\s+)?"
+            r"(?:(?:the|our|final)\s+)?(?:deadline|due\s+date)"
             r"(?=\s*$|\s+(?:for|to)\b)"
             r"|(?:前|之前)?(?:完成|提交|交付|交稿|做完)"
             r"|(?:前|之前)(?:把|将)\S{1,24}(?:完成|提交|交付|交稿|做完)"
