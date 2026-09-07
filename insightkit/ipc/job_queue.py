@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from insightkit.data.store import InsightStore
 from insightkit.insights.service import InsightService
 from insightkit.ipc.push_broker import PushBroker
 from insightkit.ipc.watch_bridge import WatchBridge
+from insightkit.phase_timing import Phase, TimingRecorder, timing_context
 from scripts.transcription_runner import JobCancelled, run_transcription_job
 
 
@@ -49,7 +51,8 @@ class JobQueue:
 
     @property
     def last_completed(self) -> dict[str, Any] | None:
-        return self._last_completed
+        with self._lock:
+            return deepcopy(self._last_completed)
 
     def transcription_import_file(self, params: dict[str, Any]) -> dict[str, Any]:
         file_path = str(params.get("file_path", "") or "").strip()
@@ -76,6 +79,9 @@ class JobQueue:
         with self._lock:
             if not self._accepting_jobs:
                 raise RuntimeError("sidecar is shutting down and cannot accept transcription jobs")
+            timing = TimingRecorder(job_id)
+            job["_phase_timing"] = timing
+            job["_queue_timing"] = timing.start(Phase.QUEUE_WAIT)
             self._jobs[job_id] = job
             self._cancel_events[job_id] = threading.Event()
             self._queue.append(job_id)
@@ -122,7 +128,7 @@ class JobQueue:
             jobs.sort(key=lambda x: x.get("started_at", ""), reverse=True)
             queue_views = [self._job_view(self._jobs[x]) for x in self._queue if x in self._jobs]
             active = self._job_view(self._jobs[self._active_job_id]) if self._active_job_id in self._jobs else None
-            last_completed = self._last_completed
+            last_completed = deepcopy(self._last_completed)
         return {
             "watcher": self._watch_bridge.status(),
             "queue": queue_views[:limit],
@@ -162,6 +168,9 @@ class JobQueue:
             job["ended_at"] = datetime.now(timezone.utc).isoformat()
             if job_id in self._queue:
                 self._queue.remove(job_id)
+                queue_span = job.get("_queue_timing")
+                if queue_span is not None:
+                    queue_span.finish("cancelled")
             self._persist_job_locked(job)
         return {"job_id": job_id, "state": target_state}
 
@@ -183,6 +192,7 @@ class JobQueue:
         while not self._worker_stop.is_set():
             job: dict[str, Any] | None = None
             cancel_event: threading.Event | None = None
+            execution_span = None
             with self._lock:
                 next_id = None
                 while self._queue and next_id is None:
@@ -194,24 +204,37 @@ class JobQueue:
                 if next_id is not None:
                     job = self._jobs[next_id]
                     cancel_event = self._cancel_events.get(next_id)
+                    queue_span = job.get("_queue_timing")
+                    if queue_span is not None:
+                        queue_span.finish()
+                    timing = job.get("_phase_timing")
+                    if timing is not None:
+                        execution_span = timing.start(Phase.JOB_EXECUTION)
                     self._active_job_id = next_id
                     job["state"] = "running"
                     job["stage"] = "running"
                     job["progress"] = max(int(job.get("progress", 0)), 5)
-                    self._persist_job_locked(job)
+                    try:
+                        self._persist_job_locked(job)
+                    except BaseException:
+                        # This write precedes the runner's terminal handling.
+                        if execution_span is not None:
+                            execution_span.finish("failed")
+                        raise
             if job is None:
                 time.sleep(0.2)
                 continue
             try:
-                result = run_transcription_job(
-                    file_path=job["source_path"], meeting_id=job["meeting_id"],
-                    store=self.store, insight_service=self.insight_service,
-                    cancel_event=cancel_event,
-                    on_progress=lambda p, s, jid=job["id"]: self._update_progress(jid, p, s),
-                    provider_vendor=job.get("provider_vendor") or None,
-                    provider_model=job.get("provider_model") or None,
-                    strict_mode=job.get("strict_mode"),
-                )
+                with timing_context(job.get("_phase_timing")):
+                    result = run_transcription_job(
+                        file_path=job["source_path"], meeting_id=job["meeting_id"],
+                        store=self.store, insight_service=self.insight_service,
+                        cancel_event=cancel_event,
+                        on_progress=lambda p, s, jid=job["id"]: self._update_progress(jid, p, s),
+                        provider_vendor=job.get("provider_vendor") or None,
+                        provider_model=job.get("provider_model") or None,
+                        strict_mode=job.get("strict_mode"),
+                    )
                 with self._lock:
                     j = self._jobs.get(job["id"], job)
                     if j.get("state") in {"cancelled", "paused_by_live"}:
@@ -259,6 +282,15 @@ class JobQueue:
                     }
             finally:
                 with self._lock:
+                    j = self._jobs.get(job["id"], job)
+                    if execution_span is not None:
+                        state = j.get("state")
+                        outcome = "cancelled" if state in {"cancelled", "paused_by_live"} else (
+                            "completed" if state == "completed" else "failed"
+                        )
+                        execution_span.finish(outcome)
+                    if self._last_completed is not None and self._last_completed["job"]["id"] == job["id"]:
+                        self._last_completed["job"] = self._job_view(j)
                     if self._active_job_id == job["id"]:
                         self._active_job_id = None
 
@@ -286,7 +318,7 @@ class JobQueue:
 
     @staticmethod
     def _job_view(job: dict[str, Any]) -> dict[str, Any]:
-        return {
+        view = {
             "id": job.get("id", ""), "meeting_id": job.get("meeting_id", ""),
             "source_path": job.get("source_path", ""), "title": job.get("title", ""),
             "state": job.get("state", "unknown"), "progress": int(job.get("progress", 0)),
@@ -294,3 +326,7 @@ class JobQueue:
             "reason": job.get("reason", ""), "started_at": job.get("started_at", ""),
             "ended_at": job.get("ended_at", ""),
         }
+        timing = job.get("_phase_timing")
+        if timing is not None:
+            view["phase_timings"] = timing.snapshot()
+        return view

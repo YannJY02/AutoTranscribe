@@ -219,6 +219,11 @@ When a canonical span lacks an existing signpost, a measurement ticket may add
 the smallest signpost needed to expose its start and stop. That instrumentation
 must be validated separately and must not include an optimization.
 
+For the currently exposed backend Import boundaries, see
+[Import phase timings](./import-phase-timings.md). These inclusive diagnostic
+spans supplement the user-visible metrics above; they do not supply missing
+UI, export, or library-internal boundaries.
+
 ## Evidence format
 
 Each measured scenario writes:
