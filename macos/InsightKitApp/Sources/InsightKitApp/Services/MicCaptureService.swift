@@ -136,6 +136,9 @@ final class MicCaptureService: @unchecked Sendable {
     private let controlQueue = DispatchQueue(label: "InsightKit.MicCapture.Control")
     private let controlQueueKey = DispatchSpecificKey<Void>()
     private let captureQueue = DispatchQueue(label: "InsightKit.MicCapture")
+    private let admissionLock = NSLock()
+    private var activeCaptureID: UUID?
+    private var lifecycleGeneration = 0
     private var isCapturing = false
 
     init(
@@ -148,6 +151,7 @@ final class MicCaptureService: @unchecked Sendable {
     }
 
     func start() async throws {
+        let generation = controlQueue.sync { lifecycleGeneration }
         guard await permissionProvider.requestPermissionIfNeeded() else {
             throw MicError.permissionDenied
         }
@@ -160,6 +164,7 @@ final class MicCaptureService: @unchecked Sendable {
                 }
 
                 do {
+                    guard self.lifecycleGeneration == generation else { throw CancellationError() }
                     try self.startOnControlQueue()
                     continuation.resume()
                 } catch {
@@ -180,6 +185,13 @@ final class MicCaptureService: @unchecked Sendable {
         }
     }
 
+    func stopAndDrain() async {
+        stop()
+        await withCheckedContinuation { continuation in
+            captureQueue.async { continuation.resume() }
+        }
+    }
+
     private func startOnControlQueue() throws {
         guard !isCapturing else { return }
 
@@ -190,11 +202,19 @@ final class MicCaptureService: @unchecked Sendable {
 
         do {
             engine.removeTap()
+            let captureID = UUID()
+            let deliverBuffer = onBuffer
+            admissionLock.lock()
+            activeCaptureID = captureID
+            admissionLock.unlock()
             try engine.installTap(bufferSize: 2048, format: inputFormat) { [weak self] buffer in
                 guard let self else { return }
+                self.admissionLock.lock()
+                defer { self.admissionLock.unlock() }
+                guard self.activeCaptureID == captureID else { return }
                 guard let copied = Self.copy(buffer: buffer) else { return }
                 self.captureQueue.async {
-                    self.onBuffer?(copied)
+                    deliverBuffer?(copied)
                 }
             }
 
@@ -202,6 +222,9 @@ final class MicCaptureService: @unchecked Sendable {
             try engine.start()
             isCapturing = true
         } catch {
+            admissionLock.lock()
+            activeCaptureID = nil
+            admissionLock.unlock()
             engine.removeTap()
             engine.stop()
             isCapturing = false
@@ -210,6 +233,10 @@ final class MicCaptureService: @unchecked Sendable {
     }
 
     private func stopOnControlQueue() {
+        lifecycleGeneration += 1
+        admissionLock.lock()
+        activeCaptureID = nil
+        admissionLock.unlock()
         guard isCapturing else { return }
         engine.removeTap()
         engine.stop()

@@ -212,16 +212,18 @@ def inspect_capture_sources(
         source_report["audio_format_duration_sec"] = to_float(audio_probe.get("format", {}).get("duration"))
 
     source_window = summarize_composition_window(capture_timeline, video_duration, audio_duration)
+    source_ends_match = False
     composition_window_matches_final = False
     if source_window is not None:
         source_report["composition_window"] = source_window
+        source_ends_match = abs(source_window["source_end_delta_sec"]) <= max_source_stream_delta_sec
         if playable_duration is not None:
             predicted_duration = source_window.get("duration_sec")
             if isinstance(predicted_duration, float):
                 prediction_delta = abs(predicted_duration - playable_duration)
                 source_report["composition_window_final_delta_sec"] = prediction_delta
                 composition_window_matches_final = prediction_delta <= max_source_final_delta_sec
-                if not composition_window_matches_final:
+                if prediction_delta > max_source_final_delta_sec:
                     failures.append(
                         "capture timeline predicts composition duration "
                         f"{predicted_duration:.3f}s, which differs from final media by "
@@ -248,8 +250,8 @@ def inspect_capture_sources(
                 and abs(pause_adjusted_video_duration - audio_duration) <= max_source_stream_delta_sec
             ):
                 source_report["source_duration_delta_explained_by_pause"] = True
-            elif composition_window_matches_final:
-                warnings.append(message)
+            elif source_ends_match:
+                source_report["source_duration_delta_explained_by_start_offset"] = True
             else:
                 failures.append(message)
 
@@ -272,8 +274,10 @@ def inspect_capture_sources(
                     and abs(pause_adjusted_video_final_delta) <= max_source_final_delta_sec
                 ):
                     source_report["video_source_final_delta_explained_by_pause"] = True
-                elif composition_window_matches_final:
-                    warnings.append(message)
+                elif source_ends_match and composition_window_matches_final:
+                    # A measured start offset may trim a prefix; a shorter audio
+                    # tail must never justify dropping the rest of the video.
+                    source_report["video_source_final_delta_explained_by_start_offset"] = True
                 else:
                     failures.append(message)
         if audio_duration is not None:
@@ -309,6 +313,7 @@ def summarize_composition_window(
         "timeline_video_start_sec": video_start,
         "timeline_audio_start_sec": audio_start,
         "initial_offset_sec": video_start - audio_start,
+        "source_end_delta_sec": video_timeline_end - audio_timeline_end,
         "video_active_source_start_sec": max(0.0, intersection_start - video_start),
         "audio_source_start_sec": max(0.0, intersection_start - audio_start),
         "duration_sec": duration,

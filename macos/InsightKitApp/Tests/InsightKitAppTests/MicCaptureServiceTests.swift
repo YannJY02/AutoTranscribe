@@ -71,6 +71,64 @@ final class MicCaptureServiceTests: XCTestCase {
         XCTAssertEqual(engine.startCalls, 0)
     }
 
+    func testStopDrainsAcceptedCallbacksAndRejectsThePreviousTapAfterRestart() async throws {
+        let engine = MicCaptureEngineSpy()
+        let service = MicCaptureService(
+            engine: engine,
+            permissionProvider: MicCapturePermissionProviderStub(isGranted: true)
+        )
+        let firstEntered = expectation(description: "first callback is busy")
+        let releaseFirst = DispatchSemaphore(value: 0)
+        defer { releaseFirst.signal() }
+        var received: [Float] = []
+        service.onBuffer = { buffer in
+            if received.isEmpty {
+                firstEntered.fulfill()
+                _ = releaseFirst.wait(timeout: .now() + 5)
+            }
+            received.append(buffer.floatChannelData![0][0])
+        }
+        try await service.start()
+        engine.emit(value: 0.1, tapIndex: 0)
+        await fulfillment(of: [firstEntered], timeout: 2)
+        engine.emit(value: 0.2, tapIndex: 0)
+        let stopped = expectation(description: "engine stopped before draining callbacks")
+        engine.onStopped = { stopped.fulfill() }
+        let draining = Task { await service.stopAndDrain() }
+        await fulfillment(of: [stopped], timeout: 2)
+        engine.onStopped = nil
+        engine.emit(value: 0.9, tapIndex: 0)
+        releaseFirst.signal()
+        await draining.value
+        XCTAssertEqual(received, [0.1, 0.2])
+
+        try await service.start()
+        engine.emit(value: 0.9, tapIndex: 0)
+        engine.emit(value: 0.3, tapIndex: 1)
+        await service.stopAndDrain()
+        XCTAssertEqual(received, [0.1, 0.2, 0.3])
+    }
+
+    func testStopCancelsAStartWaitingForPermission() async {
+        let engine = MicCaptureEngineSpy()
+        let requested = expectation(description: "permission is pending")
+        let permission = MicCapturePermissionGate(onRequest: { requested.fulfill() })
+        let service = MicCaptureService(engine: engine, permissionProvider: permission)
+        let starting = Task { try await service.start() }
+        await fulfillment(of: [requested], timeout: 2)
+        service.stop()
+        permission.resolve()
+        do {
+            try await starting.value
+            XCTFail("A cancelled capture start must not install a microphone tap")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(engine.startCalls, 0)
+        XCTAssertEqual(engine.installTapCalls, 0)
+    }
+
     func testAVAudioTapObjectiveCExceptionBecomesRecoverableError() throws {
         do {
             try ObjCExceptionBridge.perform {
@@ -142,6 +200,8 @@ private final class MicCaptureEngineSpy: MicCaptureEngineProviding {
     private var hasTapInstalled = false
     private let format: AVAudioFormat
     private let lock = NSLock()
+    private var taps: [(AVAudioPCMBuffer) -> Void] = []
+    var onStopped: (() -> Void)?
 
     init(
         format: AVAudioFormat = AVAudioFormat(
@@ -174,6 +234,7 @@ private final class MicCaptureEngineSpy: MicCaptureEngineProviding {
             throw Error.duplicateTap
         }
         hasTapInstalled = true
+        taps.append(onBuffer)
     }
 
     func removeTap() {
@@ -191,5 +252,31 @@ private final class MicCaptureEngineSpy: MicCaptureEngineProviding {
         lock.unlock()
     }
 
-    func stop() {}
+    func stop() { onStopped?() }
+
+    func emit(value: Float, tapIndex: Int) {
+        lock.lock()
+        let tap = taps[tapIndex]
+        lock.unlock()
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1)!
+        buffer.frameLength = 1
+        buffer.floatChannelData![0][0] = value
+        tap(buffer)
+    }
+}
+
+private final class MicCapturePermissionGate: MicCapturePermissionProviding {
+    private let onRequest: () -> Void
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    init(onRequest: @escaping () -> Void) { self.onRequest = onRequest }
+
+    func requestPermissionIfNeeded() async -> Bool {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            onRequest()
+        }
+    }
+
+    func resolve() { continuation?.resume(returning: true) }
 }

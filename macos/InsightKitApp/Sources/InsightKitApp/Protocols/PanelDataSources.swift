@@ -20,6 +20,8 @@ protocol CenterStageDataSource: ObservableObject {
     var capturePreviewStatusMessage: String? { get }
     var transcriptEntries: [TranscriptEntry] { get }
     var recordingDuration: TimeInterval { get }
+    var isPreparingRecording: Bool { get }
+    var isActivelyRecording: Bool { get }
     var isRecordingPaused: Bool { get }
     var isFinalizingRecording: Bool { get }
     var recordingStatusMessage: String? { get }
@@ -51,6 +53,8 @@ protocol CenterStageDataSource: ObservableObject {
 extension CenterStageDataSource {
     var mediaSeekRequest: MediaSeekRequest? { nil }
     var reviewSourcePlaybackRequested: Bool { false }
+    var isPreparingRecording: Bool { false }
+    var isActivelyRecording: Bool { false }
     var isRecordingPaused: Bool { false }
     var isFinalizingRecording: Bool { false }
     var recordingStatusMessage: String? { nil }

@@ -143,6 +143,26 @@ final class LiveWorkspaceTests: InsightKitUITests {
         attachScreenshot(named: "live-review-skip-single-entry")
     }
 
+    func testRecordingStatusFollowsPauseAndResume() throws {
+        startRecording()
+        let state = app.staticTexts["live_recording_state"]
+        XCTAssertTrue(waitForStringValue("录制中", in: state, timeout: 3))
+
+        button("live_pause_recording_button", fallbackLabel: "暂停").click()
+        XCTAssertTrue(waitForStringValue("已暂停", in: state, timeout: 3))
+        let duration = app.staticTexts["live_recording_duration"].label
+        attachScreenshot(named: "live-capture-paused-state")
+        XCTAssertEqual(app.staticTexts["live_recording_duration"].label, duration)
+
+        button("live_pause_recording_button", fallbackLabel: "继续").click()
+        XCTAssertTrue(waitForStringValue("录制中", in: state, timeout: 3))
+        attachScreenshot(named: "live-capture-resumed-state")
+
+        button("live_stop_recording_button", fallbackLabel: "停止录制").click()
+        XCTAssertTrue(waitForElement(element("live_phase_post_session"), timeout: 5))
+        XCTAssertFalse(state.exists, "保存完成后不应保留录制中状态")
+    }
+
     private func startRecording() {
         button("live_start_recording_button", fallbackLabel: "开始录制").click()
         XCTAssertTrue(waitForElement(element("live_phase_running"), timeout: 5))

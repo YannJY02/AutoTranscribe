@@ -71,7 +71,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     private let captureSessionQueue = DispatchQueue(label: "InsightKit.VideoCapture.Session")
     private let videoOutputQueue = DispatchQueue(label: "InsightKit.VideoCapture.VideoOutput")
-    private let writerQueue = DispatchQueue(label: "InsightKit.VideoCapture.Writer")
+    private let writerQueue: DispatchQueue
+    private let recordingAdmissionLock = NSLock()
+    private var recordingAdmissionOpen = false
+    private var recordingAdmissionEpoch: UInt64 = 0
 
     private var captureSession: AVCaptureSession?
     private(set) var cameraPreviewLayer: AVCaptureVideoPreviewLayer?
@@ -86,8 +89,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var contentSharingPickerObserver: ContentSharingPickerCoordinator?
     private var scDisplays: [SCDisplay] = []
     private var scWindows: [SCWindow] = []
-    private let screenPreviewRenderContext = CIContext()
-    private var lastScreenPreviewImageAt: CFTimeInterval = 0
+    private let screenPreviewPipeline: LatestFramePreviewPipeline<CMSampleBuffer, CGImage>
 
     // Recording
     private var assetWriter: AVAssetWriter?
@@ -98,6 +100,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var recordingFailureMessage: String?
     private var recordingPaused = false
     private var isWriting = false
+    private var recordingHasAppendedFrame = false
     private var recordingTimeline: VideoRecordingTimeline?
     private var activeRecordingSize: CGSize?
 
@@ -105,9 +108,18 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private let cameraOverlayPlacementStore: CameraOverlayPlacementStore
     private var cameraOverlayDisplayID: UInt32?
 
-    init(cameraOverlayPlacementStore: CameraOverlayPlacementStore = CameraOverlayPlacementStore()) {
+    init(
+        cameraOverlayPlacementStore: CameraOverlayPlacementStore = CameraOverlayPlacementStore(),
+        writerQueue: DispatchQueue = DispatchQueue(label: "InsightKit.VideoCapture.Writer")
+    ) {
         self.cameraOverlayPlacementStore = cameraOverlayPlacementStore
+        self.writerQueue = writerQueue
+        let previewRenderer = ScreenPreviewRenderer()
+        self.screenPreviewPipeline = LatestFramePreviewPipeline(render: previewRenderer.render)
         super.init()
+        screenPreviewPipeline.setImageHandler { [weak self] image in
+            self?.screenPreviewImage = image
+        }
     }
 
     // MARK: - Device Enumeration
@@ -204,6 +216,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     // MARK: - Start / Stop Capture
 
+    @MainActor
     func startCamera(deviceID: String) throws {
         guard cameraPermission == .granted else {
             throw CaptureError.cameraPermissionDenied
@@ -248,44 +261,71 @@ final class VideoCaptureService: NSObject, ObservableObject {
         activeMode = .camera(deviceID: deviceID)
         activeRecordingSize = nil
 
-        DispatchQueue.main.async {
-            self.screenPreviewImage = nil
-        }
+        let generation = screenPreviewPipeline.beginGeneration()
 
         captureSessionQueue.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             session.startRunning()
             DispatchQueue.main.async {
+                guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
                 self.isCapturing = true
             }
         }
     }
 
+    @MainActor
     func startScreenCapture(displayID: UInt32) async throws {
-        try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: false)
+        let generation = screenPreviewPipeline.beginGeneration()
+        try await startScreenCapture(
+            displayID: displayID, usesPresenterOverlayPicker: false, generation: generation
+        )
     }
 
+    @MainActor
     func startPresenterOverlayCapture(displayID: UInt32) async throws {
-        try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: true)
+        let generation = screenPreviewPipeline.beginGeneration()
+        try await startScreenCapture(
+            displayID: displayID, usesPresenterOverlayPicker: true, generation: generation
+        )
+        guard screenPreviewPipeline.isCurrentGeneration(generation), !Task.isCancelled else {
+            throw CancellationError()
+        }
         do {
-            try startPresenterOverlayCameraSession()
+            try startPresenterOverlayCameraSession(generation: generation)
         } catch {
             stopCapture(waitUntilStopped: true)
             throw error
         }
     }
 
+    @MainActor
     func startScreenCaptureWithCameraOverlay(displayID: UInt32) async throws {
+        let generation = screenPreviewPipeline.beginGeneration()
+        try startCameraOverlaySession(displayID: displayID, generation: generation)
+        let ownedCameraSession = captureSession
+        let ownedOverlayWindow = cameraOverlayWindow
         do {
-            try startCameraOverlaySession(displayID: displayID)
-            try await startScreenCapture(displayID: displayID, usesPresenterOverlayPicker: false)
-            activeMode = .screenWithCameraOverlay(displayID: displayID)
+            try await startScreenCapture(
+                displayID: displayID,
+                usesPresenterOverlayPicker: false,
+                generation: generation,
+                usesCameraOverlay: true
+            )
         } catch {
-            stopCapture(waitUntilStopped: true)
+            stopOwnedCameraSession(ownedCameraSession, overlayWindow: ownedOverlayWindow)
             throw error
         }
     }
 
-    private func startScreenCapture(displayID: UInt32, usesPresenterOverlayPicker: Bool) async throws {
+    private func startScreenCapture(
+        displayID: UInt32,
+        usesPresenterOverlayPicker: Bool,
+        generation: UInt64,
+        usesCameraOverlay: Bool = false
+    ) async throws {
+        guard screenPreviewPipeline.isCurrentGeneration(generation), !Task.isCancelled else {
+            throw CancellationError()
+        }
         guard let display = scDisplays.first(where: { $0.displayID == displayID }) else {
             throw CaptureError.deviceNotFound
         }
@@ -304,26 +344,26 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
-        let output = SCVideoStreamOutput(owner: self)
-        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoOutputQueue)
-        try await stream.startCapture()
-
-        scStream = stream
-        scStreamOutput = output
-        activeMode = .screen(displayID: displayID)
-        activeRecordingSize = CGSize(width: CGFloat(display.width), height: CGFloat(display.height))
+        try await startScreenStream(
+            stream,
+            generation: generation,
+            mode: usesCameraOverlay ? .screenWithCameraOverlay(displayID: displayID) : .screen(displayID: displayID),
+            recordingSize: CGSize(width: CGFloat(display.width), height: CGFloat(display.height))
+        )
         if usesPresenterOverlayPicker {
-            configureContentSharingPicker(for: stream)
+            configureContentSharingPicker(for: stream, generation: generation)
         }
 
         DispatchQueue.main.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             self.cameraPreviewLayer = nil
-            self.screenPreviewImage = nil
             self.isCapturing = true
         }
     }
 
+    @MainActor
     func startWindowCapture(windowID: UInt32) async throws {
+        let generation = screenPreviewPipeline.beginGeneration()
         guard let window = scWindows.first(where: { $0.windowID == windowID }) else {
             throw CaptureError.deviceNotFound
         }
@@ -339,23 +379,52 @@ final class VideoCaptureService: NSObject, ObservableObject {
         config.showsCursor = true
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
-        let output = SCVideoStreamOutput(owner: self)
-        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoOutputQueue)
-        try await stream.startCapture()
-
-        scStream = stream
-        scStreamOutput = output
-        activeMode = .window(windowID: windowID)
-        activeRecordingSize = CGSize(width: CGFloat(config.width), height: CGFloat(config.height))
+        try await startScreenStream(
+            stream,
+            generation: generation,
+            mode: .window(windowID: windowID),
+            recordingSize: CGSize(width: CGFloat(config.width), height: CGFloat(config.height))
+        )
 
         DispatchQueue.main.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             self.cameraPreviewLayer = nil
-            self.screenPreviewImage = nil
             self.isCapturing = true
         }
     }
 
-    private func startPresenterOverlayCameraSession() throws {
+    private func startScreenStream(
+        _ stream: SCStream,
+        generation: UInt64,
+        mode: CaptureMode,
+        recordingSize: CGSize
+    ) async throws {
+        let output = SCVideoStreamOutput(owner: self, previewGeneration: generation)
+        do {
+            guard screenPreviewPipeline.isCurrentGeneration(generation), !Task.isCancelled else {
+                throw CancellationError()
+            }
+            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoOutputQueue)
+            try await stream.startCapture()
+            guard !Task.isCancelled else { throw CancellationError() }
+            let adopted = captureSessionQueue.sync {
+                guard screenPreviewPipeline.isCurrentGeneration(generation) else { return false }
+                scStream = stream
+                scStreamOutput = output
+                activeMode = mode
+                activeRecordingSize = recordingSize
+                return true
+            }
+            guard adopted else { throw CancellationError() }
+        } catch {
+            try? stream.removeStreamOutput(output, type: .screen)
+            try? await stream.stopCapture()
+            throw error
+        }
+    }
+
+    @MainActor
+    private func startPresenterOverlayCameraSession(generation: UInt64) throws {
         guard cameraPermission == .granted else {
             throw CaptureError.cameraPermissionDenied
         }
@@ -399,14 +468,17 @@ final class VideoCaptureService: NSObject, ObservableObject {
         videoOutputDelegate = delegate
 
         captureSessionQueue.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             session.startRunning()
             DispatchQueue.main.async {
+                guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
                 self.isCapturing = true
             }
         }
     }
 
-    private func startCameraOverlaySession(displayID: UInt32) throws {
+    @MainActor
+    private func startCameraOverlaySession(displayID: UInt32, generation: UInt64) throws {
         guard cameraPermission == .granted else {
             throw CaptureError.cameraPermissionDenied
         }
@@ -444,15 +516,34 @@ final class VideoCaptureService: NSObject, ObservableObject {
         videoOutputDelegate = nil
 
         captureSessionQueue.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             session.startRunning()
             DispatchQueue.main.async {
+                guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
                 self.cameraOverlayVisible = true
                 self.isCapturing = true
             }
         }
     }
 
+    @MainActor
+    private func stopOwnedCameraSession(_ session: AVCaptureSession?, overlayWindow: NSWindow?) {
+        if let overlayWindow, cameraOverlayWindow === overlayWindow {
+            closeCameraOverlayWindow()
+        }
+        captureSessionQueue.async { [weak self] in
+            session?.stopRunning()
+            if let session, self?.captureSession === session {
+                self?.captureSession = nil
+                self?.cameraPreviewLayer = nil
+                self?.videoDataOutput = nil
+                self?.videoOutputDelegate = nil
+            }
+        }
+    }
+
     func stopCapture(waitUntilStopped: Bool = false) {
+        screenPreviewPipeline.invalidate()
         closeCameraOverlayWindow()
 
         let stopWork = { [weak self] in
@@ -486,7 +577,6 @@ final class VideoCaptureService: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.presenterOverlayObserved = false
                 self.cameraOverlayVisible = false
-                self.screenPreviewImage = nil
                 self.isCapturing = false
             }
         }
@@ -501,8 +591,17 @@ final class VideoCaptureService: NSObject, ObservableObject {
     // MARK: - Recording (AVAssetWriter)
 
     func startRecording(to outputURL: URL, width: Int = 1920, height: Int = 1080) throws {
+        let admissionEpoch = recordingAdmissionLock.withLock {
+            recordingAdmissionEpoch &+= 1
+            recordingAdmissionOpen = false
+            return recordingAdmissionEpoch
+        }
         var startError: Error?
         writerQueue.sync {
+            guard self.recordingAdmissionLock.withLock({ self.recordingAdmissionEpoch == admissionEpoch }) else {
+                startError = CaptureError.sessionConfigFailed("视频录制启动已取消")
+                return
+            }
             do {
                 if FileManager.default.fileExists(atPath: outputURL.path) {
                     try FileManager.default.removeItem(at: outputURL)
@@ -518,11 +617,19 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 self.recordingFailureMessage = nil
                 self.recordingPaused = false
                 self.recordingTimeline = nil
+                self.recordingHasAppendedFrame = false
                 self.isWriting = true
             } catch {
                 startError = error
                 self.isWriting = false
                 self.recordingFailureMessage = error.localizedDescription
+            }
+        }
+        recordingAdmissionLock.withLock {
+            if recordingAdmissionEpoch == admissionEpoch {
+                recordingAdmissionOpen = startError == nil
+            } else if startError == nil {
+                startError = CaptureError.sessionConfigFailed("视频录制启动已取消")
             }
         }
         if let startError {
@@ -531,82 +638,101 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     func stopRecording() {
-        var writerToFinish: AVAssetWriter?
-        writerQueue.sync {
-            guard isWriting else { return }
-            isWriting = false
-            recordingPaused = false
-            guard let writer = assetWriter else {
-                clearWriterState()
-                return
-            }
-            videoWriterInput?.markAsFinished()
-            writerToFinish = writer
-        }
+        beginFinishRecording(timeoutSec: 20, completion: { _ in })
+    }
 
-        guard let writerToFinish else { return }
-        writerToFinish.finishWriting { [weak self] in
-            self?.writerQueue.async {
-                self?.clearWriterState(matching: writerToFinish)
-            }
+    /// Admission closes before this call returns. Only the already admitted writer
+    /// work is drained; awaiting the result never blocks the caller's UI thread.
+    func beginFinishRecording(timeoutSec: TimeInterval = 20) -> Task<URL?, Never> {
+        let (results, continuation) = AsyncStream<URL?>.makeStream(bufferingPolicy: .bufferingOldest(1))
+        beginFinishRecording(timeoutSec: timeoutSec) { url in
+            continuation.yield(url)
+            continuation.finish()
+        }
+        return Task {
+            var iterator = results.makeAsyncIterator()
+            return await iterator.next() ?? nil
         }
     }
 
+    /// Compatibility for synchronous callers. Live Session Finalization uses
+    /// beginFinishRecording so encoding and file finalization stay off main.
     @discardableResult
     func finishRecording(timeoutSec: TimeInterval = 20) -> URL? {
-        var writerToFinish: AVAssetWriter?
-        var outputURL: URL?
-        var hasVideoFrames = false
-
-        writerQueue.sync {
-            guard isWriting else { return }
-            isWriting = false
-            recordingPaused = false
-            outputURL = recordingOutputURL
-            guard let writer = assetWriter else {
-                clearWriterState()
-                return
-            }
-            hasVideoFrames = recordingTimeline != nil
-            writerToFinish = writer
-            outputURL = writer.outputURL
-            if hasVideoFrames {
-                videoWriterInput?.markAsFinished()
-            }
-        }
-
-        guard let writerToFinish, let outputURL else {
-            return nil
-        }
-
-        guard hasVideoFrames else {
-            writerToFinish.cancelWriting()
-            writerQueue.async { [weak self] in
-                self?.clearWriterState(matching: writerToFinish)
-            }
-            return nil
-        }
-
         let semaphore = DispatchSemaphore(value: 0)
-        writerToFinish.finishWriting { [weak self] in
-            self?.writerQueue.async {
-                self?.clearWriterState(matching: writerToFinish)
-            }
+        var result: URL?
+        beginFinishRecording(timeoutSec: timeoutSec) { url in
+            result = url
             semaphore.signal()
         }
+        guard semaphore.wait(timeout: .now() + max(0, timeoutSec)) == .success else { return nil }
+        return result
+    }
 
-        guard semaphore.wait(timeout: .now() + timeoutSec) == .success else {
-            return nil
+    private func beginFinishRecording(timeoutSec: TimeInterval, completion: @escaping (URL?) -> Void) {
+        let completionLock = NSLock()
+        var completed = false
+        let resolve: (URL?) -> Void = { url in
+            let shouldComplete = completionLock.withLock {
+                guard !completed else { return false }
+                completed = true
+                return true
+            }
+            if shouldComplete { completion(url) }
         }
-        guard writerToFinish.status == .completed else {
-            recordingFailureMessage = writerToFinish.error?.localizedDescription
-            return nil
+        let timeout = DispatchWorkItem { resolve(nil) }
+        recordingAdmissionLock.withLock {
+            recordingAdmissionOpen = false
+            recordingAdmissionEpoch &+= 1
+            // Admission and enqueue share a lock, so the finish barrier follows
+            // every accepted frame and no post-Stop frame can get behind it.
+            writerQueue.async { [self] in
+                self.finishAdmittedRecording { url in
+                    timeout.cancel()
+                    resolve(url)
+                }
+            }
         }
-        guard let values = try? outputURL.resourceValues(forKeys: [.fileSizeKey]),
-              (values.fileSize ?? 0) > 0 else {
-            return nil
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + max(0, timeoutSec), execute: timeout)
+    }
+
+    /// Runs on writerQueue, after the last admitted sample buffer.
+    private func finishAdmittedRecording(completion: @escaping (URL?) -> Void) {
+        guard isWriting else {
+            completion(nil)
+            return
         }
-        return outputURL
+        isWriting = false
+        recordingPaused = false
+        guard let writer = assetWriter else {
+            clearWriterState()
+            completion(nil)
+            return
+        }
+        guard recordingHasAppendedFrame else {
+            writer.cancelWriting()
+            clearWriterState(matching: writer)
+            completion(nil)
+            return
+        }
+        videoWriterInput?.markAsFinished()
+        writer.finishWriting { [weak self] in
+            let result: URL?
+            if writer.status == .completed,
+               let values = try? writer.outputURL.resourceValues(forKeys: [.fileSizeKey]),
+               (values.fileSize ?? 0) > 0 {
+                result = writer.outputURL
+            } else {
+                result = nil
+            }
+            self?.writerQueue.async {
+                if self?.assetWriter === writer {
+                    self?.recordingFailureMessage = writer.error?.localizedDescription
+                    self?.clearWriterState(matching: writer)
+                }
+            }
+            completion(result)
+        }
     }
 
     func pauseRecording(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
@@ -638,46 +764,73 @@ final class VideoCaptureService: NSObject, ObservableObject {
         recordingFallbackSize = nil
         recordingPaused = false
         recordingTimeline = nil
+        recordingHasAppendedFrame = false
     }
 
     // MARK: - Frame Handling
 
-    fileprivate func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer, source: VideoSampleSource) {
+    fileprivate func handleVideoSampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        source: VideoSampleSource,
+        previewGeneration: UInt64? = nil
+    ) {
+        let capturedAt = ProcessInfo.processInfo.systemUptime
         if source == .camera {
             guard case .camera = activeMode else { return }
+        } else {
+            guard let previewGeneration,
+                  screenPreviewPipeline.isCurrentGeneration(previewGeneration) else { return }
         }
-        publishScreenPreviewIfNeeded(sampleBuffer)
 
-        let capturedAt = ProcessInfo.processInfo.systemUptime
-        writerQueue.async { [weak self] in
-            guard let self, self.isWriting, !self.recordingPaused else { return }
-            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-            guard let input = self.ensureWriterStarted(for: sampleBuffer),
-                  input.isReadyForMoreMediaData else { return }
+        // Recording retains the original sample and source PTS. Preview conversion
+        // runs independently and can replace intermediate frames under UI pressure.
+        enqueueRecordingSampleBuffer(sampleBuffer, capturedAt: capturedAt)
 
-            let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            if self.recordingTimeline == nil {
-                self.recordingTimeline = VideoRecordingTimeline()
-                self.assetWriter?.startSession(atSourceTime: .zero)
-                self.onRecordingFirstFrame?(VideoRecordingTimeline.captureStartTime(
-                    sourcePresentationTime: sourceTimestamp,
-                    capturedAt: capturedAt
-                ))
+        if let previewGeneration {
+            publishScreenPreviewIfNeeded(sampleBuffer, generation: previewGeneration)
+        }
+    }
+
+    func enqueueRecordingSampleBuffer(_ sampleBuffer: CMSampleBuffer, capturedAt: TimeInterval) {
+        recordingAdmissionLock.withLock {
+            guard recordingAdmissionOpen else { return }
+            writerQueue.async { [weak self] in
+                self?.appendAdmittedRecordingSampleBuffer(sampleBuffer, capturedAt: capturedAt)
             }
-            guard var timeline = self.recordingTimeline else { return }
-            let presentationTime = timeline.presentationTime(
+        }
+    }
+
+    private func appendAdmittedRecordingSampleBuffer(_ sampleBuffer: CMSampleBuffer, capturedAt: TimeInterval) {
+        guard isWriting, !recordingPaused else { return }
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard let input = ensureWriterStarted(for: sampleBuffer),
+              input.isReadyForMoreMediaData else { return }
+
+        let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if recordingTimeline == nil {
+            recordingTimeline = VideoRecordingTimeline()
+            assetWriter?.startSession(atSourceTime: .zero)
+        }
+        guard var timeline = recordingTimeline else { return }
+        let presentationTime = timeline.presentationTime(
+            sourcePresentationTime: sourceTimestamp,
+            capturedAt: capturedAt
+        )
+        recordingTimeline = timeline
+
+        let didAppend = videoPixelBufferAdaptor?.append(
+            imageBuffer,
+            withPresentationTime: presentationTime
+        ) ?? false
+        if didAppend, !recordingHasAppendedFrame {
+            recordingHasAppendedFrame = true
+            onRecordingFirstFrame?(VideoRecordingTimeline.captureStartTime(
                 sourcePresentationTime: sourceTimestamp,
                 capturedAt: capturedAt
-            )
-            self.recordingTimeline = timeline
-
-            let didAppend = self.videoPixelBufferAdaptor?.append(
-                imageBuffer,
-                withPresentationTime: presentationTime
-            ) ?? false
-            if !didAppend, let error = self.assetWriter?.error {
-                self.recordingFailureMessage = error.localizedDescription
-            }
+            ))
+        }
+        if !didAppend, let error = assetWriter?.error {
+            recordingFailureMessage = error.localizedDescription
         }
     }
 
@@ -753,31 +906,11 @@ final class VideoCaptureService: NSObject, ObservableObject {
         )
     }
 
-    private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer) {
+    private func publishScreenPreviewIfNeeded(_ sampleBuffer: CMSampleBuffer, generation: UInt64) {
         if Self.sampleBufferShowsPresenterOverlay(sampleBuffer) {
             markPresenterOverlayObserved()
         }
-
-        switch activeMode {
-        case .screen, .window, .screenWithCameraOverlay:
-            break
-        case .camera, .none:
-            return
-        }
-
-        let now = CACurrentMediaTime()
-        guard now - lastScreenPreviewImageAt >= 0.12 else { return }
-        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-
-        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        guard let previewImage = screenPreviewRenderContext.createCGImage(ciImage, from: ciImage.extent) else {
-            return
-        }
-        lastScreenPreviewImageAt = now
-
-        DispatchQueue.main.async { [weak self] in
-            self?.screenPreviewImage = previewImage
-        }
+        screenPreviewPipeline.submit(sampleBuffer, generation: generation)
     }
 
     private func markPresenterOverlayObserved() {
@@ -797,11 +930,17 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
-    private func configureContentSharingPicker(for stream: SCStream) {
+    private func configureContentSharingPicker(for stream: SCStream, generation: UInt64) {
         let observer = ContentSharingPickerCoordinator(owner: self)
-        contentSharingPickerObserver = observer
+        let adopted = captureSessionQueue.sync {
+            guard screenPreviewPipeline.isCurrentGeneration(generation) else { return false }
+            contentSharingPickerObserver = observer
+            return true
+        }
+        guard adopted else { return }
 
         DispatchQueue.main.async {
+            guard self.screenPreviewPipeline.isCurrentGeneration(generation) else { return }
             var configuration = SCContentSharingPickerConfiguration()
             configuration.allowedPickerModes = [.singleDisplay]
             configuration.allowsChangingSelectedContent = true
@@ -1082,9 +1221,11 @@ private final class VideoOutputDelegate: NSObject, AVCaptureVideoDataOutputSampl
 
 private final class SCVideoStreamOutput: NSObject, SCStreamOutput {
     private weak var owner: VideoCaptureService?
+    private let previewGeneration: UInt64
 
-    init(owner: VideoCaptureService) {
+    init(owner: VideoCaptureService, previewGeneration: UInt64) {
         self.owner = owner
+        self.previewGeneration = previewGeneration
         super.init()
     }
 
@@ -1094,7 +1235,7 @@ private final class SCVideoStreamOutput: NSObject, SCStreamOutput {
         of outputType: SCStreamOutputType
     ) {
         guard outputType == .screen else { return }
-        owner?.handleVideoSampleBuffer(sampleBuffer, source: .screen)
+        owner?.handleVideoSampleBuffer(sampleBuffer, source: .screen, previewGeneration: previewGeneration)
     }
 }
 

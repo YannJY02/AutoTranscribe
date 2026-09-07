@@ -24,6 +24,8 @@ final class SystemAudioCaptureService: NSObject {
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     private let outputQueue = DispatchQueue(label: "InsightKit.SystemAudioCapture.Output")
+    private let lifecycleQueue = DispatchQueue(label: "InsightKit.SystemAudioCapture.Lifecycle")
+    private var captureID: UUID?
     private var stream: SCStream?
     private var output: StreamOutput?
 
@@ -80,7 +82,29 @@ final class SystemAudioCaptureService: NSObject {
     }
 
     func start(sourceID: String) async throws {
-        guard stream == nil else { return }
+        let captureID = UUID()
+        let canStart = lifecycleQueue.sync {
+            guard self.captureID == nil else { return false }
+            self.captureID = captureID
+            return true
+        }
+        guard canStart else { return }
+
+        do {
+            try await startStream(sourceID: sourceID, captureID: captureID)
+        } catch {
+            lifecycleQueue.sync {
+                if self.captureID == captureID {
+                    self.captureID = nil
+                    self.stream = nil
+                    self.output = nil
+                }
+            }
+            throw error
+        }
+    }
+
+    private func startStream(sourceID: String, captureID: UUID) async throws {
 
         let filter = try buildFilter(sourceID: sourceID)
 
@@ -93,22 +117,74 @@ final class SystemAudioCaptureService: NSObject {
         config.excludesCurrentProcessAudio = false
 
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        let output = StreamOutput(owner: self)
+        let deliverBuffer = onBuffer
+        let output = StreamOutput { sampleBuffer in
+            Self.handleSampleBuffer(sampleBuffer, deliverBuffer: deliverBuffer)
+        }
         try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: outputQueue)
-        try await stream.startCapture()
-
-        self.stream = stream
-        self.output = output
+        let isCurrent = lifecycleQueue.sync {
+            guard self.captureID == captureID else { return false }
+            self.stream = stream
+            self.output = output
+            return true
+        }
+        guard isCurrent else {
+            try? stream.removeStreamOutput(output, type: .audio)
+            throw CancellationError()
+        }
+        do {
+            try await stream.startCapture()
+            guard lifecycleQueue.sync(execute: { self.captureID == captureID }) else {
+                throw CancellationError()
+            }
+        } catch {
+            try? stream.removeStreamOutput(output, type: .audio)
+            try? await stream.stopCapture()
+            await drain(output: output)
+            throw error
+        }
     }
 
     func stop() async {
-        guard let stream else { return }
-        if let output {
-            try? stream.removeStreamOutput(output, type: .audio)
+        await beginStop().value
+    }
+
+    /// Remove source admission synchronously at the user's Stop boundary.
+    /// Previously queued callbacks are drained before the returned task completes.
+    func beginStop() -> Task<Void, Never> {
+        let (stream, output) = lifecycleQueue.sync {
+            let captured = (self.stream, self.output)
+            captureID = nil
+            self.stream = nil
+            self.output = nil
+            return captured
         }
-        try? await stream.stopCapture()
-        self.output = nil
-        self.stream = nil
+        if let stream {
+            if let output {
+                try? stream.removeStreamOutput(output, type: .audio)
+            }
+        }
+        let callbacksDrained = DispatchGroup()
+        callbacksDrained.enter()
+        outputQueue.async {
+            output?.stopDelivery()
+            callbacksDrained.leave()
+        }
+        return Task {
+            if let stream { try? await stream.stopCapture() }
+            await withCheckedContinuation { continuation in
+                callbacksDrained.notify(queue: .global()) { continuation.resume() }
+            }
+        }
+    }
+
+    private func drain(output: StreamOutput?) async {
+        await withCheckedContinuation { continuation in
+            outputQueue.async {
+                output?.stopDelivery()
+                continuation.resume()
+            }
+        }
     }
 
     private func buildFilter(sourceID: String) throws -> SCContentFilter {
@@ -153,7 +229,10 @@ final class SystemAudioCaptureService: NSObject {
         }
     }
 
-    fileprivate func handleSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+    private static func handleSampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        deliverBuffer: ((AVAudioPCMBuffer) -> Void)?
+    ) {
         guard CMSampleBufferIsValid(sampleBuffer) else { return }
         guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
         guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else { return }
@@ -182,17 +261,19 @@ final class SystemAudioCaptureService: NSObject {
             return
         }
 
-        onBuffer?(pcmBuffer)
+        deliverBuffer?(pcmBuffer)
     }
 }
 
 private final class StreamOutput: NSObject, SCStreamOutput {
-    private weak var owner: SystemAudioCaptureService?
+    private var deliverSampleBuffer: ((CMSampleBuffer) -> Void)?
 
-    init(owner: SystemAudioCaptureService) {
-        self.owner = owner
+    init(deliverSampleBuffer: @escaping (CMSampleBuffer) -> Void) {
+        self.deliverSampleBuffer = deliverSampleBuffer
         super.init()
     }
+
+    func stopDelivery() { deliverSampleBuffer = nil }
 
     func stream(
         _ stream: SCStream,
@@ -200,6 +281,6 @@ private final class StreamOutput: NSObject, SCStreamOutput {
         of outputType: SCStreamOutputType
     ) {
         guard outputType == .audio else { return }
-        owner?.handleSampleBuffer(sampleBuffer)
+        deliverSampleBuffer?(sampleBuffer)
     }
 }

@@ -81,23 +81,42 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             // Source toggle bar
             SourceToggleBar(sources: $sources, onSystemAudioSourceSelect: onSystemAudioSourceSelect)
                 .padding(.horizontal, InsightSpacing.panelPadding)
+                .disabled(dataSource.isPreparingRecording || dataSource.isFinalizingRecording)
 
             // Start button
             Button {
                 dataSource.onStartRecording()
             } label: {
-                Text("开始录制")
+                HStack(spacing: InsightSpacing.sm) {
+                    if dataSource.isPreparingRecording || dataSource.isFinalizingRecording {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(preparingActionTitle)
+                }
             }
             .buttonStyle(.borderedProminent)
             .tint(InsightTheme.accent)
             .controlSize(.large)
+            .disabled(dataSource.isPreparingRecording || dataSource.isFinalizingRecording)
             .accessibilityIdentifier("live_start_recording_button")
+
+            if dataSource.isPreparingRecording {
+                Button("取消") {
+                    dataSource.onStopRecording()
+                }
+                .accessibilityIdentifier("live_cancel_preparation_button")
+            }
 
             Spacer()
         }
         .overlay(alignment: .topLeading) {
-            phaseMarker("准备态", identifier: "live_phase_preparing")
+            phaseMarker(dataSource.isPreparingRecording ? "正在准备录制" : "准备录制", identifier: "live_phase_preparing")
         }
+    }
+
+    private var preparingActionTitle: String {
+        if dataSource.isFinalizingRecording { return "正在结束…" }
+        return dataSource.isPreparingRecording ? "正在准备录制…" : "开始录制"
     }
 
     // MARK: - Running Phase
@@ -110,7 +129,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
                     VideoPreviewView(
                         captureService: service,
                         statusMessage: dataSource.capturePreviewStatusMessage,
-                        isRecording: true,
+                        isRecording: dataSource.isActivelyRecording,
                         recordingDuration: dataSource.recordingDuration
                     )
                 }
@@ -125,8 +144,14 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             HStack(spacing: InsightSpacing.lg) {
                 Text(formatDuration(dataSource.recordingDuration))
                     .font(InsightTypography.bodyMedium)
-                    .foregroundStyle(InsightTheme.recording)
+                    .foregroundStyle(dataSource.isActivelyRecording ? InsightTheme.recording : InsightTheme.textSecondary)
                     .monospacedDigit()
+                    .accessibilityIdentifier("live_recording_duration")
+
+                Text(recordingStateTitle)
+                    .font(InsightTypography.caption)
+                    .foregroundStyle(InsightTheme.textSecondary)
+                    .accessibilityIdentifier("live_recording_state")
 
                 Spacer()
 
@@ -157,8 +182,14 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             .background(InsightTheme.surface)
         }
         .overlay(alignment: .topLeading) {
-            phaseMarker("录制中", identifier: "live_phase_running")
+            phaseMarker(recordingStateTitle, identifier: "live_phase_running")
         }
+    }
+
+    private var recordingStateTitle: String {
+        if dataSource.isFinalizingRecording { return "已停止，正在保存…" }
+        if dataSource.isRecordingPaused { return "已暂停" }
+        return dataSource.isActivelyRecording ? "录制中" : "录制已停止"
     }
 
     // MARK: - Post Session Phase

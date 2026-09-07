@@ -42,6 +42,7 @@ final class AudioMixBus {
             self.mode = mode
             self.pendingMic.removeAll(keepingCapacity: true)
             self.pendingSystem.removeAll(keepingCapacity: true)
+            self.converters.removeAll()
         }
     }
 
@@ -53,9 +54,23 @@ final class AudioMixBus {
         ingest(buffer: buffer, source: .systemAudio)
     }
 
+    /// Called after source callbacks have drained, before sealing the recording.
+    func finish() async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                self.flushTailIfNeeded(retainedSamples: 0)
+                continuation.resume()
+            }
+        }
+    }
+
+    func flushPendingSamples() {
+        queue.async { self.flushTailIfNeeded(retainedSamples: 0) }
+    }
+
     private func ingest(buffer: AVAudioPCMBuffer, source: Source) {
         queue.async {
-            guard let mono = self.convertToTargetSamples(buffer) else { return }
+            guard let mono = self.convertToTargetSamples(buffer, source: source) else { return }
             guard !mono.isEmpty else { return }
             let limitedMono = mono.map { AudioSampleLimiter.limit($0, ceiling: self.config.sourceCeiling) }
 
@@ -104,9 +119,10 @@ final class AudioMixBus {
         flushTailIfNeeded()
     }
 
-    private func flushTailIfNeeded() {
-        if pendingMic.count > config.mixedTailFlushSamples {
-            let flushCount = pendingMic.count - config.mixedTailFlushSamples
+    private func flushTailIfNeeded(retainedSamples: Int? = nil) {
+        let retainedSamples = retainedSamples ?? config.mixedTailFlushSamples
+        if pendingMic.count > retainedSamples {
+            let flushCount = pendingMic.count - retainedSamples
             let tail = pendingMic.prefix(flushCount).map {
                 AudioSampleLimiter.limit($0 * config.micWeight, ceiling: config.mixedHeadroom)
             }
@@ -114,8 +130,8 @@ final class AudioMixBus {
             onMixedSamples?(tail)
         }
 
-        if pendingSystem.count > config.mixedTailFlushSamples {
-            let flushCount = pendingSystem.count - config.mixedTailFlushSamples
+        if pendingSystem.count > retainedSamples {
+            let flushCount = pendingSystem.count - retainedSamples
             let tail = pendingSystem.prefix(flushCount).map {
                 AudioSampleLimiter.limit($0 * config.systemWeight, ceiling: config.mixedHeadroom)
             }
@@ -124,7 +140,7 @@ final class AudioMixBus {
         }
     }
 
-    private func convertToTargetSamples(_ input: AVAudioPCMBuffer) -> [Float]? {
+    private func convertToTargetSamples(_ input: AVAudioPCMBuffer, source: Source) -> [Float]? {
         if input.format.sampleRate == targetFormat.sampleRate,
            input.format.channelCount == targetFormat.channelCount,
            input.format.commonFormat == .pcmFormatFloat32,
@@ -133,7 +149,7 @@ final class AudioMixBus {
             return Array(UnsafeBufferPointer(start: channel, count: Int(input.frameLength)))
         }
 
-        let key = formatKey(input.format)
+        let key = "\(source)-\(formatKey(input.format))"
         let converter: AVAudioConverter
         if let cached = converters[key] {
             converter = cached
@@ -144,8 +160,6 @@ final class AudioMixBus {
             converters[key] = created
             converter = created
         }
-
-        converter.reset()
 
         let ratio = targetFormat.sampleRate / input.format.sampleRate
         let outputCapacity = max(64, Int((Double(input.frameLength) * ratio).rounded(.up)) + 16)

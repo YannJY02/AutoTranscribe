@@ -25,30 +25,73 @@ private func isTransientLiveStatus(_ message: String?) -> Bool {
 }
 
 extension LiveSessionViewModel {
-    func handleMixedSamples(_ samples: [Float]) {
-        if samples.isEmpty || !isRunning || isLiveRecordingPaused() {
-            return
+    func configureAudioCaptureCallbacks(meetingID: String? = nil) {
+        micCapture.onBuffer = { [weak self] buffer in
+            self?.handleCapturedBuffer(buffer, source: .microphone, meetingID: meetingID)
         }
+        systemAudioCapture.onBuffer = { [weak self] buffer in
+            self?.handleCapturedBuffer(buffer, source: .systemAudio, meetingID: meetingID)
+        }
+        mixBus.onMixedSamples = { [weak self] samples in
+            guard let self, let meetingID = meetingID ?? self.currentActiveMeetingID() else { return }
+            self.archiveAcceptedMixedSamples(samples, meetingID: meetingID)
+        }
+    }
 
-        let receivedAt = ProcessInfo.processInfo.systemUptime
-        let sampleCount = samples.count
-        let sampleRate = chunkAssembler.sampleRate
-        stateQueue.sync {
+    func handleCapturedBuffer(_ buffer: AVAudioPCMBuffer, source: AudioMixBus.Source, meetingID: String?) {
+        let accepted = stateQueue.sync {
+            guard let activeMeetingID = _sessionState.activeMeetingID,
+                  meetingID == nil || meetingID == activeMeetingID,
+                  isRunning || audioCaptureDraining,
+                  !recordingPaused else { return false }
             captureTimeline.markAudioBufferStartIfNeeded(
-                receivedAt: receivedAt,
-                sampleCount: sampleCount,
-                sampleRate: sampleRate
+                receivedAt: recordingUptime(),
+                sampleCount: Int(buffer.frameLength),
+                sampleRate: Int(buffer.format.sampleRate)
             )
+            switch source {
+            case .microphone: mixBus.ingestMicrophone(buffer)
+            case .systemAudio: mixBus.ingestSystemAudio(buffer)
+            }
+            return true
         }
+        if accepted { recordInputLevel(buffer: buffer, source: source) }
+    }
 
-        pipelineQueue.async { [weak self] in
-            guard let self else { return }
-            guard self.isRunning, !self.isLiveRecordingPaused() else { return }
+    func handleMixedSamples(_ samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        stateQueue.sync {
+            guard let meetingID = _sessionState.activeMeetingID,
+                  isRunning,
+                  !recordingPaused else { return }
+            enqueueAcceptedAudioArchive(samples, meetingID: meetingID)
+        }
+    }
+
+    private func archiveAcceptedMixedSamples(_ samples: [Float], meetingID: String) {
+        guard !samples.isEmpty else { return }
+        stateQueue.sync {
+            guard _sessionState.activeMeetingID == meetingID else { return }
+            enqueueAcceptedAudioArchive(samples, meetingID: meetingID)
+        }
+    }
+
+    /// Called under stateQueue, preserving acceptance order across pause/stop.
+    private func enqueueAcceptedAudioArchive(_ samples: [Float], meetingID: String) {
+        captureTimeline.markAudioBufferStartIfNeeded(
+            receivedAt: recordingUptime(),
+            sampleCount: samples.count,
+            sampleRate: chunkAssembler.sampleRate
+        )
+        audioArchiveQueue.async { [weak self] in
+            guard let self, self.currentActiveMeetingID() == meetingID else { return }
             do {
                 let chunks = try self.chunkAssembler.append(samples: samples)
-                guard let meetingID = self.currentActiveMeetingID() else { return }
-                for chunk in chunks {
-                    self.enqueueChunkForProcessing(chunk, meetingID: meetingID)
+                self.pipelineQueue.async {
+                    guard self.currentActiveMeetingID() == meetingID else { return }
+                    for chunk in chunks {
+                        self.enqueueChunkForProcessing(chunk, meetingID: meetingID)
+                    }
                 }
             } catch {
                 self.publishError(error)
@@ -102,6 +145,7 @@ extension LiveSessionViewModel {
     }
 
     func pumpChunkQueueIfNeeded(meetingID: String) {
+        guard !isRunning || !shouldHoldChunksForWarmup else { return }
         guard !chunkInFlight else {
             return
         }
