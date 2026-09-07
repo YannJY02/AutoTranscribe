@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import socket
+import subprocess
+import sys
 import urllib.request
 
 import pytest
@@ -196,6 +199,58 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             "I own the file-hash check. Friday isn't confirmed.", "",
             id="en-date-not-confirmed",
         ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; Monday's meeting will decide the date.", "",
+            id="en-replacement-meeting-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "我负责报告，不是周五截止；周一的会议再决定日期。", "",
+            id="zh-replacement-meeting-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; we will discuss the deadline on Monday.", "",
+            id="en-replacement-discussion-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "我负责报告，周五不是截止日期；周一再讨论截止时间。", "",
+            id="zh-replacement-discussion-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; the report is due Monday.", "monday",
+            id="en-explicit-replacement-due-monday",
+        ),
+        pytest.param(
+            "I own the report. The report is not due until Friday.", "friday",
+            id="en-not-due-until-friday",
+        ),
+        pytest.param(
+            "I own the report. The report won't be due until Friday.", "friday",
+            id="en-wont-be-due-until-friday",
+        ),
+        pytest.param(
+            "I own the report. The report is not due before Friday.", "",
+            id="en-not-due-before-is-not-a-fixed-deadline",
+        ),
+        pytest.param(
+            "I own the report. The report is maybe not due until Friday.", "",
+            id="en-maybe-not-due-until-remains-uncertain",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; the deadline must not be after Monday.", "monday",
+            id="en-replacement-not-after-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; deadline: Monday.", "monday",
+            id="en-replacement-deadline-colon",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; finish by next Monday.", "monday",
+            id="en-replacement-next-monday",
+        ),
+        pytest.param(
+            "我负责报告，不是周五截止；不得晚于周一。", "周一",
+            id="zh-replacement-explicit-upper-bound",
+        ),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
@@ -222,6 +277,38 @@ def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, e
     assert action["evidence_span"] == {"start_ms": 11_000, "end_ms": 14_500}
     assert action["needs_review"] is True
     assert action["due_at"] == expected_due
+
+
+def test_local_minutes_completes_a_long_segment_with_rejected_dates():
+    # A generous subprocess deadline catches the former minute-long quadratic
+    # stall without turning ordinary CI scheduling noise into a timing budget.
+    program = """
+import socket
+import urllib.request
+from insightkit.insights.service import InsightService
+def no_network(*args, **kwargs):
+    raise AssertionError('local minutes must not access the network')
+socket.create_connection = no_network
+urllib.request.urlopen = no_network
+text = 'I own the report. ' + 'not Friday ' * 10_000
+row = {'start_ms': 0, 'end_ms': 8_000, 'speaker': 'Synthetic owner', 'text': text}
+service = InsightService(default_vendor='local')
+package = service.build_final([row], provider_vendor='local')
+action = package['action_tracks'][0]
+assert action['due_at'] == ''
+assert action['task'] == text.strip()
+assert action['owner'] == row['speaker']
+assert action['needs_review'] is True
+assert service.last_call_meta['vendor'] == 'local'
+"""
+    subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
 
 
 def test_explicit_local_provider_supports_live_minutes_without_cloud_key(monkeypatch):
