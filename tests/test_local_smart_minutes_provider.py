@@ -412,6 +412,10 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             id="en-uncertain-negated-completion-upper-bound",
         ),
         pytest.param(
+            "I own the report. Maybe do not submit it after Friday.", "",
+            id="en-uncertain-imperative-completion-upper-bound",
+        ),
+        pytest.param(
             "I own the report. Do not submit it before Friday.", "",
             id="en-negated-completion-lower-bound-is-not-a-deadline",
         ),

@@ -433,7 +433,7 @@ class InsightService:
             r"|\b(?:deadline|due\s+date)(?:\s*:\s*|\s+(?:"
             r"(?:is|was|will\s+be)\s+(?:(?:not\s+after|no\s+later\s+than)\s+)?"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
-            r"|\bnot\s+(?:finish|complete|submit|deliver)"
+            r"|\b(?:do\s+)?not\s+(?:finish|complete|submit|deliver)"
             r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+after"
             r"|\b(?:finish|complete|submit|deliver)"
             r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+"
