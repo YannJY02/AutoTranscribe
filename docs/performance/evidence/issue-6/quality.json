@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "classification": "exploratory-single-run",
+  "task_success": true,
+  "acceptable_performance_baseline": false,
+  "semantic_fidelity": "failed-decision-negation-preservation",
+  "fixture_validation": {
+    "frozen_reference_hash_match": true,
+    "frozen_media_hash_match": true,
+    "record_media_identical_to_frozen_fixture": true,
+    "synthetic_fixture": true
+  },
+  "asr": {
+    "cer_pct": 3.6,
+    "wer_pct": null,
+    "metric_status": "exploratory; this normalization recipe was chosen for the audit and is not fixed in the protocol",
+    "formula": "100 * (substitutions + deletions + insertions) / reference Unicode code-point count",
+    "aggregation": "concatenate all 35 segments in file order with no separators; unit-cost global Levenshtein",
+    "tie_breaking": "diagonal match/substitution, deletion, insertion; tie choice may alter S/D/I but not distance",
+    "normalization": "NFC, then remove Unicode P* punctuation and all Python isspace characters; no other rewrites",
+    "unicode_version": "14.0.0",
+    "normalized": {
+      "reference_characters": 750,
+      "hypothesis_characters": 750,
+      "substitutions": 27,
+      "deletions": 0,
+      "insertions": 0,
+      "edit_distance": 27,
+      "cer_pct": 3.6
+    },
+    "raw_no_normalization": {
+      "reference_characters": 820,
+      "hypothesis_characters": 750,
+      "substitutions": 27,
+      "deletions": 70,
+      "insertions": 0,
+      "edit_distance": 97,
+      "cer_pct": 11.829268292682928
+    },
+    "critical_negation_cases": [
+      {
+        "reference_index": 2,
+        "reference_text": "决定采用固定方案，后续运行不得临时更换内容。",
+        "hypothesis_text": "决定采用固定方案后续运行部的临时更换内容",
+        "negation_preserved": false
+      },
+      {
+        "reference_index": 9,
+        "reference_text": "决定采用固定方案，后续运行不得临时更换内容。",
+        "hypothesis_text": "决定采用固定方案后续运行部的临时更换内容",
+        "negation_preserved": false
+      },
+      {
+        "reference_index": 16,
+        "reference_text": "决定采用固定方案，后续运行不得临时更换内容。",
+        "hypothesis_text": "决定采用固定方案后续运行部的临时更换内容",
+        "negation_preserved": false
+      },
+      {
+        "reference_index": 23,
+        "reference_text": "决定采用固定方案，后续运行不得临时更换内容。",
+        "hypothesis_text": "决定采用固定方案后续运行部的临时更换内容",
+        "negation_preserved": false
+      },
+      {
+        "reference_index": 30,
+        "reference_text": "决定采用固定方案，后续运行不得临时更换内容。",
+        "hypothesis_text": "决定采用固定方案后续运行部的临时更换内容",
+        "negation_preserved": false
+      }
+    ],
+    "critical_negation_failures": 5,
+    "quality_threshold": null
+  },
+  "speaker_attribution": {
+    "method": "unique maximum temporal overlap matches each hypothesis utterance to one reference utterance; best global speaker-label permutation maximizes equal utterance labels",
+    "one_to_one_utterance_mapping": true,
+    "chronological_mapping": true,
+    "reference_speaker_count": 2,
+    "hypothesis_speaker_count": 2,
+    "speaker_mapping": {
+      "SPEAKER_00": "林",
+      "SPEAKER_01": "周"
+    },
+    "correct_utterance_labels": 35,
+    "evaluated_utterances": 35,
+    "utterance_label_accuracy_pct": 100.0,
+    "diarization_error_rate_pct": null,
+    "limitation": "Exploratory utterance-label agreement only. The protocol defines no speaker metric/collar; this does not measure frame-level DER, boundary accuracy, overlapping speech recall, or missed speech."
+  },
+  "transcript": {
+    "segment_count": 35,
+    "reference_segment_count": 35,
+    "matched_reference_utterance_count": 35,
+    "media_duration_ms": 300000,
+    "first_segment_start_ms": 2000,
+    "last_segment_end_ms": 297885,
+    "transcript_envelope_ms": 295885,
+    "transcript_envelope_media_pct": 98.62833333333333,
+    "endpoint_reach_media_pct": 99.295,
+    "hypothesis_interval_union_ms": 159680,
+    "reference_interval_union_ms": 205000,
+    "head_gap_ms": 2000,
+    "tail_gap_ms": 2115,
+    "valid_segment_bounds": true,
+    "dropped_work_count": null,
+    "task_success": true,
+    "limitations": [
+      "Envelope is temporal extent, not a word/speech coverage rate; silence is not dropped work.",
+      "Frozen reference timing and ASR timing differ, so utterance matching does not certify exact boundaries."
+    ]
+  },
+  "smart_minutes": {
+    "formal_schema_validation": {
+      "at": "2026-09-06T02:21:12.132599+00:00",
+      "status": "passed",
+      "validator": "Draft202012Validator",
+      "jsonschema_version": "4.26.0",
+      "dependency_scope": "uv isolated tool cache; installed after performance capture, no product environment change",
+      "schema_sha256": "8334ffd2108be01d7f0de4cb047edf922e0962b60fe806d3519c83fca577c27e",
+      "package_sha256": "71f6095033d479071ba131a48053b7e25281bc792c95b33cf51e252c11f3e8cd",
+      "error_count": 0,
+      "errors": [],
+      "scope": "Formal structure only; does not establish semantic fidelity"
+    },
+    "initial_validator_attempt": "Repository environment lacked jsonschema and used its manual fallback; raw/quality-audit.json preserves that initial result. Formal validation was subsequently completed with an isolated uv cache.",
+    "required_section_count": 7,
+    "present_nonempty_sections": [
+      "session_overview",
+      "highlight_insights",
+      "speaker_perspectives",
+      "decision_ledger",
+      "action_tracks",
+      "timeline_beats",
+      "provenance_links"
+    ],
+    "output_decision_count": 2,
+    "output_action_count": 2,
+    "expected_decision_occurrences": 5,
+    "expected_action_occurrences": 5,
+    "expected_distinct_decision_intents": 1,
+    "expected_distinct_action_intents": 1,
+    "semantic_assessment": {
+      "method": "Manual comparison against the approved synthetic reference; bound to input hashes. Not an automated semantic scorer.",
+      "complete_expected_distinct_decision_intents_preserved": 0,
+      "partial_expected_distinct_decision_intents_preserved": 1,
+      "expected_distinct_action_intents_preserved": 1,
+      "full_decision_constraint_preserved": false,
+      "reference_decision": "采用固定方案，后续运行不得临时更换内容。",
+      "output_decision": "采用固定方案，冻结测试输入；运行部临时更换内容需后续处理",
+      "output_decision_options": [
+        "使用一份固定文件和一组操作步骤",
+        "允许运行部临时更换内容"
+      ],
+      "output_decision_needs_review": true,
+      "finding": "The fixed-plan intent survives but the prohibition against changing contents does not. The package invents a run-department interpretation and a handling requirement; an option permits the change. The input ASR already corrupts 不得 into 部的 in all five occurrences, so this alone does not isolate the LLM as the cause.",
+      "expected_action": "检查文件哈希和音频时长。",
+      "output_action": "在下一轮开始前检查文件哈希和音频时长",
+      "action_owner_matches_expected_speaker": true,
+      "action_due_phrase_preserved": true,
+      "additional_output_items": "The second decision and action are grounded elsewhere in the transcript; they are not additional matches to the one repeated expected primary intent.",
+      "repetition_caveat": "The five expected decisions/actions are repeated occurrences of one unique intent each. Two output items cannot be interpreted as three missing distinct intents; semantic preservation and occurrence-link coverage are separate."
+    },
+    "evidence": {
+      "range_link_count": 14,
+      "unique_range_count": 7,
+      "range_links_within_media": 14,
+      "range_links_exactly_resolving_to_final_transcript_segments": 14,
+      "point_link_count": 7,
+      "point_links_resolving_to_final_transcript_segments": 7,
+      "expected_occurrence_span_count": 15,
+      "expected_occurrence_spans_with_any_positive_temporal_overlap": 3,
+      "occurrence_coverage_rule": "At least 1 ms positive temporal overlap between the reference span and any unique emitted evidence range. Diagnostic only: no IoU threshold or semantic equivalence implied.",
+      "last_range_link_end_ms": 57855,
+      "expected_decision_occurrences_linked_in_decision_ledger": 1,
+      "expected_action_occurrences_linked_in_action_tracks": 1,
+      "provenance_meeting_id_matches_record": true,
+      "provenance_sqlite_target_resolution": null
+    },
+    "evidence_limitations": [
+      "Disk transcript is the final timeline source in this audit; app seek/playback is owned by the parent GUI audit.",
+      "Temporal resolvability is not semantic correctness.",
+      "Provenance text names the matching meeting ID; actual SQLite target resolution was not attempted."
+    ]
+  },
+  "record_folder": {
+    "all_four_json_components_parse": true,
+    "component_consistency": {
+      "summary_matches_package": true,
+      "metadata_preview_matches_package": true,
+      "metadata_tags_match_package_topics": true,
+      "highlights_match_package": true,
+      "decisions_match_package": true,
+      "actions_match_package": true,
+      "timeline_matches_package": true
+    },
+    "all_component_consistency_checks_pass": true,
+    "metadata_duration_matches_transcript_endpoint": true,
+    "metadata_duration_matches_media_duration": false,
+    "native_reopen_success": true,
+    "native_reopen_source": "raw/ui-record-review.txt and screenshot, explicit matching ID at 02:09:23.612 UTC",
+    "cross_generation_gui_disk_equality": "not-established; native import completion can regenerate its insight package"
+  },
+  "media": {
+    "source_duration_seconds": 300.0,
+    "source_duration_method": "Frozen corpus manifest; direct ffprobe stream and format both 300.000000",
+    "player_duration_display": "05:00",
+    "playhead_advance_and_seek": "observed",
+    "seek_target_seconds": 179.9592,
+    "seek_target_fraction": 0.599864,
+    "continuous_60_second_trace": "not-measured",
+    "acoustic_output": "not-measured",
+    "video_av_sync": "not-applicable-to-this-audio-only-run"
+  },
+  "exports": {
+    "exports": [
+      {
+        "format": "md",
+        "raw_path": "raw/export.md",
+        "bytes": 6153,
+        "sha256": "2896492338222690e8b8b9b89f4ca0dca1807a09b90196fe78bd99bf0985c594",
+        "filesystem_modified_at": "2026-09-06T02:07:58.991013+00:00",
+        "source": "Native Import Workspace export buttons; original synthetic-record exports retained"
+      },
+      {
+        "format": "pdf",
+        "raw_path": "raw/export.pdf",
+        "bytes": 121836,
+        "sha256": "ef49ce317da6ac1c1a537e7608086e29cbdb2a0149c0c5ad4ad5599de542b7ca",
+        "filesystem_modified_at": "2026-09-06T02:08:16.151075+00:00",
+        "source": "Native Import Workspace export buttons; original synthetic-record exports retained"
+      }
+    ],
+    "markdown": {
+      "status": "written-readable",
+      "review_markers_present": true,
+      "transcript_section_present": true
+    },
+    "pdf": {
+      "qpdf_exit": 3,
+      "qpdf_warnings": [
+        "object 7 0: object has offset 0",
+        "object 10 0: object has offset 0"
+      ],
+      "render_exit": 0,
+      "text_extract_exit": 0,
+      "pages": 3,
+      "page_size_points": [
+        612,
+        792
+      ],
+      "visual_review": "All three pages legible with no visible clipped or overlapping text; key-decisions heading stranded at bottom of page 1. Raw Markdown heading markers remain visible. No polished-layout pass claimed.",
+      "strict_structure_pass": false
+    },
+    "timing_limit": "Native export availability verified. Production accepted-action-to-durable-write monotonic spans unavailable; filesystem timestamps and automation durations are not substituted."
+  },
+  "exclusion_reasons": [
+    "Single run without cold/warm reset or required matrix",
+    "Expected decision prohibition lost in all five ASR repetitions and in saved Smart Minutes",
+    "Canonical phase/export spans and several quality/resource gates unmeasured",
+    "PDF structure warnings retained"
+  ],
+  "raw_sources": [
+    "raw/quality-audit.json",
+    "quality-audit.py",
+    "raw/formal-schema-check.json",
+    "raw/ui-events.jsonl",
+    "raw/export-checks.json"
+  ]
+}
