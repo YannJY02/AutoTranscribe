@@ -433,9 +433,11 @@ class InsightService:
             r"|\b(?:deadline|due\s+date)(?:\s*:\s*|\s+(?:"
             r"(?:is|was|will\s+be)\s+(?:(?:not\s+after|no\s+later\s+than)\s+)?"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
+            r"|\bnot\s+(?:finish|complete|submit|deliver)"
+            r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+after"
             r"|\b(?:finish|complete|submit|deliver)"
             r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+"
-            r"(?:(?:by|on|before|no\s+later\s+than)\s+)?"
+            r"(?:(?:by|on|before|not\s+after|no\s+later\s+than)\s+)?"
             r"|\bno\s+later\s+than"
             r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于|最[迟晚])"
             r"\s*(?:(?:this|next)\s+)?$",

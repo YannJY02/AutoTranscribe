@@ -399,6 +399,22 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             "I own the report. The deadline is not Monday; submit it after Friday.", "",
             id="en-completion-lower-bound-is-not-a-deadline",
         ),
+        pytest.param(
+            "I own the report. Do not submit it after Friday.", "friday",
+            id="en-negated-completion-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. We must submit it not after Friday.", "friday",
+            id="en-completion-not-after-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. We might not submit it after Friday.", "",
+            id="en-uncertain-negated-completion-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. Do not submit it before Friday.", "",
+            id="en-negated-completion-lower-bound-is-not-a-deadline",
+        ),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
