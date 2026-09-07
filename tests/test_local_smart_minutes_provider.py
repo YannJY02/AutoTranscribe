@@ -446,6 +446,68 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
         pytest.param("Due: maybe Friday.", "", id="en-uncertainty-after-due-colon"),
         pytest.param("Due: TBD; meeting on Friday.", "", id="en-tbd-label-with-meeting-date"),
         pytest.param("The deadline for the report is tentatively Friday.", "", id="en-uncertain-deadline-for-complement"),
+        pytest.param("The report must be completed by Friday.", "friday", id="en-passive-completed-deadline"),
+        pytest.param("The report should be submitted by Friday.", "friday", id="en-passive-submitted-deadline"),
+        pytest.param("The report will be delivered by Friday.", "friday", id="en-passive-delivered-deadline"),
+        pytest.param("The report has been sent by Monday.", "monday", id="en-perfect-sent-deadline"),
+        pytest.param("The report must not be completed by Friday.", "", id="en-negated-passive-completion"),
+        pytest.param("The report might be submitted by Friday.", "", id="en-uncertain-passive-completion"),
+        pytest.param("The report might have been delivered by Friday.", "", id="en-uncertain-perfect-passive-completion"),
+        pytest.param(
+            "Submit the report by Monday and hold a rehearsal on Wednesday, tentatively.", "monday",
+            id="en-trailing-qualifier-belongs-to-separate-rehearsal",
+        ),
+        pytest.param(
+            "Submit the report by Monday and hold a rehearsal Wednesday or Friday, tentatively.", "monday",
+            id="en-trailing-rehearsal-alternatives-do-not-qualify-submission",
+        ),
+        pytest.param("The deadline is Monday or Wednesday, tentatively.", "", id="en-qualified-deadline-alternatives"),
+        pytest.param("Submit by Monday or by Wednesday, tentatively.", "", id="en-qualified-completion-alternatives"),
+        pytest.param("Submit by Monday and Wednesday, tentatively.", "", id="en-qualified-shared-completion-dates"),
+        pytest.param("Please submit the report by 5 PM Friday.", "friday", id="en-clock-before-weekday-deadline"),
+        pytest.param("Please submit the report by 5PM Friday.", "friday", id="en-compact-clock-before-weekday-deadline"),
+        pytest.param("Please submit the report by EOD Friday.", "friday", id="en-eod-before-weekday-deadline"),
+        pytest.param("The report is not due until 5 PM Friday.", "friday", id="en-clock-preserves-not-due-until"),
+        pytest.param("Don't submit the report after EOD Friday.", "friday", id="en-clock-preserves-negated-upper-bound"),
+        pytest.param("The report might be submitted by 5 PM Friday.", "", id="en-clock-does-not-hide-uncertainty"),
+        pytest.param("Do not submit the report before 5 PM Friday.", "", id="en-clock-preserves-negated-lower-bound"),
+        pytest.param("Submit the report after EOD Friday.", "", id="en-clock-preserves-lower-bound"),
+        pytest.param("Friday is our submission deadline.", "friday", id="en-date-first-submission-deadline"),
+        pytest.param("Friday is our delivery deadline.", "friday", id="en-date-first-delivery-deadline"),
+        pytest.param("Friday is not our submission deadline.", "", id="en-negated-date-first-submission-deadline"),
+        pytest.param("Friday is our submission deadline-setting meeting.", "", id="en-submission-deadline-meeting-is-not-deadline"),
+        pytest.param("By Friday, submit the report.", "friday", id="en-leading-deadline-before-completion"),
+        pytest.param("By next Monday, we will email the report.", "monday", id="en-leading-deadline-before-affirmed-action"),
+        pytest.param("By 5 PM Friday, submit the report.", "friday", id="en-leading-clock-deadline-before-completion"),
+        pytest.param("By Friday, don't submit the report.", "", id="en-leading-date-with-negated-action"),
+        pytest.param("By Friday, maybe submit the report.", "", id="en-leading-date-with-uncertain-action"),
+        pytest.param("By Friday, we will not submit the report.", "", id="en-leading-date-with-negated-future-action"),
+        pytest.param("By Friday, hold a meeting about the report.", "", id="en-leading-date-with-meeting-only"),
+        pytest.param("The deadline has been set for Friday.", "friday", id="en-confirmed-deadline-has-been-set"),
+        pytest.param("The deadline is set for Monday.", "monday", id="en-confirmed-deadline-is-set"),
+        pytest.param("The deadline for the report will be set for Friday.", "friday", id="en-future-set-deadline-for-complement"),
+        pytest.param("The deadline has not been set for Friday.", "", id="en-negated-set-deadline"),
+        pytest.param("The deadline is maybe set for Friday.", "", id="en-uncertain-set-deadline"),
+        pytest.param("The deadline might have been set for Friday.", "", id="en-uncertain-perfect-set-deadline"),
+        pytest.param("The deadline is on Friday.", "friday", id="en-deadline-is-on-weekday"),
+        pytest.param("The report is due before Friday.", "friday", id="en-due-before-weekday"),
+        pytest.param("The deadline is not on Friday.", "", id="en-negated-deadline-is-on-weekday"),
+        pytest.param("The report might be due before Friday.", "", id="en-uncertain-due-before-weekday"),
+        pytest.param("I need the report by Friday.", "friday", id="en-report-required-by-weekday"),
+        pytest.param("The report must be ready by Friday.", "friday", id="en-readiness-required-by-weekday"),
+        pytest.param("I don't need the report by Friday.", "", id="en-negated-report-required-by-weekday"),
+        pytest.param("I didn't need the report by Friday.", "", id="en-negated-past-report-requirement"),
+        pytest.param("The report doesn't need to be ready by Friday.", "", id="en-negated-present-readiness-requirement"),
+        pytest.param("The report wasn't being submitted by Friday.", "", id="en-negated-progressive-submission"),
+        pytest.param("The report might be being submitted by Friday.", "", id="en-uncertain-progressive-submission"),
+        pytest.param("The report hasn't been delivered by Friday.", "", id="en-negated-perfect-delivery"),
+        pytest.param("The report shouldn't be completed by Friday.", "", id="en-negated-modal-completion"),
+        pytest.param("The report might be ready by Friday.", "", id="en-uncertain-readiness-by-weekday"),
+        pytest.param("I need to discuss the report on Friday.", "", id="en-need-without-deadline-bound"),
+        pytest.param("我负责报告，周五前必须提交。", "周五", id="zh-required-submission-before-weekday"),
+        pytest.param("我负责报告，周五前需要完成。", "周五", id="zh-required-completion-before-weekday"),
+        pytest.param("我负责报告，周五前不必提交。", "", id="zh-negated-submission-before-weekday"),
+        pytest.param("我负责报告，周五前可能提交。", "", id="zh-uncertain-submission-before-weekday"),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
@@ -474,18 +536,20 @@ def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, e
     assert action["due_at"] == expected_due
 
 
-def test_local_minutes_completes_a_long_segment_with_rejected_dates():
+@pytest.mark.parametrize("trailing_qualifier", ["", ", tentatively."])
+def test_local_minutes_completes_a_long_segment_with_rejected_dates(trailing_qualifier):
     # A generous subprocess deadline catches the former minute-long quadratic
     # stall without turning ordinary CI scheduling noise into a timing budget.
     program = """
 import socket
+import sys
 import urllib.request
 from insightkit.insights.service import InsightService
 def no_network(*args, **kwargs):
     raise AssertionError('local minutes must not access the network')
 socket.create_connection = no_network
 urllib.request.urlopen = no_network
-text = 'I own the report. ' + 'not Friday ' * 10_000
+text = 'I own the report. ' + 'not Friday ' * 10_000 + sys.argv[1]
 row = {'start_ms': 0, 'end_ms': 8_000, 'speaker': 'Synthetic owner', 'text': text}
 service = InsightService(default_vendor='local')
 package = service.build_final([row], provider_vendor='local')
@@ -497,7 +561,7 @@ assert action['needs_review'] is True
 assert service.last_call_meta['vendor'] == 'local'
 """
     subprocess.run(
-        [sys.executable, "-c", program],
+        [sys.executable, "-c", program, trailing_qualifier],
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
         text=True,

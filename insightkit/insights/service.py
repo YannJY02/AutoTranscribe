@@ -402,11 +402,17 @@ class InsightService:
         )
         uncertain_en = r"(?:may|might|could|maybe|perhaps|possibly|probably|tentatively|tentative|unconfirmed|undecided|tbd)"
         uncertain_zh = r"可能|也许|或许|大概|暂定|待定|未定|待确认|尚未|未确定|未确认|未约定|未设定|不确定|未知|不详"
-        completion_en = r"(?:finish|complete|submit|deliver|send|email|hand\s+over)"
+        completion_en = (
+            r"(?:finish(?:es|ed|ing)?|complete(?:s|d)?|completing|submit(?:s|ted|ting)?"
+            r"|deliver(?:s|ed|ing)?|send(?:s|ing)?|sent|email(?:s|ed|ing)?|hand(?:s|ed|ing)?\s+over)"
+        )
+        object_words_en = r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}"
+        deadline_noun_en = r"(?:(?:(?:submission|delivery|completion)\s+)?deadline|due\s+date)"
         rejected_prefix = re.compile(
-            r"(?:\b(?:not|no|never|neither|nor|don['’]t|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
-            r"(?:\s+(?:be|on|by|for|until|before|due|this|next|every|each))*"
-            rf"|\b{uncertain_en}\b(?:\s+(?:be|on|by|for|until|before|after|due|this|next|every|each))*"
+            r"(?:\b(?:not|no|never|neither|nor|cannot"
+            r"|(?:do|does|did|is|was|are|were|wo|ca|have|has|had|should|would|could|must)n['’]t)"
+            r"(?:\s+(?:be|been|being|have|on|by|for|until|before|due|this|next|every|each))*"
+            rf"|\b{uncertain_en}\b(?:\s+(?:be|been|being|have|on|by|for|until|before|after|due|this|next|every|each))*"
             r"|不是|并非|没有|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:在|于|定在|定于)?"
             rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:为|在|到|是|改为|改到)?)\s*$",
             re.IGNORECASE,
@@ -414,7 +420,7 @@ class InsightService:
         rejected_suffix = re.compile(
             r"^\s*(?:(?:(?:(?:is|was)\s+)?(?:not|never|isn['’]t|wasn['’]t)"
             r"|will\s+(?:not|never)\s+be|won['’]t\s+be)\s+"
-            r"(?:(?:the|a|our|final)\s+)*(?:deadline|due\s+date|confirmed|agreed|set)\b"
+            rf"(?:(?:the|a|our|final)\s+)*(?:{deadline_noun_en}|confirmed|agreed|set)\b"
             rf"|(?:(?:is|was)\s+)?(?:only\s+)?{uncertain_en}\b"
             r"|(?:不是|并非|不再是)(?:最终的?)?(?:截止(?:日期|时间)?|期限)"
             rf"|(?:前|之前)?(?:{uncertain_zh}))",
@@ -429,18 +435,32 @@ class InsightService:
             rf"\s*(?:(?:(?:is|was)\s+)?(?:only\s+)?{uncertain_en}\b|{uncertain_zh})\s*",
             re.IGNORECASE,
         )
+        independent_action = re.compile(
+            rf"\b(?:and|but)\s+(?:then\s+)?(?:{completion_en}|hold|rehearse|meet|discuss)\b",
+            re.IGNORECASE,
+        )
+        clock_before_date = re.compile(
+            r"\b(?:(?:1[0-2]|0?[1-9])(?::[0-5][0-9])?\s*[ap]m"
+            r"|(?:[01]?[0-9]|2[0-3]):[0-5][0-9]|eod|noon|midnight)\s*$",
+            re.IGNORECASE,
+        )
+        leading_by = re.compile(r"\s*by\s+(?:(?:this|next)\s+)?", re.IGNORECASE)
+        leading_completion = re.compile(
+            rf"\s*(?:please\s+)?(?:(?:i|we|you)\s+(?:will|must|should)\s+)?{completion_en}\b",
+            re.IGNORECASE,
+        )
         affirmed_prefix = re.compile(
-            r"(?:\bdue(?:\s+(?:on|by)|\s*[:：]\s*)?"
+            r"(?:\bdue(?:\s+(?:on|by|before)|\s*[:：]\s*)?"
             r"|\b(?:deadline|due\s+date)"
-            rf"(?:\s+for(?:\s+(?!(?:is|was|will|not|never|{uncertain_en})\b)[\w'-]+){{1,6}})?"
+            rf"(?:\s+for(?:\s+(?!(?:is|was|has|had|will|not|never|{uncertain_en})\b)[\w'-]+){{1,6}})?"
             r"(?:\s*:\s*|\s+(?:"
-            r"(?:is|was|will\s+be)\s+(?:(?:not\s+after|no\s+later\s+than)\s+)?"
+            r"(?:is|was|will\s+be)\s+(?:(?:on|by|before|not\s+after|no\s+later\s+than)\s+)?"
+            r"|(?:is|was|has\s+been|had\s+been|will\s+be)\s+set\s+for\s+"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
-            rf"|\b(?:(?:do\s+)?not|don['’]t)\s+{completion_en}"
-            r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+after"
-            rf"|\b{completion_en}"
-            r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}\s+"
+            rf"|\b(?:(?:do\s+)?not|don['’]t)\s+{completion_en}{object_words_en}\s+after"
+            rf"|\b{completion_en}{object_words_en}\s+"
             r"(?:(?:by|on|before|not\s+after|no\s+later\s+than)\s+)?"
+            rf"|\b(?:need(?:s|ed)?|require(?:s|d)?|(?:be|is|are|was|were)\s+ready){object_words_en}\s+(?:by|before)"
             r"|\bno\s+later\s+than"
             r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于|最[迟晚])"
             r"\s*(?:(?:this|next|every|each)\s+)?$",
@@ -448,10 +468,10 @@ class InsightService:
         )
         affirmed_suffix = re.compile(
             r"^\s*(?:\b(?:is|will\s+be|remains)\s+(?:still\s+)?"
-            r"(?:(?:the|our|final)\s+)?(?:deadline|due\s+date)"
+            rf"(?:(?:the|our|final)\s+)?{deadline_noun_en}"
             r"(?=\s*$|\s+(?:for|to)\b)"
-            r"|(?:前|之前)?(?:完成|提交|交付|交稿|做完)"
-            r"|(?:前|之前)(?:把|将)\S{1,24}(?:完成|提交|交付|交稿|做完)"
+            r"|(?:前|之前)?(?:必须|需要)?(?:完成|提交|交付|交稿|做完)"
+            r"|(?:前|之前)(?:必须|需要)?(?:把|将)\S{1,24}(?:完成|提交|交付|交稿|做完)"
             r"|(?:是|为)?(?:截止(?:日期|时间)?|期限))",
             re.IGNORECASE,
         )
@@ -465,30 +485,45 @@ class InsightService:
             return rejected_prefix.search(prefix) is not None
 
         clauses = re.split(r"([，,。.;；!?！？\n])", text)
+        uncertainty_starts: dict[int, int] = {}
+        for index in range(0, len(clauses) - 2, 2):
+            if clauses[index + 1] in {",", "，"} and uncertain_afterthought.fullmatch(clauses[index + 2]):
+                # Shared date alternatives keep the same scope. Only a new
+                # action moves the qualifier away from an earlier deadline.
+                scope_start = 0
+                for action in independent_action.finditer(clauses[index]):
+                    scope_start = action.start()
+                uncertainty_starts[index] = scope_start
+
         for index in range(0, len(clauses), 2):
             clause = clauses[index]
-            # A complete comma-separated qualifier belongs to the date;
-            # an independent following action does not change its certainty.
-            trailing_uncertain = (
-                index + 2 < len(clauses)
-                and clauses[index + 1] in {",", "，"}
-                and uncertain_afterthought.fullmatch(clauses[index + 2]) is not None
-            )
+            uncertainty_start = uncertainty_starts.get(index, len(clause))
             # Keep negation attached to the date, so an unrelated prohibition
             # does not erase an affirmed deadline or a "no later than" limit.
             for match in dates.finditer(clause):
                 # Fixed-size context avoids copying and rescanning a growing
                 # prefix for every rejected date in a long transcript segment.
                 prefix = clause[max(0, match.start() - 160):match.start()]
+                # A clock refines the weekday while keeping its existing
+                # deadline, negation, and upper/lower-bound interpretation.
+                prefix = clock_before_date.sub("", prefix)
                 suffix = clause[match.end():match.end() + 160]
-                if trailing_uncertain or prefix_rejects_date(prefix) or rejected_suffix.search(suffix):
+                if match.start() >= uncertainty_start or prefix_rejects_date(prefix) or rejected_suffix.search(suffix):
                     continue
                 # Every candidate needs deadline or completion evidence,
                 # including a first date that may only schedule a discussion.
                 affirmed = affirmed_prefix.search(prefix)
                 if affirmed is not None and prefix_rejects_date(prefix[:affirmed.start()]):
                     continue
-                if not (affirmed or affirmed_suffix.search(suffix) or deferred_due.search(prefix)):
+                leading_deadline = (
+                    leading_by.fullmatch(prefix) is not None
+                    and not suffix.strip()
+                    and index + 2 < len(clauses)
+                    and clauses[index + 1] == ","
+                    and uncertainty_starts.get(index + 2) != 0
+                    and leading_completion.match(clauses[index + 2][:160]) is not None
+                )
+                if not (affirmed or affirmed_suffix.search(suffix) or deferred_due.search(prefix) or leading_deadline):
                     continue
                 return match.group(0).lower().removesuffix("s")
 
@@ -497,7 +532,7 @@ class InsightService:
             deadline = re.search(r"截止[^\s]*", clause)
             if deadline is None:
                 continue
-            if trailing_uncertain or prefix_rejects_date(clause[max(0, deadline.start() - 160):deadline.start()]):
+            if deadline.start() >= uncertainty_start or prefix_rejects_date(clause[max(0, deadline.start() - 160):deadline.start()]):
                 continue
             hint = re.sub(r"^截止(?:日期|时间)?(?:是|为|到|至)?[:：]?", "", deadline.group(0)).strip()
             if not hint or hint.startswith("的") or dates.search(hint):
