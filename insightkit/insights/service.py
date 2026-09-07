@@ -412,21 +412,24 @@ class InsightService:
         max_object_words = context_limit // 2
         action_boundary_en = (
             r"(?:and|but)\s+(?:then\s+)?(?:(?:i|we|you|they|he|she)\s+)?"
-            rf"(?:(?:will|would|should|must|can|not|never|be|been|being|have|able\s+to|{uncertain_en}"
+            rf"(?:(?:will|would|should|must|can|do|does|did|not|never|be|been|being|have|able\s+to|{uncertain_en}"
             r"|(?:do|does|did|is|was|are|were|wo|ca|have|has|had|should|would|could|must)n['’]t)\s+){0,6}"
             rf"{completion_en}\b"
         )
         # A later predicate keeps its own negation and uncertainty. Plain
         # conjoined objects such as "report and checklist" remain together.
-        object_words_en = rf"(?:\s+(?!(?:after|until|since|during|before|by|no)\b|{action_boundary_en})[\w'’\"“”-]+(?:\.[\w'’\"“”-]+)*){{0,{max_object_words}}}"
+        # At the end of a candidate prefix the next token is its date. A
+        # temporal opener there, or before an earlier date, starts a range.
+        temporal_start_en = rf"(?:starting|from|between)\s+(?:(?:this|next)\s+)?(?:(?:{dates.pattern})(?!['’]s\b)|$)"
+        object_words_en = rf"(?:\s+(?!(?:after|until|since|during|before|by|no)\b|{action_boundary_en}|{temporal_start_en})[\w'’\"“”-]+(?:\.[\w'’\"“”-]+)*){{0,{max_object_words}}}"
         owned_object_words_en = rf"(?:\s+(?!(?:and|but|not|never|{uncertain_en}|after|until|since|during|before|by|on|no)\b)[\w'-]+){{1,{max_object_words}}}"
         completion_zh = r"(?:完成|提交|交付|交稿|做完|发送|发邮件)"
         deadline_noun_en = r"(?:(?:(?:submission|delivery|completion)\s+)?deadline|due\s+date)"
         rejected_prefix = re.compile(
             r"(?:\b(?:not|no|never|neither|nor|cannot|unable\s+to"
             r"|(?:do|does|did|is|was|are|were|wo|ca|have|has|had|should|would|could|must)n['’]t)"
-            r"(?:\s+(?:be|been|being|have|able\s+to|on|by|for|until|before|due|this|next|every|each))*"
-            rf"|\b{uncertain_en}\b(?:\s+(?:be|been|being|have|able\s+to|on|by|for|until|before|after|due|this|next|every|each))*"
+            r"(?:\s+(?:to|be|been|being|have|able\s+to|on|by|for|until|before|due|this|next|every|each))*"
+            rf"|\b{uncertain_en}\b(?:\s+(?:to|be|been|being|have|able\s+to|on|by|for|until|before|after|due|this|next|every|each))*"
             r"|不是|并非|没有|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:会)?(?:在|于|定在|定于)?"
             rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:会)?(?:为|在|到|是|改为|改到)?)\s*$",
             re.IGNORECASE,
@@ -459,8 +462,14 @@ class InsightService:
             re.IGNORECASE,
         )
         leading_by = re.compile(r"\s*by\s+(?:(?:this|next)\s+)?", re.IGNORECASE)
+        subject_word_en = rf"(?!(?:will|must|should|not|never|{uncertain_en})\b)[\w'’-]+"
+        leading_subject_en = (
+            rf"(?!(?:not|never|{uncertain_en})\b)(?:i|we|you|he|she|they"
+            r"|(?-i:[A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*){0,3})"
+            rf"|(?:the|our)\s+{subject_word_en}(?:\s+{subject_word_en}){{0,3}})"
+        )
         leading_completion = re.compile(
-            rf"\s*(?:(?:please\s+)?(?:(?:i|we|you)\s+(?:will|must|should)\s+)?{completion_en}\b"
+            rf"\s*(?:(?:please\s+)?(?:{leading_subject_en}\s+(?:will|must|should)\s+)?{completion_en}\b"
             rf"|(?:请)?(?:必须|需要)?{completion_zh})",
             re.IGNORECASE,
         )
@@ -468,7 +477,7 @@ class InsightService:
             r"(?:\bdue(?:\s+(?:on|by|before)|\s*[:：]\s*)?"
             r"|\b(?:deadline|due\s+date)"
             rf"(?:\s+for(?:\s+(?!(?:is|was|has|had|will|not|never|{uncertain_en})\b)[\w'-]+){{1,6}})?"
-            r"(?:\s*:\s*|\s+(?:"
+            r"(?:\s*:\s*|['’]s\s+|\s+(?:"
             r"(?:is|was|will\s+be|remains)\s+(?:(?:on|by|before|not\s+after|no\s+later\s+than)\s+)?"
             r"|(?:is|was|has\s+been|had\s+been|will\s+be)\s+(?:set\s+for|confirmed\s+(?:for|as))\s+"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
