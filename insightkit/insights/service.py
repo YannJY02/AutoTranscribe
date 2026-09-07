@@ -406,13 +406,13 @@ class InsightService:
             r"(?:finish(?:es|ed|ing)?|complete(?:s|d)?|completing|submit(?:s|ted|ting)?"
             r"|deliver(?:s|ed|ing)?|send(?:s|ing)?|sent|email(?:s|ed|ing)?|hand(?:s|ed|ing)?\s+over)"
         )
-        object_words_en = r"(?:\s+(?!(?:after|until|since|during|before|by|on|no)\b)[\w'-]+){0,6}"
+        object_words_en = r"(?:\s+(?!(?:after|until|since|during|before|by|no)\b)[\w'-]+){0,6}"
         deadline_noun_en = r"(?:(?:(?:submission|delivery|completion)\s+)?deadline|due\s+date)"
         rejected_prefix = re.compile(
-            r"(?:\b(?:not|no|never|neither|nor|cannot"
+            r"(?:\b(?:not|no|never|neither|nor|cannot|unable\s+to"
             r"|(?:do|does|did|is|was|are|were|wo|ca|have|has|had|should|would|could|must)n['’]t)"
-            r"(?:\s+(?:be|been|being|have|on|by|for|until|before|due|this|next|every|each))*"
-            rf"|\b{uncertain_en}\b(?:\s+(?:be|been|being|have|on|by|for|until|before|after|due|this|next|every|each))*"
+            r"(?:\s+(?:be|been|being|have|able\s+to|on|by|for|until|before|due|this|next|every|each))*"
+            rf"|\b{uncertain_en}\b(?:\s+(?:be|been|being|have|able\s+to|on|by|for|until|before|after|due|this|next|every|each))*"
             r"|不是|并非|没有|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:在|于|定在|定于)?"
             rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:为|在|到|是|改为|改到)?)\s*$",
             re.IGNORECASE,
