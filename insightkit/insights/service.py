@@ -406,7 +406,7 @@ class InsightService:
             r"(?:finish(?:es|ed|ing)?|complete(?:s|d)?|completing|submit(?:s|ted|ting)?"
             r"|deliver(?:s|ed|ing)?|send(?:s|ing)?|sent|email(?:s|ed|ing)?|hand(?:s|ed|ing)?\s+over)"
         )
-        object_words_en = r"(?:\s+(?!(?:after|until|since|during|before|by|no)\b)[\w'-]+){0,6}"
+        object_words_en = r"(?:\s+(?!(?:after|until|since|during|before|by|no)\b)[\w'’\"“”-]+(?:\.[\w'’\"“”-]+)*){0,6}"
         deadline_noun_en = r"(?:(?:(?:submission|delivery|completion)\s+)?deadline|due\s+date)"
         rejected_prefix = re.compile(
             r"(?:\b(?:not|no|never|neither|nor|cannot|unable\s+to"
@@ -455,7 +455,7 @@ class InsightService:
             rf"(?:\s+for(?:\s+(?!(?:is|was|has|had|will|not|never|{uncertain_en})\b)[\w'-]+){{1,6}})?"
             r"(?:\s*:\s*|\s+(?:"
             r"(?:is|was|will\s+be)\s+(?:(?:on|by|before|not\s+after|no\s+later\s+than)\s+)?"
-            r"|(?:is|was|has\s+been|had\s+been|will\s+be)\s+set\s+for\s+"
+            r"|(?:is|was|has\s+been|had\s+been|will\s+be)\s+(?:set\s+for|confirmed\s+(?:for|as))\s+"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
             rf"|\b(?:(?:do\s+)?not|don['’]t)\s+{completion_en}{object_words_en}\s+after"
             rf"|\b{completion_en}{object_words_en}\s+"
@@ -484,7 +484,8 @@ class InsightService:
                 return rejected_prefix.search(prefix[:deferred.start()]) is not None
             return rejected_prefix.search(prefix) is not None
 
-        clauses = re.split(r"([，,。.;；!?！？\n])", text)
+        # Preserve internal dots in versions and filenames as object context.
+        clauses = re.split(r"([，,。;；!?！？\n]|\.(?=[\"'”’)\]]*(?:\s|$)))", text)
         uncertainty_starts: dict[int, int] = {}
         for index in range(0, len(clauses) - 2, 2):
             if clauses[index + 1] in {",", "，"} and uncertain_afterthought.fullmatch(clauses[index + 2]):
@@ -508,6 +509,13 @@ class InsightService:
                 # deadline, negation, and upper/lower-bound interpretation.
                 prefix = clock_before_date.sub("", prefix)
                 suffix = clause[match.end():match.end() + 160]
+                if re.match(r"['’]s\b", suffix, re.IGNORECASE) and not re.search(
+                    r"\b(?:by|before|after|until)\s*(?:(?:this|next)\s+)?$", prefix, re.IGNORECASE
+                ):
+                    # In "Monday's report by Friday", Monday names the
+                    # object. A bound such as "by Friday's deadline" can
+                    # still affirm Friday after the normal context checks.
+                    continue
                 if match.start() >= uncertainty_start or prefix_rejects_date(prefix) or rejected_suffix.search(suffix):
                     continue
                 # Every candidate needs deadline or completion evidence,
