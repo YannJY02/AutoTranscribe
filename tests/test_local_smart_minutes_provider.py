@@ -319,6 +319,86 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             "I own the report. The deadline is neither Friday nor Monday; finish by Tuesday.", "tuesday",
             id="en-neither-nor-preserves-later-affirmative-tuesday",
         ),
+        pytest.param(
+            "I own the report. We will discuss the report on Monday, then submit it by Friday.", "friday",
+            id="en-first-discussion-date-does-not-hide-deadline",
+        ),
+        pytest.param(
+            "我负责报告，周一开会讨论，周五前提交。", "周五",
+            id="zh-first-meeting-date-does-not-hide-deadline",
+        ),
+        pytest.param(
+            "I own the report. We will discuss the deadline on Monday.", "",
+            id="en-only-discussion-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "我负责报告，周一开会再决定日期。", "",
+            id="zh-only-meeting-date-is-not-a-deadline",
+        ),
+        pytest.param(
+            "I own the report. Friday will not be the deadline.", "",
+            id="en-date-first-future-negation",
+        ),
+        pytest.param(
+            "I own the report. Friday won't be the deadline.", "",
+            id="en-date-first-future-contracted-negation",
+        ),
+        pytest.param(
+            "I own the report. Friday will never be the deadline; submit it by Monday.", "monday",
+            id="en-date-first-future-negation-retains-replacement",
+        ),
+        pytest.param(
+            "I own the report. Friday will be the deadline.", "friday",
+            id="en-date-first-future-affirmed-deadline",
+        ),
+        pytest.param(
+            "I own the status reports. Status reports are due Fridays.", "friday",
+            id="en-plural-weekday-deadline-normalized",
+        ),
+        pytest.param(
+            "I own the status reports. Status reports are not due Fridays.", "",
+            id="en-plural-weekday-negation-retained",
+        ),
+        pytest.param(
+            "I own the status reports. Status reports are due Mondays, tentatively.", "",
+            id="en-plural-weekday-uncertainty-retained",
+        ),
+        pytest.param(
+            "I own the report. The deadline is Fridayish.", "",
+            id="en-weekday-substring-is-not-a-date",
+        ),
+        pytest.param(
+            "I own the report and will finish Friday.", "friday",
+            id="en-completion-without-date-preposition",
+        ),
+        pytest.param(
+            "I own the report and will submit it on Friday.", "friday",
+            id="en-completion-on-weekday",
+        ),
+        pytest.param(
+            "I own the report and will deliver tomorrow.", "tomorrow",
+            id="en-completion-tomorrow",
+        ),
+        pytest.param(
+            "I own the report; no later than Friday.", "friday",
+            id="en-standalone-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. The deadline will be Friday.", "friday",
+            id="en-future-affirmed-deadline-before-date",
+        ),
+        pytest.param(
+            "我负责报告，周五前把报告提交。", "周五",
+            id="zh-completion-object-after-date",
+        ),
+        pytest.param(
+            "我负责报告，最迟周五。", "周五",
+            id="zh-standalone-upper-bound",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Monday; submit it after Friday.", "",
+            id="en-completion-lower-bound-is-not-a-deadline",
+        ),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
