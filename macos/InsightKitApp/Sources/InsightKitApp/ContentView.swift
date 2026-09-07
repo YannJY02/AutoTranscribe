@@ -46,7 +46,7 @@ struct ContentView: View {
                 sources: coordinator.liveViewModel.systemAudioSources,
                 selectedID: coordinator.liveViewModel.selectedSystemSourceID,
                 onReload: {
-                    coordinator.liveViewModel.reloadSystemAudioSources()
+                    coordinator.liveViewModel.reloadSystemAudioSources(selectDefaultSource: false)
                 },
                 onSelect: { sourceID in
                     coordinator.liveViewModel.selectSystemSource(sourceID)
@@ -138,7 +138,10 @@ struct ContentView: View {
                 recentRecords: Array(coordinator.recordsService.records.prefix(3))
             )
         case .live:
-            LiveWorkspaceView(viewModel: coordinator.liveViewModel)
+            LiveWorkspaceView(
+                viewModel: coordinator.liveViewModel,
+                onSystemAudioSourceSelect: openSystemAudioPicker
+            )
                 .accessibilityIdentifier("live_workspace")
         case .transcription:
             TranscriptionWorkspaceView(
@@ -340,7 +343,7 @@ struct ContentView: View {
             coordinator.publishInfoBanner("当前版本未启用系统音频采集能力。请在设置中执行“一键测试服务”。")
             return
         }
-        coordinator.liveViewModel.reloadSystemAudioSources()
+        coordinator.liveViewModel.reloadSystemAudioSources(selectDefaultSource: false)
         coordinator.liveViewModel.isSystemAudioPickerPresented = true
     }
 

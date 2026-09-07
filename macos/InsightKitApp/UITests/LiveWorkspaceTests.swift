@@ -16,6 +16,61 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(waitForElement(button("live_start_recording_button", fallbackLabel: "开始录制"), timeout: 5), "开始录制按钮应显示")
     }
 
+    func testAudioSourceControlsStayInSyncAndKeepOneSourceEnabled() throws {
+        let systemAudioMode = inputModeChoice("系统音频")
+        XCTAssertTrue(waitForElement(systemAudioMode), "工具栏应提供系统音频输入")
+        systemAudioMode.click()
+        assertInputModeSelected("系统音频")
+        attachScreenshot(named: "live-audio-toolbar-system-selection")
+
+        assertToggleState(id: "mic", expected: "off")
+        assertToggleState(id: "system", expected: "on")
+        XCTAssertFalse(button("live_source_toggle_system").isEnabled, "最后一个音源不应允许关闭")
+
+        toggleSource(id: "mic")
+        assertInputModeSelected("混音")
+        assertToggleState(id: "mic", expected: "on")
+        assertToggleState(id: "system", expected: "on")
+        XCTAssertTrue(button("live_source_toggle_mic").isEnabled)
+        XCTAssertTrue(button("live_source_toggle_system").isEnabled)
+
+        toggleSource(id: "system")
+        assertInputModeSelected("麦克风")
+        assertToggleState(id: "mic", expected: "on")
+        assertToggleState(id: "system", expected: "off")
+        XCTAssertFalse(button("live_source_toggle_mic").isEnabled, "最后一个音源不应允许关闭")
+        XCTAssertTrue(button("live_source_toggle_system").isEnabled)
+        assertToggleState(id: "camera", expected: "off")
+        assertToggleState(id: "screen", expected: "off")
+        attachScreenshot(named: "live-audio-central-microphone-selection")
+    }
+
+    func testSystemSourceMenuOpensPickerWithoutChangingSelectionOnCancel() throws {
+        inputModeChoice("系统音频").click()
+        let selectedSource = button("主显示器")
+        XCTAssertTrue(waitForElement(selectedSource), "应保留现有系统音频源")
+
+        button("live_source_toggle_system").rightClick()
+        let selectDevice = app.menuItems["选择设备..."]
+        XCTAssertTrue(waitForElement(selectDevice), "唯一音源的开关禁用时仍应允许选择设备")
+        selectDevice.click()
+        XCTAssertTrue(waitForElement(app.staticTexts["系统音频源"]), "应打开现有系统音频源选择器")
+        attachScreenshot(named: "live-audio-system-source-picker")
+        button("取消").click()
+
+        XCTAssertTrue(waitForElement(selectedSource), "取消选择器后应保留已选系统音频源")
+        assertInputModeSelected("系统音频")
+        assertToggleState(id: "mic", expected: "off")
+        assertToggleState(id: "system", expected: "on")
+
+        for sourceID in ["mic", "camera", "screen"] {
+            button("live_source_toggle_\(sourceID)").rightClick()
+            XCTAssertFalse(app.menuItems["选择设备..."].exists, "\(sourceID) 不应提供无法处理的设备选择菜单")
+            app.typeKey(.escape, modifierFlags: [])
+        }
+        XCTAssertTrue(selectedSource.exists, "不支持的设备菜单不应污染系统音频源")
+    }
+
     func testSingleEntryGeneratedReviewFlowCoversPrimaryInteractions() throws {
         XCTAssertTrue(app.buttons["返回首页"].exists, "返回首页按钮应显示")
 
@@ -98,6 +153,21 @@ final class LiveWorkspaceTests: InsightKitUITests {
 
     private func toggleSource(id: String) {
         button("live_source_toggle_\(id)").click()
+    }
+
+    private func inputModeChoice(_ label: String) -> XCUIElement {
+        let radioButton = app.radioButtons[label].firstMatch
+        if radioButton.exists { return radioButton }
+        return app.buttons[label].firstMatch
+    }
+
+    private func assertInputModeSelected(_ label: String) {
+        let choice = inputModeChoice(label)
+        let selected = NSPredicate { _, _ in
+            choice.isSelected || self.stringValue(of: choice) == "1"
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: selected, object: choice)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 3), .completed, "工具栏应选中\(label)")
     }
 
     private func assertToggleState(id: String, expected: String) {

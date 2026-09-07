@@ -5,11 +5,12 @@ struct SourceToggleItem: Identifiable, Equatable {
     let icon: String
     let label: String
     var isEnabled: Bool
+    var disabledReason: String? = nil
 }
 
 struct SourceToggleBar: View {
     @Binding var sources: [SourceToggleItem]
-    var onDeviceSelect: ((String) -> Void)?
+    var onSystemAudioSourceSelect: (() -> Void)?
 
     var body: some View {
         HStack(spacing: InsightSpacing.xl) {
@@ -41,20 +42,25 @@ struct SourceToggleBar: View {
                     .clipShape(RoundedRectangle(cornerRadius: InsightTheme.cornerRadius))
             }
             .buttonStyle(.plain)
+            .disabled(source.wrappedValue.disabledReason != nil)
+            .help(source.wrappedValue.disabledReason ?? "切换\(source.wrappedValue.label)")
             .accessibilityIdentifier("live_source_toggle_\(source.wrappedValue.id)")
             .accessibilityLabel("\(source.wrappedValue.label)开关")
             .accessibilityValue(source.wrappedValue.isEnabled ? "on" : "off")
-            .contextMenu {
-                Button("选择设备...") {
-                    onDeviceSelect?(source.wrappedValue.id)
-                }
-            }
+            .accessibilityHint(source.wrappedValue.disabledReason ?? "")
 
             Text(source.wrappedValue.isEnabled ? "on" : "off")
                 .font(InsightTypography.small)
                 .foregroundStyle(InsightTheme.textTertiary)
                 .accessibilityIdentifier("live_source_state_\(source.wrappedValue.id)")
                 .accessibilityLabel("\(source.wrappedValue.label)状态")
+        }
+        .contextMenu {
+            if source.wrappedValue.id == "system", let onSystemAudioSourceSelect {
+                Button("选择设备...") {
+                    onSystemAudioSourceSelect()
+                }
+            }
         }
     }
 }
