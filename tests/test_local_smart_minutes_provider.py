@@ -251,6 +251,74 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
             "我负责报告，不是周五截止；不得晚于周一。", "周一",
             id="zh-replacement-explicit-upper-bound",
         ),
+        pytest.param(
+            "I own the report. The report might not be due until Friday.", "",
+            id="en-might-not-be-due-until-remains-uncertain",
+        ),
+        pytest.param(
+            "I own the report. The report may not be due until Friday.", "",
+            id="en-may-not-be-due-until-remains-uncertain",
+        ),
+        pytest.param(
+            "I own the report. The report could be due Friday.", "",
+            id="en-could-be-due-remains-uncertain",
+        ),
+        pytest.param(
+            "我负责报告，不是周五截止；截止日期改为周一。", "周一",
+            id="zh-replacement-deadline-changed-to-monday",
+        ),
+        pytest.param(
+            "我负责报告，不是周五截止；截止日期改到周一。", "周一",
+            id="zh-replacement-deadline-moved-to-monday",
+        ),
+        pytest.param(
+            "我负责报告，不是周五截止；截止日期可能改为周一。", "",
+            id="zh-possible-replacement-deadline-remains-uncertain",
+        ),
+        pytest.param(
+            "I own the report. The deadline is Friday, tentatively.", "",
+            id="en-tentative-qualifier-immediately-after-comma",
+        ),
+        pytest.param(
+            "我负责报告，截止日期是周五，暂定。", "",
+            id="zh-tentative-qualifier-immediately-after-comma",
+        ),
+        pytest.param(
+            "我负责报告，截止2026-09-30，暂定。", "",
+            id="zh-tentative-calendar-deadline-after-comma",
+        ),
+        pytest.param(
+            "I own the report. The deadline is Friday, submit the final report.", "friday",
+            id="en-independent-action-after-comma-keeps-deadline",
+        ),
+        pytest.param(
+            "我负责报告，截止日期是周五，提交最终报告。", "周五",
+            id="zh-independent-action-after-comma-keeps-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; Monday is the deadline-setting meeting.", "",
+            id="en-deadline-setting-meeting-is-not-a-replacement-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; Monday is the deadline planning meeting.", "",
+            id="en-deadline-planning-meeting-is-not-a-replacement-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; Monday is the deadline.", "monday",
+            id="en-explicit-date-first-replacement-deadline",
+        ),
+        pytest.param(
+            "I own the report. The deadline is not Friday; Monday is the deadline for the report.", "monday",
+            id="en-date-first-replacement-deadline-with-for-complement",
+        ),
+        pytest.param(
+            "I own the report. The deadline is neither Friday nor Monday.", "",
+            id="en-neither-nor-rejects-both-dates",
+        ),
+        pytest.param(
+            "I own the report. The deadline is neither Friday nor Monday; finish by Tuesday.", "tuesday",
+            id="en-neither-nor-preserves-later-affirmative-tuesday",
+        ),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):

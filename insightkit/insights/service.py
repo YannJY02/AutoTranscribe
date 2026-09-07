@@ -400,14 +400,14 @@ class InsightService:
             r"|今天|明天|(?:本|下)周[一二三四五六日天]?|周[一二三四五六日天]|星期[一二三四五六日天]",
             re.IGNORECASE,
         )
-        uncertain_en = r"(?:maybe|perhaps|possibly|probably|tentatively|tentative|unconfirmed|undecided|tbd)"
+        uncertain_en = r"(?:may|might|could|maybe|perhaps|possibly|probably|tentatively|tentative|unconfirmed|undecided|tbd)"
         uncertain_zh = r"可能|也许|或许|大概|暂定|待定|未定|待确认|尚未|未确定|未确认|未约定|未设定|不确定|未知|不详"
         rejected_prefix = re.compile(
-            r"(?:\b(?:not|no|never|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
+            r"(?:\b(?:not|no|never|neither|nor|isn['’]t|wasn['’]t|aren['’]t|won['’]t|cannot|can['’]t)"
             r"(?:\s+(?:be|on|by|for|until|before|due|this|next))*"
             rf"|\b{uncertain_en}\b(?:\s+(?:be|on|by|for|until|before|after|due|this|next))*"
             r"|不是|并非|没有|不再(?:是|在)|(?:不|未|不能|不要|不必|无需)(?:在|于|定在|定于)?"
-            rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:为|在|到|是)?)\s*$",
+            rf"|尚未(?:定在|定于|确定为)|(?:{uncertain_zh})(?:为|在|到|是|改为|改到)?)\s*$",
             re.IGNORECASE,
         )
         rejected_suffix = re.compile(
@@ -423,6 +423,10 @@ class InsightService:
             r"(?:\s+be)?\s+due\s+until\s+(?:(?:this|next)\s+)?$",
             re.IGNORECASE,
         )
+        uncertain_afterthought = re.compile(
+            rf"\s*(?:(?:(?:is|was)\s+)?(?:only\s+)?{uncertain_en}\b|{uncertain_zh})\s*",
+            re.IGNORECASE,
+        )
         affirmed_prefix = re.compile(
             r"(?:\bdue(?:\s+(?:on|by))?"
             r"|\b(?:deadline|due\s+date)(?:\s*:\s*|\s+(?:"
@@ -430,12 +434,13 @@ class InsightService:
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
             r"|\b(?:finish|complete|submit|deliver)(?:\s+[\w'-]+){0,6}\s+"
             r"(?:by|before|no\s+later\s+than)"
-            r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至)?|期限(?:是|为)|不得晚于)"
+            r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于)"
             r"\s*(?:(?:this|next)\s+)?$",
             re.IGNORECASE,
         )
         affirmed_suffix = re.compile(
-            r"^\s*(?:\b(?:is|will\s+be)\s+(?:(?:the|our|final)\s+)?(?:deadline|due\s+date)\b"
+            r"^\s*(?:\b(?:is|will\s+be)\s+(?:(?:the|our|final)\s+)?(?:deadline|due\s+date)"
+            r"(?=\s*$|\s+(?:for|to)\b)"
             r"|(?:前|之前)?(?:完成|提交|交付|交稿|做完)|(?:是|为)?(?:截止(?:日期|时间)?|期限))",
             re.IGNORECASE,
         )
@@ -449,7 +454,16 @@ class InsightService:
             return rejected_prefix.search(prefix) is not None
 
         rejected_date_seen = False
-        for clause in re.split(r"[，,。.;；!?！？\n]", text):
+        clauses = re.split(r"([，,。.;；!?！？\n])", text)
+        for index in range(0, len(clauses), 2):
+            clause = clauses[index]
+            # A complete comma-separated qualifier belongs to the date;
+            # an independent following action does not change its certainty.
+            trailing_uncertain = (
+                index + 2 < len(clauses)
+                and clauses[index + 1] in {",", "，"}
+                and uncertain_afterthought.fullmatch(clauses[index + 2]) is not None
+            )
             # Keep negation attached to the date, so an unrelated prohibition
             # does not erase an affirmed deadline or a "no later than" limit.
             for match in dates.finditer(clause):
@@ -457,7 +471,7 @@ class InsightService:
                 # prefix for every rejected date in a long transcript segment.
                 prefix = clause[max(0, match.start() - 160):match.start()]
                 suffix = clause[match.end():match.end() + 160]
-                if prefix_rejects_date(prefix) or rejected_suffix.search(suffix):
+                if trailing_uncertain or prefix_rejects_date(prefix) or rejected_suffix.search(suffix):
                     rejected_date_seen = True
                     continue
                 if rejected_date_seen:
@@ -473,7 +487,7 @@ class InsightService:
             deadline = re.search(r"截止[^\s]*", clause)
             if deadline is None:
                 continue
-            if prefix_rejects_date(clause[max(0, deadline.start() - 160):deadline.start()]):
+            if trailing_uncertain or prefix_rejects_date(clause[max(0, deadline.start() - 160):deadline.start()]):
                 rejected_date_seen = True
                 continue
             hint = re.sub(r"^截止(?:日期|时间)?(?:是|为|到|至)?[:：]?", "", deadline.group(0)).strip()
