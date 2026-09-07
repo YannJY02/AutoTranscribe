@@ -228,6 +228,17 @@ final class LiveSessionViewModel: ObservableObject {
         RecordDocumentExporter.hasPersistedRecord(meetingID: currentBuildTargetID(), recordsService: recordsService)
     }
     var canChangeInputMode: Bool { !isRunning }
+
+    func setAudioInputSources(microphoneEnabled: Bool, systemAudioEnabled: Bool) {
+        guard canChangeInputMode else { return }
+        switch (microphoneEnabled, systemAudioEnabled) {
+        case (true, false): inputMode = .microphone
+        case (false, true): inputMode = .systemAudio
+        case (true, true): inputMode = .mixed
+        case (false, false): return
+        }
+    }
+
     var isFinalizingRecording: Bool { isFinalizingLiveSession }
 
     var shouldHoldChunksForWarmup: Bool { !asrWarmStatus.ready }
@@ -281,18 +292,17 @@ final class LiveSessionViewModel: ObservableObject {
         mixBus.setMode(.microphone)
     }
 
-    func reloadSystemAudioSources() {
+    func reloadSystemAudioSources(selectDefaultSource: Bool = true) {
         if isUITestingMode {
             updateMain {
-                self.systemAudioSources = [
+                self.updateSystemAudioSources([
                     SystemAudioSourceItem(
                         id: "ui-test-system-source",
                         kind: .display,
                         title: "主显示器",
                         subtitle: "内置显示器"
                     ),
-                ]
-                self.selectedSystemSourceID = "ui-test-system-source"
+                ], selectDefaultSource: selectDefaultSource)
                 self.permissionState = .granted
                 self.errorMessage = nil
             }
@@ -302,14 +312,18 @@ final class LiveSessionViewModel: ObservableObject {
             do {
                 let sources = try await systemAudioCapture.listSources()
                 updateMain {
-                    self.systemAudioSources = sources
-                    if self.selectedSystemSourceID == nil {
-                        self.selectedSystemSourceID = sources.first?.id
-                    }
+                    self.updateSystemAudioSources(sources, selectDefaultSource: selectDefaultSource)
                 }
             } catch {
                 publishError(error)
             }
+        }
+    }
+
+    func updateSystemAudioSources(_ sources: [SystemAudioSourceItem], selectDefaultSource: Bool) {
+        systemAudioSources = sources
+        if selectDefaultSource, selectedSystemSourceID == nil {
+            selectedSystemSourceID = sources.first?.id
         }
     }
 
