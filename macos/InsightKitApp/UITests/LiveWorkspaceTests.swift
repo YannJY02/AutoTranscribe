@@ -161,13 +161,35 @@ final class LiveWorkspaceTests: InsightKitUITests {
         return app.buttons[label].firstMatch
     }
 
-    private func assertInputModeSelected(_ label: String) {
+    private func assertInputModeSelected(
+        _ label: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         let choice = inputModeChoice(label)
         let selected = NSPredicate { _, _ in
-            choice.isSelected || self.stringValue(of: choice) == "1"
+            guard choice.exists else { return false }
+            let value = choice.value
+            return choice.isSelected
+                || (value as? NSNumber) == NSNumber(value: 1)
+                || (value as? String) == "1"
         }
         let expectation = XCTNSPredicateExpectation(predicate: selected, object: choice)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 3), .completed, "工具栏应选中\(label)")
+        let result = XCTWaiter.wait(for: [expectation], timeout: 3)
+        guard result != .completed else { return }
+
+        let exists = choice.exists
+        let value = exists ? choice.value : nil
+        let valueType = value.map { String(reflecting: type(of: $0)) } ?? "nil"
+        XCTAssertEqual(
+            result, .completed,
+            """
+            工具栏应选中\(label)。exists=\(exists), isSelected=\(exists && choice.isSelected), \
+            value=\(String(reflecting: value)), valueType=\(valueType)
+            \(choice.debugDescription)
+            """,
+            file: file, line: line
+        )
     }
 
     private func assertToggleState(id: String, expected: String) {
