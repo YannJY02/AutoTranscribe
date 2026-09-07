@@ -78,9 +78,11 @@ final class AudioMixBusTests: XCTestCase {
         bus.setMode(.mixed)
         var received: [Float] = []
         bus.onMixedSamples = { received.append(contentsOf: $0) }
+        let phaseIncrement: Double = 2.0 * Double.pi * 997.0 / 48_000.0
         for index in 0..<40 {
-            let samples = (0..<2_048).map {
-                Float(0.2 * sin(Double(index * 2_048 + $0) * 2 * .pi * 997 / 48_000))
+            let samples: [Float] = (0..<2_048).map { sampleIndex in
+                let phase = Double(index * 2_048 + sampleIndex) * phaseIncrement
+                return Float(0.2 * sin(phase))
             }
             bus.ingestMicrophone(makeBuffer(samples: samples, sampleRate: 48_000))
             bus.ingestSystemAudio(makeBuffer(samples: samples.map { -$0 }, sampleRate: 48_000))
