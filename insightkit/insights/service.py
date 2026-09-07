@@ -446,7 +446,8 @@ class InsightService:
         )
         leading_by = re.compile(r"\s*by\s+(?:(?:this|next)\s+)?", re.IGNORECASE)
         leading_completion = re.compile(
-            rf"\s*(?:please\s+)?(?:(?:i|we|you)\s+(?:will|must|should)\s+)?{completion_en}\b",
+            rf"\s*(?:(?:please\s+)?(?:(?:i|we|you)\s+(?:will|must|should)\s+)?{completion_en}\b"
+            r"|(?:请)?(?:必须|需要)?(?:完成|提交|交付|交稿|做完))",
             re.IGNORECASE,
         )
         affirmed_prefix = re.compile(
@@ -484,8 +485,15 @@ class InsightService:
                 return rejected_prefix.search(prefix[:deferred.start()]) is not None
             return rejected_prefix.search(prefix) is not None
 
+        # Keep an initialism with a lowercase continuation in object context;
+        # its period still ends a sentence before an uppercase word or EOF.
+        context = re.sub(
+            r"\b(?:[A-Z]\.){2,6}(?=\s+[a-z])",
+            lambda abbreviation: abbreviation.group(0).replace(".", ""),
+            text,
+        )
         # Preserve internal dots in versions and filenames as object context.
-        clauses = re.split(r"([，,。;；!?！？\n]|\.(?=[\"'”’)\]]*(?:\s|$)))", text)
+        clauses = re.split(r"([，,。;；!?！？\n]|\.(?=[\"'”’)\]]*(?:\s|$)))", context)
         uncertainty_starts: dict[int, int] = {}
         for index in range(0, len(clauses) - 2, 2):
             if clauses[index + 1] in {",", "，"} and uncertain_afterthought.fullmatch(clauses[index + 2]):
@@ -524,10 +532,12 @@ class InsightService:
                 if affirmed is not None and prefix_rejects_date(prefix[:affirmed.start()]):
                     continue
                 leading_deadline = (
-                    leading_by.fullmatch(prefix) is not None
-                    and not suffix.strip()
+                    (
+                        (leading_by.fullmatch(prefix) is not None and not suffix.strip())
+                        or (not prefix.strip() and suffix.strip() in {"前", "之前"})
+                    )
                     and index + 2 < len(clauses)
-                    and clauses[index + 1] == ","
+                    and clauses[index + 1] in {",", "，"}
                     and uncertainty_starts.get(index + 2) != 0
                     and leading_completion.match(clauses[index + 2][:160]) is not None
                 )

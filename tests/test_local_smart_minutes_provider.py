@@ -536,6 +536,18 @@ def test_explicit_local_provider_builds_canonical_source_linked_minutes_without_
         pytest.param("我负责报告，周五前需要完成。", "周五", id="zh-required-completion-before-weekday"),
         pytest.param("我负责报告，周五前不必提交。", "", id="zh-negated-submission-before-weekday"),
         pytest.param("我负责报告，周五前可能提交。", "", id="zh-uncertain-submission-before-weekday"),
+        pytest.param("周五前，提交报告。", "周五", id="zh-leading-deadline-before-comma-action"),
+        pytest.param("周五之前, 提交报告。", "周五", id="zh-leading-deadline-before-ascii-comma-action"),
+        pytest.param("周五前，不要提交报告。", "", id="zh-leading-deadline-with-negated-action"),
+        pytest.param("周五前，可能提交报告。", "", id="zh-leading-deadline-with-uncertain-action"),
+        pytest.param("周五前，提交报告，暂定。", "", id="zh-leading-deadline-with-tentative-action"),
+        pytest.param("周五前。提交报告。", "", id="zh-leading-date-does-not-cross-sentence"),
+        pytest.param("We will submit the U.S. report by Friday.", "friday", id="en-initialism-before-deadline"),
+        pytest.param("We will not submit the U.S. report by Friday.", "", id="en-negated-initialism-before-deadline"),
+        pytest.param("We might submit the U.S. report by Friday.", "", id="en-uncertain-initialism-before-deadline"),
+        pytest.param("We will submit the U.S. report by Friday, tentatively.", "", id="en-tentative-initialism-before-deadline"),
+        pytest.param("We will submit the U.S. We will meet on Friday.", "", id="en-initialism-at-real-sentence-boundary"),
+        pytest.param("Do not submit the U.S. We will submit the report by Friday.", "friday", id="en-negated-initialism-sentence-before-deadline"),
     ],
 )
 def test_local_due_hints_require_affirmative_concrete_dates(monkeypatch, text, expected_due):
