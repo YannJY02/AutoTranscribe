@@ -439,7 +439,7 @@ class InsightService:
             r"|will\s+(?:not|never)\s+be|won['’]t\s+be)\s+"
             rf"(?:(?:the|a|our|final)\s+)*(?:{deadline_noun_en}|confirmed|agreed|set)\b"
             rf"|(?:(?:is|was)\s+)?(?:only\s+)?{uncertain_en}\b"
-            r"|(?:不是|并非|不再是)(?:最终的?)?(?:截止(?:日期|时间)?|期限)"
+            r"|(?:不是|并非|不再是)(?:最终的?)?(?:截止(?:日期|时间|日)?|期限)"
             rf"|(?:前|之前)?(?:{uncertain_zh}))",
             re.IGNORECASE,
         )
@@ -480,6 +480,8 @@ class InsightService:
             r"(?:\s*:\s*|['’]s\s+|\s+(?:"
             r"(?:is|was|will\s+be|remains)\s+(?:(?:on|by|before|not\s+after|no\s+later\s+than)\s+)?"
             r"|(?:is|was|has\s+been|had\s+been|will\s+be)\s+(?:set\s+for|confirmed\s+(?:for|as))\s+"
+            r"|(?:(?:has|had)\s+(?:been\s+)?|(?:is|was)\s+)?(?:moved|changed)"
+            rf"(?:\s+from\s+(?:(?:this|next)\s+)?(?:{dates.pattern}))?\s+to\s+"
             r"|(?:must|should|will)\s+not\s+be\s+after\s+))"
             rf"|\b(?:(?:do\s+)?not|don['’]t)\s+{completion_en}{object_words_en}\s+after"
             rf"|\b{completion_en}{object_words_en}\s+"
@@ -487,7 +489,7 @@ class InsightService:
             rf"|\b(?:need(?:s|ed)?|require(?:s|d)?|(?:be|is|are|was|were)\s+ready){object_words_en}\s+(?:by|before)"
             rf"|\bown(?:s|ed)?{owned_object_words_en}\s+(?:by|before)"
             r"|\bno\s+later\s+than"
-            r"|截止(?:日期|时间)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于|最[迟晚])"
+            r"|截止(?:日期|时间|日)?(?:是|为|定在|定于|到|至|改为|改到)?|期限(?:是|为)|不得晚于|最[迟晚])"
             r"\s*(?:(?:this|next|every|each)\s+)?$",
             re.IGNORECASE,
         )
@@ -497,7 +499,7 @@ class InsightService:
             r"(?=\s*$|\s+(?:for|to)\b)"
             rf"|(?:前|之前)?(?:必须|需要)?{completion_zh}"
             rf"|(?:前|之前)(?:必须|需要)?(?:把|将)\S{{1,24}}{completion_zh}"
-            r"|(?:是|为)?(?:截止(?:日期|时间)?|期限))",
+            r"|(?:是|为)?(?:截止(?:日期|时间|日)?|期限))",
             re.IGNORECASE,
         )
 
@@ -518,6 +520,18 @@ class InsightService:
         )
         # Preserve internal dots in versions and filenames as object context.
         clauses = re.split(r"([，,。;；!?！？\n]|\.(?=[\"'”’)\]]*(?:\s|$)))", context)
+        parenthesized_bound = re.compile(
+            rf"\((?=[^()]{{1,{context_limit - 2}}}\))\s*"
+            r"(?:by|before|not\s+after|no\s+later\s+than)\s+"
+            rf"(?:(?:this|next)\s+)?(?:{dates.pattern})\s*\)",
+            re.IGNORECASE,
+        )
+        for index in range(0, len(clauses), 2):
+            # Only unwrap a paired bound inside one clause. Spaces preserve
+            # offsets and leave the action's negation/uncertainty in place.
+            clauses[index] = parenthesized_bound.sub(
+                lambda bound: " " + bound.group(0)[1:-1] + " ", clauses[index]
+            )
         uncertainty_starts: dict[int, int] = {}
         for index in range(0, len(clauses) - 2, 2):
             if clauses[index + 1] in {",", "，"} and uncertain_afterthought.fullmatch(clauses[index + 2]):
@@ -603,7 +617,7 @@ class InsightService:
                 continue
             if deadline.start() >= uncertainty_start or prefix_rejects_date(clause[max(0, deadline.start() - context_limit):deadline.start()]):
                 continue
-            hint = re.sub(r"^截止(?:日期|时间)?(?:是|为|到|至)?[:：]?", "", deadline.group(0)).strip()
+            hint = re.sub(r"^截止(?:日期|时间|日)?(?:是|为|到|至)?[:：]?", "", deadline.group(0)).strip()
             if not hint or hint.startswith("的") or dates.search(hint):
                 continue
             if re.search(rf"{uncertain_zh}|没有|不是|并非", hint):
