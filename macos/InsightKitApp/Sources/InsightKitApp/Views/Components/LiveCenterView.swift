@@ -5,7 +5,7 @@ import SwiftUI
 struct LiveCenterView<DataSource: CenterStageDataSource>: View {
     @ObservedObject var dataSource: DataSource
     @Binding var sources: [SourceToggleItem]
-    var onDeviceSelect: ((String) -> Void)?
+    var onSystemAudioSourceSelect: (() -> Void)?
     @State private var showMinutesSheet = false
     @State private var speakerRenameRequest: SpeakerRenameRequest?
 
@@ -79,7 +79,7 @@ struct LiveCenterView<DataSource: CenterStageDataSource>: View {
             .accessibilityIdentifier("live_preparing_preview")
 
             // Source toggle bar
-            SourceToggleBar(sources: $sources, onDeviceSelect: onDeviceSelect)
+            SourceToggleBar(sources: $sources, onSystemAudioSourceSelect: onSystemAudioSourceSelect)
                 .padding(.horizontal, InsightSpacing.panelPadding)
 
             // Start button
