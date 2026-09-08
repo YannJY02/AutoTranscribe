@@ -1,5 +1,8 @@
 import AVFoundation
 import Foundation
+import OSLog
+
+private let captureTimingLogger = Logger(subsystem: "com.yannjy.insightkit", category: "CaptureTiming")
 
 enum LiveCaptureHealthHint {
     static let noInput = "采集无输入：请检查音频源选择、麦克风/屏幕录制权限，或先切换到“仅麦克风”排查。"
@@ -29,8 +32,10 @@ extension LiveSessionViewModel {
         micCapture.onBuffer = { [weak self] buffer in
             self?.handleCapturedBuffer(buffer, source: .microphone, meetingID: meetingID)
         }
-        systemAudioCapture.onBuffer = { [weak self] buffer in
-            self?.handleCapturedBuffer(buffer, source: .systemAudio, meetingID: meetingID)
+        systemAudioCapture.onBuffer = { [weak self] buffer, sourceStartSec in
+            self?.handleCapturedBuffer(
+                buffer, source: .systemAudio, meetingID: meetingID, sourceStartSec: sourceStartSec
+            )
         }
         mixBus.onMixedSamples = { [weak self] samples in
             guard let self, let meetingID = meetingID ?? self.currentActiveMeetingID() else { return }
@@ -38,17 +43,36 @@ extension LiveSessionViewModel {
         }
     }
 
-    func handleCapturedBuffer(_ buffer: AVAudioPCMBuffer, source: AudioMixBus.Source, meetingID: String?) {
+    func handleCapturedBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        source: AudioMixBus.Source,
+        meetingID: String?,
+        sourceStartSec: TimeInterval? = nil
+    ) {
         let accepted = stateQueue.sync {
             guard let activeMeetingID = _sessionState.activeMeetingID,
                   meetingID == nil || meetingID == activeMeetingID,
                   isRunning || audioCaptureDraining,
                   !recordingPaused else { return false }
+            let receivedAt = recordingUptime()
+            let isFirstSystemAudioBuffer = source == .systemAudio && captureTimeline.audioStartSec == nil
             captureTimeline.markAudioBufferStartIfNeeded(
-                receivedAt: recordingUptime(),
+                receivedAt: receivedAt,
                 sampleCount: Int(buffer.frameLength),
-                sampleRate: Int(buffer.format.sampleRate)
+                sampleRate: Int(buffer.format.sampleRate),
+                sourceStartSec: sourceStartSec
             )
+            if isFirstSystemAudioBuffer {
+                let validSourceStart = sourceStartSec.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+                let duration = buffer.format.sampleRate > 0
+                    ? Double(buffer.frameLength) / buffer.format.sampleRate : 0
+                let oldEstimateMinusPTS = validSourceStart.map { receivedAt - duration - $0 } ?? -1
+                let timingBasis = validSourceStart == nil ? "receipt_minus_duration" : "source_pts"
+                let selectedStart = captureTimeline.audioStartSec ?? -1
+                captureTimingLogger.notice(
+                    "system_audio_first_buffer source_pts_s=\(validSourceStart ?? -1, privacy: .public) received_at_s=\(receivedAt, privacy: .public) duration_s=\(duration, privacy: .public) selected_start_s=\(selectedStart, privacy: .public) old_estimate_minus_pts_s=\(oldEstimateMinusPTS, privacy: .public) basis=\(timingBasis, privacy: .public)"
+                )
+            }
             switch source {
             case .microphone: mixBus.ingestMicrophone(buffer)
             case .systemAudio: mixBus.ingestSystemAudio(buffer)

@@ -21,7 +21,7 @@ final class SystemAudioCaptureService: NSObject {
         }
     }
 
-    var onBuffer: ((AVAudioPCMBuffer) -> Void)?
+    var onBuffer: ((AVAudioPCMBuffer, TimeInterval?) -> Void)?
 
     private let outputQueue = DispatchQueue(label: "InsightKit.SystemAudioCapture.Output")
     private let lifecycleQueue = DispatchQueue(label: "InsightKit.SystemAudioCapture.Lifecycle")
@@ -229,9 +229,9 @@ final class SystemAudioCaptureService: NSObject {
         }
     }
 
-    private static func handleSampleBuffer(
+    static func handleSampleBuffer(
         _ sampleBuffer: CMSampleBuffer,
-        deliverBuffer: ((AVAudioPCMBuffer) -> Void)?
+        deliverBuffer: ((AVAudioPCMBuffer, TimeInterval?) -> Void)?
     ) {
         guard CMSampleBufferIsValid(sampleBuffer) else { return }
         guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
@@ -261,7 +261,9 @@ final class SystemAudioCaptureService: NSObject {
             return
         }
 
-        deliverBuffer?(pcmBuffer)
+        // PTS describes the first sample, independent of callback delivery latency.
+        let sourceStartSec = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+        deliverBuffer?(pcmBuffer, sourceStartSec.isFinite && sourceStartSec >= 0 ? sourceStartSec : nil)
     }
 }
 

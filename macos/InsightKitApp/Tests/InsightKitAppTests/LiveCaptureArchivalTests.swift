@@ -141,6 +141,24 @@ final class LiveCaptureArchivalTests: XCTestCase {
                        "Mixer buffering delay must not become an AV composition offset")
     }
 
+    func testSystemAudioCallbackPreservesSourceTimeThroughDelayedArchival() async throws {
+        var uptime: TimeInterval = 100.51
+        let fixture = try makeFixture(recordingUptime: { uptime })
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.mixBus.setMode(.systemAudio)
+        viewModel.configureAudioCaptureCallbacks(meetingID: meetingID)
+        viewModel.systemAudioCapture.onBuffer?(makeBuffer(value: 0.2, count: 160), 100)
+        XCTAssertEqual(viewModel.stateQueue.sync { viewModel.captureTimeline.audioStartSec ?? 0 }, 100,
+                       accuracy: 0.000001, "Source PTS must survive the capture callback wiring")
+
+        uptime = 101
+        await viewModel.mixBus.finish()
+        viewModel.audioArchiveQueue.sync {}
+        XCTAssertEqual(viewModel.stateQueue.sync { viewModel.captureTimeline.audioStartSec ?? 0 }, 100,
+                       accuracy: 0.000001, "Archival receipt must not reanchor source-timed audio")
+    }
+
     func testAlreadyWarmASRWaitsUntilTheMeetingSessionExists() throws {
         let fixture = try makeFixture()
         let viewModel = fixture.viewModel
