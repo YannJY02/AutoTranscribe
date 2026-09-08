@@ -75,6 +75,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private let recordingAdmissionLock = NSLock()
     private var recordingAdmissionOpen = false
     private var recordingAdmissionEpoch: UInt64 = 0
+    private var recordingAdmissionID: UUID?
 
     private var captureSession: AVCaptureSession?
     private(set) var cameraPreviewLayer: AVCaptureVideoPreviewLayer?
@@ -97,12 +98,24 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private var videoPixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var recordingOutputURL: URL?
     private var recordingFallbackSize: CGSize?
-    private var recordingFailureMessage: String?
+    private(set) var recordingFailureMessage: String?
     private var recordingPaused = false
     private var isWriting = false
     private var recordingHasAppendedFrame = false
     private var recordingTimeline: VideoRecordingTimeline?
+    private var recordingID: UUID?
+    private var pendingRecordingFrames: [PendingRecordingFrame] = []
+    private var recordingReadinessObservation: NSKeyValueObservation?
+    private var recordingFinishRequested = false
+    private var recordingIsFinalizing = false
+    private var recordingFinishCompletions: [(URL?) -> Void] = []
     private var activeRecordingSize: CGSize?
+
+    private struct PendingRecordingFrame {
+        let pixelBuffer: CVPixelBuffer
+        let presentationTime: CMTime
+        let captureStartTime: TimeInterval
+    }
 
     private var activeMode: CaptureMode?
     private let cameraOverlayPlacementStore: CameraOverlayPlacementStore
@@ -591,9 +604,11 @@ final class VideoCaptureService: NSObject, ObservableObject {
     // MARK: - Recording (AVAssetWriter)
 
     func startRecording(to outputURL: URL, width: Int = 1920, height: Int = 1080) throws {
+        let recordingID = UUID()
         let admissionEpoch = recordingAdmissionLock.withLock {
             recordingAdmissionEpoch &+= 1
             recordingAdmissionOpen = false
+            recordingAdmissionID = recordingID
             return recordingAdmissionEpoch
         }
         var startError: Error?
@@ -603,6 +618,9 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 return
             }
             do {
+                if let previousID = self.recordingID {
+                    self.failRecording(matching: previousID, message: "Video recording was replaced before finalization completed.")
+                }
                 if FileManager.default.fileExists(atPath: outputURL.path) {
                     try FileManager.default.removeItem(at: outputURL)
                 }
@@ -618,6 +636,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
                 self.recordingPaused = false
                 self.recordingTimeline = nil
                 self.recordingHasAppendedFrame = false
+                self.recordingID = recordingID
                 self.isWriting = true
             } catch {
                 startError = error
@@ -672,49 +691,58 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private func beginFinishRecording(timeoutSec: TimeInterval, completion: @escaping (URL?) -> Void) {
         let completionLock = NSLock()
         var completed = false
-        let resolve: (URL?) -> Void = { url in
-            let shouldComplete = completionLock.withLock {
+        let claimCompletion: () -> Bool = {
+            completionLock.withLock {
                 guard !completed else { return false }
                 completed = true
                 return true
             }
-            if shouldComplete { completion(url) }
         }
-        let timeout = DispatchWorkItem { resolve(nil) }
         recordingAdmissionLock.withLock {
+            let recordingID = recordingAdmissionID
             recordingAdmissionOpen = false
             recordingAdmissionEpoch &+= 1
+            let timeout = DispatchWorkItem { [weak self] in
+                guard claimCompletion() else { return }
+                self?.writerQueue.async { [weak self] in
+                    self?.failRecording(matching: recordingID, message: "Video recording finalization timed out.")
+                }
+                completion(nil)
+            }
             // Admission and enqueue share a lock, so the finish barrier follows
             // every accepted frame and no post-Stop frame can get behind it.
             writerQueue.async { [self] in
-                self.finishAdmittedRecording { url in
+                self.finishAdmittedRecording(matching: recordingID) { url in
                     timeout.cancel()
-                    resolve(url)
+                    if claimCompletion() { completion(url) }
                 }
             }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + max(0, timeoutSec), execute: timeout)
         }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + max(0, timeoutSec), execute: timeout)
     }
 
     /// Runs on writerQueue, after the last admitted sample buffer.
-    private func finishAdmittedRecording(completion: @escaping (URL?) -> Void) {
-        guard isWriting else {
+    private func finishAdmittedRecording(matching recordingID: UUID?, completion: @escaping (URL?) -> Void) {
+        guard let recordingID, self.recordingID == recordingID else {
             completion(nil)
+            return
+        }
+        recordingFinishCompletions.append(completion)
+        guard !recordingIsFinalizing else { return }
+        recordingFinishRequested = true
+        drainPendingRecordingFrames()
+    }
+
+    private func finishDrainedRecording(writer: AVAssetWriter) {
+        guard recordingHasAppendedFrame else {
+            writer.cancelWriting()
+            completeRecording(result: nil)
             return
         }
         isWriting = false
-        recordingPaused = false
-        guard let writer = assetWriter else {
-            clearWriterState()
-            completion(nil)
-            return
-        }
-        guard recordingHasAppendedFrame else {
-            writer.cancelWriting()
-            clearWriterState(matching: writer)
-            completion(nil)
-            return
-        }
+        recordingIsFinalizing = true
+        recordingReadinessObservation?.invalidate()
+        recordingReadinessObservation = nil
         videoWriterInput?.markAsFinished()
         writer.finishWriting { [weak self] in
             let result: URL?
@@ -725,13 +753,15 @@ final class VideoCaptureService: NSObject, ObservableObject {
             } else {
                 result = nil
             }
-            self?.writerQueue.async {
-                if self?.assetWriter === writer {
-                    self?.recordingFailureMessage = writer.error?.localizedDescription
-                    self?.clearWriterState(matching: writer)
-                }
+            self?.writerQueue.async { [weak self] in
+                guard let self, self.assetWriter === writer else { return }
+                self.completeRecording(
+                    result: result,
+                    failureMessage: result == nil
+                        ? writer.error?.localizedDescription ?? "Video writer did not complete the recording."
+                        : nil
+                )
             }
-            completion(result)
         }
     }
 
@@ -751,12 +781,38 @@ final class VideoCaptureService: NSObject, ObservableObject {
         }
     }
 
-    private func clearWriterState(matching writer: AVAssetWriter) {
-        guard assetWriter === writer else { return }
+    private func failRecording(matching recordingID: UUID?, message: String) {
+        guard let recordingID, self.recordingID == recordingID else { return }
+        recordingReadinessObservation?.invalidate()
+        recordingReadinessObservation = nil
+        if let writer = assetWriter, writer.status == .writing || writer.status == .unknown {
+            writer.cancelWriting()
+        }
+        completeRecording(result: nil, failureMessage: message)
+    }
+
+    private func completeRecording(result: URL?, failureMessage: String? = nil) {
+        let completions = recordingFinishCompletions
+        if let failureMessage { recordingFailureMessage = failureMessage }
         clearWriterState()
+        for completion in completions { completion(result) }
     }
 
     private func clearWriterState() {
+        recordingAdmissionLock.withLock {
+            if recordingAdmissionID == recordingID {
+                recordingAdmissionOpen = false
+                recordingAdmissionID = nil
+            }
+        }
+        recordingReadinessObservation?.invalidate()
+        recordingReadinessObservation = nil
+        pendingRecordingFrames.removeAll()
+        recordingFinishCompletions.removeAll()
+        recordingID = nil
+        recordingFinishRequested = false
+        recordingIsFinalizing = false
+        isWriting = false
         assetWriter = nil
         videoWriterInput = nil
         videoPixelBufferAdaptor = nil
@@ -793,9 +849,10 @@ final class VideoCaptureService: NSObject, ObservableObject {
 
     func enqueueRecordingSampleBuffer(_ sampleBuffer: CMSampleBuffer, capturedAt: TimeInterval) {
         recordingAdmissionLock.withLock {
-            guard recordingAdmissionOpen else { return }
+            guard recordingAdmissionOpen, let recordingID = recordingAdmissionID else { return }
             writerQueue.async { [weak self] in
-                self?.appendAdmittedRecordingSampleBuffer(sampleBuffer, capturedAt: capturedAt)
+                guard let self, self.recordingID == recordingID else { return }
+                self.appendAdmittedRecordingSampleBuffer(sampleBuffer, capturedAt: capturedAt)
             }
         }
     }
@@ -803,13 +860,19 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private func appendAdmittedRecordingSampleBuffer(_ sampleBuffer: CMSampleBuffer, capturedAt: TimeInterval) {
         guard isWriting, !recordingPaused else { return }
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        guard let input = ensureWriterStarted(for: sampleBuffer),
-              input.isReadyForMoreMediaData else { return }
+        guard ensureWriterStarted(for: sampleBuffer) != nil, let writer = assetWriter else {
+            failRecording(matching: recordingID, message: recordingFailureMessage ?? "Video writer could not start.")
+            return
+        }
+        guard writer.status == .writing else {
+            failRecording(matching: recordingID, message: writer.error?.localizedDescription ?? "Video writer is no longer writing.")
+            return
+        }
 
         let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         if recordingTimeline == nil {
             recordingTimeline = VideoRecordingTimeline()
-            assetWriter?.startSession(atSourceTime: .zero)
+            writer.startSession(atSourceTime: .zero)
         }
         guard var timeline = recordingTimeline else { return }
         let presentationTime = timeline.presentationTime(
@@ -817,20 +880,46 @@ final class VideoCaptureService: NSObject, ObservableObject {
             capturedAt: capturedAt
         )
         recordingTimeline = timeline
-
-        let didAppend = videoPixelBufferAdaptor?.append(
-            imageBuffer,
-            withPresentationTime: presentationTime
-        ) ?? false
-        if didAppend, !recordingHasAppendedFrame {
-            recordingHasAppendedFrame = true
-            onRecordingFirstFrame?(VideoRecordingTimeline.captureStartTime(
+        // Prepare timing in admission order. A later pause must not invalidate
+        // pre-pause frames that are waiting for encoder readiness.
+        pendingRecordingFrames.append(PendingRecordingFrame(
+            pixelBuffer: imageBuffer,
+            presentationTime: presentationTime,
+            captureStartTime: VideoRecordingTimeline.captureStartTime(
                 sourcePresentationTime: sourceTimestamp,
                 capturedAt: capturedAt
-            ))
+            )
+        ))
+        drainPendingRecordingFrames()
+    }
+
+    private func drainPendingRecordingFrames() {
+        guard isWriting, !recordingIsFinalizing else { return }
+        guard let writer = assetWriter, let input = videoWriterInput,
+              let adaptor = videoPixelBufferAdaptor else {
+            if recordingFinishRequested { completeRecording(result: nil) }
+            return
         }
-        if !didAppend, let error = assetWriter?.error {
-            recordingFailureMessage = error.localizedDescription
+        guard writer.status == .writing else {
+            failRecording(matching: recordingID, message: writer.error?.localizedDescription ?? "Video writer is no longer writing.")
+            return
+        }
+        var appendedCount = 0
+        while appendedCount < pendingRecordingFrames.count, input.isReadyForMoreMediaData {
+            let frame = pendingRecordingFrames[appendedCount]
+            guard adaptor.append(frame.pixelBuffer, withPresentationTime: frame.presentationTime) else {
+                failRecording(matching: recordingID, message: writer.error?.localizedDescription ?? "Video writer rejected an admitted frame.")
+                return
+            }
+            appendedCount += 1
+            if !recordingHasAppendedFrame {
+                recordingHasAppendedFrame = true
+                onRecordingFirstFrame?(frame.captureStartTime)
+            }
+        }
+        if appendedCount > 0 { pendingRecordingFrames.removeFirst(appendedCount) }
+        if recordingFinishRequested, pendingRecordingFrames.isEmpty {
+            finishDrainedRecording(writer: writer)
         }
     }
 
@@ -879,6 +968,14 @@ final class VideoCaptureService: NSObject, ObservableObject {
             assetWriter = writer
             videoWriterInput = input
             videoPixelBufferAdaptor = adaptor
+            recordingReadinessObservation = input.observe(\.isReadyForMoreMediaData, options: [.new]) {
+                [weak self, weak writer] observedInput, _ in
+                self?.writerQueue.async { [weak self, weak writer, weak input = observedInput] in
+                    guard let self, let writer, let input,
+                          self.assetWriter === writer, self.videoWriterInput === input else { return }
+                    self.drainPendingRecordingFrames()
+                }
+            }
             return input
         } catch {
             recordingFailureMessage = error.localizedDescription

@@ -6,6 +6,14 @@ import XCTest
 
 final class VideoRecordingFinalizationTests: XCTestCase {
     func testFinishReturnsWhileWriterIsBlockedThenDrainsOnlyAdmittedFrames() async throws {
+        try await assertFinishDrainsOnlyAdmittedFrames(at: [100, 101, 102])
+    }
+
+    func testFinishPreservesEveryFrameInAnAdmittedBurstUnderEncoderBackpressure() async throws {
+        try await assertFinishDrainsOnlyAdmittedFrames(at: (100..<160).map(Double.init))
+    }
+
+    private func assertFinishDrainsOnlyAdmittedFrames(at sourceTimes: [TimeInterval]) async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.blockedWriter")
@@ -27,7 +35,7 @@ final class VideoRecordingFinalizationTests: XCTestCase {
             releaseWriter.wait()
         }
         await fulfillment(of: [writerBlocked], timeout: 2)
-        for sourceTime in [100.0, 101.0, 102.0] {
+        for sourceTime in sourceTimes {
             service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: sourceTime), capturedAt: sourceTime)
         }
         XCTAssertTrue(stateLock.withLock { firstFrameTimes.isEmpty })
@@ -50,7 +58,7 @@ final class VideoRecordingFinalizationTests: XCTestCase {
 
         XCTAssertEqual(stateLock.withLock { firstFrameTimes }, [100])
         let times = try await readVideoPresentationTimes(output)
-        XCTAssertEqual(times, [0, 1, 2])
+        XCTAssertEqual(times, sourceTimes.map { $0 - sourceTimes[0] })
     }
 
     func testStopBeforeAnyFrameDoesNotReportRecordingReadiness() async throws {
@@ -86,6 +94,92 @@ final class VideoRecordingFinalizationTests: XCTestCase {
 
         let times = try await readVideoPresentationTimes(output)
         XCTAssertEqual(times, [0, 1])
+    }
+
+    func testPauseKeepsPreparedFramesAndRejectsOnlyFramesAdmittedDuringThePause() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.pauseWriter")
+        let service = VideoCaptureService(writerQueue: writer)
+        try service.startRecording(to: directory.appendingPathComponent("recording.mp4"))
+        let blocked = expectation(description: "writer blocked before the pre-pause burst")
+        let releaseWriter = DispatchSemaphore(value: 0)
+        defer { releaseWriter.signal() }
+        writer.async {
+            blocked.fulfill()
+            releaseWriter.wait()
+        }
+        await fulfillment(of: [blocked], timeout: 2)
+        for sourceTime in (100..<160).map(Double.init) {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: sourceTime), capturedAt: sourceTime)
+        }
+        releaseWriter.signal()
+        // Pause is ordered after frame preparation, but must not prevent those
+        // frames from draining when the encoder becomes ready asynchronously.
+        service.pauseRecording(at: 160)
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 170), capturedAt: 170)
+        service.resumeRecording(at: 180)
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 181), capturedAt: 181)
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 182), capturedAt: 182)
+
+        let result = await service.beginFinishRecording().value
+        let times = try await readVideoPresentationTimes(XCTUnwrap(result))
+        // This is the raw video timeline. Final composition removes pause [60, 80],
+        // placing source-relative frames 81/82 at playback times 61/62 exactly once.
+        XCTAssertEqual(times, (0..<60).map(Double.init) + [81, 82])
+    }
+
+    func testFinishDeadlineReturnsBeforeBlockedWriterAndCleanupCannotAffectTheNextRecording() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.timeoutWriter")
+        let service = VideoCaptureService(writerQueue: writer)
+        try service.startRecording(to: directory.appendingPathComponent("timed-out.mp4"))
+        let blocked = expectation(description: "writer blocked beyond the Stop deadline")
+        let releaseWriter = DispatchSemaphore(value: 0)
+        defer { releaseWriter.signal() }
+        writer.async {
+            blocked.fulfill()
+            releaseWriter.wait()
+        }
+        await fulfillment(of: [blocked], timeout: 2)
+        for sourceTime in (100..<160).map(Double.init) {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: sourceTime), capturedAt: sourceTime)
+        }
+
+        let result = await service.beginFinishRecording(timeoutSec: 0).value
+        XCTAssertNil(result, "Stop's deadline starts before its writer-queue barrier can run")
+        releaseWriter.signal()
+        XCTAssertEqual(writer.sync { service.recordingFailureMessage }, "Video recording finalization timed out.")
+
+        try service.startRecording(to: directory.appendingPathComponent("next.mp4"))
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 300), capturedAt: 300)
+        let nextResult = await service.beginFinishRecording().value
+        let times = try await readVideoPresentationTimes(XCTUnwrap(nextResult))
+        XCTAssertEqual(times, [0], "Stale readiness and finish callbacks must not clear a replacement writer")
+        XCTAssertNil(writer.sync { service.recordingFailureMessage })
+    }
+
+    func testWriterFailureReturnsNoRecordingAndDoesNotReportFirstFrameReadiness() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let invalidParent = directory.appendingPathComponent("file-instead-of-directory")
+        try Data().write(to: invalidParent)
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.failedWriter")
+        let service = VideoCaptureService(writerQueue: writer)
+        let stateLock = NSLock()
+        var firstFrameTimes: [TimeInterval] = []
+        service.onRecordingFirstFrame = { time in
+            stateLock.withLock { firstFrameTimes.append(time) }
+        }
+        try service.startRecording(to: invalidParent.appendingPathComponent("recording.mp4"))
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 100), capturedAt: 100)
+
+        let result = await service.beginFinishRecording().value
+
+        XCTAssertNil(result)
+        XCTAssertTrue(stateLock.withLock { firstFrameTimes.isEmpty })
+        XCTAssertNotNil(writer.sync { service.recordingFailureMessage })
     }
 
     private func makeTemporaryDirectory() throws -> URL {
