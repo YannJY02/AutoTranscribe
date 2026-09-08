@@ -38,9 +38,14 @@ struct LiveMediaCaptureTimeline: Codable, Equatable {
     mutating func markAudioBufferStartIfNeeded(
         receivedAt time: TimeInterval = ProcessInfo.processInfo.systemUptime,
         sampleCount: Int,
-        sampleRate: Int
+        sampleRate: Int,
+        sourceStartSec: TimeInterval? = nil
     ) {
         guard audioStartSec == nil else { return }
+        if let sourceStartSec, sourceStartSec.isFinite, sourceStartSec >= 0 {
+            markAudioStartIfNeeded(at: sourceStartSec)
+            return
+        }
         let bufferDurationSec = sampleCount > 0 && sampleRate > 0
             ? Double(sampleCount) / Double(sampleRate)
             : 0

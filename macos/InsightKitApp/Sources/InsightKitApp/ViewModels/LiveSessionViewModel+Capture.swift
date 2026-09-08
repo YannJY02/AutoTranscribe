@@ -1,5 +1,8 @@
 import AVFoundation
 import Foundation
+import OSLog
+
+private let captureTimingLogger = Logger(subsystem: "com.yannjy.insightkit", category: "CaptureTiming")
 
 enum LiveCaptureHealthHint {
     static let noInput = "采集无输入：请检查音频源选择、麦克风/屏幕录制权限，或先切换到“仅麦克风”排查。"
@@ -25,30 +28,114 @@ private func isTransientLiveStatus(_ message: String?) -> Bool {
 }
 
 extension LiveSessionViewModel {
-    func handleMixedSamples(_ samples: [Float]) {
-        if samples.isEmpty || !isRunning || isLiveRecordingPaused() {
-            return
+    func configureVideoCaptureCallbacks(meetingID: String) {
+        videoCaptureService.onRecordingFirstFrame = { [weak self] time in
+            guard let self else { return }
+            self.stateQueue.sync {
+                guard self.isRunning, self._sessionState.activeMeetingID == meetingID else { return }
+                self.captureTimeline.markVideoStart(at: time)
+            }
         }
+        videoCaptureService.onRecordingFailure = { [weak self] message in
+            guard let self else { return }
+            self.updateMain {
+                guard self.isCurrentLiveSession(meetingID) else { return }
+                self.publishError(NSError(domain: "InsightKit", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: message
+                ]))
+                self.stopLiveSession(finalState: .error(message))
+            }
+        }
+    }
 
-        let receivedAt = ProcessInfo.processInfo.systemUptime
-        let sampleCount = samples.count
-        let sampleRate = chunkAssembler.sampleRate
-        stateQueue.sync {
-            captureTimeline.markAudioBufferStartIfNeeded(
-                receivedAt: receivedAt,
-                sampleCount: sampleCount,
-                sampleRate: sampleRate
+    func configureAudioCaptureCallbacks(meetingID: String? = nil) {
+        micCapture.onBuffer = { [weak self] buffer in
+            self?.handleCapturedBuffer(buffer, source: .microphone, meetingID: meetingID)
+        }
+        systemAudioCapture.onBuffer = { [weak self] buffer, sourceStartSec in
+            self?.handleCapturedBuffer(
+                buffer, source: .systemAudio, meetingID: meetingID, sourceStartSec: sourceStartSec
             )
         }
+        mixBus.onMixedSamples = { [weak self] samples in
+            guard let self, let meetingID = meetingID ?? self.currentActiveMeetingID() else { return }
+            self.archiveAcceptedMixedSamples(samples, meetingID: meetingID)
+        }
+    }
 
-        pipelineQueue.async { [weak self] in
-            guard let self else { return }
-            guard self.isRunning, !self.isLiveRecordingPaused() else { return }
+    func handleCapturedBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        source: AudioMixBus.Source,
+        meetingID: String?,
+        sourceStartSec: TimeInterval? = nil
+    ) {
+        let accepted = stateQueue.sync {
+            guard let activeMeetingID = _sessionState.activeMeetingID,
+                  meetingID == nil || meetingID == activeMeetingID,
+                  isRunning || audioCaptureDraining,
+                  !recordingPaused else { return false }
+            let receivedAt = recordingUptime()
+            let isFirstSystemAudioBuffer = source == .systemAudio && captureTimeline.audioStartSec == nil
+            captureTimeline.markAudioBufferStartIfNeeded(
+                receivedAt: receivedAt,
+                sampleCount: Int(buffer.frameLength),
+                sampleRate: Int(buffer.format.sampleRate),
+                sourceStartSec: sourceStartSec
+            )
+            if isFirstSystemAudioBuffer {
+                let validSourceStart = sourceStartSec.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+                let duration = buffer.format.sampleRate > 0
+                    ? Double(buffer.frameLength) / buffer.format.sampleRate : 0
+                let oldEstimateMinusPTS = validSourceStart.map { receivedAt - duration - $0 } ?? -1
+                let timingBasis = validSourceStart == nil ? "receipt_minus_duration" : "source_pts"
+                let selectedStart = captureTimeline.audioStartSec ?? -1
+                captureTimingLogger.notice(
+                    "system_audio_first_buffer source_pts_s=\(validSourceStart ?? -1, privacy: .public) received_at_s=\(receivedAt, privacy: .public) duration_s=\(duration, privacy: .public) selected_start_s=\(selectedStart, privacy: .public) old_estimate_minus_pts_s=\(oldEstimateMinusPTS, privacy: .public) basis=\(timingBasis, privacy: .public)"
+                )
+            }
+            switch source {
+            case .microphone: mixBus.ingestMicrophone(buffer)
+            case .systemAudio: mixBus.ingestSystemAudio(buffer)
+            }
+            return true
+        }
+        if accepted { recordInputLevel(buffer: buffer, source: source) }
+    }
+
+    func handleMixedSamples(_ samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        stateQueue.sync {
+            guard let meetingID = _sessionState.activeMeetingID,
+                  isRunning,
+                  !recordingPaused else { return }
+            enqueueAcceptedAudioArchive(samples, meetingID: meetingID)
+        }
+    }
+
+    private func archiveAcceptedMixedSamples(_ samples: [Float], meetingID: String) {
+        guard !samples.isEmpty else { return }
+        stateQueue.sync {
+            guard _sessionState.activeMeetingID == meetingID else { return }
+            enqueueAcceptedAudioArchive(samples, meetingID: meetingID)
+        }
+    }
+
+    /// Called under stateQueue, preserving acceptance order across pause/stop.
+    private func enqueueAcceptedAudioArchive(_ samples: [Float], meetingID: String) {
+        captureTimeline.markAudioBufferStartIfNeeded(
+            receivedAt: recordingUptime(),
+            sampleCount: samples.count,
+            sampleRate: chunkAssembler.sampleRate
+        )
+        audioArchiveQueue.async { [weak self] in
+            guard let self, self.currentActiveMeetingID() == meetingID else { return }
             do {
                 let chunks = try self.chunkAssembler.append(samples: samples)
-                guard let meetingID = self.currentActiveMeetingID() else { return }
-                for chunk in chunks {
-                    self.enqueueChunkForProcessing(chunk, meetingID: meetingID)
+                self.pipelineQueue.async {
+                    guard self.currentActiveMeetingID() == meetingID else { return }
+                    for chunk in chunks {
+                        self.enqueueChunkForProcessing(chunk, meetingID: meetingID)
+                    }
                 }
             } catch {
                 self.publishError(error)
@@ -102,6 +189,8 @@ extension LiveSessionViewModel {
     }
 
     func pumpChunkQueueIfNeeded(meetingID: String) {
+        guard !stateQueue.sync(execute: { visualRecordingStartPending }) else { return }
+        guard !isRunning || !shouldHoldChunksForWarmup else { return }
         guard !chunkInFlight else {
             return
         }

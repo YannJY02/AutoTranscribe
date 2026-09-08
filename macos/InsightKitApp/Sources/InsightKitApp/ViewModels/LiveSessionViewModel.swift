@@ -54,21 +54,31 @@ final class LiveSessionViewModel: ObservableObject {
     let finalMediaTranscriber: FinalMediaTranscribing
     let transcriptRecoveryService: TranscriptRecoveryServicing
     let analyticsSubmit: (@escaping (ProductAnalytics) -> Void) -> Void
+    let recordingUptime: () -> TimeInterval
 
     // Queues — internal so extensions can access them
+    /// Captured audio must reach disk even while a synchronous ASR request is busy.
+    let audioArchiveQueue = DispatchQueue(label: "InsightKit.LiveSession.AudioArchive")
     let pipelineQueue = DispatchQueue(label: "InsightKit.LiveSession.Pipeline")
     let stateQueue = DispatchQueue(label: "InsightKit.LiveSession.State")
     /// Dedicated GCD queue for blocking RPC I/O – avoids exhausting Swift's
     /// cooperative thread pool which would stall all async/SwiftUI work.
     let rpcQueue = DispatchQueue(label: "InsightKit.LiveSession.RPC", qos: .userInitiated)
+    let runtimeStartupGroup = DispatchGroup()
 
     // Session state — internal so extensions can access them
     var activeMode: AudioInputMode = .microphone
     var insightRefreshSuspended = false
     var stopDrainingMeetingID: String?
+    var audioCaptureDraining = false
+    var runtimeSessionStartingMeetingID: String?
     var captureMonitorTask: Task<Void, Never>?
     var lastCaptureHintAt: Date?
     var recordingPaused = false
+    var captureStartupTask: Task<Void, Never>?
+    /// Provisional audio is retained for A/V alignment, but is not a recording
+    /// until the selected visual writer accepts its first frame.
+    var visualRecordingStartPending = false
 
     var _isRunning = false
     var _sessionState = SessionHandle()
@@ -116,7 +126,12 @@ final class LiveSessionViewModel: ObservableObject {
     @Published var reviewSourceStatusMessage: String?
     let videoCaptureService = VideoCaptureService()
     var recordingDurationTimer: Timer?
+    var recordingClockStartUptime: TimeInterval?
+    var recordingDurationAtClockStart: TimeInterval = 0
     var visualSelectionUsesScreenOnlyFallback = false
+    var visualPreviewGeneration = UUID()
+    var visualPreviewSetupTask: Task<Void, Never>?
+    var visualPreviewPreparationPending = false
 
     // Phase 5: Records persistence
     var recordsService: RecordsIndexService?
@@ -140,7 +155,8 @@ final class LiveSessionViewModel: ObservableObject {
         mediaAssetInspector: MediaAssetInspecting = AVFoundationMediaAssetInspector(),
         finalMediaTranscriber: FinalMediaTranscribing? = nil,
         transcriptRecoveryService: TranscriptRecoveryServicing? = nil,
-        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit
+        analyticsSubmit: @escaping (@escaping (ProductAnalytics) -> Void) -> Void = ProductAnalytics.submit,
+        recordingUptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.rpcClient = rpcClient
         self.sidecarManager = sidecarManager
@@ -154,23 +170,12 @@ final class LiveSessionViewModel: ObservableObject {
         self.finalMediaTranscriber = finalMediaTranscriber ?? FinalMediaTranscriptionRouter(rpcClient: rpcClient)
         self.transcriptRecoveryService = transcriptRecoveryService ?? TranscriptRecoveryService(rpcClient: rpcClient)
         self.analyticsSubmit = analyticsSubmit
+        self.recordingUptime = recordingUptime
         self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
             runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
         )
 
-        self.micCapture.onBuffer = { [weak self] buffer in
-            self?.recordInputLevel(buffer: buffer, source: .microphone)
-            self?.mixBus.ingestMicrophone(buffer)
-        }
-
-        self.systemAudioCapture.onBuffer = { [weak self] buffer in
-            self?.recordInputLevel(buffer: buffer, source: .systemAudio)
-            self?.mixBus.ingestSystemAudio(buffer)
-        }
-
-        self.mixBus.onMixedSamples = { [weak self] samples in
-            self?.handleMixedSamples(samples)
-        }
+        configureAudioCaptureCallbacks()
         self.videoCaptureService.onRecordingFirstFrame = { [weak self] time in
             self?.stateQueue.sync {
                 self?.captureTimeline.markVideoStart(at: time)
@@ -192,6 +197,7 @@ final class LiveSessionViewModel: ObservableObject {
 
     private func shutdownForDeinit() {
         captureMonitorTask?.cancel()
+        captureStartupTask?.cancel()
         cancelWarmupTasks()
         stopRecordingDurationTimer()
 
@@ -219,7 +225,11 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     var canStartSession: Bool {
-        !isRunning && currentActiveMeetingID() == nil
+        !isRunning && !isFinalizingLiveSession && captureStartupTask == nil && currentActiveMeetingID() == nil
+    }
+    var isPreparingRecording: Bool { isRunning && sessionPhase == .preparing }
+    var isActivelyRecording: Bool {
+        isRunning && sessionPhase == .running && !isRecordingPaused && !isFinalizingLiveSession
     }
     var canStopSession: Bool { isRunning }
     var canBuildFinal: Bool { currentBuildTargetID() != nil }
@@ -241,7 +251,11 @@ final class LiveSessionViewModel: ObservableObject {
 
     var isFinalizingRecording: Bool { isFinalizingLiveSession }
 
-    var shouldHoldChunksForWarmup: Bool { !asrWarmStatus.ready }
+    var shouldHoldChunksForWarmup: Bool {
+        !asrWarmStatus.ready || stateQueue.sync {
+            runtimeSessionStartingMeetingID != nil || visualRecordingStartPending
+        }
+    }
 
     var activeCaptureState: CaptureState {
         LiveCaptureStateMapper.captureState(
@@ -252,6 +266,9 @@ final class LiveSessionViewModel: ObservableObject {
 
     var liveProgressPresentation: LiveProgressPresentation? {
         if isFinalizingLiveSession {
+            if stateQueue.sync(execute: { visualRecordingStartPending }) {
+                return LiveProgressPresentation(title: "正在取消录制准备", message: "正在停止采集并清理临时数据。")
+            }
             return LiveProgressPresentation(
                 title: "正在整理录制内容",
                 message: "正在保存回看资料、转写和笔记，完成后会进入智能纪要选择。"
@@ -402,6 +419,7 @@ final class LiveSessionViewModel: ObservableObject {
             _isRunningLock.unlock()
             _sessionState.activeMeetingID = meetingID
             _sessionState.lastMeetingID = nil
+            runtimeSessionStartingMeetingID = meetingID
             activeMode = selectedMode
             insightRefreshSuspended = false
             recordingPaused = false
@@ -414,8 +432,9 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         mixBus.setMode(selectedMode)
+        configureAudioCaptureCallbacks(meetingID: meetingID)
         captureState = .preparingRuntime
-        sessionPhase = .running
+        sessionPhase = .preparing
         analysisRuntimeState = .ready
         captureHealth = CaptureHealthSnapshot(
             sessionStartedAt: startupAt,
@@ -426,8 +445,16 @@ final class LiveSessionViewModel: ObservableObject {
         )
         startCaptureHealthMonitor()
 
+        // Media capture starts independently from runtime/model preparation.
+        // Stay on the setup surface until the selected sources and writer are armed.
+        beginCaptureStartup(meetingID: meetingID, mode: selectedMode, systemSourceID: selectedSystemSourceID)
+
+        let startupGroup = runtimeStartupGroup
+        startupGroup.enter()
         rpcQueue.async { [weak self] in
+            defer { startupGroup.leave() }
             guard let self else { return }
+            guard self.isCurrentLiveSession(meetingID) else { return }
             do {
                 let selectedEngine = AppConfigStore.shared.config.asr.engine
                 let selectedModel = AppConfigStore.shared.currentASRModel()
@@ -435,6 +462,7 @@ final class LiveSessionViewModel: ObservableObject {
                     guard let self else { return }
                     _ = try self.rpcClient.ensureReady(timeoutSec: 6)
                 })
+                guard self.isCurrentLiveSession(meetingID) else { return }
                 self.refreshSidecarStatus()
                 try self.assertSidecarCapabilities([
                     "session.start",
@@ -448,13 +476,17 @@ final class LiveSessionViewModel: ObservableObject {
                     "records.save",
                 ])
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
+                guard self.isCurrentLiveSession(meetingID) else { return }
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
+                guard self.isCurrentLiveSession(meetingID) else { return }
+                self.stateQueue.sync { self.runtimeSessionStartingMeetingID = nil }
                 let analyticsPath = ProductAnalyticsPath(
                     providers: try? self.rpcClient.providersStatus(probeActive: false),
                     analysisMode: selectedAnalysisMode
                 )
                 self.analyticsSubmit { $0.resolveWorkflow("live", path: analyticsPath) }
                 self.updateMain {
+                    guard self.isCurrentLiveSession(meetingID) else { return }
                     self.captureState = .warmingModel
                     self.liveWarmup = LiveWarmupSnapshot(
                         state: .idle,
@@ -468,41 +500,17 @@ final class LiveSessionViewModel: ObservableObject {
                 }
                 self.probeProvidersInBackground()
 
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    do {
-                        if selectedMode != .systemAudio {
-                            try await self.micCapture.start()
-                        }
-                        if selectedMode != .microphone {
-                            guard let sourceID = self.selectedSystemSourceID else {
-                                throw NSError(domain: "InsightKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "缺少系统音频源"])
-                            }
-                            try await self.systemAudioCapture.start(sourceID: sourceID)
-                        }
-                        self.startVisualRecordingIfNeeded(meetingID: meetingID)
-                        self.permissionState = .granted
-                        self.startRecordingDurationTimer()
-                        self.beginWarmupLifecycle(
-                            meetingID: meetingID,
-                            startupAt: startupAt,
-                            engine: selectedEngine,
-                            model: selectedModel
-                        )
-                    } catch {
-                        self.analyticsSubmit(ProductAnalytics.failure {
-                            $0.workflowFailed(
-                                "live",
-                                phase: "preparing",
-                                errorCode: "runtime-unavailable",
-                                recoveryAction: "retry"
-                            )
-                        })
-                        self.publishError(error)
-                        self.stopLiveSession(finalState: .error(error.localizedDescription))
-                    }
+                self.updateMain {
+                    guard self.isCurrentLiveSession(meetingID) else { return }
+                    self.beginWarmupLifecycle(
+                        meetingID: meetingID,
+                        startupAt: startupAt,
+                        engine: selectedEngine,
+                        model: selectedModel
+                    )
                 }
             } catch {
+                guard self.isCurrentLiveSession(meetingID) else { return }
                 self.analyticsSubmit(ProductAnalytics.failure {
                     $0.workflowFailed(
                         "live",
@@ -517,6 +525,111 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    func isCurrentLiveSession(_ meetingID: String) -> Bool {
+        stateQueue.sync { isRunning && _sessionState.activeMeetingID == meetingID }
+    }
+
+    func beginCaptureStartup(
+        meetingID: String, mode: AudioInputMode, systemSourceID: String?, readinessTimeoutSec: TimeInterval = 5
+    ) {
+        stateQueue.sync { visualRecordingStartPending = visualPreviewSource != .none }
+        captureStartupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.captureStartupTask = nil }
+            do {
+                guard self.isCurrentLiveSession(meetingID), !Task.isCancelled else { return }
+                if mode != .systemAudio {
+                    try await self.micCapture.start()
+                }
+                guard self.isCurrentLiveSession(meetingID), !Task.isCancelled else {
+                    await self.micCapture.stopAndDrain()
+                    return
+                }
+                if self.visualPreviewSource != .none, !self.videoCaptureService.isCapturing,
+                   !self.visualPreviewPreparationPending, self.visualPreviewSetupTask == nil {
+                    self.restartSelectedVisualPreview()
+                }
+                if mode != .microphone {
+                    guard let sourceID = systemSourceID else {
+                        throw NSError(domain: "InsightKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "缺少系统音频源"])
+                    }
+                    try await self.systemAudioCapture.start(sourceID: sourceID)
+                }
+                guard self.isCurrentLiveSession(meetingID), !Task.isCancelled else {
+                    await self.micCapture.stopAndDrain()
+                    await self.systemAudioCapture.stop()
+                    return
+                }
+                self.configureVideoCaptureCallbacks(meetingID: meetingID)
+                try await self.startVisualRecordingWhenReady(meetingID: meetingID, timeoutSec: readinessTimeoutSec)
+                guard !Task.isCancelled, self.stateQueue.sync(execute: {
+                    guard self.isRunning, self._sessionState.activeMeetingID == meetingID else { return false }
+                    self.visualRecordingStartPending = false
+                    return true
+                }) else { return }
+                self.permissionState = .granted
+                self.sessionPhase = .running
+                self.beginRecordingClockForCapturedMedia()
+                self.pipelineQueue.async { self.pumpChunkQueueIfNeeded(meetingID: meetingID) }
+            } catch {
+                guard self.isCurrentLiveSession(meetingID), !Task.isCancelled else { return }
+                self.analyticsSubmit(ProductAnalytics.failure {
+                    $0.workflowFailed("live", phase: "preparing", errorCode: "runtime-unavailable", recoveryAction: "retry")
+                })
+                self.publishError(error)
+                self.stopLiveSession(finalState: .error(error.localizedDescription))
+            }
+        }
+    }
+
+    @MainActor
+    func startVisualRecordingWhenReady(meetingID: String, timeoutSec: TimeInterval = 5) async throws {
+        guard visualPreviewSource != .none else { return }
+        var readinessDeadline: TimeInterval?
+        while true {
+            try Task.checkCancellation()
+            guard isCurrentLiveSession(meetingID) else { throw CancellationError() }
+            // Overlay camera capture may start before the screen stream setup
+            // completes. Both the source and its setup task must be ready.
+            let setupPending = visualPreviewPreparationPending || visualPreviewSetupTask != nil
+            if videoCaptureService.isCapturing, !setupPending { break }
+            // Permission dialogs and the system sharing picker are interactive;
+            // only a settled source that does not become ready can time out.
+            if setupPending {
+                readinessDeadline = nil
+            } else if readinessDeadline == nil {
+                readinessDeadline = ProcessInfo.processInfo.systemUptime + timeoutSec
+            }
+            guard readinessDeadline.map({ ProcessInfo.processInfo.systemUptime < $0 }) ?? true else {
+                throw NSError(domain: "InsightKit", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "视频采集尚未就绪。请检查屏幕共享或摄像头预览后重试。"
+                ])
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard startVisualRecordingIfNeeded(meetingID: meetingID) else {
+            throw NSError(domain: "InsightKit", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: capturePreviewStatusMessage ?? "视频录制未能启动。"
+            ])
+        }
+        try await waitForVisualRecordingStart(meetingID: meetingID, timeoutSec: timeoutSec)
+    }
+
+    func waitForVisualRecordingStart(meetingID: String, timeoutSec: TimeInterval = 5) async throws {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeoutSec
+        while true {
+            try Task.checkCancellation()
+            guard isCurrentLiveSession(meetingID) else { throw CancellationError() }
+            if stateQueue.sync(execute: { captureTimeline.videoStartSec != nil }) { return }
+            guard ProcessInfo.processInfo.systemUptime < deadline else {
+                throw NSError(domain: "InsightKit", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "未收到可录制的视频画面。请检查屏幕共享或摄像头预览后重试。"
+                ])
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     func stopLiveSession() {
         stopLiveSession(finalState: .idle)
     }
@@ -528,48 +641,103 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
 
-        let stopTime = ProcessInfo.processInfo.systemUptime
-        let activeMeetingID = stateQueue.sync {
+        let stopTime = recordingUptime()
+        let (activeMeetingID, discardUnstartedRecording) = stateQueue.sync {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
             if recordingPaused {
                 captureTimeline.markPauseEnd(at: stopTime)
             }
-            recordingPaused = false
             stopDrainingMeetingID = _sessionState.activeMeetingID
-            return _sessionState.activeMeetingID
+            audioCaptureDraining = true
+            visualPreviewGeneration = UUID()
+            return (_sessionState.activeMeetingID, visualRecordingStartPending)
         }
         captureMonitorTask?.cancel()
         captureMonitorTask = nil
         cancelWarmupTasks()
-        stopRecordingDurationTimer()
+        captureStartupTask?.cancel()
+        visualPreviewSetupTask?.cancel()
+        visualPreviewSetupTask = nil
+        visualPreviewPreparationPending = false
+        stopRecordingDurationTimer(at: stopTime)
         updateMain {
             self.isFinalizingLiveSession = true
             self.isRecordingPaused = false
-            self.recordingStatusMessage = "录制已停止，正在处理剩余音频并生成最终转写，请保持应用打开。"
+            self.recordingStatusMessage = discardUnstartedRecording ? nil
+                : "录制已停止，正在处理剩余音频并生成最终转写，请保持应用打开。"
         }
 
         micCapture.stop()
-        Task {
-            await systemAudioCapture.stop()
-        }
+        let systemAudioStopped = systemAudioCapture.beginStop()
         let presentationCaptureStatus = currentPresentationCaptureStatus()
         pendingPresentationCaptureStatus = presentationCaptureStatus
         let expectedVisualMedia = presentationCaptureStatus != nil
-        if expectedVisualMedia {
-            temporaryRecordingURL = self.videoCaptureService.finishRecording()
-        }
-        self.videoCaptureService.stopCapture()
+        let provisionalVideoURL = discardUnstartedRecording ? temporaryRecordingURL : nil
+        let videoRecordingFinished = expectedVisualMedia ? videoCaptureService.beginFinishRecording() : nil
+        videoCaptureService.stopCapture()
 
+        Task { [weak self] in
+            guard let self else { return }
+            await self.micCapture.stopAndDrain()
+            await systemAudioStopped.value
+            await self.mixBus.finish()
+            self.stateQueue.sync {
+                self.audioCaptureDraining = false
+                self.recordingPaused = false
+            }
+            if let videoRecordingFinished {
+                self.temporaryRecordingURL = await videoRecordingFinished.value
+            }
+            if let provisionalVideoURL {
+                try? FileManager.default.removeItem(at: provisionalVideoURL)
+                self.temporaryRecordingURL = nil
+            }
+            // Acceptance and the archive barrier share one queue: a buffer is
+            // either submitted before this barrier or rejected after sealing.
+            self.stateQueue.sync {
+                self.audioArchiveQueue.async {
+                    var tail: [AudioChunk] = []
+                    do {
+                        let remaining = discardUnstartedRecording ? [] : try self.chunkAssembler.flush(
+                            minDurationSec: 1 / Double(self.chunkAssembler.sampleRate))
+                        if !self.shouldHoldChunksForWarmup {
+                            tail = remaining.filter { $0.endMs - $0.startMs >= 1_000 }
+                        }
+                    } catch {
+                        self.publishError(error)
+                    }
+                    // Preserve media before any fallible final ASR/runtime RPC.
+                    if let meetingID = activeMeetingID, !discardUnstartedRecording {
+                        _ = self.prepareTemporaryRecordingForSave(
+                            meetingID: meetingID,
+                            expectedVisualMedia: expectedVisualMedia
+                        )
+                    }
+                    self.finalizeStoppedLiveSession(
+                        meetingID: activeMeetingID, tail: tail, finalState: finalState,
+                        discardUnstartedRecording: discardUnstartedRecording
+                    )
+                }
+            }
+        }
+    }
+
+    private func finalizeStoppedLiveSession(
+        meetingID activeMeetingID: String?, tail: [AudioChunk], finalState: CaptureState,
+        discardUnstartedRecording: Bool = false
+    ) {
         pipelineQueue.async { [weak self] in
             guard let self else { return }
-            let shouldFlushTail = self.asrWarmStatus.ready
+            // A cancelled startup may still be finishing an RPC. Its session
+            // creation must settle before the finalization lease is requested.
+            self.runtimeStartupGroup.wait()
             var drainedSegments: [TranscriptSegment] = []
             var finalizationLeaseToken: String?
             var finalizationFailed = false
             do {
-                let pendingChunks = self.queuedChunks
+                let pendingChunks = discardUnstartedRecording ? [] : self.queuedChunks
                 self.queuedChunks.removeAll(keepingCapacity: false)
                 self.chunkInFlight = false
                 if let meetingID = activeMeetingID {
@@ -578,26 +746,20 @@ final class LiveSessionViewModel: ObservableObject {
                         drainedSegments.append(contentsOf: outcome.transcriptSegments)
                     }
                 }
-                if shouldFlushTail {
-                    let tail = try self.chunkAssembler.flush(minDurationSec: 1.0)
-                    if let meetingID = activeMeetingID {
-                        for chunk in tail {
-                            let outcome = try self.processChunk(chunk, meetingID: meetingID)
-                            drainedSegments.append(contentsOf: outcome.transcriptSegments)
-                        }
+                if let meetingID = activeMeetingID {
+                    for chunk in tail {
+                        let outcome = try self.processChunk(chunk, meetingID: meetingID)
+                        drainedSegments.append(contentsOf: outcome.transcriptSegments)
                     }
                 }
                 if let meetingID = activeMeetingID {
-                    let leaseToken = UUID().uuidString
-                    finalizationLeaseToken = leaseToken
-                    try self.rpcClient.sessionStopForFinalization(
-                        meetingID: meetingID,
-                        leaseToken: leaseToken
-                    )
-                    _ = self.prepareTemporaryRecordingForSave(
-                        meetingID: meetingID,
-                        expectedVisualMedia: expectedVisualMedia
-                    )
+                    if discardUnstartedRecording {
+                        try self.rpcClient.sessionStop(meetingID: meetingID)
+                    } else {
+                        let leaseToken = UUID().uuidString
+                        finalizationLeaseToken = leaseToken
+                        try self.rpcClient.sessionStopForFinalization(meetingID: meetingID, leaseToken: leaseToken)
+                    }
                 }
             } catch {
                 finalizationFailed = true
@@ -612,11 +774,19 @@ final class LiveSessionViewModel: ObservableObject {
                 self.publishError(error)
             }
 
-            self.chunkAssembler.reset()
+            self.audioArchiveQueue.sync { self.chunkAssembler.reset() }
+            if discardUnstartedRecording, let url = self.temporaryRecordingURL {
+                try? FileManager.default.removeItem(at: url)
+                self.temporaryRecordingURL = nil
+            }
             self.stateQueue.sync {
-                self._sessionState.lastMeetingID = activeMeetingID ?? self._sessionState.lastMeetingID
+                if !discardUnstartedRecording {
+                    self._sessionState.lastMeetingID = activeMeetingID ?? self._sessionState.lastMeetingID
+                }
                 self._sessionState.activeMeetingID = nil
                 self.stopDrainingMeetingID = nil
+                self.runtimeSessionStartingMeetingID = nil
+                self.visualRecordingStartPending = false
             }
             self.transcriptPipeline.reset()
             self.syncSessionHandleFromState()
@@ -625,10 +795,10 @@ final class LiveSessionViewModel: ObservableObject {
                 if !finalizationFailed {
                     self.captureState = finalState
                 }
-                self.sessionPhase = .postSession
+                self.sessionPhase = discardUnstartedRecording ? .preparing : .postSession
             }
             // Save record folder after session ends
-            if let meetingID = activeMeetingID {
+            if let meetingID = activeMeetingID, !discardUnstartedRecording {
                 let transcriptOverride = (self.transcriptSegments + drainedSegments)
                     .sorted { $0.startMs < $1.startMs }
                 self.saveToRecords(
@@ -794,11 +964,21 @@ final class LiveSessionViewModel: ObservableObject {
             recordingStatusMessage = "导出正在完成，请稍候再新建会话。"
             return false
         }
+        guard !isFinalizingLiveSession else {
+            recordingStatusMessage = "录制资料正在保存，请稍候再新建会话。"
+            return false
+        }
+        if isRunning {
+            stopLiveSession()
+            return false
+        }
+        guard captureStartupTask == nil else { return false }
         let analyticsPhase = sessionPhase == .postSession
             ? "finalizing"
             : sessionPhase == .reviewing ? "reviewing" : "running"
         analyticsSubmit { $0.workflowCancelled("live", phase: analyticsPhase) }
         stopLiveSession()
+        stopCameraPreview()
         stateQueue.sync {
             self._sessionState = SessionHandle()
         }
@@ -845,8 +1025,9 @@ final class LiveSessionViewModel: ObservableObject {
 
     // MARK: - Camera Preview
 
-    func startVisualRecordingIfNeeded(meetingID: String) {
-        guard visualPreviewSource != .none else { return }
+    @discardableResult
+    func startVisualRecordingIfNeeded(meetingID: String) -> Bool {
+        guard visualPreviewSource != .none else { return true }
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("InsightKit")
             .appendingPathComponent(meetingID)
@@ -855,17 +1036,37 @@ final class LiveSessionViewModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
             try videoCaptureService.startRecording(to: outputURL)
-            stateQueue.sync {
-                captureTimeline.markVideoStart()
-            }
             temporaryRecordingURL = outputURL
+            return true
         } catch {
             temporaryRecordingURL = nil
-            capturePreviewStatusMessage = "视频回看录制未能启动；本次结束后将保留音频、转写与笔记。\(error.localizedDescription)"
+            capturePreviewStatusMessage = "视频录制未能启动。请检查预览后重试。\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    var isCameraPreviewSelected: Bool {
+        switch visualPreviewSource {
+        case .none:
+            return false
+        case .camera, .presenterOverlay, .screenWithCameraOverlay:
+            return true
+        case .screen:
+            return visualSelectionUsesScreenOnlyFallback
+        }
+    }
+
+    var isScreenPreviewSelected: Bool {
+        switch visualPreviewSource {
+        case .none, .camera:
+            return false
+        case .screen, .presenterOverlay, .screenWithCameraOverlay:
+            return true
         }
     }
 
     func applyVisualPreviewSelection(cameraEnabled: Bool, screenEnabled: Bool) {
+        guard !isRunning, !isFinalizingLiveSession else { return }
         visualSelectionUsesScreenOnlyFallback = false
         let plan = LiveVisualPreviewPlan.resolve(
             cameraEnabled: cameraEnabled,
@@ -881,6 +1082,10 @@ final class LiveSessionViewModel: ObservableObject {
         if visualPreviewSource == plan.source {
             return
         }
+        stateQueue.sync { visualPreviewGeneration = UUID() }
+        visualPreviewSetupTask?.cancel()
+        visualPreviewSetupTask = nil
+        visualPreviewPreparationPending = false
 
         if visualPreviewSource != .none {
             videoCaptureService.stopCapture(waitUntilStopped: true)
@@ -931,9 +1136,12 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
         capturePreviewStatusMessage = "正在准备摄像头预览..."
+        visualPreviewPreparationPending = true
+        let generation = stateQueue.sync { visualPreviewGeneration }
         videoCaptureService.checkCameraPermission()
         switch videoCaptureService.cameraPermission {
         case .denied:
+            visualPreviewPreparationPending = false
             // Already denied — open settings instead of crashing
             capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头。"
             videoCaptureService.openCameraSettings()
@@ -942,9 +1150,11 @@ final class LiveSessionViewModel: ObservableObject {
             // Not determined — request permission (requires NSCameraUsageDescription)
             Task { @MainActor in
                 let granted = await videoCaptureService.requestCameraPermission()
+                guard isCurrentVisualPreview(generation) else { return }
                 if granted {
                     startCameraCapture()
                 } else {
+                    visualPreviewPreparationPending = false
                     capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头。"
                 }
             }
@@ -954,10 +1164,13 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     private func startCameraCapture() {
+        let generation = stateQueue.sync { visualPreviewGeneration }
         videoCaptureService.enumerateCameras()
         // enumerateCameras dispatches to main async; wait briefly for results
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            guard self.isCurrentVisualPreview(generation) else { return }
+            defer { self.visualPreviewPreparationPending = false }
             guard let firstCamera = self.videoCaptureService.availableCameras.first else {
                 self.capturePreviewStatusMessage = "没有找到可用摄像头。请检查设备连接后再试。"
                 return
@@ -978,11 +1191,14 @@ final class LiveSessionViewModel: ObservableObject {
         let message = receivingMessage
             ?? "正在准备屏幕预览；若一直没有画面，请确认系统设置已允许 InsightKit 录制屏幕。"
         capturePreviewStatusMessage = message
+        visualPreviewPreparationPending = true
+        let generation = stateQueue.sync { visualPreviewGeneration }
 
         Task { [weak self] in
             guard let self else { return }
             await self.videoCaptureService.enumerateScreens()
             await MainActor.run {
+                guard self.isCurrentVisualPreview(generation) else { return }
                 self.startFirstAvailableScreenPreview(receivingMessage: message)
             }
         }
@@ -993,18 +1209,23 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
         capturePreviewStatusMessage = "屏幕录制 + Presenter Overlay。请在 macOS 视频效果菜单中确认演示者叠加；如果未开启，本次 Record 将仅包含屏幕。"
+        visualPreviewPreparationPending = true
+        let generation = stateQueue.sync { visualPreviewGeneration }
         videoCaptureService.checkCameraPermission()
         switch videoCaptureService.cameraPermission {
         case .denied:
+            visualPreviewPreparationPending = false
             capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头，Presenter Overlay 才能由 macOS 合入画面。"
             videoCaptureService.openCameraSettings()
             return
         case .unknown:
             Task { @MainActor in
                 let granted = await videoCaptureService.requestCameraPermission()
+                guard isCurrentVisualPreview(generation) else { return }
                 if granted {
                     startPresenterOverlayScreenPreview()
                 } else {
+                    visualPreviewPreparationPending = false
                     capturePreviewStatusMessage = "摄像头权限未开启。请在系统设置中允许 InsightKit 使用摄像头，Presenter Overlay 才能由 macOS 合入画面。"
                 }
             }
@@ -1014,10 +1235,12 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     private func startPresenterOverlayScreenPreview() {
+        let generation = stateQueue.sync { visualPreviewGeneration }
         Task { [weak self] in
             guard let self else { return }
             await self.videoCaptureService.enumerateScreens()
             await MainActor.run {
+                guard self.isCurrentVisualPreview(generation) else { return }
                 self.startFirstAvailableScreenPreview(
                     receivingMessage: "正在接收屏幕画面。请在 Apple 的系统共享界面中确认 Presenter Overlay；否则本次 Record 将仅包含屏幕。",
                     usesPresenterOverlayPicker: true
@@ -1031,6 +1254,8 @@ final class LiveSessionViewModel: ObservableObject {
             return
         }
         capturePreviewStatusMessage = "屏幕录制 + 摄像头叠加。正在准备摄像头画面..."
+        visualPreviewPreparationPending = true
+        let generation = stateQueue.sync { visualPreviewGeneration }
         videoCaptureService.checkCameraPermission()
         switch videoCaptureService.cameraPermission {
         case .denied:
@@ -1038,6 +1263,7 @@ final class LiveSessionViewModel: ObservableObject {
         case .unknown:
             Task { @MainActor in
                 let granted = await videoCaptureService.requestCameraPermission()
+                guard isCurrentVisualPreview(generation) else { return }
                 if granted {
                     startCameraOverlayScreenCapture()
                 } else {
@@ -1050,10 +1276,12 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     private func startCameraOverlayScreenCapture() {
+        let generation = stateQueue.sync { visualPreviewGeneration }
         Task { [weak self] in
             guard let self else { return }
             await self.videoCaptureService.enumerateScreens()
             await MainActor.run {
+                guard self.isCurrentVisualPreview(generation) else { return }
                 self.startFirstAvailableScreenPreview(
                     receivingMessage: "屏幕录制 + 摄像头叠加。保存的 Record 应包含屏幕与摄像头画面。",
                     usesCameraOverlay: true
@@ -1074,6 +1302,8 @@ final class LiveSessionViewModel: ObservableObject {
         usesPresenterOverlayPicker: Bool = false,
         usesCameraOverlay: Bool = false
     ) {
+        let generation = stateQueue.sync { visualPreviewGeneration }
+        defer { visualPreviewPreparationPending = false }
         guard let firstScreen = videoCaptureService.availableScreens.first(where: { $0.kind == .screen }) else {
             capturePreviewStatusMessage = "没有找到可预览的显示器。请检查屏幕录制权限或重新打开 Live Workspace。"
             return
@@ -1088,8 +1318,12 @@ final class LiveSessionViewModel: ObservableObject {
         }
 
         capturePreviewStatusMessage = receivingMessage
-        Task { [weak self] in
+        visualPreviewSetupTask = Task { [weak self] in
             guard let self else { return }
+            guard self.isCurrentVisualPreview(generation) else { return }
+            defer {
+                if self.isCurrentVisualPreview(generation) { self.visualPreviewSetupTask = nil }
+            }
             do {
                 if usesCameraOverlay {
                     try await self.videoCaptureService.startScreenCaptureWithCameraOverlay(displayID: displayID)
@@ -1098,8 +1332,12 @@ final class LiveSessionViewModel: ObservableObject {
                 } else {
                     try await self.videoCaptureService.startScreenCapture(displayID: displayID)
                 }
+            } catch is CancellationError {
+                return
             } catch {
+                guard self.isCurrentVisualPreview(generation) else { return }
                 await MainActor.run {
+                    guard self.isCurrentVisualPreview(generation) else { return }
                     if usesCameraOverlay {
                         self.visualSelectionUsesScreenOnlyFallback = true
                         self.visualPreviewSource = .screen
@@ -1109,10 +1347,12 @@ final class LiveSessionViewModel: ObservableObject {
                     }
                 }
                 if usesCameraOverlay {
+                    guard self.isCurrentVisualPreview(generation) else { return }
                     do {
                         try await self.videoCaptureService.startScreenCapture(displayID: displayID)
                     } catch {
                         await MainActor.run {
+                            guard self.isCurrentVisualPreview(generation) else { return }
                             self.capturePreviewStatusMessage = "\(error.localizedDescription) 请在系统设置中允许 InsightKit 录制屏幕。"
                         }
                     }
@@ -1122,12 +1362,35 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func stopCameraPreview() {
+        visualPreviewSource = .none
+        visualSelectionUsesScreenOnlyFallback = false
+        stateQueue.sync { visualPreviewGeneration = UUID() }
+        visualPreviewSetupTask?.cancel()
+        visualPreviewSetupTask = nil
+        visualPreviewPreparationPending = false
+        capturePreviewStatusMessage = nil
         if isUITestingMode {
             return
         }
-        visualPreviewSource = .none
-        capturePreviewStatusMessage = nil
         videoCaptureService.stopCapture()
+    }
+
+    func isCurrentVisualPreview(_ generation: UUID) -> Bool {
+        stateQueue.sync { visualPreviewGeneration == generation }
+    }
+
+    private func restartSelectedVisualPreview() {
+        stateQueue.sync { visualPreviewGeneration = UUID() }
+        visualPreviewSetupTask?.cancel()
+        visualPreviewSetupTask = nil
+        visualPreviewPreparationPending = false
+        switch visualPreviewSource {
+        case .none: break
+        case .camera: startCameraPreview()
+        case .screen: startScreenPreview()
+        case .presenterOverlay: startPresenterOverlayPreview()
+        case .screenWithCameraOverlay: startCameraOverlayScreenPreview()
+        }
     }
 
     // MARK: - Private Helpers
@@ -1179,6 +1442,7 @@ final class LiveSessionViewModel: ObservableObject {
 
     func resetSessionUI() {
         cancelWarmupTasks()
+        stopRecordingDurationTimer()
         captureState = .idle
         transcriptSegments = []
         workbench = .empty
@@ -1196,7 +1460,7 @@ final class LiveSessionViewModel: ObservableObject {
         chunkInFlight = false
         warmupFailureCount = 0
         warmupRetryScheduled = false
-        chunkAssembler.reset()
+        audioArchiveQueue.sync { chunkAssembler.reset() }
         // Phase 4 panel state
         sessionPhase = .preparing
         chapters = []
@@ -1217,24 +1481,27 @@ final class LiveSessionViewModel: ObservableObject {
         stopDrainingMeetingID = nil
         recordingPaused = false
         stateQueue.sync {
+            audioCaptureDraining = false
+            runtimeSessionStartingMeetingID = nil
+            visualRecordingStartPending = false
             captureTimeline.reset()
         }
-        stopRecordingDurationTimer()
         isRecordingPaused = false
     }
 
     func pauseLiveSession() {
         guard isRunning else { return }
-        let pauseTime = ProcessInfo.processInfo.systemUptime
+        let pauseTime = recordingUptime()
         let didPause = stateQueue.sync {
             guard !recordingPaused else { return false }
+            mixBus.flushPendingSamples()
             recordingPaused = true
             captureTimeline.markPauseStart(at: pauseTime)
             return true
         }
         guard didPause else { return }
         videoCaptureService.pauseRecording(at: pauseTime)
-        stopRecordingDurationTimer()
+        stopRecordingDurationTimer(at: pauseTime)
         updateMain {
             self.isRecordingPaused = true
             self.recordingStatusMessage = "录制已暂停。点击继续后会恢复写入音频和视频。"
@@ -1243,7 +1510,7 @@ final class LiveSessionViewModel: ObservableObject {
 
     func resumeLiveSession() {
         guard isRunning else { return }
-        let resumeTime = ProcessInfo.processInfo.systemUptime
+        let resumeTime = recordingUptime()
         let didResume = stateQueue.sync {
             guard recordingPaused else { return false }
             recordingPaused = false
@@ -1252,7 +1519,7 @@ final class LiveSessionViewModel: ObservableObject {
         }
         guard didResume else { return }
         videoCaptureService.resumeRecording(at: resumeTime)
-        startRecordingDurationTimer()
+        startRecordingDurationTimer(at: resumeTime)
         updateMain {
             self.isRecordingPaused = false
             if self.recordingStatusMessage == "录制已暂停。点击继续后会恢复写入音频和视频。" {
@@ -1290,18 +1557,37 @@ final class LiveSessionViewModel: ObservableObject {
 
     // MARK: - Recording Duration Timer
 
-    func startRecordingDurationTimer() {
-        stopRecordingDurationTimer()
-        let startTime = Date().addingTimeInterval(-recordingDuration)
-        recordingDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+    func beginRecordingClockForCapturedMedia() {
+        // Video/audio composition starts where all selected media are available.
+        // Waiting for the first visual frame must not inflate the visible duration.
+        let commonStart = stateQueue.sync {
+            [captureTimeline.audioStartSec, captureTimeline.videoStartSec].compactMap { $0 }.max()
+        }
+        startRecordingDurationTimer(at: commonStart)
+        updateRecordingDuration(at: recordingUptime())
+    }
+
+    func startRecordingDurationTimer(at uptime: TimeInterval? = nil) {
+        let startTime = uptime ?? recordingUptime()
+        stopRecordingDurationTimer(at: startTime)
+        recordingDurationAtClockStart = recordingDuration
+        recordingClockStartUptime = startTime
+        recordingDurationTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.recordingDuration = Date().timeIntervalSince(startTime)
+            self.updateRecordingDuration(at: self.recordingUptime())
         }
     }
 
-    func stopRecordingDurationTimer() {
+    func stopRecordingDurationTimer(at uptime: TimeInterval? = nil) {
+        updateRecordingDuration(at: uptime ?? recordingUptime())
         recordingDurationTimer?.invalidate()
         recordingDurationTimer = nil
+        recordingClockStartUptime = nil
+    }
+
+    func updateRecordingDuration(at uptime: TimeInterval) {
+        guard let startedAt = recordingClockStartUptime else { return }
+        recordingDuration = recordingDurationAtClockStart + max(0, uptime - startedAt)
     }
 }
 
@@ -1410,18 +1696,21 @@ extension LiveSessionViewModel {
     func stopUITestSessionIfNeeded(finalState: CaptureState) -> Bool {
         guard isUITestingMode, isRunning else { return false }
 
+        stopRecordingDurationTimer()
         stateQueue.sync {
             _isRunningLock.lock()
             _isRunning = false
             _isRunningLock.unlock()
             _sessionState.lastMeetingID = _sessionState.activeMeetingID
             _sessionState.activeMeetingID = nil
+            recordingPaused = false
         }
         syncSessionHandleFromState()
 
         captureState = finalState
         sessionPhase = .postSession
         metrics.queueDepth = 0
+        isRecordingPaused = false
         recordingDuration = max(recordingDuration, 83)
         return true
     }
