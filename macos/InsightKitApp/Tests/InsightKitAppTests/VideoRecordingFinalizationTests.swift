@@ -5,6 +5,68 @@ import XCTest
 @testable import InsightKitApp
 
 final class VideoRecordingFinalizationTests: XCTestCase {
+    func testPausedFramesCannotExhaustAFullBufferAndPrePauseFramesStillDrain() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.pausedFullBuffer")
+        let stateLock = NSLock()
+        var encoderReady = false
+        var failureMessages: [String] = []
+        let service = VideoCaptureService(
+            writerQueue: writer,
+            recordingBufferLimits: .init(maximumFrames: 2, maximumBytes: 1024 * 1024),
+            writerIsReady: { input in stateLock.withLock { encoderReady } && input.isReadyForMoreMediaData }
+        )
+        service.onRecordingFailure = { message in stateLock.withLock { failureMessages.append(message) } }
+        try service.startRecording(to: directory.appendingPathComponent("paused.mp4"))
+        for time in [100.0, 101] {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: time), capturedAt: time)
+        }
+        service.pauseRecording(at: 110)
+        XCTAssertEqual(service.recordingBufferUsage.frames, 2)
+
+        for time in 111..<121 {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: Double(time)), capturedAt: Double(time))
+        }
+        writer.sync {}
+
+        XCTAssertEqual(service.recordingBufferUsage.frames, 2, "Paused frames must not reserve buffer capacity")
+        XCTAssertNil(writer.sync { service.recordingFailureMessage })
+        stateLock.withLock { encoderReady = true }
+        let result = await service.beginFinishRecording().value
+        let times = try await readVideoPresentationTimes(XCTUnwrap(result))
+        XCTAssertEqual(times, [0, 1], "Pause must preserve the frames admitted before it")
+        XCTAssertTrue(stateLock.withLock { failureMessages.isEmpty })
+    }
+
+    func testResumeAdmitsFramesAfterPausedSamplesWereRejected() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.resumeAdmission")
+        let stateLock = NSLock()
+        var encoderReady = false
+        let service = VideoCaptureService(
+            writerQueue: writer,
+            recordingBufferLimits: .init(maximumFrames: 2, maximumBytes: 1024 * 1024),
+            writerIsReady: { input in stateLock.withLock { encoderReady } && input.isReadyForMoreMediaData }
+        )
+        try service.startRecording(to: directory.appendingPathComponent("resumed.mp4"))
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 100), capturedAt: 100)
+        service.pauseRecording(at: 110)
+        for time in 111..<121 {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: Double(time)), capturedAt: Double(time))
+        }
+        stateLock.withLock { encoderReady = true }
+        service.resumeRecording(at: 130)
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 131), capturedAt: 131)
+
+        let result = await service.beginFinishRecording().value
+
+        let times = try await readVideoPresentationTimes(XCTUnwrap(result))
+        XCTAssertEqual(times, [0, 31], "Resume must reopen admission after restoring the source timeline")
+        XCTAssertNil(writer.sync { service.recordingFailureMessage })
+    }
+
     func testActiveEncoderStallFailsAtFrameLimitBeforeStopAndReleasesItsBuffers() async throws {
         try await assertActiveEncoderStallFails(
             limits: .init(maximumFrames: 2, maximumBytes: 1024 * 1024)

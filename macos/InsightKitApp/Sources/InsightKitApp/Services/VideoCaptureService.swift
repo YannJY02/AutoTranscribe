@@ -77,6 +77,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
     private let writerQueue: DispatchQueue
     private let recordingAdmissionLock = NSLock()
     private var recordingAdmissionOpen = false
+    private var recordingAdmissionPaused = false
     private var recordingAdmissionEpoch: UInt64 = 0
     private var recordingAdmissionID: UUID?
     private var latestRecordingID: UUID?
@@ -659,6 +660,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         let admissionEpoch = recordingAdmissionLock.withLock {
             recordingAdmissionEpoch &+= 1
             recordingAdmissionOpen = false
+            recordingAdmissionPaused = false
             recordingAdmissionID = recordingID
             latestRecordingID = recordingID
             recordingFailureHandler = onRecordingFailure
@@ -823,18 +825,35 @@ final class VideoCaptureService: NSObject, ObservableObject {
     }
 
     func pauseRecording(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let pausedID: UUID? = recordingAdmissionLock.withLock {
+            guard recordingAdmissionOpen, let recordingAdmissionID else { return nil }
+            recordingAdmissionPaused = true
+            return recordingAdmissionID
+        }
+        guard let pausedID else { return }
+        // Previously admitted frames precede this barrier. Do not hold admission
+        // while waiting: their writer work releases reserved capacity with it.
         writerQueue.sync {
-            guard isWriting, !recordingPaused else { return }
+            guard recordingID == pausedID, isWriting, !recordingPaused else { return }
             recordingPaused = true
             recordingTimeline?.pause(at: time)
         }
     }
 
     func resumeRecording(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let resumedID: UUID? = recordingAdmissionLock.withLock {
+            recordingAdmissionPaused ? recordingAdmissionID : nil
+        }
+        guard let resumedID else { return }
         writerQueue.sync {
-            guard isWriting, recordingPaused else { return }
+            guard recordingID == resumedID, isWriting, recordingPaused else { return }
             recordingTimeline?.resume(at: time)
             recordingPaused = false
+            recordingAdmissionLock.withLock {
+                if recordingAdmissionID == resumedID {
+                    recordingAdmissionPaused = false
+                }
+            }
         }
     }
 
@@ -879,6 +898,7 @@ final class VideoCaptureService: NSObject, ObservableObject {
         recordingAdmissionLock.withLock {
             if recordingAdmissionID == recordingID {
                 recordingAdmissionOpen = false
+                recordingAdmissionPaused = false
                 recordingAdmissionID = nil
                 retainedRecordingFrameCount = 0
                 retainedRecordingBytes = 0
@@ -932,7 +952,8 @@ final class VideoCaptureService: NSObject, ObservableObject {
         var rejectedRecordingID: UUID?
         let capacityFailure = "Video recording stopped because the encoder could not keep up within the recording buffer limit."
         recordingAdmissionLock.withLock {
-            guard recordingAdmissionOpen, let recordingID = recordingAdmissionID else { return }
+            guard recordingAdmissionOpen, !recordingAdmissionPaused,
+                  let recordingID = recordingAdmissionID else { return }
             // Reserve before enqueueing: queued closures retain full sample buffers
             // too, so limiting only pendingRecordingFrames would still be unbounded.
             guard retainedRecordingFrameCount < recordingBufferLimits.maximumFrames,
