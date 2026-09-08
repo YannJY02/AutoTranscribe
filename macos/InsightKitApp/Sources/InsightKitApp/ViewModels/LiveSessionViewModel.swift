@@ -940,6 +940,7 @@ final class LiveSessionViewModel: ObservableObject {
             : sessionPhase == .reviewing ? "reviewing" : "running"
         analyticsSubmit { $0.workflowCancelled("live", phase: analyticsPhase) }
         stopLiveSession()
+        stopCameraPreview()
         stateQueue.sync {
             self._sessionState = SessionHandle()
         }
@@ -1003,6 +1004,26 @@ final class LiveSessionViewModel: ObservableObject {
             temporaryRecordingURL = nil
             capturePreviewStatusMessage = "视频回看录制未能启动；本次结束后将保留音频、转写与笔记。\(error.localizedDescription)"
             return false
+        }
+    }
+
+    var isCameraPreviewSelected: Bool {
+        switch visualPreviewSource {
+        case .none:
+            return false
+        case .camera, .presenterOverlay, .screenWithCameraOverlay:
+            return true
+        case .screen:
+            return visualSelectionUsesScreenOnlyFallback
+        }
+    }
+
+    var isScreenPreviewSelected: Bool {
+        switch visualPreviewSource {
+        case .none, .camera:
+            return false
+        case .screen, .presenterOverlay, .screenWithCameraOverlay:
+            return true
         }
     }
 
@@ -1292,14 +1313,15 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func stopCameraPreview() {
-        if isUITestingMode {
-            return
-        }
         visualPreviewSource = .none
+        visualSelectionUsesScreenOnlyFallback = false
         stateQueue.sync { visualPreviewGeneration = UUID() }
         visualPreviewSetupTask?.cancel()
         visualPreviewSetupTask = nil
         capturePreviewStatusMessage = nil
+        if isUITestingMode {
+            return
+        }
         videoCaptureService.stopCapture()
     }
 

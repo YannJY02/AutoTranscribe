@@ -4,10 +4,7 @@ struct LiveWorkspaceView: View {
     @ObservedObject var viewModel: LiveSessionViewModel
     var onSystemAudioSourceSelect: (() -> Void)?
 
-    @State private var cameraToggleEnabled = false
-    @State private var screenToggleEnabled = false
-
-    private var sourceToggles: Binding<[SourceToggleItem]> {
+    var sourceToggles: Binding<[SourceToggleItem]> {
         Binding(
             get: {
                 let microphoneEnabled = viewModel.inputMode != .systemAudio
@@ -17,8 +14,8 @@ struct LiveWorkspaceView: View {
                         id: "mic", icon: "mic.fill", label: "麦克风", isEnabled: microphoneEnabled,
                         disabledReason: audioToggleDisabledReason(isEnabled: microphoneEnabled)
                     ),
-                    SourceToggleItem(id: "camera", icon: "video.fill", label: "摄像头", isEnabled: cameraToggleEnabled),
-                    SourceToggleItem(id: "screen", icon: "rectangle.on.rectangle", label: "屏幕", isEnabled: screenToggleEnabled),
+                    SourceToggleItem(id: "camera", icon: "video.fill", label: "摄像头", isEnabled: viewModel.isCameraPreviewSelected),
+                    SourceToggleItem(id: "screen", icon: "rectangle.on.rectangle", label: "屏幕", isEnabled: viewModel.isScreenPreviewSelected),
                     SourceToggleItem(
                         id: "system", icon: "speaker.wave.2.fill", label: "系统音频", isEnabled: systemAudioEnabled,
                         disabledReason: audioToggleDisabledReason(isEnabled: systemAudioEnabled)
@@ -33,11 +30,16 @@ struct LiveWorkspaceView: View {
                         systemAudioEnabled: systemAudio.isEnabled
                     )
                 }
-                if let camera = sources.first(where: { $0.id == "camera" }) {
-                    cameraToggleEnabled = camera.isEnabled
-                }
-                if let screen = sources.first(where: { $0.id == "screen" }) {
-                    screenToggleEnabled = screen.isEnabled
+                let cameraEnabled = sources.first(where: { $0.id == "camera" })?.isEnabled
+                    ?? viewModel.isCameraPreviewSelected
+                let screenEnabled = sources.first(where: { $0.id == "screen" })?.isEnabled
+                    ?? viewModel.isScreenPreviewSelected
+                if cameraEnabled != viewModel.isCameraPreviewSelected
+                    || screenEnabled != viewModel.isScreenPreviewSelected {
+                    viewModel.applyVisualPreviewSelection(
+                        cameraEnabled: cameraEnabled,
+                        screenEnabled: screenEnabled
+                    )
                 }
             }
         )
@@ -56,12 +58,6 @@ struct LiveWorkspaceView: View {
                 .foregroundStyle(.clear)
                 .accessibilityIdentifier("live_workspace")
         }
-        .onChange(of: cameraToggleEnabled) { _, _ in
-            syncVisualPreviewSelection()
-        }
-        .onChange(of: screenToggleEnabled) { _, _ in
-            syncVisualPreviewSelection()
-        }
     }
 
     private func audioToggleDisabledReason(isEnabled: Bool) -> String? {
@@ -72,13 +68,6 @@ struct LiveWorkspaceView: View {
             return "至少保留一个音频来源。"
         }
         return nil
-    }
-
-    private func syncVisualPreviewSelection() {
-        viewModel.applyVisualPreviewSelection(
-            cameraEnabled: cameraToggleEnabled,
-            screenEnabled: screenToggleEnabled
-        )
     }
 
     // MARK: - Left Panel

@@ -71,6 +71,31 @@ final class LiveWorkspaceTests: InsightKitUITests {
         XCTAssertTrue(selectedSource.exists, "不支持的设备菜单不应污染系统音频源")
     }
 
+    func testVisualSourcesSurviveWorkspaceReentryAndResetForNewSession() throws {
+        toggleSource(id: "camera")
+        toggleSource(id: "screen")
+        button("workflow_back_home", fallbackLabel: "返回首页").click()
+        XCTAssertTrue(waitForElement(button("home_card_live")))
+        button("home_card_live").click()
+
+        XCTAssertTrue(waitForElement(element("live_phase_preparing")))
+        assertToggleState(id: "camera", expected: "on")
+        assertToggleState(id: "screen", expected: "on")
+        attachScreenshot(named: "live-visual-sources-after-reentry")
+
+        startRecording()
+        button("live_stop_recording_button", fallbackLabel: "停止录制").click()
+        XCTAssertTrue(waitForElement(element("live_phase_post_session"), timeout: 5))
+        button("新建会话").click()
+
+        XCTAssertTrue(waitForElement(element("live_phase_preparing")))
+        assertToggleState(id: "mic", expected: "on")
+        assertToggleState(id: "system", expected: "off")
+        assertToggleState(id: "camera", expected: "off")
+        assertToggleState(id: "screen", expected: "off")
+        attachScreenshot(named: "live-visual-sources-after-new-session")
+    }
+
     func testSingleEntryGeneratedReviewFlowCoversPrimaryInteractions() throws {
         XCTAssertTrue(app.buttons["返回首页"].exists, "返回首页按钮应显示")
 
