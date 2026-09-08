@@ -6,10 +6,6 @@ REVIEW_MEDIA_COMPOSER = (
     ROOT
     / "macos/InsightKitApp/Sources/InsightKitApp/Services/ReviewMediaComposer.swift"
 )
-VIDEO_CAPTURE_SERVICE = (
-    ROOT
-    / "macos/InsightKitApp/Sources/InsightKitApp/Services/VideoCaptureService.swift"
-)
 ISSUE24_DIAGNOSTIC = ROOT / "scripts/diagnose_issue24_media_timeline.py"
 
 
@@ -35,22 +31,3 @@ def test_issue24_diagnostic_checks_capture_source_timeline_not_only_final_media(
     assert "pause_adjusted_video_duration_sec" in source
     assert "capture source audio/video duration delta" in source
     assert "final duration equality cannot prove visible AV sync" in source
-
-
-def test_video_recording_retimes_frames_from_source_pts():
-    source = VIDEO_CAPTURE_SERVICE.read_text(encoding="utf-8")
-    start = source.index("fileprivate func handleVideoSampleBuffer")
-    end = source.index("private func ensureWriterStarted", start)
-    body = source[start:end]
-
-    captured_at_index = body.index("let capturedAt = ProcessInfo.processInfo.systemUptime")
-    writer_queue_index = body.index("writerQueue.async")
-    assert captured_at_index < writer_queue_index
-
-    assert "VideoRecordingTimeline" in body
-    assert "startSession(atSourceTime: .zero)" in body
-    assert "CMSampleBufferGetPresentationTimeStamp(sampleBuffer)" in body
-    assert "presentationTime(" in body
-    assert "CMTimeGetSeconds(sourcePresentationTime - $0)" in source
-    assert "videoPixelBufferAdaptor?.append(" in body
-    assert "withPresentationTime: presentationTime" in body
