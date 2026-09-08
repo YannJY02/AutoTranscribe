@@ -54,6 +54,8 @@ _Avoid_: Status string
 
 Visible states must describe work that has actually taken effect. Stay in preparation until the selected media sources are active; entering the recording phase and showing REC means capture is active. Runtime or model preparation may continue alongside active capture. Pausing removes REC and freezes the capture clock. Stop ends that clock and capture immediately, then shows saving while already accepted media drains and the record is written. Transcription latency or failure must not discard accepted media or shorten the saved recording. The saved media covers the displayed recording interval, excluding explicit pauses; background processing time is not recording time. Apply the same rule to generated, saved, and exported results: show completion only when the corresponding result exists.
 
+Preparation remains cancellable while macOS permission or source setup is pending. Cancelling or failing visual startup before recording becomes active discards provisional media and creates no Record. Video buffering has a fixed capacity; exceeding it stops the recording with an explicit error instead of continuing with missing frames. Preview teardown may stop only the capture resources it retired, never a replacement session.
+
 **Simultaneous Visual Presentation**:
 The Live Workspace presentation mode where the saved Record video visibly contains screen content and camera presence as one visual surface. Record Review should treat the result as one media surface, not as two competing visual sources.
 _Avoid_: Metadata-only presenter status, separate camera and screen recordings, source toggle conflict, custom layout editor

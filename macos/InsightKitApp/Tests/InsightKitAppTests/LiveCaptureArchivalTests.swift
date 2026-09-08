@@ -230,17 +230,126 @@ final class LiveCaptureArchivalTests: XCTestCase {
         XCTAssertTrue(viewModel.isPreparingRecording)
         XCTAssertFalse(viewModel.isActivelyRecording)
         XCTAssertNil(viewModel.recordingDurationTimer)
+        viewModel.handleMixedSamples(Array(repeating: 0.3, count: 32_000))
+        viewModel.audioArchiveQueue.sync {}
+        viewModel.pipelineQueue.sync {}
+        XCTAssertEqual(fixture.pipeline.processedChunkCount, 0, "Provisional audio must not enter ASR")
 
         var cancellables = Set<AnyCancellable>()
-        let saved = expectation(description: "cancelled first-frame wait finalizes")
-        viewModel.$lastExportPath.filter { !$0.isEmpty }.prefix(1)
-            .sink { _ in saved.fulfill() }.store(in: &cancellables)
+        let cancelled = expectation(description: "cancelled first-frame wait discards provisional media")
+        viewModel.$isFinalizingLiveSession.dropFirst().filter { !$0 }.prefix(1)
+            .sink { _ in cancelled.fulfill() }.store(in: &cancellables)
         viewModel.stopLiveSession()
         viewModel.videoCaptureService.onRecordingFirstFrame?(ProcessInfo.processInfo.systemUptime)
-        wait(for: [saved], timeout: 5)
+        wait(for: [cancelled], timeout: 5)
         XCTAssertFalse(viewModel.isActivelyRecording)
         XCTAssertNil(viewModel.recordingDurationTimer)
         XCTAssertFalse(engine.isCapturing)
+        XCTAssertEqual(viewModel.sessionPhase, .preparing)
+        XCTAssertTrue(fixture.rpc.recordsSaveCalls.isEmpty)
+        XCTAssertTrue(viewModel.lastExportPath.isEmpty)
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+        XCTAssertNil(viewModel.currentBuildTargetID())
+        XCTAssertEqual(fixture.pipeline.processedChunkCount, 0)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: fixture.chunkDirectory.path).isEmpty)
+    }
+
+    func testFirstFrameTimeoutDiscardsAudioFromAnUnstartedVisualRecording() throws {
+        let engine = ArchivalMicEngine()
+        let fixture = try makeFixture(micCapture: MicCaptureService(
+            engine: engine, permissionProvider: ArchivalMicPermission()
+        ))
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.visualPreviewSource = .screen
+        viewModel.videoCaptureService.isCapturing = true
+        var cancellables = Set<AnyCancellable>()
+        let stopped = expectation(description: "first-frame timeout finishes cleanup")
+        viewModel.$isFinalizingLiveSession.dropFirst().filter { !$0 }.prefix(1)
+            .sink { _ in stopped.fulfill() }.store(in: &cancellables)
+        viewModel.beginCaptureStartup(
+            meetingID: meetingID, mode: .microphone, systemSourceID: nil, readinessTimeoutSec: 0.05
+        )
+        wait(for: [stopped], timeout: 3)
+        XCTAssertFalse(viewModel.isRunning)
+        XCTAssertFalse(engine.isCapturing)
+        XCTAssertEqual(viewModel.recordingDuration, 0)
+        XCTAssertNil(viewModel.recordingDurationTimer)
+        XCTAssertTrue(fixture.rpc.recordsSaveCalls.isEmpty)
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+        XCTAssertEqual(fixture.pipeline.processedChunkCount, 0)
+        XCTAssertTrue(viewModel.errorMessage?.contains("未收到可录制的视频画面") == true)
+        let remainingFiles = (try? FileManager.default.contentsOfDirectory(atPath: fixture.chunkDirectory.path)) ?? []
+        XCTAssertTrue(remainingFiles.isEmpty)
+    }
+
+    func testAcceptedVisualStartRetainsAudioAcrossTheFirstFrameBoundary() throws {
+        let engine = ArchivalMicEngine()
+        let fixture = try makeFixture(micCapture: MicCaptureService(
+            engine: engine, permissionProvider: ArchivalMicPermission()
+        ))
+        fixture.pipeline.releaseFirstChunk.signal()
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.visualPreviewSource = .screen
+        viewModel.videoCaptureService.isCapturing = true
+        viewModel.beginCaptureStartup(meetingID: meetingID, mode: .microphone, systemSourceID: nil)
+        let armed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            viewModel.temporaryRecordingURL != nil
+        }, object: nil)
+        wait(for: [armed], timeout: 2)
+        viewModel.handleMixedSamples(Array(repeating: 0.3, count: 8_000))
+        viewModel.audioArchiveQueue.sync {}
+        let sourceStart = viewModel.stateQueue.sync { viewModel.captureTimeline.audioStartSec }
+        var cancellables = Set<AnyCancellable>()
+        let started = expectation(description: "first frame accepts the recording")
+        viewModel.$sessionPhase.filter { $0 == .running }.prefix(1)
+            .sink { _ in started.fulfill() }.store(in: &cancellables)
+        viewModel.videoCaptureService.onRecordingFirstFrame?(ProcessInfo.processInfo.systemUptime)
+        wait(for: [started], timeout: 2)
+        XCTAssertFalse(viewModel.stateQueue.sync { viewModel.visualRecordingStartPending })
+        XCTAssertEqual(viewModel.stateQueue.sync { viewModel.captureTimeline.audioStartSec }, sourceStart)
+        viewModel.handleMixedSamples(Array(repeating: 0.4, count: 8_000))
+        let saved = expectation(description: "accepted audio interval is preserved")
+        viewModel.$lastExportPath.filter { !$0.isEmpty }.prefix(1)
+            .sink { _ in saved.fulfill() }.store(in: &cancellables)
+        viewModel.stopLiveSession()
+        wait(for: [saved], timeout: 5)
+        let save = try XCTUnwrap(fixture.rpc.recordsSaveCalls.first)
+        // The fake source only signals readiness, so this fixture saves the
+        // audio fallback. All samples remain available to real A/V composition.
+        let audio = try AVAudioFile(forReading: URL(fileURLWithPath: save.sourcePath))
+        XCTAssertEqual(audio.length, 18_048)
+    }
+
+    func testCurrentVideoFailureStopsRecordingAndStaleFailureCannotStopIt() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.sessionPhase = .running
+        viewModel.visualPreviewSource = .screen
+        viewModel.videoCaptureService.isCapturing = true
+        viewModel.configureVideoCaptureCallbacks(meetingID: "retired-meeting")
+        let staleFailure = try XCTUnwrap(viewModel.videoCaptureService.onRecordingFailure)
+        viewModel.configureVideoCaptureCallbacks(meetingID: meetingID)
+        staleFailure("retired writer failure")
+        XCTAssertTrue(viewModel.isActivelyRecording)
+        XCTAssertNil(viewModel.errorMessage)
+
+        viewModel.handleMixedSamples(Array(repeating: 0.3, count: 8_000))
+        var cancellables = Set<AnyCancellable>()
+        let saved = expectation(description: "active writer failure stops and preserves audio")
+        viewModel.$lastExportPath.filter { !$0.isEmpty }.prefix(1)
+            .sink { _ in saved.fulfill() }.store(in: &cancellables)
+        viewModel.videoCaptureService.onRecordingFailure?("planned video writer failure")
+        XCTAssertFalse(viewModel.isRunning)
+        XCTAssertEqual(viewModel.errorMessage, "planned video writer failure")
+        wait(for: [saved], timeout: 5)
+        XCTAssertEqual(viewModel.captureState, .error("planned video writer failure"))
+        XCTAssertFalse(viewModel.isActivelyRecording)
+        let save = try XCTUnwrap(fixture.rpc.recordsSaveCalls.first)
+        let audio = try AVAudioFile(forReading: URL(fileURLWithPath: save.sourcePath))
+        XCTAssertEqual(audio.length, 8_000)
     }
 
     func testStopInvalidatesAStillPreparingVisualPreview() throws {
@@ -304,6 +413,67 @@ final class LiveCaptureArchivalTests: XCTestCase {
             XCTFail("A source that never becomes ready must not begin recording")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("视频采集尚未就绪"))
+        }
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+    }
+
+    @MainActor
+    func testPendingPermissionAndPreviewSetupDoNotConsumeReadinessTimeout() async throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.visualPreviewSource = .screen
+        viewModel.visualPreviewPreparationPending = true
+        var startingFinished = false
+        let starting = Task { @MainActor in
+            defer { startingFinished = true }
+            try await viewModel.startVisualRecordingWhenReady(meetingID: meetingID, timeoutSec: 0.05)
+        }
+        defer { starting.cancel() }
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertFalse(startingFinished, "An open permission dialog must remain cancellable without timing out")
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+
+        let setupGate = AsyncStream<Void>.makeStream()
+        defer { setupGate.continuation.finish() }
+        viewModel.visualPreviewSetupTask = Task {
+            for await _ in setupGate.stream { return }
+        }
+        viewModel.visualPreviewPreparationPending = false
+        viewModel.videoCaptureService.isCapturing = true
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertFalse(startingFinished, "A system sharing picker must not consume the stalled-source timeout")
+        XCTAssertNil(viewModel.temporaryRecordingURL)
+
+        setupGate.continuation.yield(())
+        viewModel.visualPreviewSetupTask = nil
+        for _ in 0..<100 where viewModel.temporaryRecordingURL == nil {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNotNil(viewModel.temporaryRecordingURL)
+        viewModel.videoCaptureService.onRecordingFirstFrame?(ProcessInfo.processInfo.systemUptime)
+        try await starting.value
+        XCTAssertTrue(startingFinished)
+    }
+
+    @MainActor
+    func testCancelDuringInteractivePreviewSetupDoesNotArmAWriter() async throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let meetingID = try XCTUnwrap(viewModel.currentActiveMeetingID())
+        viewModel.visualPreviewSource = .screen
+        viewModel.visualPreviewPreparationPending = true
+        let starting = Task { @MainActor in
+            try await viewModel.startVisualRecordingWhenReady(meetingID: meetingID, timeoutSec: 0.05)
+        }
+        try await Task.sleep(nanoseconds: 120_000_000)
+        starting.cancel()
+        do {
+            try await starting.value
+            XCTFail("Explicit Cancel must end interactive setup")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Interactive setup should cancel, not time out: \(error)")
         }
         XCTAssertNil(viewModel.temporaryRecordingURL)
     }

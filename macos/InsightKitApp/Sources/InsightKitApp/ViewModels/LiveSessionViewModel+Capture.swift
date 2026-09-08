@@ -28,6 +28,26 @@ private func isTransientLiveStatus(_ message: String?) -> Bool {
 }
 
 extension LiveSessionViewModel {
+    func configureVideoCaptureCallbacks(meetingID: String) {
+        videoCaptureService.onRecordingFirstFrame = { [weak self] time in
+            guard let self else { return }
+            self.stateQueue.sync {
+                guard self.isRunning, self._sessionState.activeMeetingID == meetingID else { return }
+                self.captureTimeline.markVideoStart(at: time)
+            }
+        }
+        videoCaptureService.onRecordingFailure = { [weak self] message in
+            guard let self else { return }
+            self.updateMain {
+                guard self.isCurrentLiveSession(meetingID) else { return }
+                self.publishError(NSError(domain: "InsightKit", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: message
+                ]))
+                self.stopLiveSession(finalState: .error(message))
+            }
+        }
+    }
+
     func configureAudioCaptureCallbacks(meetingID: String? = nil) {
         micCapture.onBuffer = { [weak self] buffer in
             self?.handleCapturedBuffer(buffer, source: .microphone, meetingID: meetingID)
@@ -169,6 +189,7 @@ extension LiveSessionViewModel {
     }
 
     func pumpChunkQueueIfNeeded(meetingID: String) {
+        guard !stateQueue.sync(execute: { visualRecordingStartPending }) else { return }
         guard !isRunning || !shouldHoldChunksForWarmup else { return }
         guard !chunkInFlight else {
             return

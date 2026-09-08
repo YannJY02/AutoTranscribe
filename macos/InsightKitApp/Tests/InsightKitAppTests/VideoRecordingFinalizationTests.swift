@@ -5,6 +5,147 @@ import XCTest
 @testable import InsightKitApp
 
 final class VideoRecordingFinalizationTests: XCTestCase {
+    func testActiveEncoderStallFailsAtFrameLimitBeforeStopAndReleasesItsBuffers() async throws {
+        try await assertActiveEncoderStallFails(
+            limits: .init(maximumFrames: 2, maximumBytes: 1024 * 1024)
+        )
+    }
+
+    func testActiveEncoderStallFailsAtByteLimitBeforeStopAndReleasesItsBuffers() async throws {
+        let sample = try makeSampleBuffer(at: 100)
+        let bytes = CVPixelBufferGetDataSize(try XCTUnwrap(CMSampleBufferGetImageBuffer(sample)))
+        try await assertActiveEncoderStallFails(
+            limits: .init(maximumFrames: 120, maximumBytes: bytes * 2)
+        )
+    }
+
+    private func assertActiveEncoderStallFails(limits: VideoCaptureService.RecordingBufferLimits) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.stalledEncoder")
+        let service = VideoCaptureService(
+            writerQueue: writer, recordingBufferLimits: limits, writerIsReady: { _ in false }
+        )
+        let failed = expectation(description: "active recording reports buffer exhaustion before Stop")
+        let callbackLock = NSLock()
+        var messages: [String] = []
+        service.onRecordingFailure = { message in
+            XCTAssertTrue(Thread.isMainThread)
+            callbackLock.withLock { messages.append(message) }
+            failed.fulfill()
+        }
+        try service.startRecording(to: directory.appendingPathComponent("stalled.mp4"))
+        for sourceTime in [100.0, 101] {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: sourceTime), capturedAt: sourceTime)
+            writer.sync {}
+        }
+        XCTAssertEqual(service.recordingBufferUsage.frames, 2)
+        XCTAssertLessThanOrEqual(service.recordingBufferUsage.bytes, limits.maximumBytes)
+        XCTAssertTrue(callbackLock.withLock { messages.isEmpty })
+
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 102), capturedAt: 102)
+        await fulfillment(of: [failed], timeout: 2)
+        writer.sync {}
+
+        XCTAssertEqual(service.recordingBufferUsage.frames, 0)
+        XCTAssertEqual(service.recordingBufferUsage.bytes, 0)
+        XCTAssertEqual(writer.sync { service.recordingFailureMessage }, callbackLock.withLock { messages.first })
+        for sourceTime in 103..<113 {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: Double(sourceTime)), capturedAt: Double(sourceTime))
+        }
+        XCTAssertEqual(service.recordingBufferUsage.frames, 0, "Failure must close admission immediately")
+        let result = await service.beginFinishRecording().value
+        XCTAssertNil(result)
+        XCTAssertEqual(callbackLock.withLock { messages.count }, 1)
+    }
+
+    func testAdmissionOverflowNotifiesBeforeBlockedWriterCanDrain() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.blockedAdmission")
+        let service = VideoCaptureService(
+            writerQueue: writer,
+            recordingBufferLimits: .init(maximumFrames: 2, maximumBytes: 1024 * 1024)
+        )
+        let failed = expectation(description: "failure reaches UI while writer is still blocked")
+        service.onRecordingFailure = { _ in failed.fulfill() }
+        try service.startRecording(to: directory.appendingPathComponent("blocked.mp4"))
+        let blocked = expectation(description: "writer cannot consume admitted buffers")
+        let releaseWriter = DispatchSemaphore(value: 0)
+        defer { releaseWriter.signal() }
+        writer.async {
+            blocked.fulfill()
+            releaseWriter.wait()
+        }
+        await fulfillment(of: [blocked], timeout: 2)
+        for sourceTime in [100.0, 101, 102, 103] {
+            service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: sourceTime), capturedAt: sourceTime)
+        }
+
+        await fulfillment(of: [failed], timeout: 2)
+
+        XCTAssertEqual(service.recordingBufferUsage.frames, 2)
+        XCTAssertLessThanOrEqual(service.recordingBufferUsage.bytes, 1024 * 1024)
+        let finishing = service.beginFinishRecording()
+        releaseWriter.signal()
+        let result = await finishing.value
+        XCTAssertNil(result)
+        XCTAssertEqual(service.recordingBufferUsage.frames, 0)
+    }
+
+    @MainActor
+    func testQueuedFailureCannotNotifyOrClearAReplacementRecording() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = DispatchQueue(label: "VideoRecordingFinalizationTests.failureReplacement")
+        let service = VideoCaptureService(
+            writerQueue: writer,
+            recordingBufferLimits: .init(maximumFrames: 1, maximumBytes: 1024 * 1024)
+        )
+        var failureMessages: [String] = []
+        service.onRecordingFailure = { failureMessages.append($0) }
+        try service.startRecording(to: directory.appendingPathComponent("previous.mp4"))
+        // Keep the first sample queued so the second must exhaust admission.
+        let releaseWriter = DispatchSemaphore(value: 0)
+        defer { releaseWriter.signal() }
+        writer.async { releaseWriter.wait() }
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 100), capturedAt: 100)
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 101), capturedAt: 101)
+        releaseWriter.signal()
+        // The queued main-thread callback has not run yet. A replacement must
+        // invalidate it even though the prior failure cleared its writer state.
+        try service.startRecording(to: directory.appendingPathComponent("replacement.mp4"))
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 300), capturedAt: 300)
+
+        let result = await service.beginFinishRecording().value
+
+        let times = try await readVideoPresentationTimes(XCTUnwrap(result))
+        XCTAssertEqual(times, [0])
+        XCTAssertTrue(failureMessages.isEmpty)
+        XCTAssertNil(writer.sync { service.recordingFailureMessage })
+    }
+
+    @MainActor
+    func testPendingCaptureTeardownCannotCloseANewerRecording() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let captureQueue = DispatchQueue(label: "VideoRecordingFinalizationTests.captureTeardown")
+        let service = VideoCaptureService(captureSessionQueue: captureQueue)
+        let releaseTeardown = DispatchSemaphore(value: 0)
+        defer { releaseTeardown.signal() }
+        captureQueue.async { releaseTeardown.wait() }
+        service.stopCapture()
+        try service.startRecording(to: directory.appendingPathComponent("new-capture.mp4"))
+        releaseTeardown.signal()
+        captureQueue.sync {}
+        service.enqueueRecordingSampleBuffer(try makeSampleBuffer(at: 300), capturedAt: 300)
+
+        let result = await service.beginFinishRecording().value
+
+        let times = try await readVideoPresentationTimes(XCTUnwrap(result))
+        XCTAssertEqual(times, [0])
+    }
+
     func testFinishReturnsWhileWriterIsBlockedThenDrainsOnlyAdmittedFrames() async throws {
         try await assertFinishDrainsOnlyAdmittedFrames(at: [100, 101, 102])
     }
