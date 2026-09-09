@@ -1,0 +1,85 @@
+{
+  "status": "complete",
+  "source_model": "microsoft/VibeVoice-ASR-Streaming-1.5B",
+  "source_revision": "4262d23d8a539a6530cf64fbd0b1751ef9a30853",
+  "runtime_revision": "17001a6950956302f15b53d86b601324efe716ba",
+  "source": "logs/yan78/vibevoice/official-model",
+  "output": "logs/yan78/vibevoice/converted-4bit",
+  "dtype_argument": "bfloat16",
+  "quantization": {
+    "bits": 4,
+    "group_size": 64,
+    "mode": "affine"
+  },
+  "quantized_components": [
+    "language_model"
+  ],
+  "started_unix": 1788937333.402326,
+  "source_files_verified": 13,
+  "tied_lm_head_equality_verified": true,
+  "source_tensor_count": 1177,
+  "asr_tensor_count_before_quantization": 900,
+  "dropped_acoustic_decoder_tensors": 276,
+  "conversion_wall_seconds": 7.2118938750063535,
+  "actual_weight_storage": {
+    "tensor_count": 1294,
+    "non_language_model_bytes": 1386664704,
+    "language_model_bytes": 868547584,
+    "total_tensor_bytes": 2255212288
+  },
+  "peak_rss_bytes_macos": 1718632448,
+  "mlx_peak_memory_bytes": 2886665240,
+  "output_files": [
+    {
+      "filename": "added_tokens.json",
+      "size": 714,
+      "sha256": "d5401f76119bc71e1844d8e909826f8cb3d68e152a058fe228cc37f74603ca84"
+    },
+    {
+      "filename": "config.json",
+      "size": 3624,
+      "sha256": "b5307ea973a3001a5fe5c5a4944a4c41ff283a5f9b5406c3188f6d6b4c49a360"
+    },
+    {
+      "filename": "merges.txt",
+      "size": 1671853,
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+    },
+    {
+      "filename": "model.safetensors",
+      "size": 2255376736,
+      "sha256": "baecb8b2fb524f7c71d6d6614abe8b078ca594574777fa75a1f6c64bfd364d2c"
+    },
+    {
+      "filename": "model.safetensors.index.json",
+      "size": 110704,
+      "sha256": "3895caa18cdb589552c7ee8337093cf41ada8ed6008954923ddc3050ba6e61b2"
+    },
+    {
+      "filename": "preprocessor_config.json",
+      "size": 191,
+      "sha256": "59ee0cc74687fc2ab8f5f9c2fc3b61cdf66078ebd4f34a61e1fcfc1a644ac31a"
+    },
+    {
+      "filename": "special_tokens_map.json",
+      "size": 769,
+      "sha256": "7093fea72a118fb4016ee85c13cc2f94ecd659d4600c6ce16cdcd3a2c1d96e68"
+    },
+    {
+      "filename": "tokenizer.json",
+      "size": 11422657,
+      "sha256": "d198a051741ee47805797b744e6524c259b08a59b58d1ec159cfd7f1da5f2df7"
+    },
+    {
+      "filename": "tokenizer_config.json",
+      "size": 9330,
+      "sha256": "e80c7714aaff125403ba7c18a4c06da9b18eb81cb6ee4bee711143fa15d94fd6"
+    },
+    {
+      "filename": "vocab.json",
+      "size": 2776833,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    }
+  ],
+  "finished_unix": 1788937349.483262
+}

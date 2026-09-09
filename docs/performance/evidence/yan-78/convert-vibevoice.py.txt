@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Guarded, local-only conversion entrypoint; execute only under the root lock."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import resource
+import subprocess
+import sys
+import time
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--runtime-root", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    args = parser.parse_args()
+    base = Path(__file__).resolve().parent
+    sys.path.insert(0, str(base.parents[2]))
+    from scripts.streaming_asr_experiment.vibevoice import (
+        MODEL_ID, MODEL_REVISION, RUNTIME_REVISION,
+        _validate_model_path, _weight_summary, drop_verified_tied_lm_head,
+    )
+
+    source = args.source.expanduser().resolve(strict=True)
+    output = args.output.expanduser().resolve()
+    runtime = args.runtime_root.expanduser().resolve(strict=True)
+    temporary = output.with_name(output.name + ".incomplete")
+    if output.exists() or temporary.exists():
+        raise ValueError("Output or .incomplete directory already exists; no overwrite/retry")
+    revision = subprocess.run(["git", "-C", str(runtime), "rev-parse", "HEAD"],
+                              check=True, capture_output=True, text=True).stdout.strip()
+    if revision != RUNTIME_REVISION:
+        raise ValueError("Runtime source revision differs from the prepared pin")
+    report = {"status": "preflight", "source_model": MODEL_ID, "source_revision": MODEL_REVISION,
+              "runtime_revision": revision, "source": str(source), "output": str(output),
+              "dtype_argument": "bfloat16", "quantization": {"bits": 4, "group_size": 64, "mode": "affine"},
+              "quantized_components": ["language_model"], "started_unix": time.time()}
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+
+    def persist():
+        args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+    persist()
+    try:
+        files = json.loads((base / "manifests/download-files.json").read_text())
+        for item in files:
+            path = source / item["filename"]
+            if path.stat().st_size != item["size"]:
+                raise ValueError(f"Source size mismatch: {item['filename']}")
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            if digest != item["sha256"]:
+                raise ValueError(f"Source SHA256 mismatch: {item['filename']}")
+        config = json.loads((source / "config.json").read_text())
+        if config["decoder_config"]["hidden_size"] != 1536 or not config["decoder_config"]["tie_word_embeddings"]:
+            raise ValueError("Expected the pinned 1.5B decoder with tied embeddings")
+        report["source_files_verified"] = len(files)
+        report["status"] = "converting"
+        persist()
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        sys.path.insert(0, str(runtime))
+        import mlx.core as mx
+        import mlx_audio
+        from mlx_audio.convert import convert
+        from mlx_audio.stt.models.vibevoice_asr.vibevoice_asr import Model
+
+        if Path(mlx_audio.__file__).resolve().parent != runtime / "mlx_audio":
+            raise RuntimeError("Imported mlx-audio source differs from the prepared runtime")
+        original_sanitize = Model.sanitize
+
+        def guarded_sanitize(weights):
+            sanitized = original_sanitize(weights)
+            had_head = "language_model.lm_head.weight" in sanitized
+            cleaned = drop_verified_tied_lm_head(
+                sanitized, tied_embeddings=True,
+                arrays_equal=lambda left, right: bool(mx.all(left == right).item()),
+            )
+            report["tied_lm_head_equality_verified"] = had_head
+            report["source_tensor_count"] = len(weights)
+            report["asr_tensor_count_before_quantization"] = len(cleaned)
+            report["dropped_acoustic_decoder_tensors"] = sum("acoustic_tokenizer.decoder" in name for name in weights)
+            persist()
+            return cleaned
+
+        Model.sanitize = staticmethod(guarded_sanitize)
+        if callable(getattr(mx, "reset_peak_memory", None)):
+            mx.reset_peak_memory()
+        started = time.monotonic()
+        try:
+            convert(hf_path=str(source), mlx_path=str(temporary), model_domain="stt",
+                    dtype="bfloat16", quantize=True, q_bits=4, q_group_size=64, q_mode="affine")
+        finally:
+            Model.sanitize = staticmethod(original_sanitize)
+        report["conversion_wall_seconds"] = time.monotonic() - started
+        report["actual_weight_storage"] = _weight_summary(temporary)
+        _validate_model_path(temporary)
+        report["peak_rss_bytes_macos"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if callable(getattr(mx, "get_peak_memory", None)):
+            report["mlx_peak_memory_bytes"] = mx.get_peak_memory()
+        report["output_files"] = []
+        for path in sorted(temporary.iterdir()):
+            if path.is_file():
+                with path.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                report["output_files"].append({"filename": path.name, "size": path.stat().st_size, "sha256": digest})
+        report["status"] = "complete"
+        report["finished_unix"] = time.time()
+        (temporary / "conversion_provenance.json").write_text(json.dumps(report, indent=2) + "\n")
+        temporary.rename(output)
+        persist()
+        print(json.dumps({"status": "complete", "output": str(output), "weight_storage": report["actual_weight_storage"]}))
+    except BaseException as error:
+        report.update(status="failed", error_type=type(error).__name__, error=str(error), finished_unix=time.time())
+        persist()
+        raise
+
+
+if __name__ == "__main__":
+    main()

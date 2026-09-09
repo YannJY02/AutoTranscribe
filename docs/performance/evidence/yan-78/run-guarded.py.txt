@@ -1,0 +1,119 @@
+"""Local controller; invoke under agent_harness installed-app lock."""
+from datetime import datetime, timezone
+from pathlib import Path
+import argparse, hashlib, json, os, plistlib, signal, socket, subprocess, sys, time
+root = Path(__file__).resolve().parents[2]
+out = Path(__file__).resolve().parent
+sys.path.insert(0, str(root/'scripts'))
+from compare_streaming_asr import stop_owned_process, write_report
+p = argparse.ArgumentParser()
+p.add_argument('--label', required=True)
+p.add_argument('--timeout', type=int, default=1250)
+p.add_argument('command', nargs=argparse.REMAINDER)
+a = p.parse_args()
+command = a.command[1:] if a.command and a.command[0] == '--' else a.command
+assert command and 1 <= a.timeout <= 1800
+report_path = out/f'{a.label}.controller.json'
+assert not report_path.exists(), 'refusing earlier controller evidence overwrite'
+app = Path.home()/'Applications/InsightKit.app'
+config = Path.home()/'Library/Application Support/InsightKit/runtime_config_v1.json'
+sock = Path(f'/tmp/insightkit-app-{os.getuid()}.sock')
+
+def digest(path):
+    with path.open('rb') as f:
+        return hashlib.file_digest(f, 'sha256').hexdigest()
+
+def preservation():
+    info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
+    preferences = plistlib.loads(subprocess.check_output(['/usr/bin/defaults','export','com.yannjy.insightkit','-']))
+    consent = json.loads(preferences['insightkit.external-telemetry.consent.v1'])
+    return dict(installed_revision=info['InsightKitGitRevision'], installed_build=info['CFBundleVersion'],
+        installed_executable_sha256=digest(app/'Contents/MacOS'/info['CFBundleExecutable']),
+        runtime_config_sha256=digest(config), consent_enabled=consent['isEnabled'],
+        consent_sha256=hashlib.sha256(json.dumps(consent,sort_keys=True).encode()).hexdigest())
+
+def idle():
+    if sock.exists():
+        results = {}
+        for method in ['sidecar.status','transcription.status']:
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as conn:
+                conn.settimeout(6)
+                conn.connect(str(sock))
+                conn.sendall((json.dumps(dict(id=1,method=method,params={}))+'\n').encode())
+                reply = json.loads(conn.makefile('rb').readline())
+                assert not reply.get('error'), 'idle RPC failed'
+                results[method] = reply['result']
+        assert results['sidecar.status'].get('live_sessions') == 0, 'active live session'
+        jobs = results['transcription.status']
+        assert not jobs.get('active_job') and not jobs.get('queue'), 'active transcription job'
+        assert jobs.get('watcher',{}).get('state') != 'running', 'active watcher'
+    pids = subprocess.run(['/usr/bin/pgrep','-x','InsightKitApp'],text=True,capture_output=True).stdout.split()
+    for pid in pids:
+        files = subprocess.run(['/usr/sbin/lsof','-a','-p',pid,'-F','fan'],text=True,capture_output=True).stdout
+        write_access = False
+        for line in files.splitlines():
+            if line.startswith('f'): write_access = False
+            elif line.startswith('a'): write_access = line[1:] in {'w','u'}
+            elif line.startswith('n') and write_access and '/Records/' in line:
+                raise RuntimeError('app has a writable Records handle')
+    return dict(socket_present=sock.exists(), app_processes=len(pids), writable_records_handle=False)
+
+def thermal():
+    return int(subprocess.check_output(['/usr/bin/osascript','-l','JavaScript','-e','ObjC.import("Foundation"); $.NSProcessInfo.processInfo.thermalState'],text=True).strip())
+
+inputs = json.loads((out/'input-receipt.json').read_text())['files']
+for item in inputs:
+    path = out/'inputs'/item['path']
+    assert path.stat().st_size == item['bytes'] and digest(path) == item['sha256'], 'input receipt mismatch'
+
+report = dict(label=a.label,started_at=datetime.now(timezone.utc).isoformat(),command=command,
+    source_sha256={str(x.relative_to(root)):digest(x) for x in [root/'scripts/compare_streaming_asr.py',*sorted((root/'scripts/streaming_asr_experiment').glob('*.py'))]},
+    before=preservation(),idle_before=idle(),thermal_start=thermal(),
+    input_receipt_verified=True, background_download_partials=[str(x.relative_to(out)) for x in out.rglob('*.partial')],
+    controller_sha256=digest(Path(__file__)), protocol_sha256=digest(root/'docs/performance/streaming-asr-screening.md'),
+    power=subprocess.check_output(['/usr/bin/pmset','-g','batt'],text=True).strip(),
+    swap_before=subprocess.check_output(['/usr/sbin/sysctl','vm.swapusage'],text=True).strip(),
+    system=subprocess.check_output(['/usr/sbin/sysctl','hw.model','hw.memsize'],text=True).strip(),
+    os=subprocess.check_output(['/usr/bin/sw_vers'],text=True).strip(),samples=[])
+assert report['before']['installed_revision']=='6a85f89' and report['before']['installed_build']=='20260909123140'
+assert report['thermal_start']==0, 'thermal start must be nominal'
+assert "'AC Power'" in report['power'], 'controlled cohort requires AC power'
+write_report(report_path,report)
+env={k:os.environ[k] for k in ['PATH','HOME','TMPDIR','LANG','LC_ALL','LC_CTYPE'] if k in os.environ}
+env.update(PYTHONUNBUFFERED='1',PYTHONDONTWRITEBYTECODE='1',HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',HF_HUB_DISABLE_TELEMETRY='1')
+started=time.monotonic()
+proc=None
+
+def interrupted(signum, _frame):
+    raise InterruptedError(f'controller received signal {signum}')
+signal.signal(signal.SIGTERM,interrupted)
+try:
+    proc=subprocess.Popen(command,cwd=root,env=env,start_new_session=True)
+    while proc.poll() is None:
+        idle_state=idle()
+        therm=thermal()
+        rss_result=subprocess.run(['/bin/ps','-o','rss=','-p',str(proc.pid)],text=True,capture_output=True)
+        rss_kib=int(rss_result.stdout.strip()) if rss_result.returncode==0 and rss_result.stdout.strip() else None
+        report['samples'].append(dict(elapsed_s=time.monotonic()-started,thermal=therm,idle=idle_state,controller_child_rss_kib=rss_kib))
+        if rss_kib and rss_kib>10*1024*1024:
+            raise MemoryError('controller child RSS exceeded 10 GiB')
+        write_report(report_path,report)
+        assert therm < 2, 'serious or critical thermal pressure'
+        if time.monotonic()-started>a.timeout:
+            raise TimeoutError('experiment controller deadline')
+        time.sleep(5)
+    report['exit_code']=proc.returncode
+except BaseException as exc:
+    report['error']=dict(type=type(exc).__name__,message=str(exc))
+    if proc is not None: stop_owned_process(proc)
+finally:
+    report['wall_seconds']=time.monotonic()-started
+    report['after']=preservation()
+    report['preserved']=report['after']==report['before']
+    report['idle_after']=idle()
+    report['thermal_end']=thermal()
+    report['swap_after']=subprocess.check_output(['/usr/sbin/sysctl','vm.swapusage'],text=True).strip()
+    report['finished_at']=datetime.now(timezone.utc).isoformat()
+    write_report(report_path,report)
+print(json.dumps({k:report.get(k) for k in ['label','exit_code','error','wall_seconds','preserved','thermal_end']}),flush=True)
+sys.exit(0 if report.get('exit_code')==0 and report.get('preserved') and not report.get('error') else 1)

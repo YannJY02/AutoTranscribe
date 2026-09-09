@@ -1,0 +1,1879 @@
+{
+  "schema_version": 1,
+  "runs": [
+    {
+      "label": "nemotron-short",
+      "model": "nemotron",
+      "cohort": "short",
+      "status": "completed",
+      "started_at": "2026-09-09T06:56:47.822675+00:00",
+      "finished_at": "2026-09-09T06:58:57.402580+00:00",
+      "adapter_sha256": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+      "protocol": {
+        "pacing": "realtime",
+        "passes": 2,
+        "max_audio_seconds": 300,
+        "max_tokens": 4096,
+        "latency_ms": 320,
+        "chunk_ms": 320,
+        "language": "auto",
+        "seed": 0,
+        "event_journal": "logs/yan78/nemotron/short.json.events.jsonl"
+      },
+      "input": {
+        "audio_sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb",
+        "reference_sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108",
+        "sample_rate": 16000,
+        "frames": 928000,
+        "duration_ms": 58000.0,
+        "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+        "reference_segments": [
+          {
+            "end_ms": 8000,
+            "speaker": "林",
+            "start_ms": 2000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 17000,
+            "speaker": "Alex",
+            "start_ms": 11000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 26000,
+            "speaker": "林",
+            "start_ms": 20000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 36000,
+            "speaker": "Alex",
+            "start_ms": 29000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 41000,
+            "speaker": "林",
+            "start_ms": 35000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 50000,
+            "speaker": "Alex",
+            "start_ms": 44000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 58000,
+            "speaker": "林",
+            "start_ms": 53000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          }
+        ]
+      },
+      "model_setup_ms": 13367.863709,
+      "metadata": {
+        "adapter": "nemo-speech-c-abi",
+        "runtime_version": "nemo-speech-asr 0.1.0",
+        "library_path": "logs/yan78/nemotron/release-v0.1.0/nemo-speech/lib/libnemo_speech_asr_c.1.dylib",
+        "model_path": "logs/yan78/nemotron/model/nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+        "abi_reference_revision": "4f9676226f667d14608487df744f375db87127f8",
+        "expected_model_revision": "1c8deaecc64b91f034d73e08dd8b64625eb3395d",
+        "backend_requested": "Metal",
+        "gpu_device_index": 0,
+        "backend_confirmation": "native stderr; no C API backend readback",
+        "recognizer_create_ms": 10818.848292,
+        "warmup_performed": false,
+        "lazy_graph_setup_in_first_stream": true,
+        "sample_rate": 16000,
+        "latency_ms": 320,
+        "rnnt_right_context": 3,
+        "latency_semantics": "nominal encoder mode; not measured publication delay",
+        "language_prompt": "auto",
+        "language_prompt_scope": "fixed per stream",
+        "decoder": "greedy",
+        "endpointing": false,
+        "vad": false,
+        "punctuation_model": false,
+        "diarization": false,
+        "word_timestamps": "native RNNT final-result offsets",
+        "partial_text_semantics": "cumulative whole stream",
+        "native_audio_processed_semantics": "input fed frontier, not token alignment",
+        "native_next_timing_scope": "C next plus result readback and release",
+        "seed_applied": false,
+        "max_tokens_applicable": false
+      },
+      "passes": [
+        {
+          "pass_index": 1,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 2620.19387500186,
+            "text_events": 60,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 566.8922079994809,
+            "stream_wall_ms": 58080.80287500343
+          },
+          "adapter_return_ms": 58080.77379100723,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 3,
+              "reference_units": 65,
+              "hypothesis_units": 63,
+              "rate": 0.046153846153846156
+            },
+            "english_wer": {
+              "errors": 13,
+              "reference_units": 28,
+              "hypothesis_units": 16,
+              "rate": 0.4642857142857143
+            }
+          },
+          "text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+          "adapter_result": {
+            "text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+            "languages": [
+              "zh-CN"
+            ],
+            "words": [
+              {
+                "text": "我们先固定今天的测试文件和操作顺序",
+                "start_ms": 2080,
+                "end_ms": 5600,
+                "confidence": 1.0
+              },
+              {
+                "text": "for",
+                "start_ms": 12560,
+                "end_ms": 12640,
+                "confidence": 1.0
+              },
+              {
+                "text": "every",
+                "start_ms": 12640,
+                "end_ms": 12880,
+                "confidence": 1.0
+              },
+              {
+                "text": "measured",
+                "start_ms": 13040,
+                "end_ms": 13440,
+                "confidence": 1.0
+              },
+              {
+                "text": "run决定使用冻结方案不再运行中修改内容s",
+                "start_ms": 13520,
+                "end_ms": 30800,
+                "confidence": 1.0
+              },
+              {
+                "text": "before",
+                "start_ms": 30800,
+                "end_ms": 31120,
+                "confidence": 1.0
+              },
+              {
+                "text": "the",
+                "start_ms": 31120,
+                "end_ms": 31200,
+                "confidence": 1.0
+              },
+              {
+                "text": "next",
+                "start_ms": 31200,
+                "end_ms": 31360,
+                "confidence": 1.0
+              },
+              {
+                "text": "run",
+                "start_ms": 31680,
+                "end_ms": 31760,
+                "confidence": 1.0
+              },
+              {
+                "text": "这段短暂交叉发言也保留在测试里",
+                "start_ms": 35360,
+                "end_ms": 38080,
+                "confidence": 1.0
+              },
+              {
+                "text": "A",
+                "start_ms": 44240,
+                "end_ms": 44320,
+                "confidence": 1.0
+              },
+              {
+                "text": "failed",
+                "start_ms": 44480,
+                "end_ms": 44720,
+                "confidence": 1.0
+              },
+              {
+                "text": "validation",
+                "start_ms": 44800,
+                "end_ms": 45040,
+                "confidence": 1.0
+              },
+              {
+                "text": "produces",
+                "start_ms": 45200,
+                "end_ms": 45520,
+                "confidence": 1.0
+              },
+              {
+                "text": "no",
+                "start_ms": 45760,
+                "end_ms": 45840,
+                "confidence": 1.0
+              },
+              {
+                "text": "benchmark",
+                "start_ms": 46080,
+                "end_ms": 46480,
+                "confidence": 1.0
+              },
+              {
+                "text": "result,",
+                "start_ms": 46480,
+                "end_ms": 53280,
+                "confidence": 1.0
+              },
+              {
+                "text": "内容都是合成的,",
+                "start_ms": 53200,
+                "end_ms": 55200,
+                "confidence": 1.0
+              },
+              {
+                "text": "不来自私人会议。",
+                "start_ms": 55280,
+                "end_ms": 58320,
+                "confidence": 1.0
+              }
+            ],
+            "native_final_received": true,
+            "native_result_count": 176,
+            "native_finish_ms": 50.134416,
+            "native_next_ms": 6992.503502999999,
+            "native_decode_and_finish_ms": 7042.637918999999
+          }
+        },
+        {
+          "pass_index": 2,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 2603.0422909971094,
+            "text_events": 60,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 12.069833000423387,
+            "stream_wall_ms": 58081.278290992486
+          },
+          "adapter_return_ms": 58081.253332988126,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 3,
+              "reference_units": 65,
+              "hypothesis_units": 63,
+              "rate": 0.046153846153846156
+            },
+            "english_wer": {
+              "errors": 13,
+              "reference_units": 28,
+              "hypothesis_units": 16,
+              "rate": 0.4642857142857143
+            }
+          },
+          "text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+          "adapter_result": {
+            "text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+            "languages": [
+              "zh-CN"
+            ],
+            "words": [
+              {
+                "text": "我们先固定今天的测试文件和操作顺序",
+                "start_ms": 2080,
+                "end_ms": 5600,
+                "confidence": 1.0
+              },
+              {
+                "text": "for",
+                "start_ms": 12560,
+                "end_ms": 12640,
+                "confidence": 1.0
+              },
+              {
+                "text": "every",
+                "start_ms": 12640,
+                "end_ms": 12880,
+                "confidence": 1.0
+              },
+              {
+                "text": "measured",
+                "start_ms": 13040,
+                "end_ms": 13440,
+                "confidence": 1.0
+              },
+              {
+                "text": "run决定使用冻结方案不再运行中修改内容s",
+                "start_ms": 13520,
+                "end_ms": 30800,
+                "confidence": 1.0
+              },
+              {
+                "text": "before",
+                "start_ms": 30800,
+                "end_ms": 31120,
+                "confidence": 1.0
+              },
+              {
+                "text": "the",
+                "start_ms": 31120,
+                "end_ms": 31200,
+                "confidence": 1.0
+              },
+              {
+                "text": "next",
+                "start_ms": 31200,
+                "end_ms": 31360,
+                "confidence": 1.0
+              },
+              {
+                "text": "run",
+                "start_ms": 31680,
+                "end_ms": 31760,
+                "confidence": 1.0
+              },
+              {
+                "text": "这段短暂交叉发言也保留在测试里",
+                "start_ms": 35360,
+                "end_ms": 38080,
+                "confidence": 1.0
+              },
+              {
+                "text": "A",
+                "start_ms": 44240,
+                "end_ms": 44320,
+                "confidence": 1.0
+              },
+              {
+                "text": "failed",
+                "start_ms": 44480,
+                "end_ms": 44720,
+                "confidence": 1.0
+              },
+              {
+                "text": "validation",
+                "start_ms": 44800,
+                "end_ms": 45040,
+                "confidence": 1.0
+              },
+              {
+                "text": "produces",
+                "start_ms": 45200,
+                "end_ms": 45520,
+                "confidence": 1.0
+              },
+              {
+                "text": "no",
+                "start_ms": 45760,
+                "end_ms": 45840,
+                "confidence": 1.0
+              },
+              {
+                "text": "benchmark",
+                "start_ms": 46080,
+                "end_ms": 46480,
+                "confidence": 1.0
+              },
+              {
+                "text": "result,",
+                "start_ms": 46480,
+                "end_ms": 53280,
+                "confidence": 1.0
+              },
+              {
+                "text": "内容都是合成的,",
+                "start_ms": 53200,
+                "end_ms": 55200,
+                "confidence": 1.0
+              },
+              {
+                "text": "不来自私人会议。",
+                "start_ms": 55280,
+                "end_ms": 58320,
+                "confidence": 1.0
+              }
+            ],
+            "native_final_received": true,
+            "native_result_count": 176,
+            "native_finish_ms": 52.109,
+            "native_next_ms": 6283.0831659999985,
+            "native_decode_and_finish_ms": 6335.192165999999
+          }
+        }
+      ],
+      "process": {
+        "wall_ms": 130591.66575000563,
+        "sample_count": 128,
+        "available_sample_count": 128,
+        "peak_sampled_rss_kib": 1031728,
+        "max_rss_mib": 8192,
+        "scope": "worker process only; not complete GPU or whole-app memory"
+      },
+      "controller": {
+        "started_at": "2026-09-09T06:56:47.307620+00:00",
+        "finished_at": "2026-09-09T06:59:01.255783+00:00",
+        "wall_seconds": 133.35270908400707,
+        "before": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "after": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "preserved": true,
+        "thermal_start": 0,
+        "thermal_end": 0,
+        "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+        "swap_before": "vm.swapusage: total = 22528.00M  used = 20906.75M  free = 1621.25M  (encrypted)",
+        "swap_after": "vm.swapusage: total = 22528.00M  used = 20872.94M  free = 1655.06M  (encrypted)",
+        "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+        "background_download_partials": [
+          "vibevoice/official-model/model-00002-of-00003.safetensors.partial",
+          "vibevoice/official-model/model-00001-of-00003.safetensors.partial",
+          "vibevoice/official-model/tokenizer.json.partial",
+          "voxtral/model/model.safetensors.partial"
+        ],
+        "source_sha256": {
+          "scripts/compare_streaming_asr.py": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea",
+          "scripts/streaming_asr_experiment/__init__.py": "42248d2ee2ada842dca6a074ba775f49f2ae47854b3c2760b2c56bfa1ea45230",
+          "scripts/streaming_asr_experiment/common.py": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+          "scripts/streaming_asr_experiment/nemotron.py": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+          "scripts/streaming_asr_experiment/vibevoice.py": "79b18b37abe39f92b4fe31b955156cea89a83b94a433ec2bb1243098f4882b9f",
+          "scripts/streaming_asr_experiment/voxtral.py": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+        },
+        "controller_sha256": "d169f58ca65b9e6aba2f0a445d920bca77d0c023342f0fda350b4a9cc2a28f1a",
+        "protocol_sha256": "01a5bd5a070b2d8277d6312f7272a6e1702aeeade8b9fcf3305ff5d2a28f1fa9"
+      },
+      "raw_report_path": "nemotron/short.json",
+      "raw_report_sha256": "bef9906273030ed1d087de898fb558415c640d4b413449645064e4a6823bcbbb"
+    },
+    {
+      "label": "vibevoice-short",
+      "model": "vibevoice",
+      "cohort": "short",
+      "status": "completed",
+      "started_at": "2026-09-09T07:03:41.729874+00:00",
+      "finished_at": "2026-09-09T07:05:43.087098+00:00",
+      "adapter_sha256": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+      "protocol": {
+        "pacing": "realtime",
+        "passes": 2,
+        "max_audio_seconds": 300,
+        "max_tokens": 4096,
+        "latency_ms": null,
+        "chunk_ms": 320,
+        "language": "auto",
+        "seed": 0,
+        "event_journal": "logs/yan78/vibevoice/short.json.events.jsonl"
+      },
+      "input": {
+        "audio_sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb",
+        "reference_sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108",
+        "sample_rate": 16000,
+        "frames": 928000,
+        "duration_ms": 58000.0,
+        "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+        "reference_segments": [
+          {
+            "end_ms": 8000,
+            "speaker": "林",
+            "start_ms": 2000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 17000,
+            "speaker": "Alex",
+            "start_ms": 11000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 26000,
+            "speaker": "林",
+            "start_ms": 20000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 36000,
+            "speaker": "Alex",
+            "start_ms": 29000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 41000,
+            "speaker": "林",
+            "start_ms": 35000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 50000,
+            "speaker": "Alex",
+            "start_ms": 44000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 58000,
+            "speaker": "林",
+            "start_ms": 53000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          }
+        ]
+      },
+      "model_setup_ms": 4294.743583,
+      "metadata": {
+        "model_id": "microsoft/VibeVoice-ASR-Streaming-1.5B",
+        "source_model_revision": "4262d23d8a539a6530cf64fbd0b1751ef9a30853",
+        "model_path": "logs/yan78/vibevoice/converted-4bit",
+        "runtime_root": "logs/yan78/vibevoice/sources/mlx-audio",
+        "runtime_revision": "17001a6950956302f15b53d86b601324efe716ba",
+        "versions": {
+          "mlx": "0.31.2",
+          "numpy": "2.3.5",
+          "scipy": "1.17.1",
+          "transformers": "5.14.0",
+          "huggingface-hub": "1.30.0"
+        },
+        "native_streaming": true,
+        "state_scope": "new KV cache per run",
+        "emission_granularity": "completed native audio chunk",
+        "sample_rate": 24000,
+        "chunk_samples": 70400,
+        "window_samples": 83200,
+        "chunk_ms": 2933.3333333333335,
+        "lookahead_ms": 533.3333333333334,
+        "first_window_audio_ms": 3466.6666666666665,
+        "resampler_halo_input_frames": 66,
+        "resampler_halo_ms": 4.125,
+        "requested_chunk_ms": 320,
+        "requested_latency_ms": null,
+        "requested_language": "auto",
+        "language_prior": null,
+        "quantization": {
+          "group_size": 64,
+          "bits": 4,
+          "mode": "affine"
+        },
+        "quantized_components": [
+          "language_model"
+        ],
+        "nonquantized_dtype": "bfloat16",
+        "weight_storage": {
+          "tensor_count": 1294,
+          "non_language_model_bytes": 1386664704,
+          "language_model_bytes": 868547584,
+          "total_tensor_bytes": 2255212288
+        },
+        "config_dtype_field": "float32",
+        "per_chunk_token_limit": 256,
+        "max_duration_seconds": 480,
+        "word_timestamps": false,
+        "speaker_timestamps": false,
+        "native_step_finish_reason_available": false,
+        "raw_output_scope": "decoded native step text; upstream removes special tokens"
+      },
+      "passes": [
+        {
+          "pass_index": 1,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 5547.8396249964135,
+            "text_events": 19,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 13.154084000154398,
+            "stream_wall_ms": 58466.363500003354
+          },
+          "adapter_return_ms": 58466.35058399988,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 13,
+              "reference_units": 28,
+              "hypothesis_units": 40,
+              "rate": 0.4642857142857143
+            }
+          },
+          "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。",
+          "adapter_result": {
+            "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。",
+            "raw_text": "[Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence] [Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。",
+            "raw_chunks": [
+              "[Silence] \n Speaker 0:我们先固定今",
+              "天的测试文件和操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will ",
+              "be replayed for every measured run.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:决定使",
+              "用冻结方案，不在运行中修改内",
+              "容。",
+              "[Silence] [Silence] \n Speaker 0:I will check ",
+              "the hashes and durations before the next run.",
+              "[Silence] \n Speaker 0:这",
+              "段短暂交叉发言也保留在测试里。",
+              "",
+              "[Silence] [Silence]",
+              " \n Speaker 0:A failed validation produces no benchmark result.",
+              "[Silence]",
+              "[Silence]",
+              " \n Speaker 0:所有内容都是合成的，不来自私",
+              "人会议。"
+            ],
+            "speaker_events": [
+              {
+                "speaker_id": 0,
+                "raw_offset": 11,
+                "text_offset": 11,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 60,
+                "text_offset": 49,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 147,
+                "text_offset": 125,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 198,
+                "text_offset": 165,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 278,
+                "text_offset": 234,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 326,
+                "text_offset": 271,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 406,
+                "text_offset": 340,
+                "raw_label": " Speaker 0:"
+              }
+            ],
+            "generation_tokens": 162,
+            "processed_chunks": 20,
+            "expected_chunks": 20,
+            "truncated": false,
+            "truncation_reasons": [],
+            "completed": true,
+            "native_step_finish_reason_available": false
+          },
+          "annotation_removed_sensitivity": {
+            "rule": "Remove only the exact observed [Silence] annotation; retain the original score and text above.",
+            "removed_occurrences": 12,
+            "text": " \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run. \n决定使用冻结方案，不在运行中修改内容。  \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。  \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。",
+            "quality": {
+              "chinese_cer": {
+                "errors": 0,
+                "reference_units": 65,
+                "hypothesis_units": 65,
+                "rate": 0.0
+              },
+              "english_wer": {
+                "errors": 1,
+                "reference_units": 28,
+                "hypothesis_units": 28,
+                "rate": 0.03571428571428571
+              }
+            }
+          }
+        },
+        {
+          "pass_index": 2,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 4805.698000011034,
+            "text_events": 19,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 50.42183399875648,
+            "stream_wall_ms": 58497.03504200443
+          },
+          "adapter_return_ms": 58497.01983400155,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 13,
+              "reference_units": 28,
+              "hypothesis_units": 40,
+              "rate": 0.4642857142857143
+            }
+          },
+          "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。",
+          "adapter_result": {
+            "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。",
+            "raw_text": "[Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence] [Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。",
+            "raw_chunks": [
+              "[Silence] \n Speaker 0:我们先固定今",
+              "天的测试文件和操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will ",
+              "be replayed for every measured run.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:决定使",
+              "用冻结方案，不在运行中修改内",
+              "容。",
+              "[Silence] [Silence] \n Speaker 0:I will check ",
+              "the hashes and durations before the next run.",
+              "[Silence] \n Speaker 0:这",
+              "段短暂交叉发言也保留在测试里。",
+              "",
+              "[Silence] [Silence]",
+              " \n Speaker 0:A failed validation produces no benchmark result.",
+              "[Silence]",
+              "[Silence]",
+              " \n Speaker 0:所有内容都是合成的，不来自私",
+              "人会议。"
+            ],
+            "speaker_events": [
+              {
+                "speaker_id": 0,
+                "raw_offset": 11,
+                "text_offset": 11,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 60,
+                "text_offset": 49,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 147,
+                "text_offset": 125,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 198,
+                "text_offset": 165,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 278,
+                "text_offset": 234,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 326,
+                "text_offset": 271,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 406,
+                "text_offset": 340,
+                "raw_label": " Speaker 0:"
+              }
+            ],
+            "generation_tokens": 162,
+            "processed_chunks": 20,
+            "expected_chunks": 20,
+            "truncated": false,
+            "truncation_reasons": [],
+            "completed": true,
+            "native_step_finish_reason_available": false
+          },
+          "annotation_removed_sensitivity": {
+            "rule": "Remove only the exact observed [Silence] annotation; retain the original score and text above.",
+            "removed_occurrences": 12,
+            "text": " \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run. \n决定使用冻结方案，不在运行中修改内容。  \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。  \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。",
+            "quality": {
+              "chinese_cer": {
+                "errors": 0,
+                "reference_units": 65,
+                "hypothesis_units": 65,
+                "rate": 0.0
+              },
+              "english_wer": {
+                "errors": 1,
+                "reference_units": 28,
+                "hypothesis_units": 28,
+                "rate": 0.03571428571428571
+              }
+            }
+          }
+        }
+      ],
+      "process": {
+        "wall_ms": 122442.44529100251,
+        "sample_count": 120,
+        "available_sample_count": 120,
+        "peak_sampled_rss_kib": 754800,
+        "max_rss_mib": 8192,
+        "scope": "worker process only; not complete GPU or whole-app memory"
+      },
+      "controller": {
+        "started_at": "2026-09-09T07:03:41.285821+00:00",
+        "finished_at": "2026-09-09T07:05:45.229723+00:00",
+        "wall_seconds": 123.48176995798713,
+        "before": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "after": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "preserved": true,
+        "thermal_start": 0,
+        "thermal_end": 0,
+        "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+        "swap_before": "vm.swapusage: total = 25600.00M  used = 24062.06M  free = 1537.94M  (encrypted)",
+        "swap_after": "vm.swapusage: total = 24576.00M  used = 23870.31M  free = 705.69M  (encrypted)",
+        "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+        "background_download_partials": [
+          "voxtral/model/model.safetensors.partial"
+        ],
+        "source_sha256": {
+          "scripts/compare_streaming_asr.py": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea",
+          "scripts/streaming_asr_experiment/__init__.py": "42248d2ee2ada842dca6a074ba775f49f2ae47854b3c2760b2c56bfa1ea45230",
+          "scripts/streaming_asr_experiment/common.py": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+          "scripts/streaming_asr_experiment/nemotron.py": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+          "scripts/streaming_asr_experiment/vibevoice.py": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+          "scripts/streaming_asr_experiment/voxtral.py": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+        },
+        "controller_sha256": "a03121be163f429c8e9425770401d7fed2f96baee3c04a16eb8a6f6f3a60f574",
+        "protocol_sha256": "2e89ac396f024304d6f39ddbaa0fa9a5d212681ed4c171ee56a98415c78f5bfa"
+      },
+      "raw_report_path": "vibevoice/short.json",
+      "raw_report_sha256": "f663995e119eeeea3e7adff7b158a658cbc1c0a31867bb7b120c5678a33691c3"
+    },
+    {
+      "label": "vibevoice-long",
+      "model": "vibevoice",
+      "cohort": "long",
+      "status": "completed",
+      "started_at": "2026-09-09T07:07:14.691144+00:00",
+      "finished_at": "2026-09-09T07:12:19.261194+00:00",
+      "adapter_sha256": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+      "protocol": {
+        "pacing": "realtime",
+        "passes": 1,
+        "max_audio_seconds": 300,
+        "max_tokens": 4096,
+        "latency_ms": null,
+        "chunk_ms": 320,
+        "language": "auto",
+        "seed": 0,
+        "event_journal": "logs/yan78/vibevoice/long.json.events.jsonl"
+      },
+      "input": {
+        "audio_sha256": "645a0096e826a4c0bbfeffe662549abe6f204d15313c24b358fbf1db4751f15a",
+        "reference_sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516",
+        "sample_rate": 16000,
+        "frames": 4800000,
+        "duration_ms": 300000.0,
+        "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。 我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。 我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。 我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。 我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+        "reference_segments": [
+          {
+            "end_ms": 8000,
+            "speaker": "林",
+            "start_ms": 2000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 17000,
+            "speaker": "Alex",
+            "start_ms": 11000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 26000,
+            "speaker": "林",
+            "start_ms": 20000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 36000,
+            "speaker": "Alex",
+            "start_ms": 29000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 41000,
+            "speaker": "林",
+            "start_ms": 35000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 50000,
+            "speaker": "Alex",
+            "start_ms": 44000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 58000,
+            "speaker": "林",
+            "start_ms": 53000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          },
+          {
+            "end_ms": 68000,
+            "speaker": "林",
+            "start_ms": 62000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 77000,
+            "speaker": "Alex",
+            "start_ms": 71000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 86000,
+            "speaker": "林",
+            "start_ms": 80000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 96000,
+            "speaker": "Alex",
+            "start_ms": 89000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 101000,
+            "speaker": "林",
+            "start_ms": 95000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 110000,
+            "speaker": "Alex",
+            "start_ms": 104000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 118000,
+            "speaker": "林",
+            "start_ms": 113000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          },
+          {
+            "end_ms": 128000,
+            "speaker": "林",
+            "start_ms": 122000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 137000,
+            "speaker": "Alex",
+            "start_ms": 131000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 146000,
+            "speaker": "林",
+            "start_ms": 140000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 156000,
+            "speaker": "Alex",
+            "start_ms": 149000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 161000,
+            "speaker": "林",
+            "start_ms": 155000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 170000,
+            "speaker": "Alex",
+            "start_ms": 164000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 178000,
+            "speaker": "林",
+            "start_ms": 173000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          },
+          {
+            "end_ms": 188000,
+            "speaker": "林",
+            "start_ms": 182000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 197000,
+            "speaker": "Alex",
+            "start_ms": 191000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 206000,
+            "speaker": "林",
+            "start_ms": 200000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 216000,
+            "speaker": "Alex",
+            "start_ms": 209000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 221000,
+            "speaker": "林",
+            "start_ms": 215000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 230000,
+            "speaker": "Alex",
+            "start_ms": 224000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 238000,
+            "speaker": "林",
+            "start_ms": 233000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          },
+          {
+            "end_ms": 248000,
+            "speaker": "林",
+            "start_ms": 242000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 257000,
+            "speaker": "Alex",
+            "start_ms": 251000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 266000,
+            "speaker": "林",
+            "start_ms": 260000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 276000,
+            "speaker": "Alex",
+            "start_ms": 269000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 281000,
+            "speaker": "林",
+            "start_ms": 275000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 290000,
+            "speaker": "Alex",
+            "start_ms": 284000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 298000,
+            "speaker": "林",
+            "start_ms": 293000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          }
+        ]
+      },
+      "model_setup_ms": 3803.878917,
+      "metadata": {
+        "model_id": "microsoft/VibeVoice-ASR-Streaming-1.5B",
+        "source_model_revision": "4262d23d8a539a6530cf64fbd0b1751ef9a30853",
+        "model_path": "logs/yan78/vibevoice/converted-4bit",
+        "runtime_root": "logs/yan78/vibevoice/sources/mlx-audio",
+        "runtime_revision": "17001a6950956302f15b53d86b601324efe716ba",
+        "versions": {
+          "mlx": "0.31.2",
+          "numpy": "2.3.5",
+          "scipy": "1.17.1",
+          "transformers": "5.14.0",
+          "huggingface-hub": "1.30.0"
+        },
+        "native_streaming": true,
+        "state_scope": "new KV cache per run",
+        "emission_granularity": "completed native audio chunk",
+        "sample_rate": 24000,
+        "chunk_samples": 70400,
+        "window_samples": 83200,
+        "chunk_ms": 2933.3333333333335,
+        "lookahead_ms": 533.3333333333334,
+        "first_window_audio_ms": 3466.6666666666665,
+        "resampler_halo_input_frames": 66,
+        "resampler_halo_ms": 4.125,
+        "requested_chunk_ms": 320,
+        "requested_latency_ms": null,
+        "requested_language": "auto",
+        "language_prior": null,
+        "quantization": {
+          "group_size": 64,
+          "bits": 4,
+          "mode": "affine"
+        },
+        "quantized_components": [
+          "language_model"
+        ],
+        "nonquantized_dtype": "bfloat16",
+        "weight_storage": {
+          "tensor_count": 1294,
+          "non_language_model_bytes": 1386664704,
+          "language_model_bytes": 868547584,
+          "total_tensor_bytes": 2255212288
+        },
+        "config_dtype_field": "float32",
+        "per_chunk_token_limit": 256,
+        "max_duration_seconds": 480,
+        "word_timestamps": false,
+        "speaker_timestamps": false,
+        "native_step_finish_reason_available": false,
+        "raw_output_scope": "decoded native step text; upstream removes special tokens"
+      },
+      "passes": [
+        {
+          "pass_index": 1,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 4587.297582998872,
+            "text_events": 101,
+            "released_frames": 4800000,
+            "max_source_lateness_ms": 1826.3512079953216,
+            "stream_wall_ms": 300599.7922910028
+          },
+          "adapter_return_ms": 300599.78283300006,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 325,
+              "hypothesis_units": 325,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 74,
+              "reference_units": 140,
+              "hypothesis_units": 209,
+              "rate": 0.5285714285714286
+            }
+          },
+          "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence] [Silence] \n我们先固定今天的测试文件和操作顺序。[Silence] [Silence] \nThe same output will be replayed for every measured run.[Silence][Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence]",
+          "adapter_result": {
+            "text": "[Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence] [Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence] [Silence] \n我们先固定今天的测试文件和操作顺序。[Silence] [Silence] \nThe same output will be replayed for every measured run.[Silence][Silence][Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence][Silence] \n我们先固定今天的测试文件和操作顺序。[Silence][Silence] \nThe same output will be replayed for every measured run.[Silence][Silence] [Silence] \n决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \nI will check the hashes and durations before the next run.[Silence] \n这段短暂交叉发言也保留在测试里。[Silence][Silence] \nA failed validation produces no benchmark result.[Silence][Silence] \n所有内容都是合成的，不来自私人会议。[Silence]",
+            "raw_text": "[Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence] [Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。[Silence][Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] [Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence][Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。[Silence][Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] [Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence] [Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence][Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。[Silence] [Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence] [Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence][Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence][Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。[Silence][Silence] \n Speaker 0:我们先固定今天的测试文件和操作顺序。[Silence][Silence] \n Speaker 0:The same output will be replayed for every measured run.[Silence][Silence] [Silence] \n Speaker 0:决定使用冻结方案，不在运行中修改内容。[Silence][Silence] \n Speaker 0:I will check the hashes and durations before the next run.[Silence] \n Speaker 0:这段短暂交叉发言也保留在测试里。[Silence][Silence] \n Speaker 0:A failed validation produces no benchmark result.[Silence][Silence] \n Speaker 0:所有内容都是合成的，不来自私人会议。[Silence]",
+            "raw_chunks": [
+              "[Silence] \n Speaker 0:我们先固定今",
+              "天的测试文件和操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will ",
+              "be replayed for every measured run.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:决定使",
+              "用冻结方案，不在运行中修改内",
+              "容。",
+              "[Silence] [Silence] \n Speaker 0:I will check ",
+              "the hashes and durations before the next run.",
+              "[Silence] \n Speaker 0:这",
+              "段短暂交叉发言也保留在测试里。",
+              "",
+              "[Silence] [Silence]",
+              " \n Speaker 0:A failed validation produces no benchmark result.",
+              "[Silence]",
+              "[Silence]",
+              " \n Speaker 0:所有内容都是合成的，不来自私",
+              "人会议。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:我们先固定今天的测试文件和",
+              "操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will be replayed for every measured run.",
+              "",
+              "[Silence]",
+              "[Silence] [Silence] \n Speaker 0:决定使用冻结方案，不在",
+              "运行中修改内容。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:I will check the hashes and durations before ",
+              "the next run.",
+              "[Silence] \n Speaker 0:这段短暂交叉发言也",
+              "保留在测试里。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:A failed validation produces no ",
+              "benchmark result.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:所有内容都是合",
+              "成的，不来自私人会议。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:我们先固定今天",
+              "的测试文件和操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will be ",
+              "replayed for every measured run.",
+              "[Silence]",
+              "[Silence] [Silence] \n Speaker 0:决定使用",
+              "冻结方案，不在运行中修改内",
+              "容。",
+              "[Silence] [Silence] \n Speaker 0:I will check the ",
+              "hashes and durations before the next run.",
+              "[Silence] \n Speaker 0:这段短",
+              "暂交叉发言也保留在测试里。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:A failed ",
+              "validation produces no benchmark result.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:所",
+              "有内容都是合成的，不来自私人",
+              "会议。",
+              "[Silence] [Silence]",
+              " \n Speaker 0:我们先固定今天的测试文件和操作",
+              "顺序。",
+              "[Silence] [Silence]",
+              " \n Speaker 0:The same output will be replayed for every measured run.",
+              "[Silence]",
+              "[Silence]",
+              "[Silence] \n Speaker 0:决定使用冻结方案，不在运",
+              "行中修改内容。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:I will check the hashes and durations before the ",
+              "next run.",
+              "[Silence] \n Speaker 0:这段短暂交叉发言也保",
+              "留在测试里。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:A failed validation produces no ",
+              "benchmark result.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:所有内容都是合成的，",
+              "不来自私人会议。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:我们先固定今天的测",
+              "试文件和操作顺序。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:The same output will be replayed ",
+              "for every measured run.",
+              "[Silence]",
+              "[Silence] [Silence] \n Speaker 0:决定使用冻结",
+              "方案，不在运行中修改内容。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:I will check the hashes ",
+              "and durations before the next run.",
+              "[Silence] \n Speaker 0:这段短暂",
+              "交叉发言也保留在测试里。",
+              "[Silence]",
+              "[Silence] \n Speaker 0:A failed ",
+              "validation produces no benchmark result.",
+              "[Silence]",
+              "[Silence] \n Speaker 0:所有",
+              "内容都是合成的，不来自私人会",
+              "议。",
+              "[Silence]"
+            ],
+            "speaker_events": [
+              {
+                "speaker_id": 0,
+                "raw_offset": 11,
+                "text_offset": 11,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 60,
+                "text_offset": 49,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 147,
+                "text_offset": 125,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 198,
+                "text_offset": 165,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 278,
+                "text_offset": 234,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 326,
+                "text_offset": 271,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 406,
+                "text_offset": 340,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 455,
+                "text_offset": 378,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 504,
+                "text_offset": 416,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 601,
+                "text_offset": 502,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 651,
+                "text_offset": 541,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 731,
+                "text_offset": 610,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 778,
+                "text_offset": 646,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 858,
+                "text_offset": 715,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 907,
+                "text_offset": 753,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 956,
+                "text_offset": 791,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1053,
+                "text_offset": 877,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1104,
+                "text_offset": 917,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1184,
+                "text_offset": 986,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1231,
+                "text_offset": 1022,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1311,
+                "text_offset": 1091,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1361,
+                "text_offset": 1130,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1411,
+                "text_offset": 1169,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1507,
+                "text_offset": 1254,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1557,
+                "text_offset": 1293,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1637,
+                "text_offset": 1362,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1684,
+                "text_offset": 1398,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1764,
+                "text_offset": 1467,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1813,
+                "text_offset": 1505,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1862,
+                "text_offset": 1543,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 1959,
+                "text_offset": 1629,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 2009,
+                "text_offset": 1668,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 2089,
+                "text_offset": 1737,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 2136,
+                "text_offset": 1773,
+                "raw_label": " Speaker 0:"
+              },
+              {
+                "speaker_id": 0,
+                "raw_offset": 2216,
+                "text_offset": 1842,
+                "raw_label": " Speaker 0:"
+              }
+            ],
+            "generation_tokens": 833,
+            "processed_chunks": 103,
+            "expected_chunks": 103,
+            "truncated": false,
+            "truncation_reasons": [],
+            "completed": true,
+            "native_step_finish_reason_available": false
+          },
+          "annotation_removed_sensitivity": {
+            "rule": "Remove only the exact observed [Silence] annotation; retain the original score and text above.",
+            "removed_occurrences": 69,
+            "text": " \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run. \n决定使用冻结方案，不在运行中修改内容。  \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。  \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。 \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run.  \n决定使用冻结方案，不在运行中修改内容。 \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。 \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。 \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run.  \n决定使用冻结方案，不在运行中修改内容。  \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。 \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。  \n我们先固定今天的测试文件和操作顺序。  \nThe same output will be replayed for every measured run. \n决定使用冻结方案，不在运行中修改内容。 \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。 \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。 \n我们先固定今天的测试文件和操作顺序。 \nThe same output will be replayed for every measured run.  \n决定使用冻结方案，不在运行中修改内容。 \nI will check the hashes and durations before the next run. \n这段短暂交叉发言也保留在测试里。 \nA failed validation produces no benchmark result. \n所有内容都是合成的，不来自私人会议。",
+            "quality": {
+              "chinese_cer": {
+                "errors": 0,
+                "reference_units": 325,
+                "hypothesis_units": 325,
+                "rate": 0.0
+              },
+              "english_wer": {
+                "errors": 5,
+                "reference_units": 140,
+                "hypothesis_units": 140,
+                "rate": 0.03571428571428571
+              }
+            }
+          }
+        }
+      ],
+      "process": {
+        "wall_ms": 304931.6439999966,
+        "sample_count": 299,
+        "available_sample_count": 299,
+        "peak_sampled_rss_kib": 1407552,
+        "max_rss_mib": 8192,
+        "scope": "worker process only; not complete GPU or whole-app memory"
+      },
+      "controller": {
+        "started_at": "2026-09-09T07:07:14.227661+00:00",
+        "finished_at": "2026-09-09T07:12:23.352693+00:00",
+        "wall_seconds": 308.630665625009,
+        "before": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "after": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "preserved": true,
+        "thermal_start": 0,
+        "thermal_end": 0,
+        "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+        "swap_before": "vm.swapusage: total = 24576.00M  used = 23590.31M  free = 985.69M  (encrypted)",
+        "swap_after": "vm.swapusage: total = 23552.00M  used = 21961.94M  free = 1590.06M  (encrypted)",
+        "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+        "background_download_partials": [
+          "voxtral/model/model.safetensors.partial"
+        ],
+        "source_sha256": {
+          "scripts/compare_streaming_asr.py": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea",
+          "scripts/streaming_asr_experiment/__init__.py": "42248d2ee2ada842dca6a074ba775f49f2ae47854b3c2760b2c56bfa1ea45230",
+          "scripts/streaming_asr_experiment/common.py": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+          "scripts/streaming_asr_experiment/nemotron.py": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+          "scripts/streaming_asr_experiment/vibevoice.py": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+          "scripts/streaming_asr_experiment/voxtral.py": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+        },
+        "controller_sha256": "a03121be163f429c8e9425770401d7fed2f96baee3c04a16eb8a6f6f3a60f574",
+        "protocol_sha256": "2e89ac396f024304d6f39ddbaa0fa9a5d212681ed4c171ee56a98415c78f5bfa"
+      },
+      "raw_report_path": "vibevoice/long.json",
+      "raw_report_sha256": "4717c81b6f0ce014c1d71cf5d4fc9530b4d0cf2f2a5bfa07910c4bfc6cb4d37a"
+    },
+    {
+      "label": "voxtral-short",
+      "model": "voxtral",
+      "cohort": "short",
+      "status": "completed",
+      "started_at": "2026-09-09T07:16:16.669792+00:00",
+      "finished_at": "2026-09-09T07:18:30.301085+00:00",
+      "adapter_sha256": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c",
+      "protocol": {
+        "pacing": "realtime",
+        "passes": 2,
+        "max_audio_seconds": 300,
+        "max_tokens": 4096,
+        "latency_ms": 480,
+        "chunk_ms": 320,
+        "language": "auto",
+        "seed": 0,
+        "event_journal": "logs/yan78/voxtral/short.json.events.jsonl"
+      },
+      "input": {
+        "audio_sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb",
+        "reference_sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108",
+        "sample_rate": 16000,
+        "frames": 928000,
+        "duration_ms": 58000.0,
+        "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+        "reference_segments": [
+          {
+            "end_ms": 8000,
+            "speaker": "林",
+            "start_ms": 2000,
+            "text": "我们先固定今天的测试文件和操作顺序。"
+          },
+          {
+            "end_ms": 17000,
+            "speaker": "Alex",
+            "start_ms": 11000,
+            "text": "The same input will be replayed for every measured run."
+          },
+          {
+            "end_ms": 26000,
+            "speaker": "林",
+            "start_ms": 20000,
+            "text": "决定使用冻结方案，不在运行中修改内容。"
+          },
+          {
+            "end_ms": 36000,
+            "speaker": "Alex",
+            "start_ms": 29000,
+            "text": "I will check the hashes and durations before the next run."
+          },
+          {
+            "end_ms": 41000,
+            "speaker": "林",
+            "start_ms": 35000,
+            "text": "这段短暂交叉发言也保留在测试里。"
+          },
+          {
+            "end_ms": 50000,
+            "speaker": "Alex",
+            "start_ms": 44000,
+            "text": "A failed validation produces no benchmark result."
+          },
+          {
+            "end_ms": 58000,
+            "speaker": "林",
+            "start_ms": 53000,
+            "text": "所有内容都是合成的，不来自私人会议。"
+          }
+        ]
+      },
+      "model_setup_ms": 6987.666458,
+      "metadata": {
+        "runtime": "awni/voxmlx",
+        "source_revision": "e6d193e85e84e30f26e370c66973ce287b8a9d57",
+        "runtime_root": "logs/yan78/voxtral/source/voxmlx",
+        "source_sha256": "912cd5f2be365a326ec0310742a86a49d0aea82f93c5a4a707c7b67263467b55",
+        "model_path": "logs/yan78/voxtral/model",
+        "expected_model_id": "T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit",
+        "expected_model_revision": "e41b00294733d2db2fe767cd7c5454ba617c2bed",
+        "model_weights_bytes": 2503990492,
+        "quantization": {
+          "group_size": 64,
+          "bits": 4
+        },
+        "native_delay_ms": 480,
+        "native_delay_tokens": 6,
+        "native_block_frames": 1280,
+        "native_chunk_ms": 80,
+        "requested_chunk_ms": 320,
+        "left_padding_tokens": 32,
+        "right_padding_tokens": 17,
+        "decoder_cache_max_tokens": 8192,
+        "encoder_cache_max_frames": 100000,
+        "configured_encoder_sliding_window": 750,
+        "encoder_sliding_window_applied": false,
+        "cache_scope": "fresh stream-local caches per run; model weights reused",
+        "source_clock": "session-relative; native setup can cause recorded release lateness",
+        "flush_timing_scope": "native finally from InputStream.stop through function return",
+        "output_semantics": "exact concatenation of native decoded-token print deltas",
+        "coverage_limit": "native EOS resets can discard buffered audio or embeddings",
+        "language": "auto",
+        "temperature": 0.0
+      },
+      "passes": [
+        {
+          "pass_index": 1,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 2990.105416000006,
+            "text_events": 73,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 1161.8576250073966,
+            "stream_wall_ms": 59792.64941600559
+          },
+          "adapter_return_ms": 59792.04825000488,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 24,
+              "reference_units": 65,
+              "hypothesis_units": 47,
+              "rate": 0.36923076923076925
+            },
+            "english_wer": {
+              "errors": 28,
+              "reference_units": 28,
+              "hypothesis_units": 2,
+              "rate": 1.0
+            }
+          },
+          "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandwaitforthenextone.所有内容都是个什么不来自这个会议",
+          "adapter_result": {
+            "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandwaitforthenextone.所有内容都是个什么不来自这个会议",
+            "decoded_tokens": 735,
+            "native_eos_count": 0,
+            "native_delay_ms": 480,
+            "native_chunk_ms": 80,
+            "input_frames_delivered": 928000,
+            "native_flush_ms": 1377.542791000451,
+            "native_flush_snapshot": {
+              "tail_flush_eligible": true,
+              "prefilled": true,
+              "n_audio_samples_fed": 920320,
+              "n_total_decoded": 750,
+              "audio_buf_frames": 7680,
+              "pending_audio_frames": 0
+            },
+            "native_flush_completed": true
+          }
+        },
+        {
+          "pass_index": 2,
+          "status": "completed",
+          "stream": {
+            "pacing": "realtime",
+            "first_text_ms": 6604.467708006268,
+            "text_events": 76,
+            "released_frames": 928000,
+            "max_source_lateness_ms": 99.2465420102235,
+            "stream_wall_ms": 66547.59666700556
+          },
+          "adapter_return_ms": 66547.57158301072,
+          "literal_quality": {
+            "chinese_cer": {
+              "errors": 35,
+              "reference_units": 65,
+              "hypothesis_units": 31,
+              "rate": 0.5384615384615384
+            },
+            "english_wer": {
+              "errors": 28,
+              "reference_units": 28,
+              "hypothesis_units": 4,
+              "rate": 1.0
+            }
+          },
+          "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandthewaytentsforthenextone.Soeveryoneshouldremember,butrightjustremember.",
+          "adapter_result": {
+            "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandthewaytentsforthenextone.Soeveryoneshouldremember,butrightjustremember.",
+            "decoded_tokens": 735,
+            "native_eos_count": 0,
+            "native_delay_ms": 480,
+            "native_chunk_ms": 80,
+            "input_frames_delivered": 928000,
+            "native_flush_ms": 4388.611332993605,
+            "native_flush_snapshot": {
+              "tail_flush_eligible": true,
+              "prefilled": true,
+              "n_audio_samples_fed": 898560,
+              "n_total_decoded": 733,
+              "audio_buf_frames": 29440,
+              "pending_audio_frames": 0
+            },
+            "native_flush_completed": true
+          }
+        }
+      ],
+      "process": {
+        "wall_ms": 135922.90283400507,
+        "sample_count": 130,
+        "available_sample_count": 130,
+        "peak_sampled_rss_kib": 1002976,
+        "max_rss_mib": 8192,
+        "scope": "worker process only; not complete GPU or whole-app memory"
+      },
+      "controller": {
+        "started_at": "2026-09-09T07:16:16.088737+00:00",
+        "finished_at": "2026-09-09T07:18:33.392032+00:00",
+        "wall_seconds": 136.70911066699773,
+        "before": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "after": {
+          "installed_revision": "6a85f89",
+          "installed_build": "20260909123140",
+          "installed_executable_sha256": "bd4d51707180a73fe6a7f6aa44c0481d8808a9c58ffbea33113a1ccd2916320b",
+          "runtime_config_sha256": "ad3369432ce089e6e520288b99a9433ce2352e19b9124bcffc16adffcc66f69b",
+          "consent_enabled": true,
+          "consent_sha256": "d92441e73eae2b28c46e0d02bee9374bf55de890b8da7cc5bb748bd56d8ed836"
+        },
+        "preserved": true,
+        "thermal_start": 0,
+        "thermal_end": 0,
+        "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+        "swap_before": "vm.swapusage: total = 22528.00M  used = 21436.81M  free = 1091.19M  (encrypted)",
+        "swap_after": "vm.swapusage: total = 37888.00M  used = 25302.75M  free = 12585.25M  (encrypted)",
+        "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+        "background_download_partials": [],
+        "source_sha256": {
+          "scripts/compare_streaming_asr.py": "90a08a35315050025f79d282b3d43144310e49e3d00cdb41f09bd3c3cf963df3",
+          "scripts/streaming_asr_experiment/__init__.py": "42248d2ee2ada842dca6a074ba775f49f2ae47854b3c2760b2c56bfa1ea45230",
+          "scripts/streaming_asr_experiment/common.py": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+          "scripts/streaming_asr_experiment/nemotron.py": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+          "scripts/streaming_asr_experiment/vibevoice.py": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+          "scripts/streaming_asr_experiment/voxtral.py": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+        },
+        "controller_sha256": "a03121be163f429c8e9425770401d7fed2f96baee3c04a16eb8a6f6f3a60f574",
+        "protocol_sha256": "2e89ac396f024304d6f39ddbaa0fa9a5d212681ed4c171ee56a98415c78f5bfa"
+      },
+      "raw_report_path": "voxtral/short.json",
+      "raw_report_sha256": "2306c80448b30b2d10c72d3c2ac0e6dec371800b76984f9406edc27495358386"
+    }
+  ],
+  "limits": [
+    "One 58-second synthetic content set; repeated streams are not independent quality samples.",
+    "The 300-second fixture repeats the same seven utterances five times.",
+    "Original native renderings and scores are preserved; annotation removal and Voxtral full-token redecoding are separate diagnostics.",
+    "First text includes two seconds of leading silence and does not measure app capture, IPC or UI.",
+    "RSS is a worker process sample, not complete GPU/unified or whole-application memory."
+  ]
+}
