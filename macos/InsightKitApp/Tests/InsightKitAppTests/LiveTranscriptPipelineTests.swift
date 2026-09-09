@@ -3,6 +3,24 @@ import XCTest
 @testable import InsightKitApp
 
 final class LiveTranscriptPipelineTests: XCTestCase {
+    func testTranscriptReturnsBeforeSlowSummaryCompletes() throws {
+        let runtime = LiveTranscriptPipelineRuntimeMock()
+        runtime.transcribeResult = [makeDelta(text: "Show this before the summary.")]
+        runtime.transcriptDeltaResult = 1
+        runtime.refreshDelaySec = 0.4
+        let pipeline = LiveTranscriptPipeline(runtime: runtime)
+        let started = ProcessInfo.processInfo.systemUptime
+
+        let outcome = try pipeline.process(
+            chunk: makeChunk(index: 0),
+            context: makeContext(warmReady: true, hasTranscript: false)
+        )
+
+        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Show this before the summary."])
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 0.2,
+                          "A slow analysis provider must not hold the transcript result.")
+    }
+
     func testEmptyASROutputReturnsNoSegmentsAndCapturingState() throws {
         let runtime = LiveTranscriptPipelineRuntimeMock()
         runtime.transcribeResult = []
@@ -46,29 +64,20 @@ final class LiveTranscriptPipelineTests: XCTestCase {
         }
     }
 
-    func testRefreshNeededReturnsRefreshResult() throws {
+    func testRefreshNeededReturnsRequestWithoutCallingProvider() throws {
         let runtime = LiveTranscriptPipelineRuntimeMock()
         runtime.transcribeResult = [makeDelta(text: "Refresh this live transcript delta.")]
         runtime.transcriptDeltaResult = 1
-        runtime.refreshResult = makeRefreshResult(provider: "openai:gpt-4o-mini")
-        let pipeline = LiveTranscriptPipeline(
-            runtime: runtime,
-            clock: sequenceClock([1_000, 1_000.2, 1_000.3, 1_002.8])
-        )
+        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
 
         let outcome = try pipeline.process(
             chunk: makeChunk(index: 0),
             context: makeContext(warmReady: true, hasTranscript: true)
         )
 
-        XCTAssertEqual(runtime.refreshCalls.map(\.meetingID), ["meeting-1"])
-        XCTAssertEqual(runtime.refreshCalls.map(\.windowSec), [120])
-        guard case .success(let result) = outcome.refresh else {
-            return XCTFail("Expected refresh success")
-        }
-        XCTAssertEqual(result.provider, "openai:gpt-4o-mini")
-        XCTAssertEqual(outcome.analysisLatencyMs, 2_500)
-        XCTAssertNil(outcome.analysisRuntimeState)
+        XCTAssertTrue(runtime.refreshCalls.isEmpty)
+        guard case .requested = outcome.refresh else { return XCTFail("Expected a background refresh request") }
+        XCTAssertNil(outcome.analysisLatencyMs)
     }
 
     func testRefreshPausedDoesNotCallRuntimeRefresh() throws {
@@ -89,127 +98,47 @@ final class LiveTranscriptPipelineTests: XCTestCase {
         }
     }
 
-    func testProviderAuthFailureDegradesInsightRefreshWhileKeepingTranscript() throws {
-        let runtime = LiveTranscriptPipelineRuntimeMock()
-        runtime.transcribeResult = [makeDelta(text: "Transcript survives auth failure.")]
-        runtime.transcriptDeltaResult = 1
-        runtime.refreshError = NSError(
-            domain: "InsightKitTests",
-            code: 401,
-            userInfo: [NSLocalizedDescriptionKey: "HTTP 401 authentication fails"]
-        )
-        let pipeline = LiveTranscriptPipeline(
-            runtime: runtime,
-            errorClassifier: LiveTranscriptPipelineErrorClassifier(
-                isProviderAuthFailure: { _ in true },
-                isProviderProbeTimeout: { _ in false }
-            ),
-            clock: fixedClock()
-        )
+}
 
-        let outcome = try pipeline.process(
-            chunk: makeChunk(index: 0),
-            context: makeContext(warmReady: true, hasTranscript: true)
-        )
+final class LiveInsightRefreshOutcomeTests: XCTestCase {
+    func testProviderAuthFailurePausesOnlyAnalysis() {
+        let result = failure("HTTP 401 authentication fails")
+        XCTAssertNil(result.result)
+        XCTAssertTrue(result.shouldSuspend)
+        XCTAssertEqual(result.runtimeState, .pausedAuthFailed)
+        XCTAssertTrue(result.errorMessage?.contains("鉴权失败") == true)
+    }
 
-        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives auth failure."])
-        XCTAssertEqual(runtime.refreshCalls.count, 1)
-        XCTAssertEqual(outcome.providerMetric, "analysis-paused")
-        XCTAssertEqual(outcome.analysisRuntimeState, .pausedAuthFailed)
-        XCTAssertTrue(outcome.errorMessage?.contains("鉴权失败") == true)
-        guard case .paused(.authFailed) = outcome.refresh else {
-            return XCTFail("Expected auth failure pause")
+    func testProviderProbeTimeoutPausesOnlyAnalysis() {
+        let result = failure("probe_timeout")
+        XCTAssertTrue(result.shouldSuspend)
+        XCTAssertEqual(result.runtimeState, .pausedTimeout)
+    }
+
+    func testLiveTimeoutAndBusyRemainRecoverable() {
+        for message in ["调用超时: insight.refresh_live", "live_insight_busy"] {
+            let result = failure(message)
+            XCTAssertFalse(result.shouldSuspend)
+            XCTAssertEqual(result.runtimeState, .ready)
+            XCTAssertNotNil(result.statusMessage)
+            XCTAssertNil(result.errorMessage)
         }
     }
 
-    func testProviderProbeTimeoutDegradesInsightRefreshWhileKeepingTranscript() throws {
-        let runtime = LiveTranscriptPipelineRuntimeMock()
-        runtime.transcribeResult = [makeDelta(text: "Transcript survives provider timeout.")]
-        runtime.transcriptDeltaResult = 1
-        runtime.refreshError = NSError(
-            domain: "InsightKitTests",
-            code: 408,
-            userInfo: [NSLocalizedDescriptionKey: "probe_timeout"]
-        )
-        let pipeline = LiveTranscriptPipeline(
-            runtime: runtime,
-            errorClassifier: LiveTranscriptPipelineErrorClassifier(
-                isProviderAuthFailure: { _ in false },
-                isProviderProbeTimeout: { _ in true }
-            ),
-            clock: fixedClock()
-        )
-
-        let outcome = try pipeline.process(
-            chunk: makeChunk(index: 0),
-            context: makeContext(warmReady: true, hasTranscript: true)
-        )
-
-        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives provider timeout."])
-        XCTAssertEqual(runtime.refreshCalls.count, 1)
-        XCTAssertEqual(outcome.providerMetric, "analysis-paused")
-        XCTAssertEqual(outcome.analysisRuntimeState, .pausedTimeout)
-        XCTAssertTrue(outcome.errorMessage?.contains("探测超时") == true)
-        guard case .paused(.timeout) = outcome.refresh else {
-            return XCTFail("Expected timeout pause")
-        }
+    func testInvalidProviderResponseHasSanitizedError() {
+        let result = failure("provider returned non-JSON payload: private provider response")
+        XCTAssertTrue(result.shouldSuspend)
+        XCTAssertEqual(result.runtimeState, .pausedInvalidResponse)
+        XCTAssertEqual(result.errorMessage, AnalysisProviderErrorPresentation.invalidResponseMessage)
+        XCTAssertFalse(result.errorMessage?.contains("private provider") ?? true)
     }
 
-    func testLiveRefreshTimeoutDegradesWithoutThrowingWhileKeepingTranscript() throws {
-        let runtime = LiveTranscriptPipelineRuntimeMock()
-        runtime.transcribeResult = [makeDelta(text: "Transcript survives live refresh timeout.")]
-        runtime.transcriptDeltaResult = 1
-        runtime.refreshError = NSError(
-            domain: "InsightKitTests",
-            code: 408,
-            userInfo: [NSLocalizedDescriptionKey: "调用超时: insight.refresh_live"]
-        )
-        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
-
-        let outcome = try pipeline.process(
-            chunk: makeChunk(index: 0),
-            context: makeContext(warmReady: true, hasTranscript: true)
-        )
-
-        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives live refresh timeout."])
-        XCTAssertEqual(runtime.refreshCalls.count, 1)
-        XCTAssertEqual(outcome.providerMetric, "analysis-refresh-timeout")
-        XCTAssertEqual(outcome.analysisRuntimeState, .ready)
-        XCTAssertNil(outcome.errorMessage)
-        XCTAssertEqual(outcome.captureState, .transcribing)
-        guard case .paused(.timeout) = outcome.refresh else {
-            return XCTFail("Expected recoverable timeout pause")
+    private func failure(_ message: String) -> LiveInsightRefreshOutcome {
+        let client = RPCClientMock()
+        client.refreshLiveHandler = { _, _ in
+            throw NSError(domain: "InsightKitTests", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
         }
-    }
-
-    func testProviderNonJSONPayloadDegradesWithSanitizedMessageWhileKeepingTranscript() throws {
-        let runtime = LiveTranscriptPipelineRuntimeMock()
-        runtime.transcribeResult = [makeDelta(text: "Transcript survives invalid provider response.")]
-        runtime.transcriptDeltaResult = 1
-        runtime.refreshError = NSError(
-            domain: "InsightKitTests",
-            code: -10,
-            userInfo: [
-                NSLocalizedDescriptionKey: "Insight 侧车错误: provider returned non-JSON payload: Expecting ',' delimiter: line 42 column 32 (char 1169)"
-            ]
-        )
-        let pipeline = LiveTranscriptPipeline(runtime: runtime, clock: fixedClock())
-
-        let outcome = try pipeline.process(
-            chunk: makeChunk(index: 0),
-            context: makeContext(warmReady: true, hasTranscript: true)
-        )
-
-        XCTAssertEqual(outcome.transcriptSegments.map(\.text), ["Transcript survives invalid provider response."])
-        XCTAssertEqual(runtime.refreshCalls.count, 1)
-        XCTAssertEqual(outcome.providerMetric, "analysis-invalid-response")
-        XCTAssertTrue(outcome.errorMessage?.contains("分析服务返回格式异常") == true)
-        XCTAssertFalse(outcome.errorMessage?.contains("line 42") == true)
-        XCTAssertFalse(outcome.errorMessage?.contains("char 1169") == true)
-        XCTAssertEqual(outcome.captureState, .transcribing)
-        guard case .paused = outcome.refresh else {
-            return XCTFail("Expected invalid provider response pause")
-        }
+        return LiveInsightRefreshOutcome.run(client: client, meetingID: "meeting-1")
     }
 }
 
@@ -218,12 +147,13 @@ private final class LiveTranscriptPipelineRuntimeMock: LiveTranscriptPipelineRun
     var transcriptDeltaResult = 0
     var refreshResult = makeRefreshResult()
     var refreshError: Error?
+    var refreshDelaySec: TimeInterval = 0
 
     private(set) var transcribeCalls: [(chunk: AudioChunk, source: String)] = []
     private(set) var transcriptDeltaCalls: [(meetingID: String, segments: [RPCSegmentDelta])] = []
     private(set) var refreshCalls: [(meetingID: String, windowSec: Int)] = []
 
-    func transcribe(chunk: AudioChunk, source: String) throws -> [RPCSegmentDelta] {
+    func transcribe(chunk: AudioChunk, meetingID: String, source: String) throws -> [RPCSegmentDelta] {
         transcribeCalls.append((chunk: chunk, source: source))
         return transcribeResult
     }
@@ -235,6 +165,7 @@ private final class LiveTranscriptPipelineRuntimeMock: LiveTranscriptPipelineRun
 
     func refreshLiveInsight(meetingID: String, windowSec: Int) throws -> InsightRefreshResult {
         refreshCalls.append((meetingID: meetingID, windowSec: windowSec))
+        if refreshDelaySec > 0 { Thread.sleep(forTimeInterval: refreshDelaySec) }
         if let refreshError {
             throw refreshError
         }

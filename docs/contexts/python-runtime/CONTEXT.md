@@ -96,6 +96,10 @@ _Avoid_: Local save call, direct JSON write
 New transcript segments produced during an active live session and appended to the current meeting.
 _Avoid_: Streaming text, partial result
 
+Live capture uses `asr.transcribe_live_chunk` to return text without waiting for Diarization. The separate `asr.enrich_live_chunk` action runs a persistent, local LS-EEND session and applies word-timed speaker changes only to unchanged saved segments. The packaged `InsightKitLiveDiarization` helper uses the existing local model cache and never downloads weights. Audio retained for enrichment is bounded to 12 chunks; stopping or replacing a transcript cancels enrichment and removes that cache. The helper accepts up to one hour per session; a limit or model failure reports unavailable while transcription continues.
+
+Live Insight Refresh admits one provider call at a time and reports `live_insight_busy` while it is occupied. It does not hold the foreground ASR connection or the Final Insight Generation path.
+
 **Final Media Transcription**:
 The post-capture transcription pass that reads the completed media file and returns Transcript Segments on that media's playback timeline.
 _Avoid_: Live chunk transcription, draft transcript

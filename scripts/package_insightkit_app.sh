@@ -203,6 +203,7 @@ if [[ "$CLEAN_BUILD" -eq 1 ]]; then
 fi
 
 swift build --package-path "$PACKAGE_DIR" -c "$CONFIGURATION"
+diarization_binary="$("$ROOT_DIR/scripts/build_live_diarization_worker.sh" "$CONFIGURATION")"
 
 bin_dir="$(swift build --package-path "$PACKAGE_DIR" -c "$CONFIGURATION" --show-bin-path)"
 bin_path="$bin_dir/$EXECUTABLE_NAME"
@@ -225,6 +226,8 @@ mkdir -p "$macos_dir" "$resources_dir"
 
 cp "$bin_path" "$macos_dir/$EXECUTABLE_NAME"
 chmod +x "$macos_dir/$EXECUTABLE_NAME"
+cp "$diarization_binary" "$macos_dir/InsightKitLiveDiarization"
+chmod +x "$macos_dir/InsightKitLiveDiarization"
 
 if [[ -f "$ICON_SOURCE" ]]; then
   cp "$ICON_SOURCE" "$resources_dir/$ICON_FILE"
@@ -333,6 +336,8 @@ required_caps=(
   "\"asr.runtime.status\""
   "\"asr.runtime.bootstrap\""
   "\"diagnostics.quick_check\""
+  "\"asr.transcribe_live_chunk\""
+  "\"asr.enrich_live_chunk\""
 )
 for cap in "${required_caps[@]}"; do
   if ! /usr/bin/grep -q "$cap" "$server_file"; then

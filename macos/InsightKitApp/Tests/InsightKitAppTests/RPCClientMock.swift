@@ -2,6 +2,13 @@ import Foundation
 @testable import InsightKitApp
 
 final class RPCClientMock: InsightRPCClientProtocol {
+    var backgroundClientFactory: (() -> InsightRPCClientProtocol)?
+    var liveTranscribeHandler: ((String, String, String, Int, String) throws -> [RPCSegmentDelta])?
+    var liveEnrichHandler: ((String, String) throws -> LiveSpeakerEnrichmentResult)?
+    var refreshLiveHandler: ((String, Int) throws -> InsightRefreshResult)?
+    var transcriptDeltaResult: Int = 0
+
+    func makeBackgroundClient() -> InsightRPCClientProtocol { backgroundClientFactory?() ?? self }
     var cancelCalls: [(jobID: String, reason: String)] = []
     var documentExportCalls: [(meetingID: String, format: String, outputDir: String)] = []
     var documentExportDelaySec: TimeInterval = 0
@@ -64,7 +71,11 @@ final class RPCClientMock: InsightRPCClientProtocol {
             "session.start",
             "session.stop",
             "asr.transcribe_chunk",
+            "asr.transcribe_live_chunk",
+            "asr.enrich_live_chunk",
             "asr.transcribe_media",
+            "asr.prewarm",
+            "transcript.delta",
             "transcript.replace",
             "insight.refresh_live",
             "insight.build_final",
@@ -131,11 +142,13 @@ final class RPCClientMock: InsightRPCClientProtocol {
         finalizationAbortObserver?()
         if let finalizationAbortError { throw finalizationAbortError }
     }
-    func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int { 0 }
+    func transcriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int { transcriptDeltaResult }
     func transcriptList(meetingID: String, limit: Int) throws -> [TranscriptSegment] {
         Array(transcriptListStub.prefix(limit))
     }
-    func refreshLive(meetingID: String, windowSec: Int) throws -> InsightRefreshResult { fakeInsightResult() }
+    func refreshLive(meetingID: String, windowSec: Int) throws -> InsightRefreshResult {
+        try refreshLiveHandler?(meetingID, windowSec) ?? fakeInsightResult()
+    }
     func buildFinal(meetingID: String) throws -> InsightRefreshResult {
         methodCalls.append("insight.build_final")
         buildFinalCalls += 1
@@ -301,6 +314,15 @@ final class RPCClientMock: InsightRPCClientProtocol {
 
     func asrTranscribeChunk(wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta] {
         []
+    }
+
+    func asrTranscribeLiveChunk(meetingID: String, chunkID: String, wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta] {
+        try liveTranscribeHandler?(meetingID, chunkID, wavPath, offsetMs, source) ?? []
+    }
+
+    func asrEnrichLiveChunk(meetingID: String, chunkID: String) throws -> LiveSpeakerEnrichmentResult {
+        try liveEnrichHandler?(meetingID, chunkID)
+            ?? LiveSpeakerEnrichmentResult(meetingID: meetingID, updates: [], status: .pending, error: nil)
     }
 
     func asrTranscribeMedia(mediaPath: String, source: String) throws -> [RPCSegmentDelta] {

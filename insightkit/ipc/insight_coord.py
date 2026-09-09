@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,8 +18,19 @@ class InsightCoordinator:
     def __init__(self, store: InsightStore, insight_service: InsightService):
         self.store = store
         self.insight_service = insight_service
+        self._live_request_lock = threading.Lock()
 
     def insight_refresh_live(self, params: dict[str, Any]) -> dict[str, Any]:
+        # A disconnected or timed-out client may retry while its provider call is
+        # still running. Reject overlap instead of queuing another live request.
+        if not self._live_request_lock.acquire(blocking=False):
+            raise RuntimeError("live_insight_busy: a live summary request is already in progress")
+        try:
+            return self._refresh_live(params)
+        finally:
+            self._live_request_lock.release()
+
+    def _refresh_live(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = params["meeting_id"]
         window_sec = int(params.get("window_sec", 120))
         window_ms = window_sec * 1000
