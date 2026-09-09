@@ -1,0 +1,284 @@
+{
+  "rows": [
+    {
+      "cadence_seconds": 8,
+      "model": "current-1.7b",
+      "pass": 1,
+      "requests": 8,
+      "ok": true,
+      "service_s": 25.335705083999997,
+      "median_s": 1.807541917,
+      "max_s": 8.236015958,
+      "quality": {
+        "chinese_cer": {
+          "errors": 0,
+          "reference_units": 65,
+          "hypothesis_units": 65,
+          "rate": 0.0
+        },
+        "english_wer": {
+          "errors": 0,
+          "reference_units": 28,
+          "hypothesis_units": 28,
+          "rate": 0.0
+        }
+      },
+      "first_text_estimate_s": 18.236015958,
+      "max_queue_wait_s": 0.23601595799999994,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案不在运行中修改内容 I will check the hashes and durations before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result 所有内容都是合成的不来自私人会议",
+      "text_bearing_requests": 7
+    },
+    {
+      "cadence_seconds": 8,
+      "model": "current-1.7b",
+      "pass": 2,
+      "requests": 8,
+      "ok": true,
+      "service_s": 11.485271041000003,
+      "median_s": 1.0183614589999999,
+      "max_s": 3.316784375,
+      "quality": {
+        "chinese_cer": {
+          "errors": 0,
+          "reference_units": 65,
+          "hypothesis_units": 65,
+          "rate": 0.0
+        },
+        "english_wer": {
+          "errors": 0,
+          "reference_units": 28,
+          "hypothesis_units": 28,
+          "rate": 0.0
+        }
+      },
+      "first_text_estimate_s": 10.968293,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案不在运行中修改内容 I will check the hashes and durations before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result 所有内容都是合成的不来自私人会议",
+      "text_bearing_requests": 7
+    },
+    {
+      "cadence_seconds": 8,
+      "model": "candidate-0.6b",
+      "pass": 1,
+      "requests": 8,
+      "ok": true,
+      "service_s": 10.583412416000002,
+      "median_s": 0.530443125,
+      "max_s": 4.527879917,
+      "quality": {
+        "chinese_cer": {
+          "errors": 1,
+          "reference_units": 65,
+          "hypothesis_units": 65,
+          "rate": 0.015384615384615385
+        },
+        "english_wer": {
+          "errors": 0,
+          "reference_units": 28,
+          "hypothesis_units": 28,
+          "rate": 0.0
+        }
+      },
+      "first_text_estimate_s": 14.527879917,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案不再运行中修改内容 I will check the hashes and durations before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result 所有内容都是合成的不来自私人会议",
+      "text_bearing_requests": 7
+    },
+    {
+      "cadence_seconds": 8,
+      "model": "candidate-0.6b",
+      "pass": 2,
+      "requests": 8,
+      "ok": true,
+      "service_s": 3.490466332999999,
+      "median_s": 0.491104333,
+      "max_s": 0.5286297090000001,
+      "quality": {
+        "chinese_cer": {
+          "errors": 1,
+          "reference_units": 65,
+          "hypothesis_units": 65,
+          "rate": 0.015384615384615385
+        },
+        "english_wer": {
+          "errors": 0,
+          "reference_units": 28,
+          "hypothesis_units": 28,
+          "rate": 0.0
+        }
+      },
+      "first_text_estimate_s": 10.485796667,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案不再运行中修改内容 I will check the hashes and durations before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result 所有内容都是合成的不来自私人会议",
+      "text_bearing_requests": 7
+    },
+    {
+      "cadence_seconds": 4,
+      "model": "current-1.7b",
+      "pass": 1,
+      "requests": 15,
+      "ok": true,
+      "service_s": 15.467953792000001,
+      "median_s": 0.6252266040000001,
+      "max_s": 5.547244667,
+      "quality": {
+        "chinese_cer": {
+          "errors": 2,
+          "reference_units": 65,
+          "hypothesis_units": 67,
+          "rate": 0.03076923076923077
+        },
+        "english_wer": {
+          "errors": 7,
+          "reference_units": 28,
+          "hypothesis_units": 23,
+          "rate": 0.25
+        }
+      },
+      "first_text_estimate_s": 11.547244667,
+      "max_queue_wait_s": 1.547244666999999,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案 不在运行中修改内容 I will check the hashes language 这段短暂交叉发言也保留在测试里 你 A failed validation produces no benchmark language 所有内容都是 是合成的不来自私人会议",
+      "text_bearing_requests": 12
+    },
+    {
+      "cadence_seconds": 4,
+      "model": "current-1.7b",
+      "pass": 2,
+      "requests": 15,
+      "ok": true,
+      "service_s": 7.162064291,
+      "median_s": 0.6256286455,
+      "max_s": 0.8068587079999999,
+      "quality": {
+        "chinese_cer": {
+          "errors": 2,
+          "reference_units": 65,
+          "hypothesis_units": 67,
+          "rate": 0.03076923076923077
+        },
+        "english_wer": {
+          "errors": 7,
+          "reference_units": 28,
+          "hypothesis_units": 23,
+          "rate": 0.25
+        }
+      },
+      "first_text_estimate_s": 6.745640833,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案 不在运行中修改内容 I will check the hashes language 这段短暂交叉发言也保留在测试里 你 A failed validation produces no benchmark language 所有内容都是 是合成的不来自私人会议",
+      "text_bearing_requests": 12
+    },
+    {
+      "cadence_seconds": 4,
+      "model": "candidate-0.6b",
+      "pass": 1,
+      "requests": 15,
+      "ok": true,
+      "service_s": 6.515215748999999,
+      "median_s": 0.2932433125,
+      "max_s": 1.6701885,
+      "quality": {
+        "chinese_cer": {
+          "errors": 2,
+          "reference_units": 65,
+          "hypothesis_units": 67,
+          "rate": 0.03076923076923077
+        },
+        "english_wer": {
+          "errors": 2,
+          "reference_units": 28,
+          "hypothesis_units": 29,
+          "rate": 0.07142857142857142
+        }
+      },
+      "first_text_estimate_s": 7.487572624999999,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案 不在运行中修改内容 I will check the hashes And durations before the next run 这段短暂交叉发言也保留在测试里 意 A failed validation produces no benchmark Mark resolved 所有内容都是 是合成的不来自私人会议",
+      "text_bearing_requests": 12
+    },
+    {
+      "cadence_seconds": 4,
+      "model": "candidate-0.6b",
+      "pass": 2,
+      "requests": 15,
+      "ok": true,
+      "service_s": 3.622817583000001,
+      "median_s": 0.2923059165,
+      "max_s": 0.341085417,
+      "quality": {
+        "chinese_cer": {
+          "errors": 2,
+          "reference_units": 65,
+          "hypothesis_units": 67,
+          "rate": 0.03076923076923077
+        },
+        "english_wer": {
+          "errors": 2,
+          "reference_units": 28,
+          "hypothesis_units": 29,
+          "rate": 0.07142857142857142
+        }
+      },
+      "first_text_estimate_s": 6.330326959,
+      "max_queue_wait_s": 0.0,
+      "hypothesis": "我们先固定今天的测试文件和操作顺序 The same input will be replayed for every measured run 决定使用冻结方案 不在运行中修改内容 I will check the hashes And durations before the next run 这段短暂交叉发言也保留在测试里 意 A failed validation produces no benchmark Mark resolved 所有内容都是 是合成的不来自私人会议",
+      "text_bearing_requests": 12
+    }
+  ],
+  "scope": "A single 58-second synthetic slice with 65 Han characters and 28 English words. Acoustic overlap, natural-meeting quality, speaker correctness, and UI delay were not established.",
+  "repeat_semantics": "Two passes per process; text identical within each model/cadence. Repeats are not additional quality examples.",
+  "all_requests_completed": 92,
+  "runs": [
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "status": "completed",
+      "initialization_ms": 1963.974292,
+      "runtime_import_ms": 14.396125,
+      "probe_import_ms": 720.772209,
+      "raw_relative_path": "current-1.7b.json",
+      "sha256": "bde7ba197f847dfd7204df09b5571e02055074305b24fb09d0803b5590d08a6f",
+      "bytes": 100813
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "status": "completed",
+      "initialization_ms": 282.559125,
+      "runtime_import_ms": 11.02775,
+      "probe_import_ms": 402.972458,
+      "raw_relative_path": "candidate-0.6b.json",
+      "sha256": "572648bed3351b915cc50dad979d2a63fdfac48ea496540159971419651f1457",
+      "bytes": 100844
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "status": "completed",
+      "initialization_ms": 1673.006333,
+      "runtime_import_ms": 12.269459,
+      "probe_import_ms": 334.703125,
+      "raw_relative_path": "four-second/current-1.7b.json",
+      "sha256": "9fd7a45f5d2ef93a661c493b74b2ed83b1ccf4e3e2c1467fe79fff5e1d0a8d21",
+      "bytes": 141006
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "status": "completed",
+      "initialization_ms": 288.471833,
+      "runtime_import_ms": 9.848125,
+      "probe_import_ms": 334.995166,
+      "raw_relative_path": "four-second/candidate-0.6b.json",
+      "sha256": "7249fd88e6fc1884c136cdda12f1068887ee63b8d320764c32242315d4a673a4",
+      "bytes": 146691
+    }
+  ],
+  "metric_definitions": {
+    "service_s": "Sum of all request call_wall_ms, including the initial silence/VAD request, divided by 1000.",
+    "median_s": "Median call_wall_ms among requests with nonempty emitted text after whitespace trimming, divided by 1000.",
+    "max_s": "Maximum call_wall_ms across all requests, including silence/VAD, divided by 1000.",
+    "quality": "NFKC Han-character CER and lowercase English word/number WER over raw service emissions; no Swift deduplication.",
+    "first_text_estimate_s": "Serial service projection from audio t=0, with model ready at t=0 and chunks arriving at their ends; not UI latency."
+  }
+}

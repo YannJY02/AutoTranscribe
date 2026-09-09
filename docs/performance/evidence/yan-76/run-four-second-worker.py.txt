@@ -1,0 +1,13 @@
+"""One declared cadence variant of the unchanged model-screening script."""
+from pathlib import Path
+import importlib.util
+import sys
+
+root = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location('yan76_comparison', root / 'scripts/compare_qwen_live_asr.py')
+bench = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bench)
+bench.BOUNDARIES_MS = (0, *range(2_000, 58_001, 4_000))
+assert bench.BOUNDARIES_MS[0] == 0 and bench.BOUNDARIES_MS[-1] == 58_000
+assert len(bench.BOUNDARIES_MS) == 16
+sys.exit(bench.main([*sys.argv[1:], '--worker']))
