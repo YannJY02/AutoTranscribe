@@ -1,0 +1,492 @@
+{
+  "schema_version": 1,
+  "issue": "YAN-76",
+  "recorded_at": "2026-09-09T05:54:16.055720+00:00",
+  "status": "measured",
+  "accepted_runtime_revision": "6a85f89efc8357af09fd59aa0d2edcffff7e3a92",
+  "installed_build": "20260909123140",
+  "measurement_script_sha256": "6028bdcb2243c5d759d11fedf291a4d5a3db4659ba2cb6eadfecacd222a64988",
+  "candidate_model": {
+    "model_repo": "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+    "revision": "bc441bd1e4295c1f42d9879f056049a925b6e013",
+    "recorded_at": "2026-09-09T05:20:47.434608+00:00",
+    "files": [
+      {
+        "name": "README.md",
+        "bytes": 1065,
+        "sha256": "225f13ecdd9a64c642b685a0fcfecb4c533856d4add4cc6eff0d18c3f1724f9c"
+      },
+      {
+        "name": "config.json",
+        "bytes": 7187,
+        "sha256": "923618cf5ca452fda0253a6be5c1a17f94a2e4851d3b98beb45848565587bd72"
+      },
+      {
+        "name": "merges.txt",
+        "bytes": 1671853,
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 708236945,
+        "sha256": "70c7e67e588062adce4f10796e47ad42ead51c6671eda61a0987eae38ca95ddf"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 71814,
+        "sha256": "e3bb80ef0fd42a5be07b04e90c97d60460bbde8af3531e0bfe9100a61404d81a"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 12487,
+        "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+      }
+    ],
+    "local_path_relative_to_evidence_root": "models/Qwen3-ASR-0.6B-MLX-4bit"
+  },
+  "current_models": [
+    {
+      "model": "Qwen3-ASR-1.7B-MLX-4bit",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361"
+        },
+        {
+          "name": "README.md",
+          "bytes": 1889,
+          "sha256": "b850aa6a8478bb1bd9547e5410425a27d9db10c36409cc2d495cf7a76534ffdf"
+        },
+        {
+          "name": "config.json",
+          "bytes": 560,
+          "sha256": "1928d5e62e90f1c0b085c655fce43ef74ace6731ebf79ec2229729c99a1cf732"
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 2225411512,
+          "sha256": "6d3ded9f339df22308f57f3287b32940a7297c4ffc597debcfbeff41ca0ff8bd"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 12487,
+          "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
+    },
+    {
+      "model": "Qwen3-ForcedAligner-0.6B",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361"
+        },
+        {
+          "name": "README.md",
+          "bytes": 57456,
+          "sha256": "5058416891bc47a2051557765997e8c42f8eb78a0e33c3e775bd17d4b0ba4d50"
+        },
+        {
+          "name": "chat_template.json",
+          "bytes": 1161,
+          "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+        },
+        {
+          "name": "config.json",
+          "bytes": 5982,
+          "sha256": "d616c65d46c4b90bdc651b0a0963ea932732241140f337f9bb6b0335a9c8ef09"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 115,
+          "sha256": "948d089b23bca1d214e768d59c4438365665f52ec6d33678f4062206b3fbbb8c"
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 1835544544,
+          "sha256": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 330,
+          "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 12666,
+          "sha256": "3ab80063f8511deb9566e6ad438d17b7a6277fcffd52d92854112f19d36bd81c"
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
+    }
+  ],
+  "current_model_cached_revision": "d4f9fa3bb45489219f0fcbec671c92d9c1a68fb6",
+  "fixture": {
+    "source_fixture_id": "short-mixed",
+    "source_media_sha256": "8edd1a97b3f77ce17d3e71958ca45f05663b24aed439f781cf45e1b9f5bbc351",
+    "source_reference_sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516",
+    "corpus_verify": {
+      "status": "passed",
+      "fixture_assets_verified": 6,
+      "record_folders_verified": 1100
+    },
+    "excerpt_start_seconds": 0,
+    "excerpt_end_seconds": 58,
+    "format": {
+      "channels": 1,
+      "sample_rate": 16000,
+      "sample_width": 2,
+      "frames": 928000,
+      "duration_seconds": 58.0
+    },
+    "files": [
+      {
+        "name": "short-mixed-58s.wav",
+        "bytes": 1856078,
+        "sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+      },
+      {
+        "name": "reference-58s.json",
+        "bytes": 1629,
+        "sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108"
+      }
+    ],
+    "reference_segments": 7,
+    "coverage": "Synthetic bilingual alternating voices; reference windows intersect but actual acoustic overlap was not established."
+  },
+  "cohorts": [
+    {
+      "later_chunk_seconds": 8,
+      "order": [
+        "current-1.7b",
+        "candidate-0.6b"
+      ]
+    },
+    {
+      "later_chunk_seconds": 4,
+      "order": [
+        "current-1.7b",
+        "candidate-0.6b"
+      ],
+      "reason": "First cohort showed batching limits earlier text; check hard-cut quality cost."
+    }
+  ],
+  "environment": {
+    "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+    "thermal_start": 0,
+    "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+    "pre_run_cpu_seconds": 60.826
+  },
+  "libraries": {
+    "mlx": "0.31.2",
+    "mlx-qwen3-asr": "0.3.5",
+    "numpy": "2.3.5",
+    "torch": "2.10.0",
+    "huggingface-hub": "0.36.2"
+  },
+  "production_preservation": {
+    "runtime_config_unchanged": true,
+    "consent_unchanged": true,
+    "consent_enabled": true,
+    "idle": {
+      "socket_present": false
+    },
+    "recorded_at": "2026-09-09T05:47:34.898917+00:00"
+  },
+  "raw_evidence_root": "/Users/yann.jy/Developer/Workspaces/AutoTranscribe-qwen-experiment/logs/yan76",
+  "raw_inventory": [
+    {
+      "path": "after-models-preservation.json",
+      "bytes": 193,
+      "sha256": "3ac3b0101476fbd0d05db1ab28a7b259cf2c35205128cf149cdc674d7b7655bb"
+    },
+    {
+      "path": "aggregate-correction.json",
+      "bytes": 1261,
+      "sha256": "b21e2a5d97e5c6c2e3ef1df02e2557b59524613696af69898691065781dab784"
+    },
+    {
+      "path": "all-cohorts-summary.json",
+      "bytes": 8275,
+      "sha256": "5e85591f3e02959d5b3ff3189f12b054d124ced0af3e23e028830e7afc39b638"
+    },
+    {
+      "path": "asr-config.json",
+      "bytes": 514,
+      "sha256": "b2252d6008c13269da26a43ff77d8434fc13c91d84ee6eee16bcbbd2428603ad"
+    },
+    {
+      "path": "candidate-0.6b.controller.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "candidate-0.6b.controller.stdout.log",
+      "bytes": 135,
+      "sha256": "b8e71ca3c6b301726218585279ed7d3589fbbd98e18ff9a11ded40d8eb351581"
+    },
+    {
+      "path": "candidate-0.6b.json",
+      "bytes": 100844,
+      "sha256": "572648bed3351b915cc50dad979d2a63fdfac48ea496540159971419651f1457"
+    },
+    {
+      "path": "candidate-0.6b.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "candidate-0.6b.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "coverage-correction.json",
+      "bytes": 839,
+      "sha256": "3b12ecde2d9ea34a585cf0a7548d3a11b74053e16ada924745b4ecbefbc2296a"
+    },
+    {
+      "path": "current-1.7b.controller.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "current-1.7b.controller.stdout.log",
+      "bytes": 133,
+      "sha256": "c819c05c2ea30db753c8c422a2c6e506d9e98bd918cc6f0376dd7ed35f7dcbc7"
+    },
+    {
+      "path": "current-1.7b.json",
+      "bytes": 100813,
+      "sha256": "bde7ba197f847dfd7204df09b5571e02055074305b24fb09d0803b5590d08a6f"
+    },
+    {
+      "path": "current-1.7b.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "current-1.7b.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "doctor.json",
+      "bytes": 4463,
+      "sha256": "d4a7eec11a599e61b58fd6558e439f2705da3ff153904f566d212f60c69c9eee"
+    },
+    {
+      "path": "four-second-preflight.json",
+      "bytes": 433,
+      "sha256": "26915de7f09192c0cb65c59d5ee6e057a8ac162a05d2fa33c48726f966499e14"
+    },
+    {
+      "path": "four-second/after-models-preservation.json",
+      "bytes": 193,
+      "sha256": "7028980a100c4a6a103deacadd779c49514eefe33f7d93174c311723abd4e956"
+    },
+    {
+      "path": "four-second/candidate-0.6b.controller.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "four-second/candidate-0.6b.controller.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "four-second/candidate-0.6b.json",
+      "bytes": 146691,
+      "sha256": "7249fd88e6fc1884c136cdda12f1068887ee63b8d320764c32242315d4a673a4"
+    },
+    {
+      "path": "four-second/current-1.7b.controller.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "four-second/current-1.7b.controller.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "four-second/current-1.7b.json",
+      "bytes": 141006,
+      "sha256": "9fd7a45f5d2ef93a661c493b74b2ed83b1ccf4e3e2c1467fe79fff5e1d0a8d21"
+    },
+    {
+      "path": "four-second/model-run-controller.json",
+      "bytes": 4873,
+      "sha256": "d7ecac9e1e5c5c06720d7fd99eb9d6cf49e16e5e163afe133e0ec6da1ee6c4e7"
+    },
+    {
+      "path": "full-harness-run.log",
+      "bytes": 10130,
+      "sha256": "8dd39820606346c5e89f8270e802d5e1ce3bafdc1fc6465ce6e40f4216d10eee"
+    },
+    {
+      "path": "input-receipt.json",
+      "bytes": 1034,
+      "sha256": "482bd35a57762b1fe736dd498329173abc2e1c30de1e6593200d4f94ff0fc9d7"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 2454,
+      "sha256": "9abf3252457df47533fb23980e6cfe6c27bb8ceb64a30f302191e0660ec7ee18"
+    },
+    {
+      "path": "model-run-controller.json",
+      "bytes": 7293,
+      "sha256": "85bf34c77674a440de80b1c5d20b485e5fa775655ef0bd0a5f64cfcb569504cd"
+    },
+    {
+      "path": "pre-run-cpu.json",
+      "bytes": 1535430,
+      "sha256": "c10a907d7985f57a6dbcffe9ec850c482c63c52879ab6a46ac8b1b79e4db6442"
+    },
+    {
+      "path": "preflight-initial-failure.json",
+      "bytes": 344,
+      "sha256": "dabd502a4d9ce7820749ea73427494667bfd820f440cfbcfaf8e223d11fa3e6c"
+    },
+    {
+      "path": "preflight.json",
+      "bytes": 1752,
+      "sha256": "d630c3c1558eb91f880bc15eafbcf6c089fc8e45b67134d60a8fc251823c0652"
+    },
+    {
+      "path": "preflight.py",
+      "bytes": 4819,
+      "sha256": "8f76ef947233266759b57e3e0ee1119641bcba5bd21de0f1d34d76269dc3d57d"
+    },
+    {
+      "path": "reference-58s.json",
+      "bytes": 1629,
+      "sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108"
+    },
+    {
+      "path": "run_four_second_worker.py",
+      "bytes": 581,
+      "sha256": "01b64dc78c73254059873118ef5878d5e5756f21046b1f549f87746419209536"
+    },
+    {
+      "path": "run_models.py",
+      "bytes": 6772,
+      "sha256": "f35729d0b9ba09eecf47e61025c2f4cb4f5eaf8908b627b5ad7afb19fcf3df95"
+    },
+    {
+      "path": "runtime-source-receipt.json",
+      "bytes": 329,
+      "sha256": "901b2a283fbc438bee6c285d218c210a5e7955d316508ed83b38d98f86e92133"
+    },
+    {
+      "path": "short-mixed-58s.wav",
+      "bytes": 1856078,
+      "sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+    },
+    {
+      "path": "source/compare_qwen_live_asr.py",
+      "bytes": 27797,
+      "sha256": "6028bdcb2243c5d759d11fedf291a4d5a3db4659ba2cb6eadfecacd222a64988"
+    },
+    {
+      "path": "source/receipt.json",
+      "bytes": 425,
+      "sha256": "284193a1073b580c5858370f684a06d5e144eb4e2a5e94019dab360cc9c58f51"
+    },
+    {
+      "path": "source/test_compare_qwen_live_asr.py",
+      "bytes": 16432,
+      "sha256": "c4cda49a8d1f5843e4a882582a4bea75708eccb762e46f807af76634dcfe3210"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 6779,
+      "sha256": "5a1b01161dcf510214d41238cbce7393f3a896786bb087b3ad744f3902aa562c"
+    }
+  ],
+  "validation": {
+    "focused_tests": 18,
+    "independent_code_review": "clear; compared probes with installed mlx-qwen3-asr 0.3.5",
+    "independent_result_review": "92 public chunk records match the four raw reports; timing, quality, and coverage checked. Median/max aggregation and reproduction environment/deadline wording corrected before delivery.",
+    "initial_full_harness": {
+      "status": "passed",
+      "python_passed": 1202,
+      "python_skipped": 2,
+      "python_deselected": 3,
+      "harness_passed": 52,
+      "local_manifest": "full-harness/manifest.json",
+      "scope": "same measurement code; final report and evidence were added afterward"
+    }
+  },
+  "limits": [
+    "No reboot-cold cohort; model order is fixed and OS cache effects are uncontrolled.",
+    "Second pass immediately reuses model/session and identical audio, not a fresh quality sample.",
+    "Queue/first-text values are service projections, not UI observations or actual bounded-queue/drop measurements.",
+    "No diarization, live summary, final-media refinement, or installed model change.",
+    "RSS samples omit a complete accounting of Metal/MLX allocations and are not a whole-app peak memory claim.",
+    "Earlier 26-second integration smoke is a different cohort and is not a performance comparison."
+  ],
+  "fixture_coverage_correction": {
+    "recorded_at": "2026-09-09T06:01:29.660681+00:00",
+    "supersedes": "input-receipt.json: initial claim of one overlapping passage",
+    "original_receipt_preserved": true,
+    "correction": "Two alternating synthetic voices. Reference schedule windows intersect, but actual acoustic overlap was not established.",
+    "evidence": [
+      "The fixture generator can speed up and truncate long utterances but does not stretch short utterances to fill reference windows.",
+      "The English reference window is 29-36 s and the following Chinese window is 35-41 s. Model word alignment put English ending at approximately 31.84 s and Chinese starting at approximately 34.96 s; schedule overlap alone is insufficient evidence of acoustic overlap."
+    ],
+    "scope_limit": "No claim of overlap ASR quality or diarization quality from this screening."
+  },
+  "published_artifacts": [
+    {
+      "path": "chunk-metrics.json",
+      "bytes": 175917,
+      "sha256": "8894c0a8772c9f3e61c1fda257f34a606b59075e86cf096041e527b81077ea52"
+    },
+    {
+      "path": "results.json",
+      "bytes": 11087,
+      "sha256": "08df165a569712d5e4f1b34eed274720fa072cba2069b8c398ea2dca6304767a"
+    },
+    {
+      "path": "run-four-second-worker.py.txt",
+      "bytes": 581,
+      "sha256": "01b64dc78c73254059873118ef5878d5e5756f21046b1f549f87746419209536"
+    },
+    {
+      "path": "summary.md",
+      "bytes": 6311,
+      "sha256": "04ea114b4a207384fe8267b48e58cdfb79e4025c49ee7a7db35c4914975dc2fc"
+    }
+  ],
+  "aggregation_correction": "Published results.json supersedes local summary aggregates for median/max only; see aggregate-correction.json. Raw cohort JSON and recognition scores are unchanged."
+}

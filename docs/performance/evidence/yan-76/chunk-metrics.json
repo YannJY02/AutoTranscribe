@@ -1,0 +1,6212 @@
+{
+  "chunks": [
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 2636.818958,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 52625,
+          "end_offset_ns": 2636805833,
+          "outcome": "completed",
+          "duration_ns": 2636753208
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 8236.015958,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 54000,
+          "end_offset_ns": 38404917,
+          "outcome": "completed",
+          "duration_ns": 38350917
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 38413250,
+          "end_offset_ns": 38582500,
+          "outcome": "completed",
+          "duration_ns": 169250
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 38637458,
+          "end_offset_ns": 38660375,
+          "outcome": "completed",
+          "duration_ns": 22917
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 38663375,
+          "end_offset_ns": 8228659500,
+          "outcome": "completed",
+          "duration_ns": 8189996125
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 8233407417,
+          "end_offset_ns": 8234906208,
+          "outcome": "completed",
+          "duration_ns": 1498791
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 39266667,
+          "end_offset_ns": 1706901542,
+          "outcome": "completed",
+          "duration_ns": 1667634875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1706905208,
+          "end_offset_ns": 7871489208,
+          "outcome": "completed",
+          "duration_ns": 6164584000
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1706908333,
+          "end_offset_ns": 4944042333,
+          "outcome": "completed",
+          "duration_ns": 3237134000
+        },
+        {
+          "phase": "forced_aligner_model_load",
+          "start_offset_ns": 1707128167,
+          "end_offset_ns": 4438992208,
+          "outcome": "completed",
+          "duration_ns": 2731864041
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 4944093958,
+          "end_offset_ns": 7871472458,
+          "outcome": "completed",
+          "duration_ns": 2927378500
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 3,
+      "start_ms": 10000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 6780.182792,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 407500,
+          "end_offset_ns": 170827459,
+          "outcome": "completed",
+          "duration_ns": 170419959
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 170834084,
+          "end_offset_ns": 171799834,
+          "outcome": "completed",
+          "duration_ns": 965750
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 171835459,
+          "end_offset_ns": 171854292,
+          "outcome": "completed",
+          "duration_ns": 18833
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 171855792,
+          "end_offset_ns": 6779602625,
+          "outcome": "completed",
+          "duration_ns": 6607746833
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 6779973000,
+          "end_offset_ns": 6780068125,
+          "outcome": "completed",
+          "duration_ns": 95125
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 172969709,
+          "end_offset_ns": 5431328125,
+          "outcome": "completed",
+          "duration_ns": 5258358416
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 5431334209,
+          "end_offset_ns": 6720094667,
+          "outcome": "completed",
+          "duration_ns": 1288760458
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 5431351709,
+          "end_offset_ns": 5432584167,
+          "outcome": "completed",
+          "duration_ns": 1232458
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 5432587459,
+          "end_offset_ns": 6720088625,
+          "outcome": "completed",
+          "duration_ns": 1287501166
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 4,
+      "start_ms": 18000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 2111.422584,
+      "synthetic_transcript": "决定使用冻结方案不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 116625,
+          "end_offset_ns": 42743167,
+          "outcome": "completed",
+          "duration_ns": 42626542
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 42766875,
+          "end_offset_ns": 43086500,
+          "outcome": "completed",
+          "duration_ns": 319625
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 43113375,
+          "end_offset_ns": 43125042,
+          "outcome": "completed",
+          "duration_ns": 11667
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 43126500,
+          "end_offset_ns": 2110900875,
+          "outcome": "completed",
+          "duration_ns": 2067774375
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 2111167917,
+          "end_offset_ns": 2111306125,
+          "outcome": "completed",
+          "duration_ns": 138208
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 45638208,
+          "end_offset_ns": 1213354750,
+          "outcome": "completed",
+          "duration_ns": 1167716542
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1213357125,
+          "end_offset_ns": 2079000291,
+          "outcome": "completed",
+          "duration_ns": 865643166
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1213366208,
+          "end_offset_ns": 1213779416,
+          "outcome": "completed",
+          "duration_ns": 413208
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1213780541,
+          "end_offset_ns": 2078994416,
+          "outcome": "completed",
+          "duration_ns": 865213875
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 5,
+      "start_ms": 26000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 1443.339125,
+      "synthetic_transcript": "I will check the hashes and durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 66834,
+          "end_offset_ns": 42317667,
+          "outcome": "completed",
+          "duration_ns": 42250833
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 42324709,
+          "end_offset_ns": 42688042,
+          "outcome": "completed",
+          "duration_ns": 363333
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 42832834,
+          "end_offset_ns": 42858417,
+          "outcome": "completed",
+          "duration_ns": 25583
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 42863125,
+          "end_offset_ns": 1443120375,
+          "outcome": "completed",
+          "duration_ns": 1400257250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1443175625,
+          "end_offset_ns": 1443257209,
+          "outcome": "completed",
+          "duration_ns": 81584
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 43879750,
+          "end_offset_ns": 1111423333,
+          "outcome": "completed",
+          "duration_ns": 1067543583
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1111424916,
+          "end_offset_ns": 1431839041,
+          "outcome": "completed",
+          "duration_ns": 320414125
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1111427708,
+          "end_offset_ns": 1111706833,
+          "outcome": "completed",
+          "duration_ns": 279125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1111707916,
+          "end_offset_ns": 1431835958,
+          "outcome": "completed",
+          "duration_ns": 320128042
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 6,
+      "start_ms": 34000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 1120.37075,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 72042,
+          "end_offset_ns": 40336042,
+          "outcome": "completed",
+          "duration_ns": 40264000
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 40342667,
+          "end_offset_ns": 40547584,
+          "outcome": "completed",
+          "duration_ns": 204917
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 40583125,
+          "end_offset_ns": 40599584,
+          "outcome": "completed",
+          "duration_ns": 16459
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 40601875,
+          "end_offset_ns": 1119933625,
+          "outcome": "completed",
+          "duration_ns": 1079331750
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1120107750,
+          "end_offset_ns": 1120255084,
+          "outcome": "completed",
+          "duration_ns": 147334
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 41030500,
+          "end_offset_ns": 867955250,
+          "outcome": "completed",
+          "duration_ns": 826924750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 867959833,
+          "end_offset_ns": 1106332792,
+          "outcome": "completed",
+          "duration_ns": 238372959
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 867963833,
+          "end_offset_ns": 868768042,
+          "outcome": "completed",
+          "duration_ns": 804209
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 868770792,
+          "end_offset_ns": 1106323625,
+          "outcome": "completed",
+          "duration_ns": 237552833
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 7,
+      "start_ms": 42000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 1807.541917,
+      "synthetic_transcript": "A failed validation produces no benchmark result",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 114542,
+          "end_offset_ns": 42618208,
+          "outcome": "completed",
+          "duration_ns": 42503666
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 42625458,
+          "end_offset_ns": 42897333,
+          "outcome": "completed",
+          "duration_ns": 271875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 42979333,
+          "end_offset_ns": 42997250,
+          "outcome": "completed",
+          "duration_ns": 17917
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 42998708,
+          "end_offset_ns": 1807099292,
+          "outcome": "completed",
+          "duration_ns": 1764100584
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1807275917,
+          "end_offset_ns": 1807420125,
+          "outcome": "completed",
+          "duration_ns": 144208
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 43661083,
+          "end_offset_ns": 785970708,
+          "outcome": "completed",
+          "duration_ns": 742309625
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 785972583,
+          "end_offset_ns": 1773249375,
+          "outcome": "completed",
+          "duration_ns": 987276792
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 785974667,
+          "end_offset_ns": 786446042,
+          "outcome": "completed",
+          "duration_ns": 471375
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 786448583,
+          "end_offset_ns": 1773230958,
+          "outcome": "completed",
+          "duration_ns": 986782375
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 8,
+      "start_ms": 50000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 1200.013,
+      "synthetic_transcript": "所有内容都是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 75250,
+          "end_offset_ns": 39688292,
+          "outcome": "completed",
+          "duration_ns": 39613042
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 39710333,
+          "end_offset_ns": 39913667,
+          "outcome": "completed",
+          "duration_ns": 203334
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 39941542,
+          "end_offset_ns": 39951958,
+          "outcome": "completed",
+          "duration_ns": 10416
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 39953042,
+          "end_offset_ns": 1199734625,
+          "outcome": "completed",
+          "duration_ns": 1159781583
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1199850333,
+          "end_offset_ns": 1199963125,
+          "outcome": "completed",
+          "duration_ns": 112792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 40422667,
+          "end_offset_ns": 1041040708,
+          "outcome": "completed",
+          "duration_ns": 1000618041
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1041041667,
+          "end_offset_ns": 1185811458,
+          "outcome": "completed",
+          "duration_ns": 144769791
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1041043625,
+          "end_offset_ns": 1041353833,
+          "outcome": "completed",
+          "duration_ns": 310208
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1041354917,
+          "end_offset_ns": 1185804708,
+          "outcome": "completed",
+          "duration_ns": 144449791
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 17.089417,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 48709,
+          "end_offset_ns": 17080417,
+          "outcome": "completed",
+          "duration_ns": 17031708
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 968.293,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 40208,
+          "end_offset_ns": 36745792,
+          "outcome": "completed",
+          "duration_ns": 36705584
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 36753083,
+          "end_offset_ns": 36969125,
+          "outcome": "completed",
+          "duration_ns": 216042
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37027917,
+          "end_offset_ns": 37043667,
+          "outcome": "completed",
+          "duration_ns": 15750
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37045208,
+          "end_offset_ns": 968045458,
+          "outcome": "completed",
+          "duration_ns": 931000250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 968093667,
+          "end_offset_ns": 968186708,
+          "outcome": "completed",
+          "duration_ns": 93041
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 37700000,
+          "end_offset_ns": 759429667,
+          "outcome": "completed",
+          "duration_ns": 721729667
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 759431000,
+          "end_offset_ns": 956321292,
+          "outcome": "completed",
+          "duration_ns": 196890292
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 759433125,
+          "end_offset_ns": 759581292,
+          "outcome": "completed",
+          "duration_ns": 148167
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 759582458,
+          "end_offset_ns": 956318750,
+          "outcome": "completed",
+          "duration_ns": 196736292
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 3,
+      "start_ms": 10000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 1018.361459,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33416,
+          "end_offset_ns": 37226541,
+          "outcome": "completed",
+          "duration_ns": 37193125
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 37234125,
+          "end_offset_ns": 37426208,
+          "outcome": "completed",
+          "duration_ns": 192083
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37466250,
+          "end_offset_ns": 37480666,
+          "outcome": "completed",
+          "duration_ns": 14416
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37482333,
+          "end_offset_ns": 1018222625,
+          "outcome": "completed",
+          "duration_ns": 980740292
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1018272750,
+          "end_offset_ns": 1018342708,
+          "outcome": "completed",
+          "duration_ns": 69958
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 37903958,
+          "end_offset_ns": 842386166,
+          "outcome": "completed",
+          "duration_ns": 804482208
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 842387958,
+          "end_offset_ns": 1003727541,
+          "outcome": "completed",
+          "duration_ns": 161339583
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 842389833,
+          "end_offset_ns": 842559875,
+          "outcome": "completed",
+          "duration_ns": 170042
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 842561333,
+          "end_offset_ns": 1003724875,
+          "outcome": "completed",
+          "duration_ns": 161163542
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 4,
+      "start_ms": 18000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 3096.905666,
+      "synthetic_transcript": "决定使用冻结方案不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 48458,
+          "end_offset_ns": 40991666,
+          "outcome": "completed",
+          "duration_ns": 40943208
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 40998625,
+          "end_offset_ns": 41214000,
+          "outcome": "completed",
+          "duration_ns": 215375
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 41297791,
+          "end_offset_ns": 41324791,
+          "outcome": "completed",
+          "duration_ns": 27000
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 41328333,
+          "end_offset_ns": 3093875166,
+          "outcome": "completed",
+          "duration_ns": 3052546833
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 3095667333,
+          "end_offset_ns": 3096007041,
+          "outcome": "completed",
+          "duration_ns": 339708
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 41891708,
+          "end_offset_ns": 1179504375,
+          "outcome": "completed",
+          "duration_ns": 1137612667
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1179516416,
+          "end_offset_ns": 2928324750,
+          "outcome": "completed",
+          "duration_ns": 1748808334
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1179530916,
+          "end_offset_ns": 1191225750,
+          "outcome": "completed",
+          "duration_ns": 11694834
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1191229375,
+          "end_offset_ns": 2928280291,
+          "outcome": "completed",
+          "duration_ns": 1737050916
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 5,
+      "start_ms": 26000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 3316.784375,
+      "synthetic_transcript": "I will check the hashes and durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 127917,
+          "end_offset_ns": 56862625,
+          "outcome": "completed",
+          "duration_ns": 56734708
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 56871167,
+          "end_offset_ns": 58111542,
+          "outcome": "completed",
+          "duration_ns": 1240375
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 58163417,
+          "end_offset_ns": 58181750,
+          "outcome": "completed",
+          "duration_ns": 18333
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 58184167,
+          "end_offset_ns": 3315950667,
+          "outcome": "completed",
+          "duration_ns": 3257766500
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 3316490833,
+          "end_offset_ns": 3316606917,
+          "outcome": "completed",
+          "duration_ns": 116084
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 60093667,
+          "end_offset_ns": 1893594000,
+          "outcome": "completed",
+          "duration_ns": 1833500333
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1893609042,
+          "end_offset_ns": 3241857917,
+          "outcome": "completed",
+          "duration_ns": 1348248875
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1893626208,
+          "end_offset_ns": 1894173667,
+          "outcome": "completed",
+          "duration_ns": 547459
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1894174750,
+          "end_offset_ns": 3241850667,
+          "outcome": "completed",
+          "duration_ns": 1347675917
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 6,
+      "start_ms": 34000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 1236.459333,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 95708,
+          "end_offset_ns": 48347416,
+          "outcome": "completed",
+          "duration_ns": 48251708
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 48356291,
+          "end_offset_ns": 48597541,
+          "outcome": "completed",
+          "duration_ns": 241250
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 48625875,
+          "end_offset_ns": 48636250,
+          "outcome": "completed",
+          "duration_ns": 10375
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 48637208,
+          "end_offset_ns": 1236234625,
+          "outcome": "completed",
+          "duration_ns": 1187597417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1236335208,
+          "end_offset_ns": 1236422208,
+          "outcome": "completed",
+          "duration_ns": 87000
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 49137291,
+          "end_offset_ns": 1061348291,
+          "outcome": "completed",
+          "duration_ns": 1012211000
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1061351375,
+          "end_offset_ns": 1222897500,
+          "outcome": "completed",
+          "duration_ns": 161546125
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1061355125,
+          "end_offset_ns": 1061653916,
+          "outcome": "completed",
+          "duration_ns": 298791
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1061654958,
+          "end_offset_ns": 1222895541,
+          "outcome": "completed",
+          "duration_ns": 161240583
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 7,
+      "start_ms": 42000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 837.353166,
+      "synthetic_transcript": "A failed validation produces no benchmark result",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35375,
+          "end_offset_ns": 37150250,
+          "outcome": "completed",
+          "duration_ns": 37114875
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 37161542,
+          "end_offset_ns": 37325708,
+          "outcome": "completed",
+          "duration_ns": 164166
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37346792,
+          "end_offset_ns": 37356958,
+          "outcome": "completed",
+          "duration_ns": 10166
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37358375,
+          "end_offset_ns": 837248875,
+          "outcome": "completed",
+          "duration_ns": 799890500
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 837287625,
+          "end_offset_ns": 837336208,
+          "outcome": "completed",
+          "duration_ns": 48583
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 37738791,
+          "end_offset_ns": 703759666,
+          "outcome": "completed",
+          "duration_ns": 666020875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 703761625,
+          "end_offset_ns": 827033166,
+          "outcome": "completed",
+          "duration_ns": 123271541
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 703764166,
+          "end_offset_ns": 703951583,
+          "outcome": "completed",
+          "duration_ns": 187417
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 703952625,
+          "end_offset_ns": 827031458,
+          "outcome": "completed",
+          "duration_ns": 123078833
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 8,
+      "start_ms": 50000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 994.024625,
+      "synthetic_transcript": "所有内容都是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33542,
+          "end_offset_ns": 36804167,
+          "outcome": "completed",
+          "duration_ns": 36770625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 36811958,
+          "end_offset_ns": 36959792,
+          "outcome": "completed",
+          "duration_ns": 147834
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37016042,
+          "end_offset_ns": 37033167,
+          "outcome": "completed",
+          "duration_ns": 17125
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37035792,
+          "end_offset_ns": 993852125,
+          "outcome": "completed",
+          "duration_ns": 956816333
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 993913625,
+          "end_offset_ns": 994006833,
+          "outcome": "completed",
+          "duration_ns": 93208
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 37493042,
+          "end_offset_ns": 789257792,
+          "outcome": "completed",
+          "duration_ns": 751764750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 789260167,
+          "end_offset_ns": 980916125,
+          "outcome": "completed",
+          "duration_ns": 191655958
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 789262250,
+          "end_offset_ns": 789419375,
+          "outcome": "completed",
+          "duration_ns": 157125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 789420334,
+          "end_offset_ns": 980913084,
+          "outcome": "completed",
+          "duration_ns": 191492750
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 2389.801125,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 46625,
+          "end_offset_ns": 2389789208,
+          "outcome": "completed",
+          "duration_ns": 2389742583
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 4527.879917,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 101292,
+          "end_offset_ns": 73210375,
+          "outcome": "completed",
+          "duration_ns": 73109083
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 73224000,
+          "end_offset_ns": 73395542,
+          "outcome": "completed",
+          "duration_ns": 171542
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 73484292,
+          "end_offset_ns": 73505292,
+          "outcome": "completed",
+          "duration_ns": 21000
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 73507292,
+          "end_offset_ns": 4525738792,
+          "outcome": "completed",
+          "duration_ns": 4452231500
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 4527538709,
+          "end_offset_ns": 4527768834,
+          "outcome": "completed",
+          "duration_ns": 230125
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 73897500,
+          "end_offset_ns": 942805000,
+          "outcome": "completed",
+          "duration_ns": 868907500
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 942806458,
+          "end_offset_ns": 4156384958,
+          "outcome": "completed",
+          "duration_ns": 3213578500
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 942809291,
+          "end_offset_ns": 3339415958,
+          "outcome": "completed",
+          "duration_ns": 2396606667
+        },
+        {
+          "phase": "forced_aligner_model_load",
+          "start_offset_ns": 942978000,
+          "end_offset_ns": 3109032208,
+          "outcome": "completed",
+          "duration_ns": 2166054208
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 3339459375,
+          "end_offset_ns": 4156086083,
+          "outcome": "completed",
+          "duration_ns": 816626708
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 3,
+      "start_ms": 10000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 1005.88675,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 107708,
+          "end_offset_ns": 167840416,
+          "outcome": "completed",
+          "duration_ns": 167732708
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 167862833,
+          "end_offset_ns": 168206541,
+          "outcome": "completed",
+          "duration_ns": 343708
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 168342666,
+          "end_offset_ns": 168376791,
+          "outcome": "completed",
+          "duration_ns": 34125
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 168381625,
+          "end_offset_ns": 1005711833,
+          "outcome": "completed",
+          "duration_ns": 837330208
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1005779291,
+          "end_offset_ns": 1005854125,
+          "outcome": "completed",
+          "duration_ns": 74834
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 169633584,
+          "end_offset_ns": 822030959,
+          "outcome": "completed",
+          "duration_ns": 652397375
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 822033084,
+          "end_offset_ns": 984467000,
+          "outcome": "completed",
+          "duration_ns": 162433916
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 822036750,
+          "end_offset_ns": 822258375,
+          "outcome": "completed",
+          "duration_ns": 221625
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 822260209,
+          "end_offset_ns": 984465334,
+          "outcome": "completed",
+          "duration_ns": 162205125
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 4,
+      "start_ms": 18000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 670.926416,
+      "synthetic_transcript": "决定使用冻结方案不再运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 44000,
+          "end_offset_ns": 40340250,
+          "outcome": "completed",
+          "duration_ns": 40296250
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 40347500,
+          "end_offset_ns": 40528416,
+          "outcome": "completed",
+          "duration_ns": 180916
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 40569250,
+          "end_offset_ns": 40591458,
+          "outcome": "completed",
+          "duration_ns": 22208
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 40597083,
+          "end_offset_ns": 670712500,
+          "outcome": "completed",
+          "duration_ns": 630115417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 670813291,
+          "end_offset_ns": 670902416,
+          "outcome": "completed",
+          "duration_ns": 89125
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 41073125,
+          "end_offset_ns": 418903708,
+          "outcome": "completed",
+          "duration_ns": 377830583
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 418905500,
+          "end_offset_ns": 652010125,
+          "outcome": "completed",
+          "duration_ns": 233104625
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 418925125,
+          "end_offset_ns": 419228458,
+          "outcome": "completed",
+          "duration_ns": 303333
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 419230417,
+          "end_offset_ns": 652006500,
+          "outcome": "completed",
+          "duration_ns": 232776083
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 5,
+      "start_ms": 26000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 530.443125,
+      "synthetic_transcript": "I will check the hashes and durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 68000,
+          "end_offset_ns": 43233750,
+          "outcome": "completed",
+          "duration_ns": 43165750
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 43241542,
+          "end_offset_ns": 43407042,
+          "outcome": "completed",
+          "duration_ns": 165500
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 43588209,
+          "end_offset_ns": 43624167,
+          "outcome": "completed",
+          "duration_ns": 35958
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 43629500,
+          "end_offset_ns": 530328375,
+          "outcome": "completed",
+          "duration_ns": 486698875
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 530366375,
+          "end_offset_ns": 530424584,
+          "outcome": "completed",
+          "duration_ns": 58209
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 44072250,
+          "end_offset_ns": 334563292,
+          "outcome": "completed",
+          "duration_ns": 290491042
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 334564958,
+          "end_offset_ns": 508929958,
+          "outcome": "completed",
+          "duration_ns": 174365000
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 334566625,
+          "end_offset_ns": 334720875,
+          "outcome": "completed",
+          "duration_ns": 154250
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 334721833,
+          "end_offset_ns": 508928208,
+          "outcome": "completed",
+          "duration_ns": 174206375
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 6,
+      "start_ms": 34000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 501.634125,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 133250,
+          "end_offset_ns": 40688333,
+          "outcome": "completed",
+          "duration_ns": 40555083
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 40695083,
+          "end_offset_ns": 40860042,
+          "outcome": "completed",
+          "duration_ns": 164959
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 40907250,
+          "end_offset_ns": 40921250,
+          "outcome": "completed",
+          "duration_ns": 14000
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 40922500,
+          "end_offset_ns": 501493708,
+          "outcome": "completed",
+          "duration_ns": 460571208
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 501533917,
+          "end_offset_ns": 501614250,
+          "outcome": "completed",
+          "duration_ns": 80333
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 41335125,
+          "end_offset_ns": 322787875,
+          "outcome": "completed",
+          "duration_ns": 281452750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 322789500,
+          "end_offset_ns": 481652125,
+          "outcome": "completed",
+          "duration_ns": 158862625
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 322791083,
+          "end_offset_ns": 322937916,
+          "outcome": "completed",
+          "duration_ns": 146833
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 322939083,
+          "end_offset_ns": 481650625,
+          "outcome": "completed",
+          "duration_ns": 158711542
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 7,
+      "start_ms": 42000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 454.999833,
+      "synthetic_transcript": "A failed validation produces no benchmark result",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 49750,
+          "end_offset_ns": 38949625,
+          "outcome": "completed",
+          "duration_ns": 38899875
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 38957417,
+          "end_offset_ns": 39131208,
+          "outcome": "completed",
+          "duration_ns": 173791
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 39220208,
+          "end_offset_ns": 39239042,
+          "outcome": "completed",
+          "duration_ns": 18834
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 39240375,
+          "end_offset_ns": 454790250,
+          "outcome": "completed",
+          "duration_ns": 415549875
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 454857000,
+          "end_offset_ns": 454946000,
+          "outcome": "completed",
+          "duration_ns": 89000
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 39692875,
+          "end_offset_ns": 289739917,
+          "outcome": "completed",
+          "duration_ns": 250047042
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 289743542,
+          "end_offset_ns": 436546375,
+          "outcome": "completed",
+          "duration_ns": 146802833
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 289745417,
+          "end_offset_ns": 289925167,
+          "outcome": "completed",
+          "duration_ns": 179750
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 289926084,
+          "end_offset_ns": 436536792,
+          "outcome": "completed",
+          "duration_ns": 146610708
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 1,
+      "chunk": 8,
+      "start_ms": 50000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 501.841125,
+      "synthetic_transcript": "所有内容都是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35792,
+          "end_offset_ns": 43546750,
+          "outcome": "completed",
+          "duration_ns": 43510958
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 43557500,
+          "end_offset_ns": 43724375,
+          "outcome": "completed",
+          "duration_ns": 166875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 43815333,
+          "end_offset_ns": 43832292,
+          "outcome": "completed",
+          "duration_ns": 16959
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 43834583,
+          "end_offset_ns": 501676958,
+          "outcome": "completed",
+          "duration_ns": 457842375
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 501725292,
+          "end_offset_ns": 501814792,
+          "outcome": "completed",
+          "duration_ns": 89500
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 44316250,
+          "end_offset_ns": 324282209,
+          "outcome": "completed",
+          "duration_ns": 279965959
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 324283625,
+          "end_offset_ns": 483236084,
+          "outcome": "completed",
+          "duration_ns": 158952459
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 324285625,
+          "end_offset_ns": 324471542,
+          "outcome": "completed",
+          "duration_ns": 185917
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 324472667,
+          "end_offset_ns": 483232417,
+          "outcome": "completed",
+          "duration_ns": 158759750
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 17.301916,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 44917,
+          "end_offset_ns": 17293959,
+          "outcome": "completed",
+          "duration_ns": 17249042
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 485.796667,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39000,
+          "end_offset_ns": 41481125,
+          "outcome": "completed",
+          "duration_ns": 41442125
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 41488084,
+          "end_offset_ns": 41661625,
+          "outcome": "completed",
+          "duration_ns": 173541
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 41718292,
+          "end_offset_ns": 41737959,
+          "outcome": "completed",
+          "duration_ns": 19667
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 41740334,
+          "end_offset_ns": 485597834,
+          "outcome": "completed",
+          "duration_ns": 443857500
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 485639625,
+          "end_offset_ns": 485771292,
+          "outcome": "completed",
+          "duration_ns": 131667
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 42316625,
+          "end_offset_ns": 311184125,
+          "outcome": "completed",
+          "duration_ns": 268867500
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 311185708,
+          "end_offset_ns": 469728333,
+          "outcome": "completed",
+          "duration_ns": 158542625
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 311187958,
+          "end_offset_ns": 311342625,
+          "outcome": "completed",
+          "duration_ns": 154667
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 311343916,
+          "end_offset_ns": 469726541,
+          "outcome": "completed",
+          "duration_ns": 158382625
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 3,
+      "start_ms": 10000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 506.735541,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 71458,
+          "end_offset_ns": 36156917,
+          "outcome": "completed",
+          "duration_ns": 36085459
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 36164042,
+          "end_offset_ns": 36353250,
+          "outcome": "completed",
+          "duration_ns": 189208
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 36445375,
+          "end_offset_ns": 36461042,
+          "outcome": "completed",
+          "duration_ns": 15667
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 36462375,
+          "end_offset_ns": 506625542,
+          "outcome": "completed",
+          "duration_ns": 470163167
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 506669917,
+          "end_offset_ns": 506730292,
+          "outcome": "completed",
+          "duration_ns": 60375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 37175333,
+          "end_offset_ns": 316956041,
+          "outcome": "completed",
+          "duration_ns": 279780708
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 316957458,
+          "end_offset_ns": 488500666,
+          "outcome": "completed",
+          "duration_ns": 171543208
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 316958958,
+          "end_offset_ns": 317098291,
+          "outcome": "completed",
+          "duration_ns": 139333
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 317099166,
+          "end_offset_ns": 488498500,
+          "outcome": "completed",
+          "duration_ns": 171399334
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 4,
+      "start_ms": 18000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 489.018792,
+      "synthetic_transcript": "决定使用冻结方案不再运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 40667,
+          "end_offset_ns": 38127667,
+          "outcome": "completed",
+          "duration_ns": 38087000
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 38134042,
+          "end_offset_ns": 38290333,
+          "outcome": "completed",
+          "duration_ns": 156291
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 38364667,
+          "end_offset_ns": 38382042,
+          "outcome": "completed",
+          "duration_ns": 17375
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 38384292,
+          "end_offset_ns": 488858292,
+          "outcome": "completed",
+          "duration_ns": 450474000
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 488906500,
+          "end_offset_ns": 489001042,
+          "outcome": "completed",
+          "duration_ns": 94542
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 38803583,
+          "end_offset_ns": 314184416,
+          "outcome": "completed",
+          "duration_ns": 275380833
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 314185958,
+          "end_offset_ns": 471594333,
+          "outcome": "completed",
+          "duration_ns": 157408375
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 314187791,
+          "end_offset_ns": 314346041,
+          "outcome": "completed",
+          "duration_ns": 158250
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 314346875,
+          "end_offset_ns": 471592750,
+          "outcome": "completed",
+          "duration_ns": 157245875
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 5,
+      "start_ms": 26000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 523.0475,
+      "synthetic_transcript": "I will check the hashes and durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 29458,
+          "end_offset_ns": 39049541,
+          "outcome": "completed",
+          "duration_ns": 39020083
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 39059625,
+          "end_offset_ns": 39210458,
+          "outcome": "completed",
+          "duration_ns": 150833
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 39244208,
+          "end_offset_ns": 39254458,
+          "outcome": "completed",
+          "duration_ns": 10250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 39255583,
+          "end_offset_ns": 522930041,
+          "outcome": "completed",
+          "duration_ns": 483674458
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 522972666,
+          "end_offset_ns": 523028750,
+          "outcome": "completed",
+          "duration_ns": 56084
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 39652750,
+          "end_offset_ns": 333189292,
+          "outcome": "completed",
+          "duration_ns": 293536542
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 333191417,
+          "end_offset_ns": 504496375,
+          "outcome": "completed",
+          "duration_ns": 171304958
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 333193209,
+          "end_offset_ns": 333356625,
+          "outcome": "completed",
+          "duration_ns": 163416
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 333360250,
+          "end_offset_ns": 504494667,
+          "outcome": "completed",
+          "duration_ns": 171134417
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 6,
+      "start_ms": 34000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 491.104333,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35708,
+          "end_offset_ns": 37628875,
+          "outcome": "completed",
+          "duration_ns": 37593167
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 37636667,
+          "end_offset_ns": 37788417,
+          "outcome": "completed",
+          "duration_ns": 151750
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37867167,
+          "end_offset_ns": 37886875,
+          "outcome": "completed",
+          "duration_ns": 19708
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37889125,
+          "end_offset_ns": 490938542,
+          "outcome": "completed",
+          "duration_ns": 453049417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 490992792,
+          "end_offset_ns": 491083458,
+          "outcome": "completed",
+          "duration_ns": 90666
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 38283167,
+          "end_offset_ns": 318554250,
+          "outcome": "completed",
+          "duration_ns": 280271083
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 318556125,
+          "end_offset_ns": 472527667,
+          "outcome": "completed",
+          "duration_ns": 153971542
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 318557750,
+          "end_offset_ns": 318702667,
+          "outcome": "completed",
+          "duration_ns": 144917
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 318703750,
+          "end_offset_ns": 472523000,
+          "outcome": "completed",
+          "duration_ns": 153819250
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 7,
+      "start_ms": 42000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 448.831875,
+      "synthetic_transcript": "A failed validation produces no benchmark result",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 49417,
+          "end_offset_ns": 37989833,
+          "outcome": "completed",
+          "duration_ns": 37940416
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 37996875,
+          "end_offset_ns": 38147125,
+          "outcome": "completed",
+          "duration_ns": 150250
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 38241625,
+          "end_offset_ns": 38256917,
+          "outcome": "completed",
+          "duration_ns": 15292
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 38258042,
+          "end_offset_ns": 448686500,
+          "outcome": "completed",
+          "duration_ns": 410428458
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 448757417,
+          "end_offset_ns": 448814167,
+          "outcome": "completed",
+          "duration_ns": 56750
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 39026083,
+          "end_offset_ns": 293992792,
+          "outcome": "completed",
+          "duration_ns": 254966709
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 293994125,
+          "end_offset_ns": 430556333,
+          "outcome": "completed",
+          "duration_ns": 136562208
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 293995875,
+          "end_offset_ns": 294166750,
+          "outcome": "completed",
+          "duration_ns": 170875
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 294167750,
+          "end_offset_ns": 430554875,
+          "outcome": "completed",
+          "duration_ns": 136387125
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 8,
+      "pass": 2,
+      "chunk": 8,
+      "start_ms": 50000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 528.629709,
+      "synthetic_transcript": "所有内容都是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 37625,
+          "end_offset_ns": 37470250,
+          "outcome": "completed",
+          "duration_ns": 37432625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 37487167,
+          "end_offset_ns": 37695042,
+          "outcome": "completed",
+          "duration_ns": 207875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 37751250,
+          "end_offset_ns": 37767583,
+          "outcome": "completed",
+          "duration_ns": 16333
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 37768750,
+          "end_offset_ns": 528344375,
+          "outcome": "completed",
+          "duration_ns": 490575625
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 528397458,
+          "end_offset_ns": 528586750,
+          "outcome": "completed",
+          "duration_ns": 189292
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 38376542,
+          "end_offset_ns": 330185375,
+          "outcome": "completed",
+          "duration_ns": 291808833
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 330186917,
+          "end_offset_ns": 505522709,
+          "outcome": "completed",
+          "duration_ns": 175335792
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 330188500,
+          "end_offset_ns": 330353292,
+          "outcome": "completed",
+          "duration_ns": 164792
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 330354667,
+          "end_offset_ns": 505521042,
+          "outcome": "completed",
+          "duration_ns": 175166375
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 2272.027708,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 126917,
+          "end_offset_ns": 2272024042,
+          "outcome": "completed",
+          "duration_ns": 2271897125
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "ok": true,
+      "call_wall_ms": 5547.244667,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 40125,
+          "end_offset_ns": 22006750,
+          "outcome": "completed",
+          "duration_ns": 21966625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22020292,
+          "end_offset_ns": 22207417,
+          "outcome": "completed",
+          "duration_ns": 187125
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22230500,
+          "end_offset_ns": 22246458,
+          "outcome": "completed",
+          "duration_ns": 15958
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22248125,
+          "end_offset_ns": 5546436250,
+          "outcome": "completed",
+          "duration_ns": 5524188125
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 5546938542,
+          "end_offset_ns": 5547136250,
+          "outcome": "completed",
+          "duration_ns": 197708
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22704667,
+          "end_offset_ns": 1483050500,
+          "outcome": "completed",
+          "duration_ns": 1460345833
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1483052042,
+          "end_offset_ns": 5229315542,
+          "outcome": "completed",
+          "duration_ns": 3746263500
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1483059334,
+          "end_offset_ns": 4065863167,
+          "outcome": "completed",
+          "duration_ns": 2582803833
+        },
+        {
+          "phase": "forced_aligner_model_load",
+          "start_offset_ns": 1483273459,
+          "end_offset_ns": 3877368917,
+          "outcome": "completed",
+          "duration_ns": 2394095458
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 4065935792,
+          "end_offset_ns": 5229307167,
+          "outcome": "completed",
+          "duration_ns": 1163371375
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 3,
+      "start_ms": 6000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 164.2915,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 66875,
+          "end_offset_ns": 164249708,
+          "outcome": "completed",
+          "duration_ns": 164182833
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 4,
+      "start_ms": 10000,
+      "end_ms": 14000,
+      "ok": true,
+      "call_wall_ms": 1933.099292,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 71292,
+          "end_offset_ns": 22338917,
+          "outcome": "completed",
+          "duration_ns": 22267625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22348292,
+          "end_offset_ns": 22789583,
+          "outcome": "completed",
+          "duration_ns": 441291
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22834875,
+          "end_offset_ns": 22864000,
+          "outcome": "completed",
+          "duration_ns": 29125
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22869292,
+          "end_offset_ns": 1932936250,
+          "outcome": "completed",
+          "duration_ns": 1910066958
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1932987167,
+          "end_offset_ns": 1933068542,
+          "outcome": "completed",
+          "duration_ns": 81375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 24343250,
+          "end_offset_ns": 1822195625,
+          "outcome": "completed",
+          "duration_ns": 1797852375
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 1822197708,
+          "end_offset_ns": 1922724541,
+          "outcome": "completed",
+          "duration_ns": 100526833
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 1822199541,
+          "end_offset_ns": 1822352541,
+          "outcome": "completed",
+          "duration_ns": 153000
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1822354458,
+          "end_offset_ns": 1922722625,
+          "outcome": "completed",
+          "duration_ns": 100368167
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 5,
+      "start_ms": 14000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 21.483958,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 34042,
+          "end_offset_ns": 21475000,
+          "outcome": "completed",
+          "duration_ns": 21440958
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 6,
+      "start_ms": 18000,
+      "end_ms": 22000,
+      "ok": true,
+      "call_wall_ms": 610.602792,
+      "synthetic_transcript": "决定使用冻结方案",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 42750,
+          "end_offset_ns": 23108083,
+          "outcome": "completed",
+          "duration_ns": 23065333
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 23117000,
+          "end_offset_ns": 23319250,
+          "outcome": "completed",
+          "duration_ns": 202250
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 23385333,
+          "end_offset_ns": 23404125,
+          "outcome": "completed",
+          "duration_ns": 18792
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 23405333,
+          "end_offset_ns": 610469333,
+          "outcome": "completed",
+          "duration_ns": 587064000
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 610524083,
+          "end_offset_ns": 610583917,
+          "outcome": "completed",
+          "duration_ns": 59834
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 23681750,
+          "end_offset_ns": 511754708,
+          "outcome": "completed",
+          "duration_ns": 488072958
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 511756416,
+          "end_offset_ns": 599752416,
+          "outcome": "completed",
+          "duration_ns": 87996000
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 511757791,
+          "end_offset_ns": 511916916,
+          "outcome": "completed",
+          "duration_ns": 159125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 511918083,
+          "end_offset_ns": 599750916,
+          "outcome": "completed",
+          "duration_ns": 87832833
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 7,
+      "start_ms": 22000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 617.900333,
+      "synthetic_transcript": "不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 41250,
+          "end_offset_ns": 27856541,
+          "outcome": "completed",
+          "duration_ns": 27815291
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 27865458,
+          "end_offset_ns": 28065875,
+          "outcome": "completed",
+          "duration_ns": 200417
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 28148208,
+          "end_offset_ns": 28181041,
+          "outcome": "completed",
+          "duration_ns": 32833
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 28184125,
+          "end_offset_ns": 617790958,
+          "outcome": "completed",
+          "duration_ns": 589606833
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 617830166,
+          "end_offset_ns": 617883500,
+          "outcome": "completed",
+          "duration_ns": 53334
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 28494416,
+          "end_offset_ns": 523504625,
+          "outcome": "completed",
+          "duration_ns": 495010209
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 523506583,
+          "end_offset_ns": 607676875,
+          "outcome": "completed",
+          "duration_ns": 84170292
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 523508083,
+          "end_offset_ns": 523675833,
+          "outcome": "completed",
+          "duration_ns": 167750
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 523676958,
+          "end_offset_ns": 607675583,
+          "outcome": "completed",
+          "duration_ns": 83998625
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 8,
+      "start_ms": 26000,
+      "end_ms": 30000,
+      "ok": true,
+      "call_wall_ms": 632.552875,
+      "synthetic_transcript": "I will check the hashes",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33500,
+          "end_offset_ns": 30282750,
+          "outcome": "completed",
+          "duration_ns": 30249250
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 30289916,
+          "end_offset_ns": 30423500,
+          "outcome": "completed",
+          "duration_ns": 133584
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 30455916,
+          "end_offset_ns": 30469541,
+          "outcome": "completed",
+          "duration_ns": 13625
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 30471000,
+          "end_offset_ns": 632390333,
+          "outcome": "completed",
+          "duration_ns": 601919333
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 632488041,
+          "end_offset_ns": 632534750,
+          "outcome": "completed",
+          "duration_ns": 46709
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 30704209,
+          "end_offset_ns": 535962042,
+          "outcome": "completed",
+          "duration_ns": 505257833
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 535963667,
+          "end_offset_ns": 621815584,
+          "outcome": "completed",
+          "duration_ns": 85851917
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 535965209,
+          "end_offset_ns": 536127084,
+          "outcome": "completed",
+          "duration_ns": 161875
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 536128250,
+          "end_offset_ns": 621813459,
+          "outcome": "completed",
+          "duration_ns": 85685209
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 9,
+      "start_ms": 30000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 267.41525,
+      "synthetic_transcript": "language",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 31417,
+          "end_offset_ns": 25124792,
+          "outcome": "completed",
+          "duration_ns": 25093375
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 25131167,
+          "end_offset_ns": 25253459,
+          "outcome": "completed",
+          "duration_ns": 122292
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 25273292,
+          "end_offset_ns": 25283792,
+          "outcome": "completed",
+          "duration_ns": 10500
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 25284875,
+          "end_offset_ns": 267334167,
+          "outcome": "completed",
+          "duration_ns": 242049292
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 267373167,
+          "end_offset_ns": 267391959,
+          "outcome": "completed",
+          "duration_ns": 18792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 25490042,
+          "end_offset_ns": 258713084,
+          "outcome": "completed",
+          "duration_ns": 233223042
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 10,
+      "start_ms": 34000,
+      "end_ms": 38000,
+      "ok": true,
+      "call_wall_ms": 751.417417,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35000,
+          "end_offset_ns": 22432792,
+          "outcome": "completed",
+          "duration_ns": 22397792
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22440709,
+          "end_offset_ns": 22606459,
+          "outcome": "completed",
+          "duration_ns": 165750
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22681375,
+          "end_offset_ns": 22732042,
+          "outcome": "completed",
+          "duration_ns": 50667
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22735000,
+          "end_offset_ns": 751280209,
+          "outcome": "completed",
+          "duration_ns": 728545209
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 751321625,
+          "end_offset_ns": 751399500,
+          "outcome": "completed",
+          "duration_ns": 77875
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22999042,
+          "end_offset_ns": 645684292,
+          "outcome": "completed",
+          "duration_ns": 622685250
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 645685667,
+          "end_offset_ns": 740832334,
+          "outcome": "completed",
+          "duration_ns": 95146667
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 645692417,
+          "end_offset_ns": 645881375,
+          "outcome": "completed",
+          "duration_ns": 188958
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 645882542,
+          "end_offset_ns": 740830667,
+          "outcome": "completed",
+          "duration_ns": 94948125
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 11,
+      "start_ms": 38000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 462.943625,
+      "synthetic_transcript": "你",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 37334,
+          "end_offset_ns": 21024042,
+          "outcome": "completed",
+          "duration_ns": 20986708
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21030917,
+          "end_offset_ns": 21163375,
+          "outcome": "completed",
+          "duration_ns": 132458
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21186084,
+          "end_offset_ns": 21197417,
+          "outcome": "completed",
+          "duration_ns": 11333
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21198709,
+          "end_offset_ns": 462845209,
+          "outcome": "completed",
+          "duration_ns": 441646500
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 462892625,
+          "end_offset_ns": 462925084,
+          "outcome": "completed",
+          "duration_ns": 32459
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21476167,
+          "end_offset_ns": 379481875,
+          "outcome": "completed",
+          "duration_ns": 358005708
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 379483584,
+          "end_offset_ns": 452267042,
+          "outcome": "completed",
+          "duration_ns": 72783458
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 379485125,
+          "end_offset_ns": 379658167,
+          "outcome": "completed",
+          "duration_ns": 173042
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 379659209,
+          "end_offset_ns": 452263542,
+          "outcome": "completed",
+          "duration_ns": 72604333
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 12,
+      "start_ms": 42000,
+      "end_ms": 46000,
+      "ok": true,
+      "call_wall_ms": 645.6735,
+      "synthetic_transcript": "A failed validation produces no benchmark",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 37292,
+          "end_offset_ns": 20867917,
+          "outcome": "completed",
+          "duration_ns": 20830625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20874625,
+          "end_offset_ns": 21001792,
+          "outcome": "completed",
+          "duration_ns": 127167
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21031084,
+          "end_offset_ns": 21068709,
+          "outcome": "completed",
+          "duration_ns": 37625
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21099709,
+          "end_offset_ns": 645558167,
+          "outcome": "completed",
+          "duration_ns": 624458458
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 645605959,
+          "end_offset_ns": 645656750,
+          "outcome": "completed",
+          "duration_ns": 50791
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21448042,
+          "end_offset_ns": 548213917,
+          "outcome": "completed",
+          "duration_ns": 526765875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 548215750,
+          "end_offset_ns": 634099167,
+          "outcome": "completed",
+          "duration_ns": 85883417
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 548218750,
+          "end_offset_ns": 548382792,
+          "outcome": "completed",
+          "duration_ns": 164042
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 548383917,
+          "end_offset_ns": 634097584,
+          "outcome": "completed",
+          "duration_ns": 85713667
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 13,
+      "start_ms": 46000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 266.388375,
+      "synthetic_transcript": "language",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 42834,
+          "end_offset_ns": 21231125,
+          "outcome": "completed",
+          "duration_ns": 21188291
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21237084,
+          "end_offset_ns": 21370459,
+          "outcome": "completed",
+          "duration_ns": 133375
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21433834,
+          "end_offset_ns": 21449709,
+          "outcome": "completed",
+          "duration_ns": 15875
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21451209,
+          "end_offset_ns": 266314542,
+          "outcome": "completed",
+          "duration_ns": 244863333
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 266353500,
+          "end_offset_ns": 266373834,
+          "outcome": "completed",
+          "duration_ns": 20334
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21820833,
+          "end_offset_ns": 257865916,
+          "outcome": "completed",
+          "duration_ns": 236045083
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 14,
+      "start_ms": 50000,
+      "end_ms": 54000,
+      "ok": true,
+      "call_wall_ms": 544.490292,
+      "synthetic_transcript": "所有内容都是",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 36917,
+          "end_offset_ns": 19854334,
+          "outcome": "completed",
+          "duration_ns": 19817417
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 19860584,
+          "end_offset_ns": 20012917,
+          "outcome": "completed",
+          "duration_ns": 152333
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20032875,
+          "end_offset_ns": 20040750,
+          "outcome": "completed",
+          "duration_ns": 7875
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20043625,
+          "end_offset_ns": 544386250,
+          "outcome": "completed",
+          "duration_ns": 524342625
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 544420334,
+          "end_offset_ns": 544474750,
+          "outcome": "completed",
+          "duration_ns": 54416
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20351000,
+          "end_offset_ns": 447460667,
+          "outcome": "completed",
+          "duration_ns": 427109667
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 447462750,
+          "end_offset_ns": 533478292,
+          "outcome": "completed",
+          "duration_ns": 86015542
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 447467042,
+          "end_offset_ns": 447657125,
+          "outcome": "completed",
+          "duration_ns": 190083
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 447658083,
+          "end_offset_ns": 533476667,
+          "outcome": "completed",
+          "duration_ns": 85818584
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 15,
+      "start_ms": 54000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 730.422208,
+      "synthetic_transcript": "是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 42416,
+          "end_offset_ns": 21001083,
+          "outcome": "completed",
+          "duration_ns": 20958667
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21008291,
+          "end_offset_ns": 21155041,
+          "outcome": "completed",
+          "duration_ns": 146750
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21220958,
+          "end_offset_ns": 21241833,
+          "outcome": "completed",
+          "duration_ns": 20875
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21246875,
+          "end_offset_ns": 730285166,
+          "outcome": "completed",
+          "duration_ns": 709038291
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 730329458,
+          "end_offset_ns": 730405083,
+          "outcome": "completed",
+          "duration_ns": 75625
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21528917,
+          "end_offset_ns": 624637250,
+          "outcome": "completed",
+          "duration_ns": 603108333
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 624640000,
+          "end_offset_ns": 719882917,
+          "outcome": "completed",
+          "duration_ns": 95242917
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 624642583,
+          "end_offset_ns": 624837250,
+          "outcome": "completed",
+          "duration_ns": 194667
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 624839083,
+          "end_offset_ns": 719880917,
+          "outcome": "completed",
+          "duration_ns": 95041834
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 14.913,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33416,
+          "end_offset_ns": 14905208,
+          "outcome": "completed",
+          "duration_ns": 14871792
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "ok": true,
+      "call_wall_ms": 745.640833,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39208,
+          "end_offset_ns": 20842625,
+          "outcome": "completed",
+          "duration_ns": 20803417
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20847833,
+          "end_offset_ns": 20989583,
+          "outcome": "completed",
+          "duration_ns": 141750
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21010625,
+          "end_offset_ns": 21020542,
+          "outcome": "completed",
+          "duration_ns": 9917
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21021542,
+          "end_offset_ns": 745255000,
+          "outcome": "completed",
+          "duration_ns": 724233458
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 745300708,
+          "end_offset_ns": 745618417,
+          "outcome": "completed",
+          "duration_ns": 317709
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21279333,
+          "end_offset_ns": 646300708,
+          "outcome": "completed",
+          "duration_ns": 625021375
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 646301833,
+          "end_offset_ns": 733723500,
+          "outcome": "completed",
+          "duration_ns": 87421667
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 646303375,
+          "end_offset_ns": 646491500,
+          "outcome": "completed",
+          "duration_ns": 188125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 646493458,
+          "end_offset_ns": 733721583,
+          "outcome": "completed",
+          "duration_ns": 87228125
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 3,
+      "start_ms": 6000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 20.588959,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 30084,
+          "end_offset_ns": 20578334,
+          "outcome": "completed",
+          "duration_ns": 20548250
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 4,
+      "start_ms": 10000,
+      "end_ms": 14000,
+      "ok": true,
+      "call_wall_ms": 806.858708,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35791,
+          "end_offset_ns": 20479958,
+          "outcome": "completed",
+          "duration_ns": 20444167
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20485291,
+          "end_offset_ns": 20593458,
+          "outcome": "completed",
+          "duration_ns": 108167
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20615500,
+          "end_offset_ns": 20628625,
+          "outcome": "completed",
+          "duration_ns": 13125
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20629625,
+          "end_offset_ns": 806722625,
+          "outcome": "completed",
+          "duration_ns": 786093000
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 806770500,
+          "end_offset_ns": 806838875,
+          "outcome": "completed",
+          "duration_ns": 68375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20891958,
+          "end_offset_ns": 707189708,
+          "outcome": "completed",
+          "duration_ns": 686297750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 707191333,
+          "end_offset_ns": 794498208,
+          "outcome": "completed",
+          "duration_ns": 87306875
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 707195583,
+          "end_offset_ns": 707375958,
+          "outcome": "completed",
+          "duration_ns": 180375
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 707377166,
+          "end_offset_ns": 794496083,
+          "outcome": "completed",
+          "duration_ns": 87118917
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 5,
+      "start_ms": 14000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 21.247417,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 52375,
+          "end_offset_ns": 21240667,
+          "outcome": "completed",
+          "duration_ns": 21188292
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 6,
+      "start_ms": 18000,
+      "end_ms": 22000,
+      "ok": true,
+      "call_wall_ms": 572.286333,
+      "synthetic_transcript": "决定使用冻结方案",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 63292,
+          "end_offset_ns": 19348959,
+          "outcome": "completed",
+          "duration_ns": 19285667
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 19395584,
+          "end_offset_ns": 19680459,
+          "outcome": "completed",
+          "duration_ns": 284875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 19746375,
+          "end_offset_ns": 19772042,
+          "outcome": "completed",
+          "duration_ns": 25667
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 19773959,
+          "end_offset_ns": 572162334,
+          "outcome": "completed",
+          "duration_ns": 552388375
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 572202750,
+          "end_offset_ns": 572267209,
+          "outcome": "completed",
+          "duration_ns": 64459
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20073833,
+          "end_offset_ns": 474583333,
+          "outcome": "completed",
+          "duration_ns": 454509500
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 474585292,
+          "end_offset_ns": 562249708,
+          "outcome": "completed",
+          "duration_ns": 87664416
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 474586792,
+          "end_offset_ns": 474787292,
+          "outcome": "completed",
+          "duration_ns": 200500
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 474788500,
+          "end_offset_ns": 562247583,
+          "outcome": "completed",
+          "duration_ns": 87459083
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 7,
+      "start_ms": 22000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 619.635958,
+      "synthetic_transcript": "不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 43625,
+          "end_offset_ns": 21252167,
+          "outcome": "completed",
+          "duration_ns": 21208542
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21258667,
+          "end_offset_ns": 21392334,
+          "outcome": "completed",
+          "duration_ns": 133667
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21447834,
+          "end_offset_ns": 21465750,
+          "outcome": "completed",
+          "duration_ns": 17916
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21468000,
+          "end_offset_ns": 619323584,
+          "outcome": "completed",
+          "duration_ns": 597855584
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 619522875,
+          "end_offset_ns": 619610667,
+          "outcome": "completed",
+          "duration_ns": 87792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21724500,
+          "end_offset_ns": 524984667,
+          "outcome": "completed",
+          "duration_ns": 503260167
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 524986417,
+          "end_offset_ns": 608247542,
+          "outcome": "completed",
+          "duration_ns": 83261125
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 524988084,
+          "end_offset_ns": 525133542,
+          "outcome": "completed",
+          "duration_ns": 145458
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 525134459,
+          "end_offset_ns": 608245959,
+          "outcome": "completed",
+          "duration_ns": 83111500
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 8,
+      "start_ms": 26000,
+      "end_ms": 30000,
+      "ok": true,
+      "call_wall_ms": 631.621333,
+      "synthetic_transcript": "I will check the hashes",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 68083,
+          "end_offset_ns": 21575333,
+          "outcome": "completed",
+          "duration_ns": 21507250
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21581125,
+          "end_offset_ns": 21802458,
+          "outcome": "completed",
+          "duration_ns": 221333
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21841958,
+          "end_offset_ns": 21854666,
+          "outcome": "completed",
+          "duration_ns": 12708
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21856583,
+          "end_offset_ns": 631467291,
+          "outcome": "completed",
+          "duration_ns": 609610708
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 631552125,
+          "end_offset_ns": 631604458,
+          "outcome": "completed",
+          "duration_ns": 52333
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22098250,
+          "end_offset_ns": 534534750,
+          "outcome": "completed",
+          "duration_ns": 512436500
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 534536292,
+          "end_offset_ns": 621256084,
+          "outcome": "completed",
+          "duration_ns": 86719792
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 534537959,
+          "end_offset_ns": 534760459,
+          "outcome": "completed",
+          "duration_ns": 222500
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 534762084,
+          "end_offset_ns": 621254084,
+          "outcome": "completed",
+          "duration_ns": 86492000
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 9,
+      "start_ms": 30000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 267.752292,
+      "synthetic_transcript": "language",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 47167,
+          "end_offset_ns": 22382292,
+          "outcome": "completed",
+          "duration_ns": 22335125
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22388584,
+          "end_offset_ns": 22560584,
+          "outcome": "completed",
+          "duration_ns": 172000
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22583459,
+          "end_offset_ns": 22592792,
+          "outcome": "completed",
+          "duration_ns": 9333
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22593834,
+          "end_offset_ns": 267652959,
+          "outcome": "completed",
+          "duration_ns": 245059125
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 267708042,
+          "end_offset_ns": 267735250,
+          "outcome": "completed",
+          "duration_ns": 27208
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22880708,
+          "end_offset_ns": 258808833,
+          "outcome": "completed",
+          "duration_ns": 235928125
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 10,
+      "start_ms": 34000,
+      "end_ms": 38000,
+      "ok": true,
+      "call_wall_ms": 748.56225,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 34667,
+          "end_offset_ns": 20236500,
+          "outcome": "completed",
+          "duration_ns": 20201833
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20243084,
+          "end_offset_ns": 20374167,
+          "outcome": "completed",
+          "duration_ns": 131083
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20394834,
+          "end_offset_ns": 20408375,
+          "outcome": "completed",
+          "duration_ns": 13541
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20409334,
+          "end_offset_ns": 748418959,
+          "outcome": "completed",
+          "duration_ns": 728009625
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 748460000,
+          "end_offset_ns": 748541584,
+          "outcome": "completed",
+          "duration_ns": 81584
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20750458,
+          "end_offset_ns": 645155250,
+          "outcome": "completed",
+          "duration_ns": 624404792
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 645156958,
+          "end_offset_ns": 737946208,
+          "outcome": "completed",
+          "duration_ns": 92789250
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 645158583,
+          "end_offset_ns": 645400208,
+          "outcome": "completed",
+          "duration_ns": 241625
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 645402667,
+          "end_offset_ns": 737944250,
+          "outcome": "completed",
+          "duration_ns": 92541583
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 11,
+      "start_ms": 38000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 470.754458,
+      "synthetic_transcript": "你",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39584,
+          "end_offset_ns": 20674167,
+          "outcome": "completed",
+          "duration_ns": 20634583
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20681542,
+          "end_offset_ns": 20783875,
+          "outcome": "completed",
+          "duration_ns": 102333
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20803459,
+          "end_offset_ns": 20813709,
+          "outcome": "completed",
+          "duration_ns": 10250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20814709,
+          "end_offset_ns": 470675875,
+          "outcome": "completed",
+          "duration_ns": 449861166
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 470717417,
+          "end_offset_ns": 470742209,
+          "outcome": "completed",
+          "duration_ns": 24792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21027875,
+          "end_offset_ns": 386913333,
+          "outcome": "completed",
+          "duration_ns": 365885458
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 386914958,
+          "end_offset_ns": 461318708,
+          "outcome": "completed",
+          "duration_ns": 74403750
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 386916583,
+          "end_offset_ns": 387051791,
+          "outcome": "completed",
+          "duration_ns": 135208
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 387052750,
+          "end_offset_ns": 461317041,
+          "outcome": "completed",
+          "duration_ns": 74264291
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 12,
+      "start_ms": 42000,
+      "end_ms": 46000,
+      "ok": true,
+      "call_wall_ms": 711.726333,
+      "synthetic_transcript": "A failed validation produces no benchmark",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 42417,
+          "end_offset_ns": 19500708,
+          "outcome": "completed",
+          "duration_ns": 19458291
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 19508875,
+          "end_offset_ns": 19655792,
+          "outcome": "completed",
+          "duration_ns": 146917
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 19715250,
+          "end_offset_ns": 19734958,
+          "outcome": "completed",
+          "duration_ns": 19708
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 19737375,
+          "end_offset_ns": 711600417,
+          "outcome": "completed",
+          "duration_ns": 691863042
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 711660875,
+          "end_offset_ns": 711703667,
+          "outcome": "completed",
+          "duration_ns": 42792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20045791,
+          "end_offset_ns": 617104583,
+          "outcome": "completed",
+          "duration_ns": 597058792
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 617106250,
+          "end_offset_ns": 701006458,
+          "outcome": "completed",
+          "duration_ns": 83900208
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 617107791,
+          "end_offset_ns": 617300625,
+          "outcome": "completed",
+          "duration_ns": 192834
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 617301625,
+          "end_offset_ns": 701002791,
+          "outcome": "completed",
+          "duration_ns": 83701166
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 13,
+      "start_ms": 46000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 262.06325,
+      "synthetic_transcript": "language",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 36417,
+          "end_offset_ns": 20052583,
+          "outcome": "completed",
+          "duration_ns": 20016166
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20058083,
+          "end_offset_ns": 20213750,
+          "outcome": "completed",
+          "duration_ns": 155667
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20275292,
+          "end_offset_ns": 20297958,
+          "outcome": "completed",
+          "duration_ns": 22666
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20299042,
+          "end_offset_ns": 261962000,
+          "outcome": "completed",
+          "duration_ns": 241662958
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 262014375,
+          "end_offset_ns": 262045125,
+          "outcome": "completed",
+          "duration_ns": 30750
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20585042,
+          "end_offset_ns": 253069959,
+          "outcome": "completed",
+          "duration_ns": 232484917
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 14,
+      "start_ms": 50000,
+      "end_ms": 54000,
+      "ok": true,
+      "call_wall_ms": 550.737583,
+      "synthetic_transcript": "所有内容都是",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39291,
+          "end_offset_ns": 20489708,
+          "outcome": "completed",
+          "duration_ns": 20450417
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20496208,
+          "end_offset_ns": 20634250,
+          "outcome": "completed",
+          "duration_ns": 138042
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 20686708,
+          "end_offset_ns": 20705208,
+          "outcome": "completed",
+          "duration_ns": 18500
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 20706458,
+          "end_offset_ns": 550627708,
+          "outcome": "completed",
+          "duration_ns": 529921250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 550671750,
+          "end_offset_ns": 550722000,
+          "outcome": "completed",
+          "duration_ns": 50250
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 20930292,
+          "end_offset_ns": 452661333,
+          "outcome": "completed",
+          "duration_ns": 431731041
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 452662833,
+          "end_offset_ns": 538158625,
+          "outcome": "completed",
+          "duration_ns": 85495792
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 452664417,
+          "end_offset_ns": 452840833,
+          "outcome": "completed",
+          "duration_ns": 176416
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 452841833,
+          "end_offset_ns": 538156792,
+          "outcome": "completed",
+          "duration_ns": 85314959
+        }
+      ]
+    },
+    {
+      "model": "current-1.7b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 15,
+      "start_ms": 54000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 717.675584,
+      "synthetic_transcript": "是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 40708,
+          "end_offset_ns": 21696833,
+          "outcome": "completed",
+          "duration_ns": 21656125
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21703250,
+          "end_offset_ns": 21861875,
+          "outcome": "completed",
+          "duration_ns": 158625
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21921500,
+          "end_offset_ns": 21943041,
+          "outcome": "completed",
+          "duration_ns": 21541
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21944375,
+          "end_offset_ns": 717549000,
+          "outcome": "completed",
+          "duration_ns": 695604625
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 717589250,
+          "end_offset_ns": 717658500,
+          "outcome": "completed",
+          "duration_ns": 69250
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22230000,
+          "end_offset_ns": 617451417,
+          "outcome": "completed",
+          "duration_ns": 595221417
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 617453042,
+          "end_offset_ns": 706000750,
+          "outcome": "completed",
+          "duration_ns": 88547708
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 617454584,
+          "end_offset_ns": 617637250,
+          "outcome": "completed",
+          "duration_ns": 182666
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 617638417,
+          "end_offset_ns": 705998709,
+          "outcome": "completed",
+          "duration_ns": 88360292
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 1670.1885,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33667,
+          "end_offset_ns": 1670177042,
+          "outcome": "completed",
+          "duration_ns": 1670143375
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "ok": true,
+      "call_wall_ms": 1487.572625,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39083,
+          "end_offset_ns": 23133833,
+          "outcome": "completed",
+          "duration_ns": 23094750
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 23142250,
+          "end_offset_ns": 23345208,
+          "outcome": "completed",
+          "duration_ns": 202958
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 23445375,
+          "end_offset_ns": 23469833,
+          "outcome": "completed",
+          "duration_ns": 24458
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 23471583,
+          "end_offset_ns": 1486663125,
+          "outcome": "completed",
+          "duration_ns": 1463191542
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 1487108833,
+          "end_offset_ns": 1487455833,
+          "outcome": "completed",
+          "duration_ns": 347000
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 23747542,
+          "end_offset_ns": 248141417,
+          "outcome": "completed",
+          "duration_ns": 224393875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 248143042,
+          "end_offset_ns": 1418850875,
+          "outcome": "completed",
+          "duration_ns": 1170707833
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 248144917,
+          "end_offset_ns": 1178213125,
+          "outcome": "completed",
+          "duration_ns": 930068208
+        },
+        {
+          "phase": "forced_aligner_model_load",
+          "start_offset_ns": 248320667,
+          "end_offset_ns": 1051989500,
+          "outcome": "completed",
+          "duration_ns": 803668833
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 1178267500,
+          "end_offset_ns": 1418826333,
+          "outcome": "completed",
+          "duration_ns": 240558833
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 3,
+      "start_ms": 6000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 85.364958,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 82500,
+          "end_offset_ns": 85354875,
+          "outcome": "completed",
+          "duration_ns": 85272375
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 4,
+      "start_ms": 10000,
+      "end_ms": 14000,
+      "ok": true,
+      "call_wall_ms": 385.527125,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 52958,
+          "end_offset_ns": 22083000,
+          "outcome": "completed",
+          "duration_ns": 22030042
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22090541,
+          "end_offset_ns": 22366333,
+          "outcome": "completed",
+          "duration_ns": 275792
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22487708,
+          "end_offset_ns": 22506958,
+          "outcome": "completed",
+          "duration_ns": 19250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22509000,
+          "end_offset_ns": 385357833,
+          "outcome": "completed",
+          "duration_ns": 362848833
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 385431125,
+          "end_offset_ns": 385501458,
+          "outcome": "completed",
+          "duration_ns": 70333
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 23152917,
+          "end_offset_ns": 281588917,
+          "outcome": "completed",
+          "duration_ns": 258436000
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 281591584,
+          "end_offset_ns": 372800209,
+          "outcome": "completed",
+          "duration_ns": 91208625
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 281595500,
+          "end_offset_ns": 281839459,
+          "outcome": "completed",
+          "duration_ns": 243959
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 281841250,
+          "end_offset_ns": 372798375,
+          "outcome": "completed",
+          "duration_ns": 90957125
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 5,
+      "start_ms": 14000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 21.743167,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 38875,
+          "end_offset_ns": 21735333,
+          "outcome": "completed",
+          "duration_ns": 21696458
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 6,
+      "start_ms": 18000,
+      "end_ms": 22000,
+      "ok": true,
+      "call_wall_ms": 284.491708,
+      "synthetic_transcript": "决定使用冻结方案",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35500,
+          "end_offset_ns": 22555667,
+          "outcome": "completed",
+          "duration_ns": 22520167
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22562917,
+          "end_offset_ns": 22718625,
+          "outcome": "completed",
+          "duration_ns": 155708
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22772625,
+          "end_offset_ns": 22789917,
+          "outcome": "completed",
+          "duration_ns": 17292
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22793667,
+          "end_offset_ns": 284223917,
+          "outcome": "completed",
+          "duration_ns": 261430250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 284301084,
+          "end_offset_ns": 284418584,
+          "outcome": "completed",
+          "duration_ns": 117500
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 23066666,
+          "end_offset_ns": 177241708,
+          "outcome": "completed",
+          "duration_ns": 154175042
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 177243583,
+          "end_offset_ns": 269780625,
+          "outcome": "completed",
+          "duration_ns": 92537042
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 177245333,
+          "end_offset_ns": 177435875,
+          "outcome": "completed",
+          "duration_ns": 190542
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 177436875,
+          "end_offset_ns": 269779250,
+          "outcome": "completed",
+          "duration_ns": 92342375
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 7,
+      "start_ms": 22000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 290.55625,
+      "synthetic_transcript": "不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 31834,
+          "end_offset_ns": 23477709,
+          "outcome": "completed",
+          "duration_ns": 23445875
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 23484834,
+          "end_offset_ns": 23658667,
+          "outcome": "completed",
+          "duration_ns": 173833
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 23742375,
+          "end_offset_ns": 23760792,
+          "outcome": "completed",
+          "duration_ns": 18417
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 23763459,
+          "end_offset_ns": 290333209,
+          "outcome": "completed",
+          "duration_ns": 266569750
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 290375584,
+          "end_offset_ns": 290531167,
+          "outcome": "completed",
+          "duration_ns": 155583
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 24300000,
+          "end_offset_ns": 186988875,
+          "outcome": "completed",
+          "duration_ns": 162688875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 186990333,
+          "end_offset_ns": 277322583,
+          "outcome": "completed",
+          "duration_ns": 90332250
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 186992333,
+          "end_offset_ns": 187131541,
+          "outcome": "completed",
+          "duration_ns": 139208
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 187132458,
+          "end_offset_ns": 277320458,
+          "outcome": "completed",
+          "duration_ns": 90188000
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 8,
+      "start_ms": 26000,
+      "end_ms": 30000,
+      "ok": true,
+      "call_wall_ms": 284.220708,
+      "synthetic_transcript": "I will check the hashes",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 34167,
+          "end_offset_ns": 22089667,
+          "outcome": "completed",
+          "duration_ns": 22055500
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22101084,
+          "end_offset_ns": 22256000,
+          "outcome": "completed",
+          "duration_ns": 154916
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22299375,
+          "end_offset_ns": 22310625,
+          "outcome": "completed",
+          "duration_ns": 11250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22312084,
+          "end_offset_ns": 284114500,
+          "outcome": "completed",
+          "duration_ns": 261802416
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 284166250,
+          "end_offset_ns": 284203584,
+          "outcome": "completed",
+          "duration_ns": 37334
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22570666,
+          "end_offset_ns": 186115416,
+          "outcome": "completed",
+          "duration_ns": 163544750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 186116791,
+          "end_offset_ns": 272463041,
+          "outcome": "completed",
+          "duration_ns": 86346250
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 186118541,
+          "end_offset_ns": 186262416,
+          "outcome": "completed",
+          "duration_ns": 143875
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 186263583,
+          "end_offset_ns": 272461125,
+          "outcome": "completed",
+          "duration_ns": 86197542
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 9,
+      "start_ms": 30000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 300.210875,
+      "synthetic_transcript": "And durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 32917,
+          "end_offset_ns": 21843500,
+          "outcome": "completed",
+          "duration_ns": 21810583
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21849792,
+          "end_offset_ns": 22028333,
+          "outcome": "completed",
+          "duration_ns": 178541
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22107708,
+          "end_offset_ns": 22132542,
+          "outcome": "completed",
+          "duration_ns": 24834
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22134167,
+          "end_offset_ns": 300100625,
+          "outcome": "completed",
+          "duration_ns": 277966458
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 300145083,
+          "end_offset_ns": 300191750,
+          "outcome": "completed",
+          "duration_ns": 46667
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22450416,
+          "end_offset_ns": 195924166,
+          "outcome": "completed",
+          "duration_ns": 173473750
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 195925750,
+          "end_offset_ns": 287484583,
+          "outcome": "completed",
+          "duration_ns": 91558833
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 195927666,
+          "end_offset_ns": 196195250,
+          "outcome": "completed",
+          "duration_ns": 267584
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 196197625,
+          "end_offset_ns": 287482708,
+          "outcome": "completed",
+          "duration_ns": 91285083
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 10,
+      "start_ms": 34000,
+      "end_ms": 38000,
+      "ok": true,
+      "call_wall_ms": 327.682708,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33500,
+          "end_offset_ns": 21362958,
+          "outcome": "completed",
+          "duration_ns": 21329458
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21372708,
+          "end_offset_ns": 21494917,
+          "outcome": "completed",
+          "duration_ns": 122209
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21522417,
+          "end_offset_ns": 21532875,
+          "outcome": "completed",
+          "duration_ns": 10458
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21534125,
+          "end_offset_ns": 327481542,
+          "outcome": "completed",
+          "duration_ns": 305947417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 327538250,
+          "end_offset_ns": 327661417,
+          "outcome": "completed",
+          "duration_ns": 123167
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21841583,
+          "end_offset_ns": 220132375,
+          "outcome": "completed",
+          "duration_ns": 198290792
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 220133875,
+          "end_offset_ns": 315375333,
+          "outcome": "completed",
+          "duration_ns": 95241458
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 220135417,
+          "end_offset_ns": 220304417,
+          "outcome": "completed",
+          "duration_ns": 169000
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 220305500,
+          "end_offset_ns": 315373458,
+          "outcome": "completed",
+          "duration_ns": 95067958
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 11,
+      "start_ms": 38000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 245.214792,
+      "synthetic_transcript": "意",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 34375,
+          "end_offset_ns": 21429000,
+          "outcome": "completed",
+          "duration_ns": 21394625
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21434333,
+          "end_offset_ns": 21596042,
+          "outcome": "completed",
+          "duration_ns": 161709
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21668625,
+          "end_offset_ns": 21694583,
+          "outcome": "completed",
+          "duration_ns": 25958
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21697083,
+          "end_offset_ns": 245124292,
+          "outcome": "completed",
+          "duration_ns": 223427209
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 245166042,
+          "end_offset_ns": 245196833,
+          "outcome": "completed",
+          "duration_ns": 30791
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22074167,
+          "end_offset_ns": 152321500,
+          "outcome": "completed",
+          "duration_ns": 130247333
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 152323250,
+          "end_offset_ns": 232048167,
+          "outcome": "completed",
+          "duration_ns": 79724917
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 152325292,
+          "end_offset_ns": 152470334,
+          "outcome": "completed",
+          "duration_ns": 145042
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 152471625,
+          "end_offset_ns": 232046500,
+          "outcome": "completed",
+          "duration_ns": 79574875
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 12,
+      "start_ms": 42000,
+      "end_ms": 46000,
+      "ok": true,
+      "call_wall_ms": 295.930375,
+      "synthetic_transcript": "A failed validation produces no benchmark",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 35083,
+          "end_offset_ns": 22285750,
+          "outcome": "completed",
+          "duration_ns": 22250667
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22293417,
+          "end_offset_ns": 22429292,
+          "outcome": "completed",
+          "duration_ns": 135875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22466625,
+          "end_offset_ns": 22477083,
+          "outcome": "completed",
+          "duration_ns": 10458
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22482292,
+          "end_offset_ns": 295829083,
+          "outcome": "completed",
+          "duration_ns": 273346791
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 295870750,
+          "end_offset_ns": 295913667,
+          "outcome": "completed",
+          "duration_ns": 42917
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22740000,
+          "end_offset_ns": 192855875,
+          "outcome": "completed",
+          "duration_ns": 170115875
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 192858125,
+          "end_offset_ns": 284469709,
+          "outcome": "completed",
+          "duration_ns": 91611584
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 192861917,
+          "end_offset_ns": 192991917,
+          "outcome": "completed",
+          "duration_ns": 130000
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 192992875,
+          "end_offset_ns": 284468042,
+          "outcome": "completed",
+          "duration_ns": 91475167
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 13,
+      "start_ms": 46000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 254.28475,
+      "synthetic_transcript": "Mark resolved",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 28750,
+          "end_offset_ns": 22132291,
+          "outcome": "completed",
+          "duration_ns": 22103541
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22138750,
+          "end_offset_ns": 22260583,
+          "outcome": "completed",
+          "duration_ns": 121833
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22340166,
+          "end_offset_ns": 22373541,
+          "outcome": "completed",
+          "duration_ns": 33375
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22375375,
+          "end_offset_ns": 254151625,
+          "outcome": "completed",
+          "duration_ns": 231776250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 254210125,
+          "end_offset_ns": 254248708,
+          "outcome": "completed",
+          "duration_ns": 38583
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22604625,
+          "end_offset_ns": 162122708,
+          "outcome": "completed",
+          "duration_ns": 139518083
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 162124167,
+          "end_offset_ns": 241931958,
+          "outcome": "completed",
+          "duration_ns": 79807791
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 162125708,
+          "end_offset_ns": 162287333,
+          "outcome": "completed",
+          "duration_ns": 161625
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 162288667,
+          "end_offset_ns": 241930208,
+          "outcome": "completed",
+          "duration_ns": 79641541
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 14,
+      "start_ms": 50000,
+      "end_ms": 54000,
+      "ok": true,
+      "call_wall_ms": 271.581458,
+      "synthetic_transcript": "所有内容都是",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 32208,
+          "end_offset_ns": 21054292,
+          "outcome": "completed",
+          "duration_ns": 21022084
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21061917,
+          "end_offset_ns": 21241333,
+          "outcome": "completed",
+          "duration_ns": 179416
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21308917,
+          "end_offset_ns": 21336917,
+          "outcome": "completed",
+          "duration_ns": 28000
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21340208,
+          "end_offset_ns": 271479625,
+          "outcome": "completed",
+          "duration_ns": 250139417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 271522500,
+          "end_offset_ns": 271567000,
+          "outcome": "completed",
+          "duration_ns": 44500
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21583208,
+          "end_offset_ns": 167059917,
+          "outcome": "completed",
+          "duration_ns": 145476709
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 167061708,
+          "end_offset_ns": 257667250,
+          "outcome": "completed",
+          "duration_ns": 90605542
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 167063375,
+          "end_offset_ns": 167200292,
+          "outcome": "completed",
+          "duration_ns": 136917
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 167201250,
+          "end_offset_ns": 257665625,
+          "outcome": "completed",
+          "duration_ns": 90464375
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 1,
+      "chunk": 15,
+      "start_ms": 54000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 310.64575,
+      "synthetic_transcript": "是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 44208,
+          "end_offset_ns": 22195042,
+          "outcome": "completed",
+          "duration_ns": 22150834
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22206083,
+          "end_offset_ns": 22404667,
+          "outcome": "completed",
+          "duration_ns": 198584
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22493417,
+          "end_offset_ns": 22520500,
+          "outcome": "completed",
+          "duration_ns": 27083
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22523458,
+          "end_offset_ns": 310520417,
+          "outcome": "completed",
+          "duration_ns": 287996959
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 310566000,
+          "end_offset_ns": 310629375,
+          "outcome": "completed",
+          "duration_ns": 63375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22798208,
+          "end_offset_ns": 209939250,
+          "outcome": "completed",
+          "duration_ns": 187141042
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 209940666,
+          "end_offset_ns": 297388166,
+          "outcome": "completed",
+          "duration_ns": 87447500
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 209942291,
+          "end_offset_ns": 210058750,
+          "outcome": "completed",
+          "duration_ns": 116459
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 210059833,
+          "end_offset_ns": 297386458,
+          "outcome": "completed",
+          "duration_ns": 87326625
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "ok": true,
+      "call_wall_ms": 13.185125,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 42291,
+          "end_offset_ns": 13178208,
+          "outcome": "completed",
+          "duration_ns": 13135917
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 2,
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "ok": true,
+      "call_wall_ms": 330.326959,
+      "synthetic_transcript": "我们先固定今天的测试文件和操作顺序",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 32459,
+          "end_offset_ns": 22242750,
+          "outcome": "completed",
+          "duration_ns": 22210291
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22248917,
+          "end_offset_ns": 22368750,
+          "outcome": "completed",
+          "duration_ns": 119833
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22429084,
+          "end_offset_ns": 22467250,
+          "outcome": "completed",
+          "duration_ns": 38166
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22469000,
+          "end_offset_ns": 330178792,
+          "outcome": "completed",
+          "duration_ns": 307709792
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 330223792,
+          "end_offset_ns": 330309292,
+          "outcome": "completed",
+          "duration_ns": 85500
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22796000,
+          "end_offset_ns": 220771291,
+          "outcome": "completed",
+          "duration_ns": 197975291
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 220772875,
+          "end_offset_ns": 314538958,
+          "outcome": "completed",
+          "duration_ns": 93766083
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 220774583,
+          "end_offset_ns": 220939416,
+          "outcome": "completed",
+          "duration_ns": 164833
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 220940458,
+          "end_offset_ns": 314536083,
+          "outcome": "completed",
+          "duration_ns": 93595625
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 3,
+      "start_ms": 6000,
+      "end_ms": 10000,
+      "ok": true,
+      "call_wall_ms": 22.332708,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 43209,
+          "end_offset_ns": 22324792,
+          "outcome": "completed",
+          "duration_ns": 22281583
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 4,
+      "start_ms": 10000,
+      "end_ms": 14000,
+      "ok": true,
+      "call_wall_ms": 341.085417,
+      "synthetic_transcript": "The same input will be replayed for every measured run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 48416,
+          "end_offset_ns": 20924916,
+          "outcome": "completed",
+          "duration_ns": 20876500
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 20932958,
+          "end_offset_ns": 21094416,
+          "outcome": "completed",
+          "duration_ns": 161458
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21155875,
+          "end_offset_ns": 21176250,
+          "outcome": "completed",
+          "duration_ns": 20375
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21178750,
+          "end_offset_ns": 340952000,
+          "outcome": "completed",
+          "duration_ns": 319773250
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 341004166,
+          "end_offset_ns": 341067500,
+          "outcome": "completed",
+          "duration_ns": 63334
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21470833,
+          "end_offset_ns": 236593333,
+          "outcome": "completed",
+          "duration_ns": 215122500
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 236595042,
+          "end_offset_ns": 326548833,
+          "outcome": "completed",
+          "duration_ns": 89953791
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 236597000,
+          "end_offset_ns": 236751125,
+          "outcome": "completed",
+          "duration_ns": 154125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 236752375,
+          "end_offset_ns": 326546792,
+          "outcome": "completed",
+          "duration_ns": 89794417
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 5,
+      "start_ms": 14000,
+      "end_ms": 18000,
+      "ok": true,
+      "call_wall_ms": 20.751833,
+      "synthetic_transcript": "",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 29375,
+          "end_offset_ns": 20744542,
+          "outcome": "completed",
+          "duration_ns": 20715167
+        }
+      ],
+      "library_phases": []
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 6,
+      "start_ms": 18000,
+      "end_ms": 22000,
+      "ok": true,
+      "call_wall_ms": 275.65175,
+      "synthetic_transcript": "决定使用冻结方案",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 29416,
+          "end_offset_ns": 21041708,
+          "outcome": "completed",
+          "duration_ns": 21012292
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21045416,
+          "end_offset_ns": 21152375,
+          "outcome": "completed",
+          "duration_ns": 106959
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21184791,
+          "end_offset_ns": 21195208,
+          "outcome": "completed",
+          "duration_ns": 10417
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21196666,
+          "end_offset_ns": 275541083,
+          "outcome": "completed",
+          "duration_ns": 254344417
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 275579208,
+          "end_offset_ns": 275633583,
+          "outcome": "completed",
+          "duration_ns": 54375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21450917,
+          "end_offset_ns": 174799458,
+          "outcome": "completed",
+          "duration_ns": 153348541
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 174800917,
+          "end_offset_ns": 261357042,
+          "outcome": "completed",
+          "duration_ns": 86556125
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 174802333,
+          "end_offset_ns": 174950542,
+          "outcome": "completed",
+          "duration_ns": 148209
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 174951417,
+          "end_offset_ns": 261355167,
+          "outcome": "completed",
+          "duration_ns": 86403750
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 7,
+      "start_ms": 22000,
+      "end_ms": 26000,
+      "ok": true,
+      "call_wall_ms": 286.496792,
+      "synthetic_transcript": "不在运行中修改内容",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 32792,
+          "end_offset_ns": 20997708,
+          "outcome": "completed",
+          "duration_ns": 20964916
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21004000,
+          "end_offset_ns": 21120708,
+          "outcome": "completed",
+          "duration_ns": 116708
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21164208,
+          "end_offset_ns": 21174458,
+          "outcome": "completed",
+          "duration_ns": 10250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21175667,
+          "end_offset_ns": 286349792,
+          "outcome": "completed",
+          "duration_ns": 265174125
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 286405792,
+          "end_offset_ns": 286474875,
+          "outcome": "completed",
+          "duration_ns": 69083
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21413458,
+          "end_offset_ns": 182729458,
+          "outcome": "completed",
+          "duration_ns": 161316000
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 182731083,
+          "end_offset_ns": 271889875,
+          "outcome": "completed",
+          "duration_ns": 89158792
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 182732541,
+          "end_offset_ns": 182886875,
+          "outcome": "completed",
+          "duration_ns": 154334
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 182887750,
+          "end_offset_ns": 271888416,
+          "outcome": "completed",
+          "duration_ns": 89000666
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 8,
+      "start_ms": 26000,
+      "end_ms": 30000,
+      "ok": true,
+      "call_wall_ms": 289.780583,
+      "synthetic_transcript": "I will check the hashes",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 39375,
+          "end_offset_ns": 21881167,
+          "outcome": "completed",
+          "duration_ns": 21841792
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21888708,
+          "end_offset_ns": 22049208,
+          "outcome": "completed",
+          "duration_ns": 160500
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22106458,
+          "end_offset_ns": 22128042,
+          "outcome": "completed",
+          "duration_ns": 21584
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22138125,
+          "end_offset_ns": 289657250,
+          "outcome": "completed",
+          "duration_ns": 267519125
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 289708292,
+          "end_offset_ns": 289762208,
+          "outcome": "completed",
+          "duration_ns": 53916
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22472042,
+          "end_offset_ns": 185796417,
+          "outcome": "completed",
+          "duration_ns": 163324375
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 185798250,
+          "end_offset_ns": 275804208,
+          "outcome": "completed",
+          "duration_ns": 90005958
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 185799708,
+          "end_offset_ns": 185983833,
+          "outcome": "completed",
+          "duration_ns": 184125
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 185985250,
+          "end_offset_ns": 275802333,
+          "outcome": "completed",
+          "duration_ns": 89817083
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 9,
+      "start_ms": 30000,
+      "end_ms": 34000,
+      "ok": true,
+      "call_wall_ms": 294.83125,
+      "synthetic_transcript": "And durations before the next run",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 36166,
+          "end_offset_ns": 21902666,
+          "outcome": "completed",
+          "duration_ns": 21866500
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21909541,
+          "end_offset_ns": 22054083,
+          "outcome": "completed",
+          "duration_ns": 144542
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22158416,
+          "end_offset_ns": 22180291,
+          "outcome": "completed",
+          "duration_ns": 21875
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22182625,
+          "end_offset_ns": 294712250,
+          "outcome": "completed",
+          "duration_ns": 272529625
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 294761125,
+          "end_offset_ns": 294812291,
+          "outcome": "completed",
+          "duration_ns": 51166
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22453500,
+          "end_offset_ns": 193077417,
+          "outcome": "completed",
+          "duration_ns": 170623917
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 193079125,
+          "end_offset_ns": 281952584,
+          "outcome": "completed",
+          "duration_ns": 88873459
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 193080667,
+          "end_offset_ns": 193232459,
+          "outcome": "completed",
+          "duration_ns": 151792
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 193233417,
+          "end_offset_ns": 281950667,
+          "outcome": "completed",
+          "duration_ns": 88717250
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 10,
+      "start_ms": 34000,
+      "end_ms": 38000,
+      "ok": true,
+      "call_wall_ms": 330.866208,
+      "synthetic_transcript": "这段短暂交叉发言也保留在测试里",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 44292,
+          "end_offset_ns": 21051750,
+          "outcome": "completed",
+          "duration_ns": 21007458
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21058500,
+          "end_offset_ns": 21181750,
+          "outcome": "completed",
+          "duration_ns": 123250
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21238917,
+          "end_offset_ns": 21276167,
+          "outcome": "completed",
+          "duration_ns": 37250
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21283042,
+          "end_offset_ns": 330708792,
+          "outcome": "completed",
+          "duration_ns": 309425750
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 330766875,
+          "end_offset_ns": 330848625,
+          "outcome": "completed",
+          "duration_ns": 81750
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 21604291,
+          "end_offset_ns": 221433333,
+          "outcome": "completed",
+          "duration_ns": 199829042
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 221434916,
+          "end_offset_ns": 318224291,
+          "outcome": "completed",
+          "duration_ns": 96789375
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 221436333,
+          "end_offset_ns": 221588041,
+          "outcome": "completed",
+          "duration_ns": 151708
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 221589125,
+          "end_offset_ns": 318222583,
+          "outcome": "completed",
+          "duration_ns": 96633458
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 11,
+      "start_ms": 38000,
+      "end_ms": 42000,
+      "ok": true,
+      "call_wall_ms": 264.836083,
+      "synthetic_transcript": "意",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 38917,
+          "end_offset_ns": 34550375,
+          "outcome": "completed",
+          "duration_ns": 34511458
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 34557167,
+          "end_offset_ns": 34706125,
+          "outcome": "completed",
+          "duration_ns": 148958
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 34780792,
+          "end_offset_ns": 34820750,
+          "outcome": "completed",
+          "duration_ns": 39958
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 34826208,
+          "end_offset_ns": 264645417,
+          "outcome": "completed",
+          "duration_ns": 229819209
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 264796125,
+          "end_offset_ns": 264822042,
+          "outcome": "completed",
+          "duration_ns": 25917
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 35147667,
+          "end_offset_ns": 170859917,
+          "outcome": "completed",
+          "duration_ns": 135712250
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 170861625,
+          "end_offset_ns": 251098917,
+          "outcome": "completed",
+          "duration_ns": 80237292
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 170863167,
+          "end_offset_ns": 171022583,
+          "outcome": "completed",
+          "duration_ns": 159416
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 171023667,
+          "end_offset_ns": 251097375,
+          "outcome": "completed",
+          "duration_ns": 80073708
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 12,
+      "start_ms": 42000,
+      "end_ms": 46000,
+      "ok": true,
+      "call_wall_ms": 301.380208,
+      "synthetic_transcript": "A failed validation produces no benchmark",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 30875,
+          "end_offset_ns": 22121708,
+          "outcome": "completed",
+          "duration_ns": 22090833
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22128166,
+          "end_offset_ns": 22279041,
+          "outcome": "completed",
+          "duration_ns": 150875
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22366708,
+          "end_offset_ns": 22385916,
+          "outcome": "completed",
+          "duration_ns": 19208
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22388833,
+          "end_offset_ns": 301243791,
+          "outcome": "completed",
+          "duration_ns": 278854958
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 301306916,
+          "end_offset_ns": 301357291,
+          "outcome": "completed",
+          "duration_ns": 50375
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22649166,
+          "end_offset_ns": 197617583,
+          "outcome": "completed",
+          "duration_ns": 174968417
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 197619166,
+          "end_offset_ns": 288554666,
+          "outcome": "completed",
+          "duration_ns": 90935500
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 197621125,
+          "end_offset_ns": 197787041,
+          "outcome": "completed",
+          "duration_ns": 165916
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 197788000,
+          "end_offset_ns": 288552791,
+          "outcome": "completed",
+          "duration_ns": 90764791
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 13,
+      "start_ms": 46000,
+      "end_ms": 50000,
+      "ok": true,
+      "call_wall_ms": 253.142208,
+      "synthetic_transcript": "Mark resolved",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 33666,
+          "end_offset_ns": 21887416,
+          "outcome": "completed",
+          "duration_ns": 21853750
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21894416,
+          "end_offset_ns": 22013500,
+          "outcome": "completed",
+          "duration_ns": 119084
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22096666,
+          "end_offset_ns": 22113583,
+          "outcome": "completed",
+          "duration_ns": 16917
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22116000,
+          "end_offset_ns": 253019291,
+          "outcome": "completed",
+          "duration_ns": 230903291
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 253085208,
+          "end_offset_ns": 253124166,
+          "outcome": "completed",
+          "duration_ns": 38958
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22397959,
+          "end_offset_ns": 157897209,
+          "outcome": "completed",
+          "duration_ns": 135499250
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 157898792,
+          "end_offset_ns": 238590709,
+          "outcome": "completed",
+          "duration_ns": 80691917
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 157900584,
+          "end_offset_ns": 158032542,
+          "outcome": "completed",
+          "duration_ns": 131958
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 158033542,
+          "end_offset_ns": 238587500,
+          "outcome": "completed",
+          "duration_ns": 80553958
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 14,
+      "start_ms": 50000,
+      "end_ms": 54000,
+      "ok": true,
+      "call_wall_ms": 280.243667,
+      "synthetic_transcript": "所有内容都是",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 45375,
+          "end_offset_ns": 21671208,
+          "outcome": "completed",
+          "duration_ns": 21625833
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 21678292,
+          "end_offset_ns": 21790792,
+          "outcome": "completed",
+          "duration_ns": 112500
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 21838958,
+          "end_offset_ns": 21849333,
+          "outcome": "completed",
+          "duration_ns": 10375
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 21850417,
+          "end_offset_ns": 280145625,
+          "outcome": "completed",
+          "duration_ns": 258295208
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 280185458,
+          "end_offset_ns": 280230125,
+          "outcome": "completed",
+          "duration_ns": 44667
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22143708,
+          "end_offset_ns": 176700500,
+          "outcome": "completed",
+          "duration_ns": 154556792
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 176702083,
+          "end_offset_ns": 267437833,
+          "outcome": "completed",
+          "duration_ns": 90735750
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 176703667,
+          "end_offset_ns": 176848583,
+          "outcome": "completed",
+          "duration_ns": 144916
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 176849583,
+          "end_offset_ns": 267436000,
+          "outcome": "completed",
+          "duration_ns": 90586417
+        }
+      ]
+    },
+    {
+      "model": "candidate-0.6b",
+      "cadence_seconds": 4,
+      "pass": 2,
+      "chunk": 15,
+      "start_ms": 54000,
+      "end_ms": 58000,
+      "ok": true,
+      "call_wall_ms": 317.906792,
+      "synthetic_transcript": "是合成的不来自私人会议",
+      "runtime_phases": [
+        {
+          "phase": "speech_detection",
+          "start_offset_ns": 44166,
+          "end_offset_ns": 22016916,
+          "outcome": "completed",
+          "duration_ns": 21972750
+        },
+        {
+          "phase": "qwen_session_ready",
+          "start_offset_ns": 22024125,
+          "end_offset_ns": 22167291,
+          "outcome": "completed",
+          "duration_ns": 143166
+        },
+        {
+          "phase": "qwen_worker_wait",
+          "start_offset_ns": 22217958,
+          "end_offset_ns": 22234583,
+          "outcome": "completed",
+          "duration_ns": 16625
+        },
+        {
+          "phase": "qwen_session_transcribe",
+          "start_offset_ns": 22235833,
+          "end_offset_ns": 317787125,
+          "outcome": "completed",
+          "duration_ns": 295551292
+        },
+        {
+          "phase": "segment_conversion",
+          "start_offset_ns": 317828916,
+          "end_offset_ns": 317891708,
+          "outcome": "completed",
+          "duration_ns": 62792
+        }
+      ],
+      "library_phases": [
+        {
+          "phase": "asr_features_generation_parse",
+          "start_offset_ns": 22461083,
+          "end_offset_ns": 213321458,
+          "outcome": "completed",
+          "duration_ns": 190860375
+        },
+        {
+          "phase": "forced_alignment_total",
+          "start_offset_ns": 213323458,
+          "end_offset_ns": 304504333,
+          "outcome": "completed",
+          "duration_ns": 91180875
+        },
+        {
+          "phase": "forced_aligner_prepare",
+          "start_offset_ns": 213324916,
+          "end_offset_ns": 213620333,
+          "outcome": "completed",
+          "duration_ns": 295417
+        },
+        {
+          "phase": "forced_alignment_inference",
+          "start_offset_ns": 213621333,
+          "end_offset_ns": 304501916,
+          "outcome": "completed",
+          "duration_ns": 90880583
+        }
+      ]
+    }
+  ]
+}
