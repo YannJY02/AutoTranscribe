@@ -1,0 +1,1458 @@
+{
+  "dataset_version": "local-summary-v1",
+  "description": "Eight frozen synthetic-only requests for a bounded local summary screen; no real meeting text, previous summaries, or future outputs are input.",
+  "max_generation_requests": 8,
+  "source_policy": "Expectations and stories authored before any YAN-77 model generation.",
+  "unknown_literals": [
+    "",
+    "unknown",
+    "not specified",
+    "unassigned",
+    "unspecified",
+    "TBD",
+    "未明确",
+    "未知",
+    "未指定",
+    "待确认",
+    "待定",
+    "待分配",
+    "未分配"
+  ],
+  "common_checkpoints": [
+    {
+      "id": "highlights",
+      "paths": [
+        "highlight_insights[].quote",
+        "highlight_insights[].reason",
+        "highlight_insights[].speaker"
+      ],
+      "expectation": "Each quotation must faithfully correspond to the cited visible text, reason must not add facts, and speaker must be correctly attributed. Translation/paraphrase needs explicit review; substring presence is not a verdict.",
+      "source_segment_ids": [],
+      "required": true
+    },
+    {
+      "id": "perspectives",
+      "paths": [
+        "speaker_perspectives[].speaker",
+        "speaker_perspectives[].viewpoints[]"
+      ],
+      "expectation": "Assign only statements actually expressed by that participant. An assignee named by another participant has not thereby spoken. Preserve uncertainty, negation, and later corrections.",
+      "source_segment_ids": [],
+      "required": true
+    },
+    {
+      "id": "timeline",
+      "paths": [
+        "timeline_beats[].timestamp",
+        "timeline_beats[].title",
+        "timeline_beats[].summary"
+      ],
+      "expectation": "Timeline descriptions follow the visible segment chronology; proposals, decisions, and corrections must stay distinguishable. Timestamp range checks alone do not prove support.",
+      "source_segment_ids": [],
+      "required": true
+    },
+    {
+      "id": "links",
+      "paths": [
+        "provenance_links[].label",
+        "provenance_links[].url"
+      ],
+      "expectation": "No external document, meeting, or URL is supplied. Empty links are allowed. Any nonempty link needs an explicit runner-provided source/provenance explanation; never invent a source.",
+      "source_segment_ids": [],
+      "required": true
+    },
+    {
+      "id": "all-claims",
+      "paths": [
+        "session_overview",
+        "highlight_insights[]",
+        "speaker_perspectives[]",
+        "decision_ledger[]",
+        "action_tracks[]",
+        "timeline_beats[]",
+        "provenance_links[]"
+      ],
+      "expectation": "Review EVERY generated claim, not only expected facts. Flag unsupported priority/urgency/completion, rationale, person, date, option, external source, approval, and causal claims. The schema-required priority/status may be a neutral default, but it must not be represented as an explicit meeting commitment.",
+      "source_segment_ids": [],
+      "required": true
+    }
+  ],
+  "stories": {
+    "bilingual-plan-correction": {
+      "source": "Authored synthetic bilingual story for YAN-77; no real recording, person, or meeting.",
+      "safety": {
+        "synthetic": true
+      },
+      "segments": [
+        {
+          "id": "bilingual-plan-correction:s01",
+          "start_ms": 0,
+          "end_ms": 13000,
+          "speaker": "Lin",
+          "text": "这是虚构的 Harbor rehearsal。I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。",
+          "stable": true
+        },
+        {
+          "id": "bilingual-plan-correction:s02",
+          "start_ms": 14000,
+          "end_ms": 28000,
+          "speaker": "Mei",
+          "text": "预算没有批准，也没有客户同意。我们还要整理风险清单，但负责人和截止日期都未定；现在没有分派这项工作。",
+          "stable": true
+        },
+        {
+          "id": "bilingual-plan-correction:s03",
+          "start_ms": 30000,
+          "end_ms": 46000,
+          "speaker": "Lin",
+          "text": "决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。Mei 负责完成 demo checklist，截止 Friday。",
+          "stable": true
+        },
+        {
+          "id": "bilingual-plan-correction:s04",
+          "start_ms": 47000,
+          "end_ms": 64000,
+          "speaker": "Mei",
+          "text": "我接下 demo checklist，但 review meeting 的日期还没确定。风险清单的负责人和截止日期仍然未知。",
+          "stable": true
+        },
+        {
+          "id": "bilingual-plan-correction:s05",
+          "start_ms": 68000,
+          "end_ms": 88000,
+          "speaker": "Lin",
+          "text": "Correction: checklist 不再由 Mei 负责，改由 Ren 负责。截止从 Friday 改到 Monday。不是 Friday；Mei 不再是这项任务的责任人。",
+          "stable": true
+        },
+        {
+          "id": "bilingual-plan-correction:s06",
+          "start_ms": 89000,
+          "end_ms": 110000,
+          "speaker": "Ren",
+          "text": "Confirmed, I own the demo checklist and will finish it by Monday. 我们没有批准云端上传，也没有决定正式上线；风险清单仍未分派，日期也未定。",
+          "stable": true
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "zh-release-decision-final",
+      "mode": "final",
+      "language": "zh",
+      "safety": {
+        "synthetic": true
+      },
+      "source_ref": {
+        "path": "evals/smart_minutes/v1/dataset.json",
+        "sha256": "b6a86ef6261f8e5777771b3323ec2e4e3e9225fd35d9865adb011d7a7854d0b2",
+        "case_id": "zh-release-decision"
+      },
+      "stable_segment_ids": [
+        "zh-release-decision:s01",
+        "zh-release-decision:s02",
+        "zh-release-decision:s03"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "topic",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "The fictional 星河 project release plan is discussed.",
+            "source_segment_ids": [
+              "zh-release-decision:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The explicit decision is to use a blue theme because test users recognize it more easily. It is not an authorization to launch.",
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner was explicitly assigned. The speaking participant and the action owner are not automatically the decision owner.",
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "乙 must finish the demo draft by Friday and verify it in the test environment. No absolute calendar date or priority is supplied.",
+            "source_segment_ids": [
+              "zh-release-decision:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "unsupported-claims",
+            "paths": [
+              "session_overview",
+              "highlight_insights[]",
+              "speaker_perspectives[]",
+              "decision_ledger[]",
+              "action_tracks[]",
+              "timeline_beats[]"
+            ],
+            "expectation": "No production launch or approved budget is supported. Unsupported claims remain errors even when translated or placed in an overview rather than a ledger.",
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "乙"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Friday",
+              "by Friday",
+              "周五",
+              "周五前",
+              "星期五",
+              "星期五前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "en-launch-plan-final",
+      "mode": "final",
+      "language": "en",
+      "safety": {
+        "synthetic": true
+      },
+      "source_ref": {
+        "path": "evals/smart_minutes/v1/dataset.json",
+        "sha256": "b6a86ef6261f8e5777771b3323ec2e4e3e9225fd35d9865adb011d7a7854d0b2",
+        "case_id": "en-launch-plan"
+      },
+      "stable_segment_ids": [
+        "en-launch-plan:s01",
+        "en-launch-plan:s02",
+        "en-launch-plan:s03"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "topic",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "A fictional Project Cedar launch rehearsal.",
+            "source_segment_ids": [
+              "en-launch-plan:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The pilot stays offline because the sample data is synthetic.",
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner was explicitly assigned. The speaking participant and the action owner are not automatically the decision owner.",
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "Blair owns the checklist and will finish it by Friday; no calendar date is anchored.",
+            "source_segment_ids": [
+              "en-launch-plan:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "unsupported-claims",
+            "paths": [
+              "session_overview",
+              "highlight_insights[]",
+              "speaker_perspectives[]",
+              "decision_ledger[]",
+              "action_tracks[]",
+              "timeline_beats[]"
+            ],
+            "expectation": "No production deployment or customer approval is supported. Mentioning their absence is permitted; claiming either occurred is not.",
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Blair"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Friday",
+              "by Friday",
+              "周五",
+              "周五前",
+              "星期五",
+              "星期五前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "mixed-design-review-final",
+      "mode": "final",
+      "language": "mixed",
+      "safety": {
+        "synthetic": true
+      },
+      "source_ref": {
+        "path": "evals/smart_minutes/v1/dataset.json",
+        "sha256": "b6a86ef6261f8e5777771b3323ec2e4e3e9225fd35d9865adb011d7a7854d0b2",
+        "case_id": "mixed-design-review"
+      },
+      "stable_segment_ids": [
+        "mixed-design-review:s01",
+        "mixed-design-review:s02",
+        "mixed-design-review:s03"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "topic",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "The fictional Aurora onboarding flow is reviewed.",
+            "source_segment_ids": [
+              "mixed-design-review:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The local-first path is retained to avoid uploading test text.",
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner was explicitly assigned. The speaking participant and the action owner are not automatically the decision owner.",
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "B updates the prototype by Friday, then arranges the next review. The next review itself has no scheduled date.",
+            "source_segment_ids": [
+              "mixed-design-review:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "unsupported-claims",
+            "paths": [
+              "session_overview",
+              "highlight_insights[]",
+              "speaker_perspectives[]",
+              "decision_ledger[]",
+              "action_tracks[]",
+              "timeline_beats[]"
+            ],
+            "expectation": "Cloud upload is not enabled; no real customer participation is stated. Do not transfer the prototype deadline to a scheduled review date.",
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "B"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Friday",
+              "by Friday",
+              "周五",
+              "周五前",
+              "星期五",
+              "星期五前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "insufficient-transcript-final",
+      "mode": "final",
+      "language": "en",
+      "safety": {
+        "synthetic": true
+      },
+      "source_ref": {
+        "path": "evals/smart_minutes/v1/dataset.json",
+        "sha256": "b6a86ef6261f8e5777771b3323ec2e4e3e9225fd35d9865adb011d7a7854d0b2",
+        "case_id": "insufficient-transcript"
+      },
+      "stable_segment_ids": [
+        "insufficient-transcript:s01"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "sound-check-only",
+            "paths": [
+              "session_overview",
+              "highlight_insights[]",
+              "speaker_perspectives[]",
+              "timeline_beats[]"
+            ],
+            "expectation": "Only a brief synthetic sound check is established. Do not invent a completed meeting, substantive discussion, decision, action, owner, or deadline.",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "empty-ledgers",
+            "paths": [
+              "decision_ledger[]",
+              "action_tracks[]"
+            ],
+            "expectation": "Both arrays must be empty; schema-preserving emptiness is a valid bounded response, and needs_review does not legitimize invented claims.",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [
+          "decision_ledger",
+          "action_tracks"
+        ],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-01",
+      "mode": "live",
+      "language": "mixed",
+      "safety": {
+        "synthetic": true
+      },
+      "story_ref": "bilingual-plan-correction",
+      "stable_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "fictional-context",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "A fictional Harbor rehearsal; no real meeting or customer is involved.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "proposal-not-approved",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Cloud upload next Friday was only proposed, never approved. Budget and customer approval were explicitly absent. Reporting the proposal as a proposal is allowed; promoting it to an approved decision is not.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "risk-list-unknowns",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "A risk list is needed but unassigned and undated. If retained as a draft/reviewable action, its owner and due_at must remain unknown; do not borrow the checklist owner or date.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner is assigned. The speaker or checklist assignee is not automatically the decision owner.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "no-future-leakage",
+            "paths": [
+              "session_overview",
+              "decision_ledger[]",
+              "action_tracks[]",
+              "speaker_perspectives[]"
+            ],
+            "expectation": "There is no approved offline decision or assigned checklist yet. Do not anticipate a checklist assignment to Mei or Ren, a Monday deadline, or a later correction from the hidden suffix.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [
+          "decision_ledger"
+        ],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-02",
+      "mode": "live",
+      "language": "mixed",
+      "safety": {
+        "synthetic": true
+      },
+      "story_ref": "bilingual-plan-correction",
+      "stable_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "fictional-context",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "A fictional Harbor rehearsal; no real meeting or customer is involved.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "proposal-not-approved",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Cloud upload next Friday was only proposed, never approved. Budget and customer approval were explicitly absent. Reporting the proposal as a proposal is allowed; promoting it to an approved decision is not.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "risk-list-unknowns",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "A risk list is needed but unassigned and undated. If retained as a draft/reviewable action, its owner and due_at must remain unknown; do not borrow the checklist owner or date.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner is assigned. The speaker or checklist assignee is not automatically the decision owner.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "required": true
+          },
+          {
+            "id": "offline-decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The approved choice is an offline-only demo with no uploaded test text because the samples are synthetic.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "checklist-action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "The demo checklist is assigned to Mei, due Friday.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "review-date-unknown",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].due_at",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "The review meeting has no scheduled date. Friday/Monday concerns the checklist deadline, not the review meeting.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Mei"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Friday",
+              "by Friday",
+              "周五",
+              "周五前",
+              "星期五",
+              "星期五前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-03",
+      "mode": "live",
+      "language": "mixed",
+      "safety": {
+        "synthetic": true
+      },
+      "story_ref": "bilingual-plan-correction",
+      "stable_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04",
+        "bilingual-plan-correction:s05",
+        "bilingual-plan-correction:s06"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "fictional-context",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "A fictional Harbor rehearsal; no real meeting or customer is involved.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "proposal-not-approved",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Cloud upload next Friday was only proposed, never approved. Budget and customer approval were explicitly absent. Reporting the proposal as a proposal is allowed; promoting it to an approved decision is not.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "risk-list-unknowns",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "A risk list is needed but unassigned and undated. If retained as a draft/reviewable action, its owner and due_at must remain unknown; do not borrow the checklist owner or date.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner is assigned. The speaker or checklist assignee is not automatically the decision owner.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "offline-decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The approved choice is an offline-only demo with no uploaded test text because the samples are synthetic.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "checklist-action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "The demo checklist is assigned to Ren, due Monday. Mei and Friday are superseded and must not remain current owner/deadline. Historical mention is allowed when explicitly marked as superseded.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "review-date-unknown",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].due_at",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "The review meeting has no scheduled date. Friday/Monday concerns the checklist deadline, not the review meeting.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "required": true
+          },
+          {
+            "id": "correction-history",
+            "paths": [
+              "session_overview.overview",
+              "speaker_perspectives[].viewpoints[]",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Acknowledge the correction if describing history: checklist owner Mei -> Ren, deadline Friday -> Monday. A historical Friday/Mei mention is not itself an error; presenting it as current is.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "no-production-approval",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview"
+            ],
+            "expectation": "Cloud upload and production launch remain unapproved; negation must survive paraphrase or translation.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Ren"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Monday",
+              "by Monday",
+              "周一",
+              "周一前",
+              "星期一",
+              "星期一前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bilingual-plan-correction-final",
+      "mode": "final",
+      "language": "mixed",
+      "safety": {
+        "synthetic": true
+      },
+      "story_ref": "bilingual-plan-correction",
+      "stable_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04",
+        "bilingual-plan-correction:s05",
+        "bilingual-plan-correction:s06"
+      ],
+      "expectations": {
+        "facts": [
+          {
+            "id": "fictional-context",
+            "paths": [
+              "session_overview.overview",
+              "session_overview.topics[]"
+            ],
+            "expectation": "A fictional Harbor rehearsal; no real meeting or customer is involved.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "required": true
+          },
+          {
+            "id": "proposal-not-approved",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Cloud upload next Friday was only proposed, never approved. Budget and customer approval were explicitly absent. Reporting the proposal as a proposal is allowed; promoting it to an approved decision is not.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "risk-list-unknowns",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "A risk list is needed but unassigned and undated. If retained as a draft/reviewable action, its owner and due_at must remain unknown; do not borrow the checklist owner or date.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "required": true
+          },
+          {
+            "id": "decision-owner-unknown",
+            "paths": [
+              "decision_ledger[].owner"
+            ],
+            "expectation": "No decision owner is assigned. The speaker or checklist assignee is not automatically the decision owner.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "offline-decision",
+            "paths": [
+              "decision_ledger[].decision",
+              "decision_ledger[].rationale"
+            ],
+            "expectation": "The approved choice is an offline-only demo with no uploaded test text because the samples are synthetic.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "required": true
+          },
+          {
+            "id": "checklist-action",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].owner",
+              "action_tracks[].due_at"
+            ],
+            "expectation": "The demo checklist is assigned to Ren, due Monday. Mei and Friday are superseded and must not remain current owner/deadline. Historical mention is allowed when explicitly marked as superseded.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "review-date-unknown",
+            "paths": [
+              "action_tracks[].task",
+              "action_tracks[].due_at",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "The review meeting has no scheduled date. Friday/Monday concerns the checklist deadline, not the review meeting.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "required": true
+          },
+          {
+            "id": "correction-history",
+            "paths": [
+              "session_overview.overview",
+              "speaker_perspectives[].viewpoints[]",
+              "timeline_beats[].summary"
+            ],
+            "expectation": "Acknowledge the correction if describing history: checklist owner Mei -> Ren, deadline Friday -> Monday. A historical Friday/Mei mention is not itself an error; presenting it as current is.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          },
+          {
+            "id": "no-production-approval",
+            "paths": [
+              "decision_ledger[].decision",
+              "session_overview.overview"
+            ],
+            "expectation": "Cloud upload and production launch remain unapproved; negation must survive paraphrase or translation.",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "required": true
+          }
+        ],
+        "empty_modules": [],
+        "field_constraints": [
+          {
+            "path": "decision_ledger[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].owner",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Ren"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          },
+          {
+            "path": "action_tracks[].due_at",
+            "allowed_values": [
+              "",
+              "unknown",
+              "not specified",
+              "unassigned",
+              "unspecified",
+              "TBD",
+              "未明确",
+              "未知",
+              "未指定",
+              "待确认",
+              "待定",
+              "待分配",
+              "未分配",
+              "Monday",
+              "by Monday",
+              "周一",
+              "周一前",
+              "星期一",
+              "星期一前"
+            ],
+            "meaning": "Closed literal domain only; allowed values do not prove the task, attribution, or date is correct."
+          }
+        ]
+      }
+    }
+  ]
+}

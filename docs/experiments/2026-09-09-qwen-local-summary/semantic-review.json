@@ -1,0 +1,3078 @@
+{
+  "schema_version": 2,
+  "issue": "YAN-77",
+  "reviewed_at_utc": "2026-09-09T06:53:04.872137+00:00",
+  "reviewer": "independent-semantic-review / local_summary_context",
+  "independence": "Reviewer did not design the eight inputs or run model generation. Earlier involvement was read-only product-contract exploration and runner preflight review. All semantic judgments below come from the frozen source text and actual recorded output.",
+  "run_manifest_sha256": "ba129c55aa8b22574fcba88f959267db7d20f7f4e2c7bed3ef1b115228fb1e2a",
+  "plan_sha256": "cff7aa77c7202b4969840e70528ddc269b03aa65b9e6aa0fca80007fc0245764",
+  "dataset_sha256": "64618b1d5e4cb7d094ddd3a1a7015465c0c2b30e19b6dba574a294f353f8d280",
+  "review_policy": [
+    "Every expected checkpoint is retained per raw/postprocessed stage. Claims are reviewed at exact JSON paths, with explicit source segment IDs and rationale.",
+    "Semantic verdict is independent of schema validity. A valid JSON structure does not establish faithful content.",
+    "Readable translation and punctuation-only changes to excerpts are allowed. Required omissions are recorded within their designated product module.",
+    "Unanchored Friday/Monday remains relative. No absolute date/time, unassigned owner, imagined option, task substitution, or inferred approval is accepted as a source fact.",
+    "Neutral schema-required priority/status defaults such as medium/open are not read as explicit meeting commitments. Explicit nonneutral urgency or fabricated actions are reviewed on their own merits.",
+    "needs_review marks uncertainty but cannot authorize an invented decision or task. A clearly pending decision placeholder is not called an approved decision.",
+    "A truncated raw output can contain observable semantic errors. Unseen suffix and absent postprocessed payload remain unobserved; no repaired partial JSON is supplied to the product.",
+    "Timeline semantic support is assessed against the relevant source segment, not only overall duration bounds."
+  ],
+  "summary": {
+    "generation_requests": 8,
+    "distinct_synthetic_source_scenarios": 5,
+    "counting_unit": "Eight recorded requests. The three cumulative prefixes and their final are one shared story, not four independent meetings. Raw/postprocessed are paired representations, never doubled into 16 independent samples.",
+    "complete_raw_json_outputs": 7,
+    "truncated_raw_outputs": 1,
+    "available_postprocessed_outputs": 7,
+    "raw_semantic_verdicts": {
+      "pass": 0,
+      "fail": 8,
+      "unobserved": 0
+    },
+    "postprocessed_semantic_verdicts": {
+      "pass": 0,
+      "fail": 7,
+      "unobserved": 1
+    },
+    "raw_material_fidelity_verdicts": {
+      "pass": 1,
+      "fail": 7,
+      "unobserved": 0
+    },
+    "postprocessed_material_fidelity_verdicts": {
+      "pass": 1,
+      "fail": 6,
+      "unobserved": 1
+    },
+    "material_problem_case_ids": [
+      "zh-release-decision-final",
+      "en-launch-plan-final",
+      "mixed-design-review-final",
+      "insufficient-transcript-final",
+      "bilingual-plan-correction-prefix-02",
+      "bilingual-plan-correction-prefix-03",
+      "bilingual-plan-correction-final"
+    ],
+    "lighter_case_note": "prefix-01 preserves proposal/negation/unknowns and has no future leakage. Its all-claims strict failure is the unexpressed waiting-for-customer-approval option; pending ledger additionally violates the empty-module fixture constraint. Do not portray it as fabricated cloud approval.",
+    "recommended_next_step": "Do not enter concurrent ASR/LS-EEND testing yet. First address source-grounded task identity, relative-date preservation, unknown decision owners, abstention on sound checks, and correction handling in an explicitly bounded follow-up. Preserve the current eight-request evidence; do not retry merely to obtain passing samples.",
+    "production_configuration_recommendation": "No production provider/model/configuration change follows from this screening.",
+    "complete_output_material_fidelity": {
+      "available": 7,
+      "pass": 1,
+      "fail": 6,
+      "meaning": "The one pass here is material fidelity only: prefix-01 still has a minor unsupported option and a nonempty pending ledger contrary to the fixture contract."
+    }
+  },
+  "cases": [
+    {
+      "case_id": "zh-release-decision-final",
+      "mode": "final",
+      "result_sha256": "da2c7714649988631473880794d42ac895070c17a551aa1c9da9b39348c37868",
+      "raw_text_sha256": "d7aec500cf6ffb0dfe112b693e12c657d65ee28a4b0a1547ba0fe444b4c2c5cb",
+      "finish_reason": "stop",
+      "generation_tokens": 1028,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": false,
+      "postprocessing_differences": [
+        {
+          "path": "$.timeline_beats[3].timestamp",
+          "raw": "00:24",
+          "postprocessed": "00:15"
+        }
+      ],
+      "source_segment_ids": [
+        "zh-release-decision:s01",
+        "zh-release-decision:s02",
+        "zh-release-decision:s03"
+      ],
+      "transcript_sha256": "f5ad82609b359fc21fc6712ab0a82239301e3eb87b91edec362de2086f790e4b",
+      "evidence_ref": "run.json#/requests/0",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "三条引文和说话人均对应来源，理由忠实。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[0].viewpoints"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "把乙的测试用户识别理由归入甲的观点。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats[1].timestamp",
+              "$.timeline_beats[2].timestamp",
+              "$.timeline_beats[3].timestamp"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "多个时间点与相应源段不符；后处理只夹限，不修正归属或顺序。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "无外部链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[0]",
+              "$.decision_ledger[0]",
+              "$.action_tracks[0]",
+              "$.timeline_beats[1]",
+              "$.timeline_beats[2]",
+              "$.timeline_beats[3]"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-05",
+              "claim-07",
+              "claim-08",
+              "claim-10",
+              "claim-11",
+              "claim-12"
+            ]
+          },
+          {
+            "id": "topic",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01"
+            ],
+            "reason": "虚构星河发布方案保留。"
+          },
+          {
+            "id": "decision",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.decision_ledger[0].decision",
+              "$.decision_ledger[0].rationale"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "reason": "蓝色主题与更容易识别的理由保留；没有声称正式上线获批。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "乙被设为decision owner，来源没有这种分派。"
+          },
+          {
+            "id": "action",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.action_tracks[0].task",
+              "$.action_tracks[0].due_at"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s03"
+            ],
+            "reason": "演示稿行动遗漏复核步骤，并把相对周五捏造为绝对日期与时间。"
+          },
+          {
+            "id": "unsupported-claims",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview",
+              "$.decision_ledger",
+              "$.action_tracks"
+            ],
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "reason": "没有虚构正式上线或预算获批；其他错误另列all-claims。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "verdict": "pass",
+            "reason": "虚构星河、主题选择、用户识别及交付均来自三段；将识别难易概括为讨论点可接受。"
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "zh-release-decision:s01"
+            ],
+            "verdict": "pass",
+            "reason": "原句、甲的归属和0–4200毫秒均正确；入选理由不增加承诺。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "verdict": "pass",
+            "reason": "蓝色主题决定及容易识别的理由准确，正确归于乙。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.highlight_insights[2]",
+            "source_segment_ids": [
+              "zh-release-decision:s03"
+            ],
+            "verdict": "pass",
+            "reason": "完整保留乙、周五前、演示稿及测试环境复核，引用说话人甲正确。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "zh-release-decision:s01",
+              "zh-release-decision:s02",
+              "zh-release-decision:s03"
+            ],
+            "verdict": "fail",
+            "reason": "甲只介绍话题并分配演示稿，未表达“需关注测试用户识别难度”；该理由来自乙。也未明确表达“需明确主题”。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[0].viewpoints[0]",
+              "$.speaker_perspectives[0].viewpoints[1]"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "verdict": "pass",
+            "reason": "乙确实表达蓝色主题决定和识别理由。"
+          },
+          {
+            "id": "claim-07",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "verdict": "fail",
+            "reason": "决定和识别理由正确；“红色主题”未被讨论，decision owner未分派，不能因为乙说出决定就把乙写为owner。“符合项目需求”是轻度概括，不另计重大问题。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].options[0]",
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-08",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "zh-release-decision:s03"
+            ],
+            "verdict": "fail",
+            "reason": "乙和演示稿正确，但date/time 2024-05-05 17:00:00没有任何日历锚点；action task漏掉测试环境复核，虽然highlight中保留。medium/open视作中性schema默认，不另判会议优先级承诺。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].due_at",
+              "$.action_tracks[0].task"
+            ]
+          },
+          {
+            "id": "claim-09",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "zh-release-decision:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:00介绍话题与来源一致。"
+          },
+          {
+            "id": "claim-10",
+            "path": "$.timeline_beats[1]",
+            "source_segment_ids": [
+              "zh-release-decision:s01"
+            ],
+            "verdict": "fail",
+            "reason": "00:08重复甲在0–4200毫秒的介绍，实际此时为乙的主题决定，链接失配。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp"
+            ]
+          },
+          {
+            "id": "claim-11",
+            "path": "$.timeline_beats[2]",
+            "source_segment_ids": [
+              "zh-release-decision:s02"
+            ],
+            "verdict": "fail",
+            "reason": "蓝色主题决定发生于5000–9800毫秒，00:16不能定位该证据。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[2].timestamp"
+            ]
+          },
+          {
+            "id": "claim-12",
+            "path": "$.timeline_beats[3]",
+            "source_segment_ids": [
+              "zh-release-decision:s03"
+            ],
+            "verdict": "fail",
+            "reason": "交付与复核描述正确，原始00:24超出15秒输入；后处理改至00:15也未恢复源段起点，且排在00:16之后。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[3].timestamp"
+            ]
+          },
+          {
+            "id": "claim-13",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "空数组，没有虚构外部来源。"
+          }
+        ]
+      },
+      "postprocessing_note": "只把timeline_beats[3].timestamp从00:24改成00:15；绝对due_at、错误owner、红色选项和speaker误归属均未修复。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "cf520fcf204d93f07782933664e87cac853c140ba193f9788a1ee291c658397b",
+          "review_ref": "#/cases/0/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "42b64e9391fdcddc8fddacfe647c2d9cc38e09cf5cb2cce291c4e326e92f80ac",
+          "review_ref": "#/cases/0/shared_review"
+        }
+      }
+    },
+    {
+      "case_id": "en-launch-plan-final",
+      "mode": "final",
+      "result_sha256": "33880e5f5d1e4ffb35706f28365e70a6c713e970327d05fcf66651c7724194c9",
+      "raw_text_sha256": "26804637fffe6d99af03853fa0dea610ae1d593862453ae10768e2187e62ef9c",
+      "finish_reason": "stop",
+      "generation_tokens": 814,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": false,
+      "postprocessing_differences": [
+        {
+          "path": "$.timeline_beats[0].timestamp",
+          "raw": "00:05:50",
+          "postprocessed": "00:13"
+        },
+        {
+          "path": "$.timeline_beats[1].timestamp",
+          "raw": "00:06:40",
+          "postprocessed": "00:13"
+        }
+      ],
+      "source_segment_ids": [
+        "en-launch-plan:s01",
+        "en-launch-plan:s02",
+        "en-launch-plan:s03"
+      ],
+      "transcript_sha256": "50d39367539e9e1f5e1cd8a7b34c034e4bf1ed1d284de2b35590c580ce41943e",
+      "evidence_ref": "run.json#/requests/1",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02"
+            ],
+            "reason": "两条引文和中文理由忠实。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[0].viewpoints[1]"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "reason": "Blair的合成数据表述被转移给Alex。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02"
+            ],
+            "reason": "两条原时间戳数分钟超界；夹到末尾后仍与内容的实际位置失配。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "无链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.session_overview",
+              "$.speaker_perspectives[0]",
+              "$.decision_ledger[0]",
+              "$.action_tracks[0]",
+              "$.timeline_beats[0]",
+              "$.timeline_beats[1]"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-01",
+              "claim-04",
+              "claim-06",
+              "claim-07",
+              "claim-08",
+              "claim-09"
+            ]
+          },
+          {
+            "id": "topic",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.title",
+              "$.session_overview.overview"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01"
+            ],
+            "reason": "虚构Project Cedar排练可识别；接受可辨义翻译，不因“启动会”单独判错。"
+          },
+          {
+            "id": "decision",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0]"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "reason": "规定模块中把保持离线改成选择合成数据，并新增真实数据不可用的因果理由。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "reason": "decision owner未明，输出擅填Blair。"
+          },
+          {
+            "id": "action",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.action_tracks[0].task"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s03"
+            ],
+            "reason": "任务应是checklist，不是完成启动会；Friday相对日期本身正确。"
+          },
+          {
+            "id": "unsupported-claims",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview",
+              "$.decision_ledger",
+              "$.action_tracks"
+            ],
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "reason": "未声称production deployment或customer approval；其他无依据理由另列。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "verdict": "fail",
+            "reason": "Project Cedar虚构排练主题保留；“数据源选择”把因为数据已是synthetic而选择离线，改写成选择数据源。启动会译法偏窄但不作为独立重大错误。",
+            "severity": "material",
+            "affected_paths": [
+              "$.session_overview.overview",
+              "$.session_overview.topics[1]"
+            ]
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "en-launch-plan:s01"
+            ],
+            "verdict": "pass",
+            "reason": "英文引用完整、Alex归属正确；项目及虚构性质忠实。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "verdict": "pass",
+            "reason": "原句和Blair归属正确，中文理由保留离线与合成数据关系。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "en-launch-plan:s01",
+              "en-launch-plan:s02",
+              "en-launch-plan:s03"
+            ],
+            "verdict": "fail",
+            "reason": "Alex未谈合成数据；该内容由Blair说出，且给出的span仅指向Alex的开场。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[0].viewpoints[1]"
+            ]
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "verdict": "pass",
+            "reason": "离线和使用合成样本均为Blair表达。"
+          },
+          {
+            "id": "claim-06",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "verdict": "fail",
+            "reason": "把决定“pilot保持offline”替换成“使用合成数据”；真实数据不可用与替代方案理由没有来源，真实数据选项未被提出，Blair也没有被分派decision owner。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].problem",
+              "$.decision_ledger[0].options[0]",
+              "$.decision_ledger[0].decision",
+              "$.decision_ledger[0].rationale",
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-07",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "en-launch-plan:s03"
+            ],
+            "verdict": "fail",
+            "reason": "Blair及Friday正确，但checklist被替换为“完成项目Cedar的启动会”，改变了需交付的工作。中性medium/open不计事实错误。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].task"
+            ]
+          },
+          {
+            "id": "claim-08",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "en-launch-plan:s01"
+            ],
+            "verdict": "fail",
+            "reason": "00:05:50超出13.2秒输入且不定位0–3500毫秒开场；后处理00:13依旧失配。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[0].timestamp"
+            ]
+          },
+          {
+            "id": "claim-09",
+            "path": "$.timeline_beats[1]",
+            "source_segment_ids": [
+              "en-launch-plan:s02"
+            ],
+            "verdict": "fail",
+            "reason": "00:06:40超界；后处理00:13未定位4000–8600毫秒决定。标题“数据源决策”也误述决定对象。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp",
+              "$.timeline_beats[1].title"
+            ]
+          },
+          {
+            "id": "claim-10",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "空链接，无外部来源臆造。"
+          }
+        ]
+      },
+      "postprocessing_note": "两个timeline timestamp均夹到00:13，变成同一末尾位置；任务替换、决定替换和虚构理由均原样保留。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "d262843857eb42d46183edb5a1e93ac90b898d7d351ccd8c561416fd3b26d0bd",
+          "review_ref": "#/cases/1/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "c2e1ecb32334fd0eab9013fbc95695542609a2483612e6de4137b051affb8919",
+          "review_ref": "#/cases/1/shared_review"
+        }
+      }
+    },
+    {
+      "case_id": "mixed-design-review-final",
+      "mode": "final",
+      "result_sha256": "7c37a74adce109401b6ca838e12d0b47d82e068eb5a8c757cadcb4648ebacf6a",
+      "raw_text_sha256": "c3d12b0916b0ce3a2593d140e98260c81838ee36eb331d5d8d6be502889e8a50",
+      "finish_reason": "stop",
+      "generation_tokens": 934,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": true,
+      "postprocessing_differences": [],
+      "source_segment_ids": [
+        "mixed-design-review:s01",
+        "mixed-design-review:s02",
+        "mixed-design-review:s03"
+      ],
+      "transcript_sha256": "0a79f613a1c334965f8646213f8dabc8ec78279bb3f07da232151f476b8c7b43",
+      "evidence_ref": "run.json#/requests/2",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.highlight_insights[1].reason"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "reason": "引用忠实，但理由把decision改为建议并增加未标注的准确性/安全性推断。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "reason": "明确决定被改述为建议。A的review表述接受为A说过的话，不误判为A承担任务。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats[1].timestamp",
+              "$.timeline_beats[3].timestamp"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s03"
+            ],
+            "reason": "两条时间戳不对应其声称的源段。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "空来源链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.highlight_insights[1]",
+              "$.speaker_perspectives[1]",
+              "$.decision_ledger[0]",
+              "$.action_tracks[0]",
+              "$.timeline_beats[1]",
+              "$.timeline_beats[3]"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-03",
+              "claim-05",
+              "claim-06",
+              "claim-07",
+              "claim-09",
+              "claim-11"
+            ]
+          },
+          {
+            "id": "topic",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s01"
+            ],
+            "reason": "虚构Aurora流程保留。"
+          },
+          {
+            "id": "decision",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.decision_ledger[0].decision",
+              "$.decision_ledger[0].rationale"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "reason": "本地优先与避免上传两项核心含义保留；额外推断归all-claims。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "reason": "B为发言人/行动负责人不等于decision owner。"
+          },
+          {
+            "id": "action",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.action_tracks[0].task"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s03"
+            ],
+            "reason": "保留原型更新/Friday，遗漏B随后安排review的行动责任。"
+          },
+          {
+            "id": "unsupported-claims",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview",
+              "$.decision_ledger",
+              "$.action_tracks"
+            ],
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "reason": "未声称已启用云上传、真实客户参与或review有Friday日期。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s02",
+              "mixed-design-review:s03"
+            ],
+            "verdict": "pass",
+            "reason": "虚构Aurora onboarding、本地优先决策和原型更新保留。将onboarding概括为用户注册流程可辨义，未因此单独判错。"
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "mixed-design-review:s01"
+            ],
+            "verdict": "pass",
+            "reason": "仅句末全角句号变为半角，视为无害标点变化，A归属准确。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "verdict": "fail",
+            "reason": "引文准确；reason把明确Decision降为建议，还新增“确保准确性与安全性”作为未经标注推断理由。",
+            "severity": "material",
+            "affected_paths": [
+              "$.highlight_insights[1].reason"
+            ]
+          },
+          {
+            "id": "claim-04",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "mixed-design-review:s01",
+              "mixed-design-review:s03"
+            ],
+            "verdict": "pass",
+            "reason": "A确实提出讨论对象并说到后续review安排。这里是A表达的观点摘要，不把它解读为A承担B的任务。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "verdict": "fail",
+            "reason": "避免上传正确，但“建议采用”弱化了明确决定的状态。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "verdict": "fail",
+            "reason": "选择本地优先和避免上传保留；owner B无分派证据，且上传测试文本并未作为正式备选讨论。准确性/安全性为额外推断。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].owner",
+              "$.decision_ledger[0].options[1]",
+              "$.decision_ledger[0].rationale"
+            ]
+          },
+          {
+            "id": "claim-07",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "mixed-design-review:s03"
+            ],
+            "verdict": "fail",
+            "reason": "更新原型/B/Friday正确；规定行动模块漏掉随后安排下一次review，其他模块仅提及安排而未保留B的后续责任。没有擅造review日期。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].task"
+            ]
+          },
+          {
+            "id": "claim-08",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "mixed-design-review:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:00讨论开始可对应源段。"
+          },
+          {
+            "id": "claim-09",
+            "path": "$.timeline_beats[1]",
+            "source_segment_ids": [
+              "mixed-design-review:s01"
+            ],
+            "verdict": "fail",
+            "reason": "流程介绍来源0–3900毫秒，而00:06已进入B的决定。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp"
+            ]
+          },
+          {
+            "id": "claim-10",
+            "path": "$.timeline_beats[2]",
+            "source_segment_ids": [
+              "mixed-design-review:s02"
+            ],
+            "verdict": "pass",
+            "reason": "00:06处于4300–8700毫秒决定段；title明确决策制定，summary“提出”在这一上下文不另判取消决定。"
+          },
+          {
+            "id": "claim-11",
+            "path": "$.timeline_beats[3]",
+            "source_segment_ids": [
+              "mixed-design-review:s03"
+            ],
+            "verdict": "fail",
+            "reason": "安排review来源9200–13600毫秒，00:08不定位该段；没有凭空指定会议日历日期。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[3].timestamp"
+            ]
+          },
+          {
+            "id": "claim-12",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "没有外部来源。"
+          }
+        ]
+      },
+      "postprocessing_note": "raw与postprocessed结构及值完全相同，语义判断相同。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "8c0f197311ffe3dc545efac524c57a60116ce343e912e46c609ca5c2c8929136",
+          "review_ref": "#/cases/2/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "8c0f197311ffe3dc545efac524c57a60116ce343e912e46c609ca5c2c8929136",
+          "review_ref": "#/cases/2/shared_review"
+        }
+      }
+    },
+    {
+      "case_id": "insufficient-transcript-final",
+      "mode": "final",
+      "result_sha256": "bdddfba5b8817e08187fd8de7078e13eb24e98002c48f1d095dabb2eca9feed5",
+      "raw_text_sha256": "0e374752badbac9816286f1d021f098fd06f860481fa01eba08b3e64d5bac32b",
+      "finish_reason": "stop",
+      "generation_tokens": 558,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": false,
+      "postprocessing_differences": [
+        {
+          "path": "$.action_tracks[0].needs_review",
+          "raw": false,
+          "postprocessed": true
+        }
+      ],
+      "source_segment_ids": [
+        "insufficient-transcript:s01"
+      ],
+      "transcript_sha256": "d167615df349a84982d3665c3532d495791fbb8d4522741d5128b68ba4bc57b5",
+      "evidence_ref": "run.json#/requests/3",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights[0]"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "引文、speaker和中性理由可支持。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.speaker_perspectives[0]"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "仅复述合成sound check。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.timeline_beats[0]"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "开头标记与来源0秒一致。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "空数组。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0]",
+              "$.action_tracks[0]"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-04",
+              "claim-05"
+            ]
+          },
+          {
+            "id": "sound-check-only",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0]",
+              "$.action_tracks[0]"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "从单一sound check编造决定、行动与负责人。"
+          },
+          {
+            "id": "empty-ledgers",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger",
+              "$.action_tracks"
+            ],
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "reason": "两个应为空的数组都含实质编造条目；复核标记不构成事实依据。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "pass",
+            "reason": "声音检查和合成录音准确；“全量会议转写/初始片段”看作输出包装标题，不因标题单独推断实质会议已发生。"
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "pass",
+            "reason": "准确引用sound check及Narrator；测试/调试适用性是中性解释，不当成已经分配测试任务。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "pass",
+            "reason": "合成录音、简短sound check两点有来源。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "fail",
+            "reason": "源段没有质量评估问题、正式归档备选、仅测试用决定或“系统自动”负责人，整条实质决定为编造。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].problem",
+              "$.decision_ledger[0].options",
+              "$.decision_ledger[0].decision",
+              "$.decision_ledger[0].rationale",
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-05",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "fail",
+            "reason": "源段没有“生成完整定稿”任务或“系统自动”负责人；加needs_review不能使任务成立。priority/status枚举不作为独立会议事实扣分。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].task",
+              "$.action_tracks[0].owner"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "insufficient-transcript:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:00录音开始为中性导航，不是实质会议/决策声称。"
+          },
+          {
+            "id": "claim-07",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "没有虚构链接。"
+          }
+        ]
+      },
+      "postprocessing_note": "只把action_tracks[0].needs_review由false改成true；编造的decision、task及owner均保留，decision仍needs_review=false。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "1214e00a87a7e56659c3d9f964c021da215fb467efbc396b55b959abec065c5e",
+          "review_ref": "#/cases/3/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "0dd1271a49a317db8eaca3f77a91a4c461bc5b73ed980494500bb1991da63a44",
+          "review_ref": "#/cases/3/shared_review"
+        }
+      }
+    },
+    {
+      "case_id": "bilingual-plan-correction-prefix-01",
+      "mode": "live",
+      "result_sha256": "d51fcc628135385638e6b03fe5ec173d987c62c089f2fbbfddfb8e918ae30369",
+      "raw_text_sha256": "81de59e37381471e684bee8fc74616e60ce1c38113fa4e636fa34a84a972de02",
+      "finish_reason": "stop",
+      "generation_tokens": 762,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": true,
+      "postprocessing_differences": [],
+      "source_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02"
+      ],
+      "transcript_sha256": "612cb89d13733dc4bef9509e703e7847ee4d8c879cbe4b06a7cc3861c6894085",
+      "evidence_ref": "run.json#/requests/4",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "节选忠实、正确归于Lin，没有绝对日历推断。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.speaker_perspectives"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "说话人、提议状态、否定和未知均正确。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.timeline_beats[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "时间与提议内容对应。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "空链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-05"
+            ]
+          },
+          {
+            "id": "fictional-context",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.title",
+              "$.session_overview.overview"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "虚构Harbor明确保留。"
+          },
+          {
+            "id": "proposal-not-approved",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.overview",
+              "$.highlight_insights[0]",
+              "$.decision_ledger[0].decision"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "未批准状态明确；pending决定占位符不当成已批准决定。"
+          },
+          {
+            "id": "risk-list-unknowns",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.action_tracks[0]",
+              "$.session_overview.overview"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "风险清单确实需要，未分派、未知owner/date都保留。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.decision_ledger[0].owner"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "待定没有虚构decision owner。"
+          },
+          {
+            "id": "no-future-leakage",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview",
+              "$.decision_ledger",
+              "$.action_tracks"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "没有提前泄漏offline决定、Mei/Ren checklist分配或Monday纠正。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "pass",
+            "reason": "虚构Harbor、cloud只是提议、预算/客户未批准、风险清单未分派/无日期均忠实；topics只是议题标签，不解释为已部署。"
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "允许节选原句并翻译next Friday为下周五；提议、未获批、Lin归属正确。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "Lin的提议及未获批性质保留。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "pass",
+            "reason": "预算/客户否定和风险清单未知、未分派均忠实。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "fail",
+            "reason": "“待定”/needs_review=true没有把提议伪装成批准决定，owner未知也正确。但“等待客户批准”作为一个已讨论option没有直接来源，属于轻度未标注推断；非空pending条目另违反fixture的empty-ledger约束，不能夸大成正式批准。",
+            "severity": "minor",
+            "affected_paths": [
+              "$.decision_ledger[0].options[1]"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "pass",
+            "reason": "已说明需要风险清单，作为待复核条目保留、owner待定/due空正确。medium/open视为中性schema默认，不读作已分派承诺。"
+          },
+          {
+            "id": "claim-07",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:00:00落在提议段，summary明确尚未获批；“项目启动”是章节标题，不据此声称正式上线。"
+          },
+          {
+            "id": "claim-08",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "没有臆造链接。"
+          }
+        ]
+      },
+      "postprocessing_note": "raw与postprocessed完全相同。此例核心事实控制良好；严格all-claims只因一个无来源推断option失败，不能与其他例的重大错误混为一谈。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "pass",
+          "payload_sha256": "39516ea708cab344990fd4ec4e3d6d2d8a907caccfe3e8e4df75caf7d366d1f0",
+          "review_ref": "#/cases/4/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "pass",
+          "payload_sha256": "39516ea708cab344990fd4ec4e3d6d2d8a907caccfe3e8e4df75caf7d366d1f0",
+          "review_ref": "#/cases/4/shared_review"
+        }
+      },
+      "contract_observation": {
+        "path": "$.decision_ledger",
+        "verdict": "fail",
+        "reason": "fixture要求empty decision ledger，实际为明确待定且needs_review的非空占位条目；这是合同结构差异，不是cloud批准幻觉。"
+      }
+    },
+    {
+      "case_id": "bilingual-plan-correction-prefix-02",
+      "mode": "live",
+      "result_sha256": "cfc47183ed647f1f1482ff172edc0ac6036183298bf414690f69faed1f6ebb41",
+      "raw_text_sha256": "8e4d0af227c0618f9f4222f969947edcf77bf1b8cfcb0800c3ab73abbe9bbc61",
+      "finish_reason": "stop",
+      "generation_tokens": 1036,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": true,
+      "postprocessing_differences": [],
+      "source_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04"
+      ],
+      "transcript_sha256": "a508eed6e40081972f8370b35e1d5dae13ff7bf07a6e5768d42a2c0b1eec4882",
+      "evidence_ref": "run.json#/requests/5",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03"
+            ],
+            "reason": "两个引用及理由忠实。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "“跟进预算审批”未表达；接受checklist本身正确。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats[1]",
+              "$.timeline_beats[2].timestamp",
+              "$.timeline_beats[3].timestamp"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "关键事件被压到10/15/20秒，与14/30/47秒之后的来源不符。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "空链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.session_overview",
+              "$.speaker_perspectives[1]",
+              "$.decision_ledger[0]",
+              "$.timeline_beats[1]",
+              "$.timeline_beats[2]",
+              "$.timeline_beats[3]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-01",
+              "claim-05",
+              "claim-06",
+              "claim-09",
+              "claim-10",
+              "claim-11"
+            ]
+          },
+          {
+            "id": "fictional-context",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.title"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "标题明确虚构项目；未保留Harbor专名不单独视为材料事实错误。"
+          },
+          {
+            "id": "proposal-not-approved",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.session_overview.overview",
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "cloud提议未批保留，但预算未批准/客户未同意这个required否定被遗漏成含糊跟进。"
+          },
+          {
+            "id": "risk-list-unknowns",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.overview",
+              "$.timeline_beats[3].summary"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "风险清单的负责人和日期未知保留，没有借用Mei/Friday。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "擅填Lin为decision owner。"
+          },
+          {
+            "id": "offline-decision",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.decision_ledger[0].decision",
+              "$.decision_ledger[0].rationale"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "reason": "正确保留offline-only、不上传及假数据理由。"
+          },
+          {
+            "id": "checklist-action",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.action_tracks[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "Mei/Friday/task内容准确；提供的span不含Friday来源，另列证据定位限制。"
+          },
+          {
+            "id": "review-date-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.session_overview",
+              "$.speaker_perspectives",
+              "$.action_tracks",
+              "$.timeline_beats"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "完整输出完全遗漏review meeting日期未定这一required事实；没有把Friday错借成会议日期，但遗漏仍需记录。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "verdict": "fail",
+            "reason": "云端未批、风险unknown、offline/Mei checklist保留；把Mei说“预算未批准/客户不同意”改成“跟进…情况”，遗漏明确否定，并新增正在跟进行为。",
+            "severity": "material",
+            "affected_paths": [
+              "$.session_overview.overview"
+            ]
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "提议与未批节选准确。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "pass",
+            "reason": "离线、不上传、假数据理由及Lin归属准确；“数据真实性考虑”可辨义概括。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "pass",
+            "reason": "Lin的历史提议及随后离线决定准确。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04"
+            ],
+            "verdict": "fail",
+            "reason": "Mei接受checklist正确；“跟进预算审批”不是Mei实际表述或被分配的工作，替代了明确未批准。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "offline选择及假数据理由准确，两种方向确在历史输入出现；Lin被擅设decision owner，发言不等于执行负责人。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-07",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "verdict": "pass",
+            "reason": "任务、Mei和Friday语义正确。证据span只含s04接受任务，Friday实际在s03，记录为证据定位缺口，不把正确Friday判成错误日期。"
+          },
+          {
+            "id": "claim-08",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:05在提议段内，状态未批准正确。"
+          },
+          {
+            "id": "claim-09",
+            "path": "$.timeline_beats[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "fail",
+            "reason": "00:10早于14秒的Mei段，内容又把明确否定改成跟进行为。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp",
+              "$.timeline_beats[1].title",
+              "$.timeline_beats[1].summary"
+            ]
+          },
+          {
+            "id": "claim-10",
+            "path": "$.timeline_beats[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "offline内容正确，但00:15没有定位30–46秒决定。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[2].timestamp"
+            ]
+          },
+          {
+            "id": "claim-11",
+            "path": "$.timeline_beats[3]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04"
+            ],
+            "verdict": "fail",
+            "reason": "风险未知和Mei checklist内容正确，但00:20不对应47–64秒接受任务；标题风险待分配不能补回被遗漏的review日期未知。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[3].timestamp"
+            ]
+          },
+          {
+            "id": "claim-12",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "没有外部链接。"
+          }
+        ]
+      },
+      "postprocessing_note": "raw与postprocessed完全相同；错误decision owner、跟进预算推断、review日期未知遗漏及时间定位均未修复。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "656f753eb9916592007bb657af992bf973af006ea3b2bd4c9cd948c4bf6ee8ac",
+          "review_ref": "#/cases/5/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "656f753eb9916592007bb657af992bf973af006ea3b2bd4c9cd948c4bf6ee8ac",
+          "review_ref": "#/cases/5/shared_review"
+        }
+      },
+      "evidence_note": {
+        "path": "$.action_tracks[0].evidence_span",
+        "source_segment_ids": [
+          "bilingual-plan-correction:s03",
+          "bilingual-plan-correction:s04"
+        ],
+        "verdict": "fail",
+        "reason": "47000–64000只覆盖接受checklist，Friday来自30000–46000；内容正确不等于其附带证据支持所有字段。"
+      }
+    },
+    {
+      "case_id": "bilingual-plan-correction-prefix-03",
+      "mode": "live",
+      "result_sha256": "e359d2a211ee102adfda23e7aae6663ea6ef092b1dabb7fd383e23a47e5fb006",
+      "raw_text_sha256": "9f03a36588befaef4ccffbf25eef502bbab405035c88751f482581c4a9fb857c",
+      "finish_reason": "length",
+      "generation_tokens": 1536,
+      "strict_pipeline_status": "failed",
+      "raw_and_postprocessed_equal": null,
+      "postprocessing_differences": [],
+      "source_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04",
+        "bilingual-plan-correction:s05",
+        "bilingual-plan-correction:s06"
+      ],
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "evidence_ref": "run.json#/requests/6",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05"
+            ],
+            "reason": "可见完整三条引文忠实，允许节选。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[1].viewpoints[1]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "把Lin/Ren的责任纠正确认归给Mei。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats[1].timestamp"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "reason": "可见第二项已把30–46秒离线决定放到00:10；其余未完成部分保持unobserved。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "unobserved",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "该模块尚未生成，不能视为空数组通过。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[1]",
+              "$.decision_ledger[0]",
+              "$.decision_ledger[1]",
+              "$.decision_ledger[2]",
+              "$.decision_ledger[3]",
+              "$.action_tracks[0]",
+              "$.timeline_beats[1].timestamp"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-06",
+              "claim-08",
+              "claim-09",
+              "claim-10",
+              "claim-11",
+              "claim-12",
+              "claim-14"
+            ]
+          },
+          {
+            "id": "fictional-context",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.overview"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "可见概述明确虚构Harbor。"
+          },
+          {
+            "id": "proposal-not-approved",
+            "required": true,
+            "verdict": "unobserved",
+            "paths": [
+              "$.highlight_insights[0]",
+              "$.timeline_beats"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02"
+            ],
+            "reason": "cloud提议未批明确保留；预算/客户未批在可见部分缺失，未生成尾部无法核对，不能给整个组合checkpoint通过。"
+          },
+          {
+            "id": "risk-list-unknowns",
+            "required": true,
+            "verdict": "unobserved",
+            "paths": [
+              "$.session_overview",
+              "$.action_tracks",
+              "$.timeline_beats"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "可见部分未保留风险未分派/日期未知；输出尾部未完成，不猜其内容。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner",
+              "$.decision_ledger[1].owner",
+              "$.decision_ledger[2].owner",
+              "$.decision_ledger[3].owner"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "四条均填Lin，来源没有decision owner分派。"
+          },
+          {
+            "id": "offline-decision",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.decision_ledger[0]",
+              "$.decision_ledger[1]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "reason": "已生成内容保留离线/不上传及假数据理由；owner另记。"
+          },
+          {
+            "id": "checklist-action",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.action_tracks[0].due_at",
+              "$.action_tracks[0].priority"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "owner Ren正确，日期应保持Monday；2024-01-01及high无依据。"
+          },
+          {
+            "id": "review-date-unknown",
+            "required": true,
+            "verdict": "unobserved",
+            "paths": [
+              "$.speaker_perspectives",
+              "$.timeline_beats"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "未完成输出可见部分没有该事实，不能核对隐藏尾部。"
+          },
+          {
+            "id": "correction-history",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.highlight_insights[2]",
+              "$.decision_ledger[2]",
+              "$.decision_ledger[3]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "Mei→Ren、Friday→Monday的历史纠正在这些完整字段正确；不能据此忽略action的绝对日期。"
+          },
+          {
+            "id": "no-production-approval",
+            "required": true,
+            "verdict": "unobserved",
+            "paths": [
+              "$.timeline_beats",
+              "$.session_overview"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "可见部分没有正式上线未批准的明确表述，余下输出被截断。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "pass",
+            "reason": "可见完整对象保留虚构Harbor、先提议后offline及责任Mei→Ren历史；没有因此把历史Mei当当前。"
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "提议未获批原句节选和Lin归属准确。"
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "pass",
+            "reason": "offline决定及数据理由准确。"
+          },
+          {
+            "id": "claim-04",
+            "path": "$.highlight_insights[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05"
+            ],
+            "verdict": "pass",
+            "reason": "责任Mei→Ren、Friday→Monday纠正节选准确。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05"
+            ],
+            "verdict": "pass",
+            "reason": "Lin的提议、决定和责任纠正对应实际发言。"
+          },
+          {
+            "id": "claim-06",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05"
+            ],
+            "verdict": "fail",
+            "reason": "Mei先前接受checklist准确；“后续确认责任转移给Ren”没有Mei发言来源，纠正是Lin说，Ren确认。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[1].viewpoints[1]"
+            ]
+          },
+          {
+            "id": "claim-07",
+            "path": "$.speaker_perspectives[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "pass",
+            "reason": "Ren确认自己负责和Monday均有来源。"
+          },
+          {
+            "id": "claim-08",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "offline内容正确，但Lin decision owner未获分派。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-09",
+            "path": "$.decision_ledger[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "不上传内容正确，重复拆成第二条不另视为幻觉；Lin decision owner仍无依据。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[1].owner"
+            ]
+          },
+          {
+            "id": "claim-10",
+            "path": "$.decision_ledger[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "责任改给Ren的历史和选项有依据；owner Lin没有作为该决定负责人被分派。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[2].owner"
+            ]
+          },
+          {
+            "id": "claim-11",
+            "path": "$.decision_ledger[3]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "Friday改Monday内容有依据；Lin decision owner没有依据。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[3].owner"
+            ]
+          },
+          {
+            "id": "claim-12",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "Ren及任务准确，但Monday擅转2024-01-01；high为未提供的非中性优先级，不能当会议指示。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].due_at",
+              "$.action_tracks[0].priority"
+            ]
+          },
+          {
+            "id": "claim-13",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "可见完整第一项00:05在提议段内，未获批正确。"
+          },
+          {
+            "id": "claim-14",
+            "path": "$.timeline_beats[1].timestamp",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "第二项虽未完成，已清楚输出00:10和“Lin决定采用离线演示”title；对应决定位于30–46秒，已可确认时间失配。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp"
+            ]
+          },
+          {
+            "id": "claim-15",
+            "path": "$.timeline_beats[1].summary",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "unobserved",
+            "reason": "字符串在“不上传”处被token限制截断，只能核对可见前缀；不能推断未生成结尾。"
+          },
+          {
+            "id": "claim-16",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "unobserved",
+            "reason": "raw在timeline内截断，来源模块未生成，不视为空数组。"
+          }
+        ]
+      },
+      "postprocessing_note": "Product parsing rejected the length-truncated raw output; no postprocessed package exists.",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": false,
+          "review_basis": "complete values and explicitly visible claims in truncated raw text",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": null,
+          "review_ref": "#/cases/6/shared_review",
+          "partial_inspection_boundary": {
+            "raw_text_characters": 3923,
+            "last_complete_top_level_keys": [
+              "session_overview",
+              "highlight_insights",
+              "speaker_perspectives",
+              "decision_ledger",
+              "action_tracks"
+            ],
+            "complete_timeline_items": 1,
+            "partial_next_item": "$.timeline_beats[1] timestamp and title visible; summary ends after 不上传",
+            "not_a_product_payload": true
+          }
+        },
+        "postprocessed": {
+          "canonical_payload_available": false,
+          "review_basis": "no_postprocessed_payload",
+          "semantic_verdict": "unobserved",
+          "material_fidelity_verdict": "unobserved",
+          "payload_sha256": null,
+          "checkpoint_reviews": [
+            {
+              "id": "highlights",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "highlight_insights[].quote",
+                "highlight_insights[].reason",
+                "highlight_insights[].speaker"
+              ],
+              "source_segment_ids": [],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "perspectives",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "speaker_perspectives[].speaker",
+                "speaker_perspectives[].viewpoints[]"
+              ],
+              "source_segment_ids": [],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "timeline",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "timeline_beats[].timestamp",
+                "timeline_beats[].title",
+                "timeline_beats[].summary"
+              ],
+              "source_segment_ids": [],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "links",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "provenance_links[].label",
+                "provenance_links[].url"
+              ],
+              "source_segment_ids": [],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "all-claims",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "session_overview",
+                "highlight_insights[]",
+                "speaker_perspectives[]",
+                "decision_ledger[]",
+                "action_tracks[]",
+                "timeline_beats[]",
+                "provenance_links[]"
+              ],
+              "source_segment_ids": [],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "fictional-context",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "session_overview.overview",
+                "session_overview.topics[]"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s01"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "proposal-not-approved",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "decision_ledger[].decision",
+                "session_overview.overview",
+                "timeline_beats[].summary"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s01",
+                "bilingual-plan-correction:s02"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "risk-list-unknowns",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "action_tracks[].task",
+                "action_tracks[].owner",
+                "action_tracks[].due_at"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s02"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "decision-owner-unknown",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "decision_ledger[].owner"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s01",
+                "bilingual-plan-correction:s02",
+                "bilingual-plan-correction:s03",
+                "bilingual-plan-correction:s04",
+                "bilingual-plan-correction:s05",
+                "bilingual-plan-correction:s06"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "offline-decision",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "decision_ledger[].decision",
+                "decision_ledger[].rationale"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s03"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "checklist-action",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "action_tracks[].task",
+                "action_tracks[].owner",
+                "action_tracks[].due_at"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s05",
+                "bilingual-plan-correction:s06"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "review-date-unknown",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "action_tracks[].task",
+                "action_tracks[].due_at",
+                "timeline_beats[].summary"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s04"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "correction-history",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "session_overview.overview",
+                "speaker_perspectives[].viewpoints[]",
+                "timeline_beats[].summary"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s05",
+                "bilingual-plan-correction:s06"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            },
+            {
+              "id": "no-production-approval",
+              "required": true,
+              "verdict": "unobserved",
+              "paths": [
+                "decision_ledger[].decision",
+                "session_overview.overview"
+              ],
+              "source_segment_ids": [
+                "bilingual-plan-correction:s06"
+              ],
+              "reason": "严格产品解析拒绝截断raw；没有postprocessed对象可供核对。"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "bilingual-plan-correction-final",
+      "mode": "final",
+      "result_sha256": "93ea680f5421d0a51f61fbad7750a79c9c6faa0dcb6085f0576e019154555bdb",
+      "raw_text_sha256": "704e4558cf2ce0a39f225a69647d3b6c217caadd3733604293a0b417246fe654",
+      "finish_reason": "stop",
+      "generation_tokens": 1518,
+      "strict_pipeline_status": "passed",
+      "raw_and_postprocessed_equal": true,
+      "postprocessing_differences": [],
+      "source_segment_ids": [
+        "bilingual-plan-correction:s01",
+        "bilingual-plan-correction:s02",
+        "bilingual-plan-correction:s03",
+        "bilingual-plan-correction:s04",
+        "bilingual-plan-correction:s05",
+        "bilingual-plan-correction:s06"
+      ],
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "evidence_ref": "run.json#/requests/7",
+      "shared_review": {
+        "coverage": "Each exact object path includes every descendant claim; affected_paths identify failing fields. All complete generated objects are audited, not only expected facts.",
+        "checkpoint_reviews": [
+          {
+            "id": "highlights",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.highlight_insights[0].reason",
+              "$.highlight_insights[1].reason"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "两处理由分别反转假数据因果、混淆demo checklist与risk list；引文自身准确。"
+          },
+          {
+            "id": "perspectives",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.speaker_perspectives[0].viewpoints[1]",
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "Lin被归以风险清单转移，Mei责任缺少被取代的历史限定。"
+          },
+          {
+            "id": "timeline",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.timeline_beats[1]",
+              "$.timeline_beats[2]",
+              "$.timeline_beats[3]",
+              "$.timeline_beats[4]",
+              "$.timeline_beats[5]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "10–30秒排列不能定位14–110秒实际段；风险转移和确认上线title亦有语义错误。"
+          },
+          {
+            "id": "links",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.provenance_links"
+            ],
+            "source_segment_ids": [],
+            "reason": "空来源链接。"
+          },
+          {
+            "id": "all-claims",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.session_overview",
+              "$.highlight_insights[0]",
+              "$.highlight_insights[1]",
+              "$.speaker_perspectives[0]",
+              "$.speaker_perspectives[1]",
+              "$.decision_ledger[0]",
+              "$.decision_ledger[1]",
+              "$.decision_ledger[2]",
+              "$.action_tracks[0]",
+              "$.timeline_beats[1]",
+              "$.timeline_beats[2]",
+              "$.timeline_beats[3]",
+              "$.timeline_beats[4]",
+              "$.timeline_beats[5]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "每个已生成对象/可见完整claim均在claim_audit逐项核对。存在下列明确不受来源支持的内容；中性schema默认不视为承诺。",
+            "finding_refs": [
+              "claim-01",
+              "claim-02",
+              "claim-03",
+              "claim-05",
+              "claim-06",
+              "claim-07",
+              "claim-08",
+              "claim-09",
+              "claim-10",
+              "claim-12",
+              "claim-13",
+              "claim-14",
+              "claim-15",
+              "claim-16"
+            ]
+          },
+          {
+            "id": "fictional-context",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.session_overview.title"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "reason": "虚构属性保留，没有声称真实客户会议。"
+          },
+          {
+            "id": "proposal-not-approved",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.timeline_beats[0].summary",
+              "$.timeline_beats[1].summary",
+              "$.highlight_insights[2]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "这些字段明确保留提议未批、预算未批、客户不同意；其他不一致审批措辞归all-claims/no-production-approval。"
+          },
+          {
+            "id": "risk-list-unknowns",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.highlight_insights[1].reason",
+              "$.speaker_perspectives[0].viewpoints[1]",
+              "$.decision_ledger[1]",
+              "$.timeline_beats[4].summary"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "风险清单始终未分派，输出却写Ren接手其责任，串了demo checklist任务。"
+          },
+          {
+            "id": "decision-owner-unknown",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].owner",
+              "$.decision_ledger[1].owner",
+              "$.decision_ledger[2].owner"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "Lin/Lin/Ren均非已分派decision owner。"
+          },
+          {
+            "id": "offline-decision",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[0].rationale",
+              "$.highlight_insights[0].reason"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "reason": "offline选择保留，但因为是假数据所以不上传被改成避免使用假数据。"
+          },
+          {
+            "id": "checklist-action",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.action_tracks[0].due_at",
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "Ren正确，但Monday变成无锚定2024-01-01，并有Mei未标历史的当前责任表述。"
+          },
+          {
+            "id": "review-date-unknown",
+            "required": true,
+            "verdict": "pass",
+            "paths": [
+              "$.speaker_perspectives[1].viewpoints[1]",
+              "$.timeline_beats[3].summary"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "reason": "review meeting日期未知正确保留，没有把Monday当review日期。"
+          },
+          {
+            "id": "correction-history",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.highlight_insights[1].reason",
+              "$.decision_ledger[1]",
+              "$.timeline_beats[4].summary"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "quote保留Mei→Ren/Friday→Monday，但解释把该历史套到另一条risk list，不能整体通过。"
+          },
+          {
+            "id": "no-production-approval",
+            "required": true,
+            "verdict": "fail",
+            "paths": [
+              "$.decision_ledger[2].decision",
+              "$.timeline_beats[5].title"
+            ],
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "reason": "虽在quote/summary保留否定，ledger新增等待审批后上线决定，title又声称确认上线方案。"
+          }
+        ],
+        "claim_audit": [
+          {
+            "id": "claim-01",
+            "path": "$.session_overview",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "虚构演示、预算、风险、日期议题存在；“Lin和Mei分别负责演示和清单”给Lin新增演示责任并让Mei当前状态含糊，审批状态“待明确”弱化明确未批准。风险清单和demo checklist的表述也开始混合。",
+            "severity": "material",
+            "affected_paths": [
+              "$.session_overview.overview"
+            ]
+          },
+          {
+            "id": "claim-02",
+            "path": "$.highlight_insights[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "原句准确，但reason把“因为是假数据，不上传”改成“避免使用假数据”，因果相反。",
+            "severity": "material",
+            "affected_paths": [
+              "$.highlight_insights[0].reason"
+            ]
+          },
+          {
+            "id": "claim-03",
+            "path": "$.highlight_insights[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05"
+            ],
+            "verdict": "fail",
+            "reason": "quote正确转移demo checklist；reason错误改成风险清单责任转给Ren，而风险始终未分派。",
+            "severity": "material",
+            "affected_paths": [
+              "$.highlight_insights[1].reason"
+            ]
+          },
+          {
+            "id": "claim-04",
+            "path": "$.highlight_insights[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "pass",
+            "reason": "允许节选并改句末标点；Ren负责demo checklist、Monday及cloud/上线未批准准确。"
+          },
+          {
+            "id": "claim-05",
+            "path": "$.speaker_perspectives[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s05"
+            ],
+            "verdict": "fail",
+            "reason": "offline表达有来源；“风险清单责任转移给Ren”把demo checklist变成另一个未分派任务。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[0].viewpoints[1]"
+            ]
+          },
+          {
+            "id": "claim-06",
+            "path": "$.speaker_perspectives[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "Mei确曾接受checklist且review日期未知；完整定稿在Mei视角仍无历史限定地写“负责完成demo checklist”，未标明其被解除，与当前Ren责任冲突。",
+            "severity": "material",
+            "affected_paths": [
+              "$.speaker_perspectives[1].viewpoints[0]"
+            ]
+          },
+          {
+            "id": "claim-07",
+            "path": "$.decision_ledger[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01",
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "offline选择正确，两方向历史有来源；“避免使用假数据”理由错误，owner Lin未分派。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[0].rationale",
+              "$.decision_ledger[0].owner"
+            ]
+          },
+          {
+            "id": "claim-08",
+            "path": "$.decision_ledger[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "把demo checklist转移误记为风险清单由Ren负责；Mei/Ren曾作为demo负责人，不曾成为risk负责人。owner Lin也没有分派依据。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[1].problem",
+              "$.decision_ledger[1].decision",
+              "$.decision_ledger[1].owner"
+            ]
+          },
+          {
+            "id": "claim-09",
+            "path": "$.decision_ledger[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "源段只明确没有批准/决定正式上线，未讨论立即上线或决定等待审批后上线；needs_review=true不能把否定改成条件上线计划，Ren owner也无依据。",
+            "severity": "material",
+            "affected_paths": [
+              "$.decision_ledger[2].problem",
+              "$.decision_ledger[2].options",
+              "$.decision_ledger[2].decision",
+              "$.decision_ledger[2].owner"
+            ]
+          },
+          {
+            "id": "claim-10",
+            "path": "$.action_tracks[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03",
+              "bilingual-plan-correction:s04",
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "Ren/demo checklist正确，但Monday擅转2024-01-01；附带47000–64000 span只含Mei旧接受，不能支持Ren或最终deadline。medium/open不作为承诺扣分。",
+            "severity": "material",
+            "affected_paths": [
+              "$.action_tracks[0].due_at",
+              "$.action_tracks[0].evidence_span"
+            ]
+          },
+          {
+            "id": "claim-11",
+            "path": "$.timeline_beats[0]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s01"
+            ],
+            "verdict": "pass",
+            "reason": "00:05位于提议段，尚未获批准确。"
+          },
+          {
+            "id": "claim-12",
+            "path": "$.timeline_beats[1]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s02"
+            ],
+            "verdict": "fail",
+            "reason": "预算/客户未批准和risk未知正确，但00:10不定位14–28秒段。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[1].timestamp"
+            ]
+          },
+          {
+            "id": "claim-13",
+            "path": "$.timeline_beats[2]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s03"
+            ],
+            "verdict": "fail",
+            "reason": "offline/不上传内容正确；00:15不定位30–46秒决定。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[2].timestamp"
+            ]
+          },
+          {
+            "id": "claim-14",
+            "path": "$.timeline_beats[3]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s04"
+            ],
+            "verdict": "fail",
+            "reason": "按历史顺序记Mei接受及review未知内容准确；00:20不定位47–64秒。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[3].timestamp"
+            ]
+          },
+          {
+            "id": "claim-15",
+            "path": "$.timeline_beats[4]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s05",
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "00:25不定位68–88秒纠正；更把demo checklist责任转移写成risk list责任转移。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[4].timestamp",
+              "$.timeline_beats[4].summary"
+            ]
+          },
+          {
+            "id": "claim-16",
+            "path": "$.timeline_beats[5]",
+            "source_segment_ids": [
+              "bilingual-plan-correction:s06"
+            ],
+            "verdict": "fail",
+            "reason": "summary正确否定cloud和上线批准，但title“Ren确认上线方案”暗示未发生的方案确认；00:30不定位89–110秒。",
+            "severity": "material",
+            "affected_paths": [
+              "$.timeline_beats[5].timestamp",
+              "$.timeline_beats[5].title"
+            ]
+          },
+          {
+            "id": "claim-17",
+            "path": "$.provenance_links",
+            "source_segment_ids": [],
+            "verdict": "pass",
+            "reason": "没有捏造外部文档或URL。"
+          }
+        ]
+      },
+      "postprocessing_note": "raw与postprocessed完全相同；错误绝对日期、任务串线、假数据理由反转、条件上线决定和证据失配均保留。",
+      "stages": {
+        "raw": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "be74f2740768b73d0840e6c1def581a080b3d1bce97cfaddd055eb68043c92ca",
+          "review_ref": "#/cases/7/shared_review"
+        },
+        "postprocessed": {
+          "canonical_payload_available": true,
+          "review_basis": "complete parsed payload",
+          "semantic_verdict": "fail",
+          "material_fidelity_verdict": "fail",
+          "payload_sha256": "be74f2740768b73d0840e6c1def581a080b3d1bce97cfaddd055eb68043c92ca",
+          "review_ref": "#/cases/7/shared_review"
+        }
+      }
+    }
+  ],
+  "public_run_sha256": "9dc4490fe547770e4530ce72c89c20c9f8d670ee8f28cbafdbe5825831a8b47f",
+  "storage_policy": "Transcripts and generated payloads are stored once in run.json/frozen fixtures. Matching raw/post semantic judgments share one explicit review reference, while each stage retains its own payload hash and verdict. No absent postprocessed stage inherits a raw verdict.",
+  "report_crosscheck": {
+    "file": "docs/experiments/2026-09-09-qwen-local-summary/README.md",
+    "timing_and_token_table": "Matched all eight public run.json requests; seven available complete-package values median 9.709647833995405 seconds, range 6.217561666999245–15.58997274999274.",
+    "required_corrections": [
+      {
+        "topic": "complete-output substantive count",
+        "reason": "Must state 6/7 complete outputs have substantive errors; prefix-01 preserves core proposal/negation/unknown controls and has only a minor unsupported option plus ledger contract difference.",
+        "status": "Parent reports corrected; verify final file."
+      },
+      {
+        "topic": "Chinese postprocessing example",
+        "reason": "Postprocessing did not remove timeline duplication. Four timeline rows remain; only row3 timestamp changes 00:24→00:15, leaving row2 00:16 before row3 00:15. Correct this sentence to timestamp clipping without semantic repair.",
+        "status": "Correction required in reviewed draft."
+      }
+    ]
+  }
+}
