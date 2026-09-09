@@ -13,6 +13,8 @@ ICON_SOURCE="$PACKAGE_DIR/Resources/$ICON_FILE"
 CONFIGURATION="release"
 OUTPUT_DIR="$ROOT_DIR/dist/macos"
 INSTALL_DIR=""
+LOCAL_CONFIG_SOURCE=""
+LOCAL_CONFIG_SNAPSHOT=""
 VERSION="${INSIGHTKIT_VERSION:-0.1.0}"
 SIGN_IDENTITY="${INSIGHTKIT_SIGN_IDENTITY:-}"
 SIGN_IDENTITY_FILE="$ROOT_DIR/.ops/signing_identity.txt"
@@ -29,6 +31,8 @@ Options:
   --debug                      Build Debug instead of Release
   --output-dir <path>          App bundle output directory (default: dist/macos)
   --install-dir <path>         Copy built .app into this directory
+  --preserve-local-config-from <app>
+                              Preserve this app's owner-pilot launch configuration (local only)
   --version <semver>           Set CFBundleShortVersionString (default: $VERSION)
   --clean                      Clean Swift package build artifacts before build
   --no-clean                   Disable pre-build clean (default)
@@ -53,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --install-dir)
       INSTALL_DIR="${2:-}"
+      shift 2
+      ;;
+    --preserve-local-config-from)
+      LOCAL_CONFIG_SOURCE="${2:?Expected a source app path}"
       shift 2
       ;;
     --version)
@@ -114,6 +122,27 @@ case "$DISTRIBUTION_MODE" in
     exit 1
     ;;
 esac
+
+if [[ -n "$LOCAL_CONFIG_SOURCE" && "$DISTRIBUTION_MODE" != "local" ]]; then
+  echo "Local owner-pilot configuration cannot be copied into a distribution build." >&2
+  exit 1
+fi
+if [[ -z "$LOCAL_CONFIG_SOURCE" && "$DISTRIBUTION_MODE" == "local" \
+      && -n "$INSTALL_DIR" && -e "$INSTALL_DIR/$APP_BUNDLE_NAME" ]]; then
+  LOCAL_CONFIG_SOURCE="$INSTALL_DIR/$APP_BUNDLE_NAME"
+fi
+cleanup_local_config() {
+  if [[ -n "$LOCAL_CONFIG_SNAPSHOT" ]]; then
+    rm -f "$LOCAL_CONFIG_SNAPSHOT"
+  fi
+}
+trap cleanup_local_config EXIT
+if [[ -n "$LOCAL_CONFIG_SOURCE" ]]; then
+  # Snapshot before a source bundle can be rebuilt or replaced.
+  LOCAL_CONFIG_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/insightkit-local-config.XXXXXX")"
+  python3 "$ROOT_DIR/scripts/local_bundle_configuration.py" snapshot \
+    --source-app "$LOCAL_CONFIG_SOURCE" --output "$LOCAL_CONFIG_SNAPSHOT"
+fi
 
 GIT_REVISION="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -216,6 +245,7 @@ if [[ -z "$bin_path" || ! -x "$bin_path" ]]; then
 fi
 
 app_root="$OUTPUT_DIR/$APP_BUNDLE_NAME"
+rm -f "$OUTPUT_DIR/local-configuration-verification.json"
 contents_dir="$app_root/Contents"
 macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
@@ -409,6 +439,14 @@ cat > "$contents_dir/Info.plist" <<EOF
 </plist>
 EOF
 
+if [[ -n "$LOCAL_CONFIG_SNAPSHOT" ]]; then
+  python3 "$ROOT_DIR/scripts/local_bundle_configuration.py" apply \
+    --snapshot "$LOCAL_CONFIG_SNAPSHOT" --target-app "$app_root"
+  python3 "$ROOT_DIR/scripts/local_bundle_configuration.py" verify \
+    --snapshot "$LOCAL_CONFIG_SNAPSHOT" --target-app "$app_root" \
+    --receipt "$OUTPUT_DIR/local-configuration-verification.json"
+fi
+
 if command -v codesign >/dev/null 2>&1; then
   sanitize_for_codesign "$app_root"
   CODESIGN_COMMON=(--force --deep)
@@ -488,6 +526,11 @@ if [[ -n "$INSTALL_DIR" ]]; then
   rm -rf "$INSTALL_DIR/$APP_BUNDLE_NAME"
   ditto "$app_root" "$INSTALL_DIR/$APP_BUNDLE_NAME"
   sanitize_for_codesign "$INSTALL_DIR/$APP_BUNDLE_NAME"
+  if [[ -n "$LOCAL_CONFIG_SNAPSHOT" ]]; then
+    python3 "$ROOT_DIR/scripts/local_bundle_configuration.py" verify \
+      --snapshot "$LOCAL_CONFIG_SNAPSHOT" --target-app "$INSTALL_DIR/$APP_BUNDLE_NAME" \
+      --receipt "$OUTPUT_DIR/local-configuration-verification.json"
+  fi
   echo "Installed: $INSTALL_DIR/$APP_BUNDLE_NAME"
 fi
 

@@ -6,6 +6,7 @@ PACKAGE_SCRIPT="$ROOT_DIR/scripts/package_insightkit_app.sh"
 
 INSTALL_DIR="${INSIGHTKIT_INSTALL_DIR:-$HOME/Applications}"
 PACKAGE_OUTPUT_DIR="${INSIGHTKIT_PACKAGE_OUTPUT_DIR:-}"
+LOCAL_CONFIG_SOURCE=""
 RUN_TESTS=1
 VERIFY_SYNC=1
 CONFIG_FLAG=""
@@ -27,6 +28,8 @@ Usage: $(basename "$0") [options]
 Options:
   --debug                      Build debug bundle
   --install-dir <path>         Install directory (default: \$HOME/Applications)
+  --preserve-local-config-from <app>
+                              Recover owner-pilot launch configuration from a prior app
   --skip-tests                 Skip swift/python test checks
   --skip-verify                Skip post-install verification
   --version <semver>           App version string
@@ -44,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --install-dir)
       INSTALL_DIR="${2:-}"
+      shift 2
+      ;;
+    --preserve-local-config-from)
+      LOCAL_CONFIG_SOURCE="${2:?Expected a source app path}"
       shift 2
       ;;
     --skip-tests)
@@ -93,6 +100,7 @@ write_sync_payload() {
   EXIT_CODE="$exit_code" \
   SKIPPED_GATE="$skipped_gate" \
   VERIFY_SYNC="$VERIFY_SYNC" \
+  PACKAGE_OUTPUT_DIR="$PACKAGE_OUTPUT_DIR" \
   LATEST_SYNC_PATH="$LATEST_SYNC_PATH" \
   SYNC_STATUS_PATH="$SYNC_STATUS_PATH" \
   python3 - <<'PY'
@@ -112,6 +120,7 @@ skipped_gate = os.environ.get("SKIPPED_GATE", "0") == "1"
 verify_sync = os.environ.get("VERIFY_SYNC", "1") == "1"
 latest_sync_path = Path(os.environ["LATEST_SYNC_PATH"])
 sync_status_path = Path(os.environ["SYNC_STATUS_PATH"])
+package_output_dir = os.environ.get("PACKAGE_OUTPUT_DIR", "")
 
 app_path = install_dir / "InsightKit.app"
 plist_path = app_path / "Contents" / "Info.plist"
@@ -163,6 +172,10 @@ verify = {
     "git_revision_match": False,
     "required_capabilities": cap_snapshot,
 }
+if package_output_dir:
+    config_receipt = Path(package_output_dir) / "local-configuration-verification.json"
+    if config_receipt.exists():
+        verify["local_telemetry_configuration"] = json.loads(config_receipt.read_text(encoding="utf-8"))
 if verify_sync:
     verify["git_revision_match"] = bool(bundle["git_revision"]) and bundle["git_revision"] == local_git_revision
 
@@ -172,6 +185,7 @@ if verify_sync and ok:
         verify["installed_exists"]
         and verify["git_revision_match"]
         and all(cap_snapshot.values())
+        and verify.get("local_telemetry_configuration", {}).get("ok", True)
     )
 
 payload = {
@@ -281,8 +295,17 @@ FINAL_REASON="package/install failed"
 if [[ -z "$PACKAGE_OUTPUT_DIR" ]]; then
   PACKAGE_OUTPUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/insightkit-sync-package.XXXXXX")"
 fi
-# shellcheck disable=SC2086
-"$PACKAGE_SCRIPT" $CONFIG_FLAG $CLEAN_FLAG --output-dir "$PACKAGE_OUTPUT_DIR" --install-dir "$INSTALL_DIR" $VERSION_ARG
+PACKAGE_ARGS=("$CLEAN_FLAG" --output-dir "$PACKAGE_OUTPUT_DIR" --install-dir "$INSTALL_DIR")
+if [[ -n "$CONFIG_FLAG" ]]; then
+  PACKAGE_ARGS+=("$CONFIG_FLAG")
+fi
+if [[ -n "$VERSION_ARG" ]]; then
+  PACKAGE_ARGS+=(--version "${VERSION_ARG#--version }")
+fi
+if [[ -n "$LOCAL_CONFIG_SOURCE" ]]; then
+  PACKAGE_ARGS+=(--preserve-local-config-from "$LOCAL_CONFIG_SOURCE")
+fi
+"$PACKAGE_SCRIPT" "${PACKAGE_ARGS[@]}"
 
 if [[ $VERIFY_SYNC -eq 1 ]]; then
   LAST_STEP="verify_install"

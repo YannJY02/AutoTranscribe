@@ -25,6 +25,14 @@ Observed ASR calls for the 8-second chunks took 18.7, 35.8, and 16.7 seconds in 
 
 The first combined smoke exposed a helper input-buffering bug. After fixing it, the same audio and previously recognized text were replayed through the real LS-EEND helper without repeating ASR. A copied standalone executable loaded the existing local DIHARD3 500 ms weights, reused one process, and assigned `SPEAKER_00`, `SPEAKER_01`, `SPEAKER_00`. Startup plus the first silent chunk took 837 ms; subsequent feeds took 74/69/69 ms. Those feed times exclude ASR and capture buffering. This checks local integration on synthetic voices; real conversations, quiet interruptions, overlapping speech and long sessions still require human evaluation.
 
+## Installed configuration preservation
+
+The initial `15494d0` installation retained the three owner-pilot Info.plist fields but omitted `LSEnvironment.INSIGHTKIT_ANALYTICS_ENVIRONMENT=owner-pilot`. A normal launch therefore selected the unconfigured release transport. Its initial consent readback was only a snapshot: analytics initializes lazily, including when Settings opens, and can automatically revoke enabled consent without a configured transport. Current evidence cannot distinguish that path from an owner opt-out; the owner does not recall, so the current disabled consent remains unchanged.
+
+Local package updates now snapshot and verify the explicit owner-pilot fields and launch environment before signing and after installation. `--install-dir` preserves the existing app automatically; `--preserve-local-config-from <prior.app>` recovers the same configuration from a known prior bundle. The helper never reads or restores consent, model preferences, Records, or unrelated environment values. Fresh packages retain their disabled defaults, and Developer ID builds reject local configuration copying.
+
+The packager regression failed on the missing selector before the fix and passes afterward. For an installed repair, retain the current preferences, register the new bundle with Launch Services, launch normally, read the running process's selector, open Settings to exercise lazy analytics initialization, and confirm that the control is available while consent stays disabled. Check again after normal relaunch. `logs/yan75/config-repair/` holds the superseding installation and runtime evidence; bundle fields alone do not prove enabled consent or event delivery.
+
 ## Manual acceptance
 
 1. Record a short conversation with two people taking turns, including a sustained sentence and a brief interruption. Observe text arrival, later speaker corrections, and Smart Minutes updates.
