@@ -1,0 +1,3052 @@
+{
+  "schema_version": 1,
+  "issue": "YAN-77",
+  "recorded_at": "2026-09-09T06:41:23.115427+00:00",
+  "scope": "Eight synthetic text generations, unchanged product prompts, no ASR or product UI.",
+  "dataset_version": "local-summary-v1",
+  "dataset_sha256": "64618b1d5e4cb7d094ddd3a1a7015465c0c2b30e19b6dba574a294f353f8d280",
+  "model": {
+    "repo_id": "mlx-community/Qwen3.5-2B-4bit",
+    "revision": "674aaa7240b91e8012fcad5d791b7dfe5ba90207",
+    "files": [
+      {
+        "name": "README.md",
+        "bytes": 666,
+        "sha256": "25ccef130ebab05aed7798f4aee3b829a80e6c67c0f20b7d68dea8a4a103a071"
+      },
+      {
+        "name": "chat_template.jinja",
+        "bytes": 7755,
+        "sha256": "273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80"
+      },
+      {
+        "name": "config.json",
+        "bytes": 3113,
+        "sha256": "beb7fc5a6e0405fe332821cf1a8ef7b69bb390a8c8933171647de5579debf949"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 1722271785,
+        "sha256": "713fe7e5d3c3965f7106b0d0ee17615f7869c23c8d327996df8c1196fbcf07d5"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 81722,
+        "sha256": "8294c05cca7d53a6c33e3db2b379539bd296d054e0b689711b16b6ac93c7e49d"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 390,
+        "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+      },
+      {
+        "name": "processor_config.json",
+        "bytes": 1300,
+        "sha256": "14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b"
+      },
+      {
+        "name": "tokenizer.json",
+        "bytes": 19989343,
+        "sha256": "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 1139,
+        "sha256": "e98f1901ac6f0adff67b1d540bfa0c36ac1a0cf59eb72ed78146ef89aafa1182"
+      },
+      {
+        "name": "video_preprocessor_config.json",
+        "bytes": 385,
+        "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 6722759,
+        "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      }
+    ]
+  },
+  "runtime": {
+    "model_load_wall_s": 1.559823667004821,
+    "packages": {
+      "mlx": "0.32.2",
+      "mlx-lm": "0.31.3",
+      "mlx-metal": "0.32.2",
+      "transformers": "5.16.1",
+      "huggingface-hub": "1.30.0",
+      "jsonschema": "4.26.0"
+    },
+    "python": "3.11.14",
+    "platform": "macOS-27.0-arm64-arm-64bit",
+    "machine": "arm64",
+    "model_class": "mlx_lm.models.qwen3_5.Model",
+    "language_only_loader": true
+  },
+  "generation": {
+    "max_tokens": 1536,
+    "request_timeout_s": 120.0,
+    "load_timeout_s": 120.0,
+    "temperature": 0.0,
+    "seed": 7,
+    "enable_thinking": false,
+    "model_reuse": "one loaded model for every request",
+    "prompt_cache_reuse": false,
+    "previous_generated_summary_in_input": false
+  },
+  "source_files": {
+    "insightkit/prompts/system_instruction.md": "eb0a95aa94fb752afa1930c87ebadf5572175b049b33096421a7e83345bb54fa",
+    "insightkit/prompts/live_insight_prompt.md": "c7225d43e7e7cf7796b7be35582965c514abff7f20469422cfde65702ab12ba6",
+    "insightkit/prompts/final_insight_prompt.md": "6d79d884b951aba96f65a2cf4bebb9b35b9df597f103c1f5d778413b9c0e9f9c",
+    "insightkit/schemas/insight_package_v1.json": "8334ffd2108be01d7f0de4cb047edf922e0962b60fe806d3519c83fca577c27e",
+    "insightkit/insights/service.py": "76bbc6684969ccef1fc861200e3377fbddbf20bd629e29accda756e89b01c752",
+    "insightkit/insights/postprocess.py": "bd6bc3b4bbd4514b9ab56e223f450cabbd57289601c78b1a14c0dd73d1a06b7b",
+    "insightkit/insights/schema_validator.py": "9389d5f598216f97e37a8865b00ac0b19b38bbfd5ba3a85ec79e3aae4f9bef1c"
+  },
+  "experiment_sources_at_run": {
+    "scripts/compare_local_summary.py": "0accff022f7b9659bbb05a2e72b6d66f205f049e4ea8f3be16338a587bbbfc48",
+    "scripts/local_summary_assessment.py": "c436c4ce3441185fb4dac616e4ab9668a2b9c8bb420c78140755ca6e11b77a37",
+    "evals/local_summary/v1/dataset.json": "25197e32dda5433c98055ea11a2edfc310eb5949bc358d2d2815cf975c7ab45c",
+    "evals/local_summary/v1/README.md": "e1c8bb785ada37df987769448e14ef2ffb227e0ee342e12478563d0877871169",
+    "tests/test_compare_local_summary.py": "8fe40a077c878ffccf1ef8a3d562114575288089c4a6063ef5e9eb9105c25d69",
+    "tests/test_local_summary_assessment.py": "e312e2b5840cbe1c766381e4ba5b4f6e2d28e224ba13413bc921734bdac963e2"
+  },
+  "host": {
+    "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+    "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+    "low_power_mode": "Battery Power:\n Sleep On Power Button 1\n lowpowermode         0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         5\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           1\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n lowpowermode         0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         10\n womp                 1\n networkoversleep     0\n sleep                0\n tcpkeepalive         1\n disksleep            10",
+    "thermal": 0,
+    "cohort": "Component screen under ordinary background load; no UI or concurrent ASR."
+  },
+  "observed_thermal_states": [
+    0
+  ],
+  "preservation": {
+    "installed_revision": true,
+    "installed_build": true,
+    "installed_info_sha256": true,
+    "installed_executable_sha256": true,
+    "runtime_config_sha256": true,
+    "consent_sha256": true,
+    "records_files": true,
+    "records_metadata_sha256": true
+  },
+  "installed_build": "20260909123140",
+  "installed_revision": "6a85f89",
+  "idle_before": {
+    "socket_present": true,
+    "live_sessions": 0,
+    "active_job": false,
+    "queued_jobs": 0
+  },
+  "idle_after": {
+    "socket_present": true,
+    "live_sessions": 0,
+    "active_job": false,
+    "queued_jobs": 0
+  },
+  "execution": {
+    "exit_code": 0,
+    "termination": null,
+    "messages": [
+      {
+        "event": "load_started",
+        "controller_received_wall_s": 3.231478000001516
+      },
+      {
+        "event": "ready",
+        "model_load_wall_s": 1.559823667004821,
+        "packages": {
+          "mlx": "0.32.2",
+          "mlx-lm": "0.31.3",
+          "mlx-metal": "0.32.2",
+          "transformers": "5.16.1",
+          "huggingface-hub": "1.30.0",
+          "jsonschema": "4.26.0"
+        },
+        "python": "3.11.14",
+        "platform": "macOS-27.0-arm64-arm-64bit",
+        "machine": "arm64",
+        "model_class": "mlx_lm.models.qwen3_5.Model",
+        "language_only_loader": true,
+        "controller_received_wall_s": 4.819182042003376
+      },
+      {
+        "event": "case_started",
+        "id": "zh-release-decision-final",
+        "index": 0,
+        "controller_received_wall_s": 4.819265250000171
+      },
+      {
+        "event": "case_complete",
+        "id": "zh-release-decision-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 18.66272433300037
+      },
+      {
+        "event": "case_started",
+        "id": "en-launch-plan-final",
+        "index": 1,
+        "controller_received_wall_s": 18.66285720799351
+      },
+      {
+        "event": "case_complete",
+        "id": "en-launch-plan-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 27.260793499997817
+      },
+      {
+        "event": "case_started",
+        "id": "mixed-design-review-final",
+        "index": 2,
+        "controller_received_wall_s": 27.26088579199859
+      },
+      {
+        "event": "case_complete",
+        "id": "mixed-design-review-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 36.97456408299331
+      },
+      {
+        "event": "case_started",
+        "id": "insufficient-transcript-final",
+        "index": 3,
+        "controller_received_wall_s": 36.97469720800291
+      },
+      {
+        "event": "case_complete",
+        "id": "insufficient-transcript-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 43.19515991699882
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-prefix-01",
+        "index": 4,
+        "controller_received_wall_s": 43.195290749994456
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-prefix-01",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 51.263893707990064
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-prefix-02",
+        "index": 5,
+        "controller_received_wall_s": 51.263979291994474
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-prefix-02",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 62.02112270799989
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-prefix-03",
+        "index": 6,
+        "controller_received_wall_s": 62.021179542003665
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-prefix-03",
+        "status": "completed",
+        "finish_reason": "length",
+        "strict_pipeline_status": "failed",
+        "controller_received_wall_s": 77.50010099999781
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-final",
+        "index": 7,
+        "controller_received_wall_s": 77.50016199999664
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 93.09699466699385
+      },
+      {
+        "event": "finished",
+        "controller_received_wall_s": 93.09710720799922
+      }
+    ],
+    "controller_wall_s": 93.21505637500377
+  },
+  "execution_status": "completed",
+  "plan_file_sha256": "cff7aa77c7202b4969840e70528ddc269b03aa65b9e6aa0fca80007fc0245764",
+  "requests": [
+    {
+      "id": "zh-release-decision-final",
+      "index": 0,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 925,
+      "formatted_prompt_ids_sha256": "a226f505bd3c6405c759133e5338f044d9696d00f941c672fba06325901bb147",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 1028,
+      "library_prompt_tokens": 925,
+      "library_prompt_tps": 224.45657170070055,
+      "library_generation_tps": 109.38042674185576,
+      "mlx_peak_memory_gb": 2.199071176,
+      "truncated": false,
+      "first_token_wall_s": 4.333418875001371,
+      "first_text_wall_s": 4.333418875001371,
+      "generation_wall_s": 13.732017791000544,
+      "complete_package_available_wall_s": 13.83915195899317,
+      "request_wall_s": 13.840968709002482,
+      "transcript_sha256": "f5ad82609b359fc21fc6712ab0a82239301e3eb87b91edec362de2086f790e4b",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构星河项目发布方案讨论\",\n    \"overview\": \"会议围绕虚构的星河项目发布方案展开，主要讨论了项目主题选择、测试用户识别难度及演示稿交付时间等关键问题。\",\n    \"topics\": [\n      \"项目主题选择\",\n      \"测试用户识别\",\n      \"演示稿交付\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"今天讨论虚构的星河项目发布方案。\",\n      \"reason\": \"会议主题明确，确立了讨论的核心内容。\",\n      \"speaker\": \"甲\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 4200\n      }\n    },\n    {\n      \"quote\": \"我们决定采用蓝色主题，原因是测试用户更容易识别。\",\n      \"reason\": \"基于测试用户识别难度的考量，做出了主题选择决策。\",\n      \"speaker\": \"乙\",\n      \"evidence_span\": {\n        \"start_ms\": 5000,\n        \"end_ms\": 9800\n      }\n    },\n    {\n      \"quote\": \"乙负责周五前完成演示稿并在测试环境复核。\",\n      \"reason\": \"明确了演示稿的交付时间和复核要求。\",\n      \"speaker\": \"甲\",\n      \"evidence_span\": {\n        \"start_ms\": 10500,\n        \"end_ms\": 15000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"甲\",\n      \"viewpoints\": [\n        \"项目发布方案需明确主题\",\n        \"需关注测试用户识别难度\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 4200\n        },\n        {\n          \"start_ms\": 10500,\n          \"end_ms\": 15000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"乙\",\n      \"viewpoints\": [\n        \"决定采用蓝色主题\",\n        \"蓝色主题更易被测试用户识别\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 5000,\n          \"end_ms\": 9800\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"如何选择合适的发布主题以适配测试用户？\",\n      \"options\": [\n        \"红色主题\",\n        \"蓝色主题\"\n      ],\n      \"decision\": \"蓝色主题\",\n      \"rationale\": \"蓝色主题更易被测试用户识别，符合项目需求。\",\n      \"owner\": \"乙\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 5000,\n        \"end_ms\": 9800\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"乙负责周五前完成演示稿\",\n      \"owner\": \"乙\",\n      \"due_at\": \"2024-05-05 17:00:00\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 10500,\n        \"end_ms\": 15000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"会议开始\",\n      \"summary\": \"会议开始，甲提出讨论虚构的星河项目发布方案。\"\n    },\n    {\n      \"timestamp\": \"00:08\",\n      \"title\": \"主题选择讨论\",\n      \"summary\": \"甲提出讨论虚构的星河项目发布方案。\"\n    },\n    {\n      \"timestamp\": \"00:16\",\n      \"title\": \"蓝色主题决策\",\n      \"summary\": \"乙决定采用蓝色主题，原因是测试用户更容易识别。\"\n    },\n    {\n      \"timestamp\": \"00:24\",\n      \"title\": \"交付时间确认\",\n      \"summary\": \"甲要求乙负责周五前完成演示稿并在测试环境复核。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "d7aec500cf6ffb0dfe112b693e12c657d65ee28a4b0a1547ba0fe444b4c2c5cb",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "虚构星河项目发布方案讨论",
+            "overview": "会议围绕虚构的星河项目发布方案展开，主要讨论了项目主题选择、测试用户识别难度及演示稿交付时间等关键问题。",
+            "topics": [
+              "项目主题选择",
+              "测试用户识别",
+              "演示稿交付"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "今天讨论虚构的星河项目发布方案。",
+              "reason": "会议主题明确，确立了讨论的核心内容。",
+              "speaker": "甲",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 4200
+              }
+            },
+            {
+              "quote": "我们决定采用蓝色主题，原因是测试用户更容易识别。",
+              "reason": "基于测试用户识别难度的考量，做出了主题选择决策。",
+              "speaker": "乙",
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            },
+            {
+              "quote": "乙负责周五前完成演示稿并在测试环境复核。",
+              "reason": "明确了演示稿的交付时间和复核要求。",
+              "speaker": "甲",
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "甲",
+              "viewpoints": [
+                "项目发布方案需明确主题",
+                "需关注测试用户识别难度"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 4200
+                },
+                {
+                  "start_ms": 10500,
+                  "end_ms": 15000
+                }
+              ]
+            },
+            {
+              "speaker": "乙",
+              "viewpoints": [
+                "决定采用蓝色主题",
+                "蓝色主题更易被测试用户识别"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 5000,
+                  "end_ms": 9800
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何选择合适的发布主题以适配测试用户？",
+              "options": [
+                "红色主题",
+                "蓝色主题"
+              ],
+              "decision": "蓝色主题",
+              "rationale": "蓝色主题更易被测试用户识别，符合项目需求。",
+              "owner": "乙",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "乙负责周五前完成演示稿",
+              "owner": "乙",
+              "due_at": "2024-05-05 17:00:00",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "会议开始，甲提出讨论虚构的星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "主题选择讨论",
+              "summary": "甲提出讨论虚构的星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:16",
+              "title": "蓝色主题决策",
+              "summary": "乙决定采用蓝色主题，原因是测试用户更容易识别。"
+            },
+            {
+              "timestamp": "00:24",
+              "title": "交付时间确认",
+              "summary": "甲要求乙负责周五前完成演示稿并在测试环境复核。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "虚构星河项目发布方案讨论",
+            "overview": "会议围绕虚构的星河项目发布方案展开，主要讨论了项目主题选择、测试用户识别难度及演示稿交付时间等关键问题。",
+            "topics": [
+              "项目主题选择",
+              "测试用户识别",
+              "演示稿交付"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "今天讨论虚构的星河项目发布方案。",
+              "reason": "会议主题明确，确立了讨论的核心内容。",
+              "speaker": "甲",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 4200
+              }
+            },
+            {
+              "quote": "我们决定采用蓝色主题，原因是测试用户更容易识别。",
+              "reason": "基于测试用户识别难度的考量，做出了主题选择决策。",
+              "speaker": "乙",
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            },
+            {
+              "quote": "乙负责周五前完成演示稿并在测试环境复核。",
+              "reason": "明确了演示稿的交付时间和复核要求。",
+              "speaker": "甲",
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "甲",
+              "viewpoints": [
+                "项目发布方案需明确主题",
+                "需关注测试用户识别难度"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 4200
+                },
+                {
+                  "start_ms": 10500,
+                  "end_ms": 15000
+                }
+              ]
+            },
+            {
+              "speaker": "乙",
+              "viewpoints": [
+                "决定采用蓝色主题",
+                "蓝色主题更易被测试用户识别"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 5000,
+                  "end_ms": 9800
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何选择合适的发布主题以适配测试用户？",
+              "options": [
+                "红色主题",
+                "蓝色主题"
+              ],
+              "decision": "蓝色主题",
+              "rationale": "蓝色主题更易被测试用户识别，符合项目需求。",
+              "owner": "乙",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "乙负责周五前完成演示稿",
+              "owner": "乙",
+              "due_at": "2024-05-05 17:00:00",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "会议开始，甲提出讨论虚构的星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "主题选择讨论",
+              "summary": "甲提出讨论虚构的星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:16",
+              "title": "蓝色主题决策",
+              "summary": "乙决定采用蓝色主题，原因是测试用户更容易识别。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "交付时间确认",
+              "summary": "甲要求乙负责周五前完成演示稿并在测试环境复核。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.08638979199167807
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "zh-release-decision-final",
+          "stage": "raw",
+          "payload_sha256": "cf520fcf204d93f07782933664e87cac853c140ba193f9788a1ee291c658397b",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "fail",
+            "issues": [
+              {
+                "path": "timeline_beats[2].timestamp",
+                "code": "invalid_or_future_timestamp"
+              },
+              {
+                "path": "timeline_beats[3].timestamp",
+                "code": "invalid_or_future_timestamp"
+              }
+            ],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "乙",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].due_at",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "2024-05-05 17:00:00",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配",
+                  "Friday",
+                  "by Friday",
+                  "周五",
+                  "周五前",
+                  "星期五",
+                  "星期五前"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "zh-release-decision-final",
+          "stage": "postprocessed",
+          "payload_sha256": "42b64e9391fdcddc8fddacfe647c2d9cc38e09cf5cb2cce291c4e326e92f80ac",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "fail",
+            "issues": [
+              {
+                "path": "timeline_beats[2].timestamp",
+                "code": "invalid_or_future_timestamp"
+              }
+            ],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "乙",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].due_at",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "2024-05-05 17:00:00",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配",
+                  "Friday",
+                  "by Friday",
+                  "周五",
+                  "周五前",
+                  "星期五",
+                  "星期五前"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "da2c7714649988631473880794d42ac895070c17a551aa1c9da9b39348c37868"
+    },
+    {
+      "id": "en-launch-plan-final",
+      "index": 1,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 927,
+      "formatted_prompt_ids_sha256": "7628647914fe167e707d4dfead8096d7df06b0ba639a23eb0036a71fdb7e8a7e",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 814,
+      "library_prompt_tokens": 927,
+      "library_prompt_tps": 930.321286062496,
+      "library_generation_tps": 109.91564964607883,
+      "mlx_peak_memory_gb": 2.203185556,
+      "truncated": false,
+      "first_token_wall_s": 1.1538554590079002,
+      "first_text_wall_s": 1.1538554590079002,
+      "generation_wall_s": 8.575880375006818,
+      "complete_package_available_wall_s": 8.594783084001392,
+      "request_wall_s": 8.59635208400141,
+      "transcript_sha256": "50d39367539e9e1f5e1cd8a7b34c034e4bf1ed1d284de2b35590c580ce41943e",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"Project Cedar Launch Rehearsal\",\n    \"overview\": \"本会话为虚构的 Project Cedar 项目启动会进行排练。会议主要讨论了数据源选择、任务分配及截止日期安排。\",\n    \"topics\": [\n      \"项目启动流程\",\n      \"数据源选择\",\n      \"任务分配与截止日期\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"This is a fictional launch rehearsal for Project Cedar.\",\n      \"reason\": \"明确定义了项目名称和性质，为后续讨论提供基础背景。\",\n      \"speaker\": \"Alex\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 3500\n      }\n    },\n    {\n      \"quote\": \"We decided to keep the pilot offline because the sample data is synthetic.\",\n      \"reason\": \"决定将试点项目设为离线模式，原因是使用合成数据而非真实数据。\",\n      \"speaker\": \"Blair\",\n      \"evidence_span\": {\n        \"start_ms\": 4000,\n        \"end_ms\": 8600\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Alex\",\n      \"viewpoints\": [\n        \"项目 Cedar 的启动会\",\n        \"合成数据的使用\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 3500\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Blair\",\n      \"viewpoints\": [\n        \"试点项目设为离线模式\",\n        \"使用合成数据\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 4000,\n          \"end_ms\": 8600\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"如何选择合适的试点数据源\",\n      \"options\": [\n        \"使用真实数据\",\n        \"使用合成数据\"\n      ],\n      \"decision\": \"使用合成数据\",\n      \"rationale\": \"因为真实数据不可用，且合成数据是合适的替代方案。\",\n      \"owner\": \"Blair\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 4000,\n        \"end_ms\": 8600\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成项目 Cedar 的启动会\",\n      \"owner\": \"Blair\",\n      \"due_at\": \"Friday\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 9000,\n        \"end_ms\": 13200\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:05:50\",\n      \"title\": \"项目定义\",\n      \"summary\": \"Alex 定义了项目 Cedar 的启动会性质。\"\n    },\n    {\n      \"timestamp\": \"00:06:40\",\n      \"title\": \"数据源决策\",\n      \"summary\": \"Blair 决定将试点设为离线模式，使用合成数据。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "26804637fffe6d99af03853fa0dea610ae1d593862453ae10768e2187e62ef9c",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "Project Cedar Launch Rehearsal",
+            "overview": "本会话为虚构的 Project Cedar 项目启动会进行排练。会议主要讨论了数据源选择、任务分配及截止日期安排。",
+            "topics": [
+              "项目启动流程",
+              "数据源选择",
+              "任务分配与截止日期"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "This is a fictional launch rehearsal for Project Cedar.",
+              "reason": "明确定义了项目名称和性质，为后续讨论提供基础背景。",
+              "speaker": "Alex",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 3500
+              }
+            },
+            {
+              "quote": "We decided to keep the pilot offline because the sample data is synthetic.",
+              "reason": "决定将试点项目设为离线模式，原因是使用合成数据而非真实数据。",
+              "speaker": "Blair",
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Alex",
+              "viewpoints": [
+                "项目 Cedar 的启动会",
+                "合成数据的使用"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3500
+                }
+              ]
+            },
+            {
+              "speaker": "Blair",
+              "viewpoints": [
+                "试点项目设为离线模式",
+                "使用合成数据"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4000,
+                  "end_ms": 8600
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何选择合适的试点数据源",
+              "options": [
+                "使用真实数据",
+                "使用合成数据"
+              ],
+              "decision": "使用合成数据",
+              "rationale": "因为真实数据不可用，且合成数据是合适的替代方案。",
+              "owner": "Blair",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成项目 Cedar 的启动会",
+              "owner": "Blair",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:05:50",
+              "title": "项目定义",
+              "summary": "Alex 定义了项目 Cedar 的启动会性质。"
+            },
+            {
+              "timestamp": "00:06:40",
+              "title": "数据源决策",
+              "summary": "Blair 决定将试点设为离线模式，使用合成数据。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "Project Cedar Launch Rehearsal",
+            "overview": "本会话为虚构的 Project Cedar 项目启动会进行排练。会议主要讨论了数据源选择、任务分配及截止日期安排。",
+            "topics": [
+              "项目启动流程",
+              "数据源选择",
+              "任务分配与截止日期"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "This is a fictional launch rehearsal for Project Cedar.",
+              "reason": "明确定义了项目名称和性质，为后续讨论提供基础背景。",
+              "speaker": "Alex",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 3500
+              }
+            },
+            {
+              "quote": "We decided to keep the pilot offline because the sample data is synthetic.",
+              "reason": "决定将试点项目设为离线模式，原因是使用合成数据而非真实数据。",
+              "speaker": "Blair",
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Alex",
+              "viewpoints": [
+                "项目 Cedar 的启动会",
+                "合成数据的使用"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3500
+                }
+              ]
+            },
+            {
+              "speaker": "Blair",
+              "viewpoints": [
+                "试点项目设为离线模式",
+                "使用合成数据"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4000,
+                  "end_ms": 8600
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何选择合适的试点数据源",
+              "options": [
+                "使用真实数据",
+                "使用合成数据"
+              ],
+              "decision": "使用合成数据",
+              "rationale": "因为真实数据不可用，且合成数据是合适的替代方案。",
+              "owner": "Blair",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成项目 Cedar 的启动会",
+              "owner": "Blair",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:13",
+              "title": "项目定义",
+              "summary": "Alex 定义了项目 Cedar 的启动会性质。"
+            },
+            {
+              "timestamp": "00:13",
+              "title": "数据源决策",
+              "summary": "Blair 决定将试点设为离线模式，使用合成数据。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.016857707989402115
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "en-launch-plan-final",
+          "stage": "raw",
+          "payload_sha256": "d262843857eb42d46183edb5a1e93ac90b898d7d351ccd8c561416fd3b26d0bd",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "fail",
+            "issues": [
+              {
+                "path": "timeline_beats[0].timestamp",
+                "code": "invalid_or_future_timestamp"
+              },
+              {
+                "path": "timeline_beats[1].timestamp",
+                "code": "invalid_or_future_timestamp"
+              }
+            ],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Blair",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "en-launch-plan-final",
+          "stage": "postprocessed",
+          "payload_sha256": "c2e1ecb32334fd0eab9013fbc95695542609a2483612e6de4137b051affb8919",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Blair",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "33880e5f5d1e4ffb35706f28365e70a6c713e970327d05fcf66651c7724194c9"
+    },
+    {
+      "id": "mixed-design-review-final",
+      "index": 2,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 927,
+      "formatted_prompt_ids_sha256": "9f626397c2240fdc53f90af03dace5b33af97c65471b538b135563d30278cbad",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 934,
+      "library_prompt_tokens": 927,
+      "library_prompt_tps": 927.4740551825734,
+      "library_generation_tps": 109.67195213950274,
+      "mlx_peak_memory_gb": 2.203185556,
+      "truncated": false,
+      "first_token_wall_s": 1.15845166699728,
+      "first_text_wall_s": 1.15845166699728,
+      "generation_wall_s": 9.69054125000548,
+      "complete_package_available_wall_s": 9.709647833995405,
+      "request_wall_s": 9.711316083994461,
+      "transcript_sha256": "0a79f613a1c334965f8646213f8dabc8ec78279bb3f07da232151f476b8c7b43",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"Aurora onboarding flow review\",\n    \"overview\": \"本次会议主要讨论虚构的 Aurora 用户注册流程，重点在于本地优先路径的决策与后续原型更新安排。\",\n    \"topics\": [\n      \"Aurora 用户注册流程\",\n      \"本地优先路径决策\",\n      \"原型更新计划\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"今天 review 虚构的 Aurora onboarding flow.\",\n      \"reason\": \"明确当前讨论对象为虚构的 Aurora 用户注册流程，为后续分析提供基础背景。\",\n      \"speaker\": \"A\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 3900\n      }\n    },\n    {\n      \"quote\": \"Decision: keep the local-first path，避免上传测试文本。\",\n      \"reason\": \"建议采用本地优先路径，同时明确避免上传测试文本，确保流程的准确性与安全性。\",\n      \"speaker\": \"B\",\n      \"evidence_span\": {\n        \"start_ms\": 4300,\n        \"end_ms\": 8700\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"A\",\n      \"viewpoints\": [\n        \"关注虚构的 Aurora 用户注册流程\",\n        \"后续安排下一次 review\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 3900\n        },\n        {\n          \"start_ms\": 9200,\n          \"end_ms\": 13600\n        }\n      ]\n    },\n    {\n      \"speaker\": \"B\",\n      \"viewpoints\": [\n        \"建议采用本地优先路径\",\n        \"避免上传测试文本\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 4300,\n          \"end_ms\": 8700\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"如何优化 Aurora 用户注册流程？\",\n      \"options\": [\n        \"采用本地优先路径\",\n        \"上传测试文本\"\n      ],\n      \"decision\": \"采用本地优先路径\",\n      \"rationale\": \"建议采用本地优先路径，同时明确避免上传测试文本，以确保流程的准确性与安全性。\",\n      \"owner\": \"B\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 4300,\n        \"end_ms\": 8700\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"更新原型\",\n      \"owner\": \"B\",\n      \"due_at\": \"Friday\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 9200,\n        \"end_ms\": 13600\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"开始\",\n      \"summary\": \"会议开始，进入 Aurora 用户注册流程的讨论。\"\n    },\n    {\n      \"timestamp\": \"00:06\",\n      \"title\": \"流程介绍\",\n      \"summary\": \"介绍虚构的 Aurora 用户注册流程。\"\n    },\n    {\n      \"timestamp\": \"00:06\",\n      \"title\": \"决策制定\",\n      \"summary\": \"B 提出采用本地优先路径，避免上传测试文本。\"\n    },\n    {\n      \"timestamp\": \"00:08\",\n      \"title\": \"后续安排\",\n      \"summary\": \"安排下一次 review。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "c3d12b0916b0ce3a2593d140e98260c81838ee36eb331d5d8d6be502889e8a50",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "Aurora onboarding flow review",
+            "overview": "本次会议主要讨论虚构的 Aurora 用户注册流程，重点在于本地优先路径的决策与后续原型更新安排。",
+            "topics": [
+              "Aurora 用户注册流程",
+              "本地优先路径决策",
+              "原型更新计划"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "今天 review 虚构的 Aurora onboarding flow.",
+              "reason": "明确当前讨论对象为虚构的 Aurora 用户注册流程，为后续分析提供基础背景。",
+              "speaker": "A",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 3900
+              }
+            },
+            {
+              "quote": "Decision: keep the local-first path，避免上传测试文本。",
+              "reason": "建议采用本地优先路径，同时明确避免上传测试文本，确保流程的准确性与安全性。",
+              "speaker": "B",
+              "evidence_span": {
+                "start_ms": 4300,
+                "end_ms": 8700
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "A",
+              "viewpoints": [
+                "关注虚构的 Aurora 用户注册流程",
+                "后续安排下一次 review"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3900
+                },
+                {
+                  "start_ms": 9200,
+                  "end_ms": 13600
+                }
+              ]
+            },
+            {
+              "speaker": "B",
+              "viewpoints": [
+                "建议采用本地优先路径",
+                "避免上传测试文本"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4300,
+                  "end_ms": 8700
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何优化 Aurora 用户注册流程？",
+              "options": [
+                "采用本地优先路径",
+                "上传测试文本"
+              ],
+              "decision": "采用本地优先路径",
+              "rationale": "建议采用本地优先路径，同时明确避免上传测试文本，以确保流程的准确性与安全性。",
+              "owner": "B",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4300,
+                "end_ms": 8700
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "更新原型",
+              "owner": "B",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9200,
+                "end_ms": 13600
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "开始",
+              "summary": "会议开始，进入 Aurora 用户注册流程的讨论。"
+            },
+            {
+              "timestamp": "00:06",
+              "title": "流程介绍",
+              "summary": "介绍虚构的 Aurora 用户注册流程。"
+            },
+            {
+              "timestamp": "00:06",
+              "title": "决策制定",
+              "summary": "B 提出采用本地优先路径，避免上传测试文本。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "后续安排",
+              "summary": "安排下一次 review。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "Aurora onboarding flow review",
+            "overview": "本次会议主要讨论虚构的 Aurora 用户注册流程，重点在于本地优先路径的决策与后续原型更新安排。",
+            "topics": [
+              "Aurora 用户注册流程",
+              "本地优先路径决策",
+              "原型更新计划"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "今天 review 虚构的 Aurora onboarding flow.",
+              "reason": "明确当前讨论对象为虚构的 Aurora 用户注册流程，为后续分析提供基础背景。",
+              "speaker": "A",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 3900
+              }
+            },
+            {
+              "quote": "Decision: keep the local-first path，避免上传测试文本。",
+              "reason": "建议采用本地优先路径，同时明确避免上传测试文本，确保流程的准确性与安全性。",
+              "speaker": "B",
+              "evidence_span": {
+                "start_ms": 4300,
+                "end_ms": 8700
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "A",
+              "viewpoints": [
+                "关注虚构的 Aurora 用户注册流程",
+                "后续安排下一次 review"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3900
+                },
+                {
+                  "start_ms": 9200,
+                  "end_ms": 13600
+                }
+              ]
+            },
+            {
+              "speaker": "B",
+              "viewpoints": [
+                "建议采用本地优先路径",
+                "避免上传测试文本"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4300,
+                  "end_ms": 8700
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何优化 Aurora 用户注册流程？",
+              "options": [
+                "采用本地优先路径",
+                "上传测试文本"
+              ],
+              "decision": "采用本地优先路径",
+              "rationale": "建议采用本地优先路径，同时明确避免上传测试文本，以确保流程的准确性与安全性。",
+              "owner": "B",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4300,
+                "end_ms": 8700
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "更新原型",
+              "owner": "B",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9200,
+                "end_ms": 13600
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "开始",
+              "summary": "会议开始，进入 Aurora 用户注册流程的讨论。"
+            },
+            {
+              "timestamp": "00:06",
+              "title": "流程介绍",
+              "summary": "介绍虚构的 Aurora 用户注册流程。"
+            },
+            {
+              "timestamp": "00:06",
+              "title": "决策制定",
+              "summary": "B 提出采用本地优先路径，避免上传测试文本。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "后续安排",
+              "summary": "安排下一次 review。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.017121750002843328
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "mixed-design-review-final",
+          "stage": "raw",
+          "payload_sha256": "8c0f197311ffe3dc545efac524c57a60116ce343e912e46c609ca5c2c8929136",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "B",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "mixed-design-review-final",
+          "stage": "postprocessed",
+          "payload_sha256": "8c0f197311ffe3dc545efac524c57a60116ce343e912e46c609ca5c2c8929136",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "B",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "7c37a74adce109401b6ca838e12d0b47d82e068eb5a8c757cadcb4648ebacf6a"
+    },
+    {
+      "id": "insufficient-transcript-final",
+      "index": 3,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 838,
+      "formatted_prompt_ids_sha256": "1a6386d9b3db36dac2a19eec15114989e0af036f7c197b0294f6513e34f743f7",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 558,
+      "library_prompt_tokens": 838,
+      "library_prompt_tps": 893.1859398907841,
+      "library_generation_tps": 109.99263093743642,
+      "mlx_peak_memory_gb": 2.104832406,
+      "truncated": false,
+      "first_token_wall_s": 1.1049487919954117,
+      "first_text_wall_s": 1.1049487919954117,
+      "generation_wall_s": 6.196436208003433,
+      "complete_package_available_wall_s": 6.217561666999245,
+      "request_wall_s": 6.218796832996304,
+      "transcript_sha256": "d167615df349a84982d3665c3532d495791fbb8d4522741d5128b68ba4bc57b5",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"全量会议转写 - 初始片段\",\n    \"overview\": \"该片段为合成录音中的简短声音检查，内容简短且非正式。\",\n    \"topics\": [\n      \"声音检查\",\n      \"合成录音\",\n      \"初始片段\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"This synthetic recording contains only a brief sound check.\",\n      \"reason\": \"明确标识为合成录音中的简短声音检查，适用于测试或调试阶段。\",\n      \"speaker\": \"Narrator\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 1200\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Narrator\",\n      \"viewpoints\": [\n        \"该录音为合成录音\",\n        \"仅包含简短声音检查\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 1200\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"如何评估录音质量？\",\n      \"options\": [\n        \"仅作为测试用\",\n        \"作为正式录音存档\"\n      ],\n      \"decision\": \"仅作为测试用\",\n      \"rationale\": \"录音内容简短且为合成录音，不适合作为正式录音存档。\",\n      \"owner\": \"系统自动\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 1200\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"生成完整定稿\",\n      \"owner\": \"系统自动\",\n      \"due_at\": \"\",\n      \"priority\": \"low\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 1200\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"开始\",\n      \"summary\": \"录音开始\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "0e374752badbac9816286f1d021f098fd06f860481fa01eba08b3e64d5bac32b",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "全量会议转写 - 初始片段",
+            "overview": "该片段为合成录音中的简短声音检查，内容简短且非正式。",
+            "topics": [
+              "声音检查",
+              "合成录音",
+              "初始片段"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "This synthetic recording contains only a brief sound check.",
+              "reason": "明确标识为合成录音中的简短声音检查，适用于测试或调试阶段。",
+              "speaker": "Narrator",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Narrator",
+              "viewpoints": [
+                "该录音为合成录音",
+                "仅包含简短声音检查"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 1200
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何评估录音质量？",
+              "options": [
+                "仅作为测试用",
+                "作为正式录音存档"
+              ],
+              "decision": "仅作为测试用",
+              "rationale": "录音内容简短且为合成录音，不适合作为正式录音存档。",
+              "owner": "系统自动",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "生成完整定稿",
+              "owner": "系统自动",
+              "due_at": "",
+              "priority": "low",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "开始",
+              "summary": "录音开始"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "全量会议转写 - 初始片段",
+            "overview": "该片段为合成录音中的简短声音检查，内容简短且非正式。",
+            "topics": [
+              "声音检查",
+              "合成录音",
+              "初始片段"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "This synthetic recording contains only a brief sound check.",
+              "reason": "明确标识为合成录音中的简短声音检查，适用于测试或调试阶段。",
+              "speaker": "Narrator",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Narrator",
+              "viewpoints": [
+                "该录音为合成录音",
+                "仅包含简短声音检查"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 1200
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "如何评估录音质量？",
+              "options": [
+                "仅作为测试用",
+                "作为正式录音存档"
+              ],
+              "decision": "仅作为测试用",
+              "rationale": "录音内容简短且为合成录音，不适合作为正式录音存档。",
+              "owner": "系统自动",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "生成完整定稿",
+              "owner": "系统自动",
+              "due_at": "",
+              "priority": "low",
+              "status": "open",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 1200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "开始",
+              "summary": "录音开始"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.018567208011518233
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "insufficient-transcript-final",
+          "stage": "raw",
+          "payload_sha256": "1214e00a87a7e56659c3d9f964c021da215fb467efbc396b55b959abec065c5e",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger",
+                "code": "claims_in_explicitly_empty_module"
+              },
+              {
+                "path": "action_tracks",
+                "code": "claims_in_explicitly_empty_module"
+              },
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "系统自动",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "系统自动",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "insufficient-transcript-final",
+          "stage": "postprocessed",
+          "payload_sha256": "0dd1271a49a317db8eaca3f77a91a4c461bc5b73ed980494500bb1991da63a44",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger",
+                "code": "claims_in_explicitly_empty_module"
+              },
+              {
+                "path": "action_tracks",
+                "code": "claims_in_explicitly_empty_module"
+              },
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "系统自动",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "系统自动",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "bdddfba5b8817e08187fd8de7078e13eb24e98002c48f1d095dabb2eca9feed5"
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-01",
+      "index": 4,
+      "mode": "live",
+      "status": "completed",
+      "formatted_prompt_tokens": 856,
+      "formatted_prompt_ids_sha256": "6ffa89954f749ca1a4895e19765b8e1be7e5bc3e431b2b981c84987f6e472c88",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 762,
+      "library_prompt_tokens": 856,
+      "library_prompt_tps": 915.0277541546003,
+      "library_generation_tps": 109.90478535358588,
+      "mlx_peak_memory_gb": 2.119168404,
+      "truncated": false,
+      "first_token_wall_s": 1.0920920420030598,
+      "first_text_wall_s": 1.0920920420030598,
+      "generation_wall_s": 8.042814750006073,
+      "complete_package_available_wall_s": 8.065253667009529,
+      "request_wall_s": 8.066866875000414,
+      "transcript_sha256": "612cb89d13733dc4bef9509e703e7847ee4d8c879cbe4b06a7cc3861c6894085",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构项目：Harbor Rehearsal 提案\",\n    \"overview\": \"当前会话为虚构的 Harbor rehearsal 项目。Lin 提出将演示文件上传至云端服务，但尚未获得批准。Mei 指出预算和客户均未批准，需整理风险清单，但负责人和截止日期均未定，目前无分派工作。\",\n    \"topics\": [\n      \"项目提案\",\n      \"预算审批\",\n      \"风险清单\",\n      \"截止日期\",\n      \"云端服务部署\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。\",\n      \"reason\": \"Lin 明确提出了将演示文件上传至云端服务的具体时间（下周五）和性质（只是提议），但明确说明尚未获得批准。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 13000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"提出将演示文件上传至云端服务\",\n        \"该提议目前尚未获得批准\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 13000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"预算未批准\",\n        \"客户未同意\",\n        \"需整理风险清单\",\n        \"负责人和截止日期均未定\",\n        \"目前无分派工作\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"项目演示文件部署\",\n      \"options\": [\n        \"上传至云端服务\",\n        \"等待客户批准\"\n      ],\n      \"decision\": \"待定\",\n      \"rationale\": \"Lin 提出上传至云端服务，但明确该提议尚未获得批准。\",\n      \"owner\": \"待定\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 13000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"整理风险清单\",\n      \"owner\": \"待定\",\n      \"due_at\": \"\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00:00\",\n      \"title\": \"项目启动\",\n      \"summary\": \"Lin 提出将演示文件上传至云端服务，但尚未获得批准。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "81de59e37381471e684bee8fc74616e60ce1c38113fa4e636fa34a84a972de02",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "虚构项目：Harbor Rehearsal 提案",
+            "overview": "当前会话为虚构的 Harbor rehearsal 项目。Lin 提出将演示文件上传至云端服务，但尚未获得批准。Mei 指出预算和客户均未批准，需整理风险清单，但负责人和截止日期均未定，目前无分派工作。",
+            "topics": [
+              "项目提案",
+              "预算审批",
+              "风险清单",
+              "截止日期",
+              "云端服务部署"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。",
+              "reason": "Lin 明确提出了将演示文件上传至云端服务的具体时间（下周五）和性质（只是提议），但明确说明尚未获得批准。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "提出将演示文件上传至云端服务",
+                "该提议目前尚未获得批准"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 13000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "预算未批准",
+                "客户未同意",
+                "需整理风险清单",
+                "负责人和截止日期均未定",
+                "目前无分派工作"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "项目演示文件部署",
+              "options": [
+                "上传至云端服务",
+                "等待客户批准"
+              ],
+              "decision": "待定",
+              "rationale": "Lin 提出上传至云端服务，但明确该提议尚未获得批准。",
+              "owner": "待定",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "整理风险清单",
+              "owner": "待定",
+              "due_at": "",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 14000,
+                "end_ms": 28000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00:00",
+              "title": "项目启动",
+              "summary": "Lin 提出将演示文件上传至云端服务，但尚未获得批准。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "虚构项目：Harbor Rehearsal 提案",
+            "overview": "当前会话为虚构的 Harbor rehearsal 项目。Lin 提出将演示文件上传至云端服务，但尚未获得批准。Mei 指出预算和客户均未批准，需整理风险清单，但负责人和截止日期均未定，目前无分派工作。",
+            "topics": [
+              "项目提案",
+              "预算审批",
+              "风险清单",
+              "截止日期",
+              "云端服务部署"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。",
+              "reason": "Lin 明确提出了将演示文件上传至云端服务的具体时间（下周五）和性质（只是提议），但明确说明尚未获得批准。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "提出将演示文件上传至云端服务",
+                "该提议目前尚未获得批准"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 13000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "预算未批准",
+                "客户未同意",
+                "需整理风险清单",
+                "负责人和截止日期均未定",
+                "目前无分派工作"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "项目演示文件部署",
+              "options": [
+                "上传至云端服务",
+                "等待客户批准"
+              ],
+              "decision": "待定",
+              "rationale": "Lin 提出上传至云端服务，但明确该提议尚未获得批准。",
+              "owner": "待定",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "整理风险清单",
+              "owner": "待定",
+              "due_at": "",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 14000,
+                "end_ms": 28000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00:00",
+              "title": "项目启动",
+              "summary": "Lin 提出将演示文件上传至云端服务，但尚未获得批准。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.019018958002561703
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-prefix-01",
+          "stage": "raw",
+          "payload_sha256": "39516ea708cab344990fd4ec4e3d6d2d8a907caccfe3e8e4df75caf7d366d1f0",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger",
+                "code": "claims_in_explicitly_empty_module"
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-prefix-01",
+          "stage": "postprocessed",
+          "payload_sha256": "39516ea708cab344990fd4ec4e3d6d2d8a907caccfe3e8e4df75caf7d366d1f0",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger",
+                "code": "claims_in_explicitly_empty_module"
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "d51fcc628135385638e6b03fe5ec173d987c62c089f2fbbfddfb8e918ae30369"
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-02",
+      "index": 5,
+      "mode": "live",
+      "status": "completed",
+      "formatted_prompt_tokens": 974,
+      "formatted_prompt_ids_sha256": "5e078ef81e94c17b58414244f3c851ca0c1504b9312a5b54eaf92914bb8e128b",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 1036,
+      "library_prompt_tokens": 974,
+      "library_prompt_tps": 918.0348010248903,
+      "library_generation_tps": 109.16866925591921,
+      "mlx_peak_memory_gb": 2.261840276,
+      "truncated": false,
+      "first_token_wall_s": 1.225301500002388,
+      "first_text_wall_s": 1.225301500002388,
+      "generation_wall_s": 10.73024424999312,
+      "complete_package_available_wall_s": 10.75287991699588,
+      "request_wall_s": 10.755095457992866,
+      "transcript_sha256": "a508eed6e40081972f8370b35e1d5dae13ff7bf07a6e5768d42a2c0b1eec4882",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构项目演示与风险沟通\",\n    \"overview\": \"Lin 提出上传演示文件至云端服务，但尚未获批。Mei 跟进预算和客户同意情况，指出风险清单的负责人和截止日期均未确定。Lin 决定采用 offline-only demo 方案，Mei 负责完成 demo checklist。\",\n    \"topics\": [\n      \"演示文件上传\",\n      \"预算审批\",\n      \"风险清单\",\n      \"截止日期\",\n      \"负责人分配\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。\",\n      \"reason\": \"提出云端上传方案，但明确标注为提议状态，未获批准。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 13000\n      }\n    },\n    {\n      \"quote\": \"决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。\",\n      \"reason\": \"基于数据真实性考虑，决定采用离线演示方案。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"提出云端上传方案\",\n        \"决定采用 offline-only demo 方案\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 13000\n        },\n        {\n          \"start_ms\": 30000,\n          \"end_ms\": 46000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"跟进预算审批\",\n        \"负责完成 demo checklist\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        },\n        {\n          \"start_ms\": 47000,\n          \"end_ms\": 64000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"演示文件上传方案\",\n      \"options\": [\n        \"上传至云端服务\",\n        \"不上传任何测试文本\"\n      ],\n      \"decision\": \"采用 offline-only demo 方案\",\n      \"rationale\": \"Lin 决定采用 offline-only demo 方案，不上传任何测试文本，因为这些是假数据。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成 demo checklist\",\n      \"owner\": \"Mei\",\n      \"due_at\": \"Friday\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 47000,\n        \"end_ms\": 64000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:05\",\n      \"title\": \"提出云端上传方案\",\n      \"summary\": \"Lin 提出上传演示文件至云端服务，但尚未获批。\"\n    },\n    {\n      \"timestamp\": \"00:10\",\n      \"title\": \"跟进预算审批\",\n      \"summary\": \"Mei 跟进预算和客户同意情况。\"\n    },\n    {\n      \"timestamp\": \"00:15\",\n      \"title\": \"决定采用 offline-only demo 方案\",\n      \"summary\": \"Lin 决定采用 offline-only demo 方案，不上传任何测试文本。\"\n    },\n    {\n      \"timestamp\": \"00:20\",\n      \"title\": \"风险清单待分配\",\n      \"summary\": \"Mei 负责完成 demo checklist，但风险清单的负责人和截止日期均未确定。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "8e4d0af227c0618f9f4222f969947edcf77bf1b8cfcb0800c3ab73abbe9bbc61",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "虚构项目演示与风险沟通",
+            "overview": "Lin 提出上传演示文件至云端服务，但尚未获批。Mei 跟进预算和客户同意情况，指出风险清单的负责人和截止日期均未确定。Lin 决定采用 offline-only demo 方案，Mei 负责完成 demo checklist。",
+            "topics": [
+              "演示文件上传",
+              "预算审批",
+              "风险清单",
+              "截止日期",
+              "负责人分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。",
+              "reason": "提出云端上传方案，但明确标注为提议状态，未获批准。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            },
+            {
+              "quote": "决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。",
+              "reason": "基于数据真实性考虑，决定采用离线演示方案。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "提出云端上传方案",
+                "决定采用 offline-only demo 方案"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 13000
+                },
+                {
+                  "start_ms": 30000,
+                  "end_ms": 46000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "跟进预算审批",
+                "负责完成 demo checklist"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                },
+                {
+                  "start_ms": 47000,
+                  "end_ms": 64000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "演示文件上传方案",
+              "options": [
+                "上传至云端服务",
+                "不上传任何测试文本"
+              ],
+              "decision": "采用 offline-only demo 方案",
+              "rationale": "Lin 决定采用 offline-only demo 方案，不上传任何测试文本，因为这些是假数据。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成 demo checklist",
+              "owner": "Mei",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 47000,
+                "end_ms": 64000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:05",
+              "title": "提出云端上传方案",
+              "summary": "Lin 提出上传演示文件至云端服务，但尚未获批。"
+            },
+            {
+              "timestamp": "00:10",
+              "title": "跟进预算审批",
+              "summary": "Mei 跟进预算和客户同意情况。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "决定采用 offline-only demo 方案",
+              "summary": "Lin 决定采用 offline-only demo 方案，不上传任何测试文本。"
+            },
+            {
+              "timestamp": "00:20",
+              "title": "风险清单待分配",
+              "summary": "Mei 负责完成 demo checklist，但风险清单的负责人和截止日期均未确定。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "虚构项目演示与风险沟通",
+            "overview": "Lin 提出上传演示文件至云端服务，但尚未获批。Mei 跟进预算和客户同意情况，指出风险清单的负责人和截止日期均未确定。Lin 决定采用 offline-only demo 方案，Mei 负责完成 demo checklist。",
+            "topics": [
+              "演示文件上传",
+              "预算审批",
+              "风险清单",
+              "截止日期",
+              "负责人分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。",
+              "reason": "提出云端上传方案，但明确标注为提议状态，未获批准。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 0,
+                "end_ms": 13000
+              }
+            },
+            {
+              "quote": "决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。",
+              "reason": "基于数据真实性考虑，决定采用离线演示方案。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "提出云端上传方案",
+                "决定采用 offline-only demo 方案"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 13000
+                },
+                {
+                  "start_ms": 30000,
+                  "end_ms": 46000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "跟进预算审批",
+                "负责完成 demo checklist"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                },
+                {
+                  "start_ms": 47000,
+                  "end_ms": 64000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "演示文件上传方案",
+              "options": [
+                "上传至云端服务",
+                "不上传任何测试文本"
+              ],
+              "decision": "采用 offline-only demo 方案",
+              "rationale": "Lin 决定采用 offline-only demo 方案，不上传任何测试文本，因为这些是假数据。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成 demo checklist",
+              "owner": "Mei",
+              "due_at": "Friday",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 47000,
+                "end_ms": 64000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:05",
+              "title": "提出云端上传方案",
+              "summary": "Lin 提出上传演示文件至云端服务，但尚未获批。"
+            },
+            {
+              "timestamp": "00:10",
+              "title": "跟进预算审批",
+              "summary": "Mei 跟进预算和客户同意情况。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "决定采用 offline-only demo 方案",
+              "summary": "Lin 决定采用 offline-only demo 方案，不上传任何测试文本。"
+            },
+            {
+              "timestamp": "00:20",
+              "title": "风险清单待分配",
+              "summary": "Mei 负责完成 demo checklist，但风险清单的负责人和截止日期均未确定。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.019027582995477132
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-prefix-02",
+          "stage": "raw",
+          "payload_sha256": "656f753eb9916592007bb657af992bf973af006ea3b2bd4c9cd948c4bf6ee8ac",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-prefix-02",
+          "stage": "postprocessed",
+          "payload_sha256": "656f753eb9916592007bb657af992bf973af006ea3b2bd4c9cd948c4bf6ee8ac",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "cfc47183ed647f1f1482ff172edc0ac6036183298bf414690f69faed1f6ebb41"
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-03",
+      "index": 6,
+      "mode": "live",
+      "status": "completed",
+      "formatted_prompt_tokens": 1111,
+      "formatted_prompt_ids_sha256": "f8439ff22ce116aaffd2f10640dc2b99b56edd290a0cf42a1b7640e3e949bd7d",
+      "finish_reason": "length",
+      "generation_tokens_including_stop": 1536,
+      "library_prompt_tokens": 1111,
+      "library_prompt_tps": 931.4510504468061,
+      "library_generation_tps": 108.88154989913801,
+      "mlx_peak_memory_gb": 2.223334432,
+      "truncated": true,
+      "first_token_wall_s": 1.3502169580024201,
+      "first_text_wall_s": 1.3502169580024201,
+      "generation_wall_s": 15.47229333400901,
+      "request_wall_s": 15.476910791010596,
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构项目演示与风险确认\",\n    \"overview\": \"在虚构的 Harbor 演示环境中，Lin 和 Mei 就云端上传、风险清单及截止日期等关键事项进行了多轮讨论。Lin 最初提议上传演示，随后决定采用离线模式，并逐步将责任从 Mei 转移至 Ren。整体流程涉及多个时间节点和决策变更。\",\n    \"topics\": [\n      \"演示上传\",\n      \"风险清单\",\n      \"截止日期\",\n      \"责任转移\",\n      \"数据真实性\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"I propose uploading the demo to a cloud service next Friday；这只是提议，还没有获批。\",\n      \"reason\": \"首次提出云端上传方案，但明确标注为提议而非获批，存在决策不确定性。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 0,\n        \"end_ms\": 13000\n      }\n    },\n    {\n      \"quote\": \"决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。\",\n      \"reason\": \"基于数据真实性考虑，决定放弃云端上传，转向离线演示模式。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"quote\": \"Correction: checklist 不再由 Mei 负责，改由 Ren 负责。截止从 Friday 改到 Monday。\",\n      \"reason\": \"关键责任人变更及截止日期调整，从 Friday 改为 Monday。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"最初提议云端上传演示\",\n        \"决定采用离线-only 演示模式\",\n        \"后续修正责任分配给 Ren\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 13000\n        },\n        {\n          \"start_ms\": 30000,\n          \"end_ms\": 46000\n        },\n        {\n          \"start_ms\": 68000,\n          \"end_ms\": 88000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"最初负责 demo checklist\",\n        \"后续确认责任转移给 Ren\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        },\n        {\n          \"start_ms\": 47000,\n          \"end_ms\": 64000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Ren\",\n      \"viewpoints\": [\n        \"最终确认由自己负责 demo checklist\",\n        \"确认截止日期为 Monday\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 89000,\n          \"end_ms\": 110000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"演示方式选择\",\n      \"options\": [\n        \"云端上传演示\",\n        \"离线-only 演示\"\n      ],\n      \"decision\": \"采用离线-only 演示\",\n      \"rationale\": \"Lin 决定采用离线-only 演示，不上传任何测试文本，因为这些是假数据。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"problem\": \"演示上传\",\n      \"options\": [\n        \"云端上传演示\",\n        \"不上传任何测试文本\"\n      ],\n      \"decision\": \"不上传任何测试文本\",\n      \"rationale\": \"Lin 决定采用离线-only 演示，不上传任何测试文本，因为这些是假数据。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"problem\": \"责任人分配\",\n      \"options\": [\n        \"由 Mei 负责\",\n        \"由 Ren 负责\"\n      ],\n      \"decision\": \"由 Ren 负责\",\n      \"rationale\": \"Correction: checklist 不再由 Mei 负责，改由 Ren 负责。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"problem\": \"截止日期\",\n      \"options\": [\n        \"Friday\",\n        \"Monday\"\n      ],\n      \"decision\": \"Monday\",\n      \"rationale\": \"截止从 Friday 改到 Monday。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成 demo checklist\",\n      \"owner\": \"Ren\",\n      \"due_at\": \"2024-01-01\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 89000,\n        \"end_ms\": 110000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:05\",\n      \"title\": \"Lin 提出云端上传\",\n      \"summary\": \"Lin 提议将演示上传至云端服务，但注明尚未获批。\"\n    },\n    {\n      \"timestamp\": \"00:10\",\n      \"title\": \"Lin 决定采用离线演示\",\n      \"summary\": \"Lin 决定采用 offline-only 演示，不上传",
+      "raw_text_sha256": "9f03a36588befaef4ccffbf25eef502bbab405035c88751f482581c4a9fb857c",
+      "pipeline": {
+        "raw_payload": null,
+        "postprocessed_payload": null,
+        "raw_schema_valid": false,
+        "strict_pipeline_status": "failed",
+        "error": {
+          "type": "JSONDecodeError",
+          "message": "Unterminated string starting at: line 181 column 18 (char 3894)"
+        },
+        "pipeline_wall_s": 0.0001266250037588179
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-prefix-03",
+          "stage": "raw",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-prefix-03",
+          "stage": "postprocessed",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "e359d2a211ee102adfda23e7aae6663ea6ef092b1dabb7fd383e23a47e5fb006"
+    },
+    {
+      "id": "bilingual-plan-correction-final",
+      "index": 7,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 1169,
+      "formatted_prompt_ids_sha256": "d2ad80a298712e5c5d11f9975666144a6c126cab505016db5a243e4eaa09fbca",
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 1518,
+      "library_prompt_tokens": 1169,
+      "library_prompt_tps": 799.0954294498852,
+      "library_generation_tps": 108.97511373273933,
+      "mlx_peak_memory_gb": 2.23489265,
+      "truncated": false,
+      "first_token_wall_s": 1.6192738329991698,
+      "first_text_wall_s": 1.6192738329991698,
+      "generation_wall_s": 15.567341707996093,
+      "complete_package_available_wall_s": 15.58997274999274,
+      "request_wall_s": 15.593243124996661,
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构项目演示与风险清单会议\",\n    \"overview\": \"会议讨论了演示数据的上传方式、预算审批、风险清单的责任分配及截止日期等关键问题。Lin 和 Mei 分别负责演示和清单工作，Ren 接手清单责任，但整体进度和审批状态仍待明确。\",\n    \"topics\": [\n      \"演示数据上传方式\",\n      \"预算审批流程\",\n      \"风险清单责任分配\",\n      \"截止日期确认\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。\",\n      \"reason\": \"Lin 提出采用离线演示方案，避免使用假数据，符合项目实际要求。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"quote\": \"Correction: checklist 不再由 Mei 负责，改由 Ren 负责。截止从 Friday 改到 Monday。\",\n      \"reason\": \"Lin 确认风险清单责任转移给 Ren，并调整截止日期为周一。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"quote\": \"Confirmed, I own the demo checklist and will finish it by Monday. 我们没有批准云端上传，也没有决定正式上线。\",\n      \"reason\": \"Ren 确认接手清单工作，但云端上传和正式上线均未获得批准或决定。\",\n      \"speaker\": \"Ren\",\n      \"evidence_span\": {\n        \"start_ms\": 89000,\n        \"end_ms\": 110000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"采用离线演示方案\",\n        \"风险清单责任转移给 Ren\",\n        \"截止日期调整为周一\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 30000,\n          \"end_ms\": 46000\n        },\n        {\n          \"start_ms\": 68000,\n          \"end_ms\": 88000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"负责完成 demo checklist\",\n        \"review meeting 的日期还没确定\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        },\n        {\n          \"start_ms\": 47000,\n          \"end_ms\": 64000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"演示数据上传方式未定\",\n      \"options\": [\n        \"云端上传\",\n        \"offline-only demo\"\n      ],\n      \"decision\": \"offline-only demo\",\n      \"rationale\": \"Lin 提出采用离线演示方案，避免使用假数据。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"problem\": \"风险清单责任分配未定\",\n      \"options\": [\n        \"由 Mei 负责\",\n        \"由 Ren 负责\"\n      ],\n      \"decision\": \"由 Ren 负责\",\n      \"rationale\": \"Lin 确认责任转移给 Ren。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"problem\": \"演示正式上线日期未定\",\n      \"options\": [\n        \"立即上线\",\n        \"等待审批后上线\"\n      ],\n      \"decision\": \"等待审批后上线\",\n      \"rationale\": \"Ren 确认云端上传和正式上线均未获得批准或决定。\",\n      \"owner\": \"Ren\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 89000,\n        \"end_ms\": 110000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成 demo checklist\",\n      \"owner\": \"Ren\",\n      \"due_at\": \"2024-01-01\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 47000,\n        \"end_ms\": 64000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:05\",\n      \"title\": \"Lin 提出演示方案\",\n      \"summary\": \"Lin 提议采用云端上传，但尚未获批。\"\n    },\n    {\n      \"timestamp\": \"00:10\",\n      \"title\": \"Mei 提出风险清单问题\",\n      \"summary\": \"预算未批准，客户未同意，风险清单责任未定。\"\n    },\n    {\n      \"timestamp\": \"00:15\",\n      \"title\": \"Lin 决定采用离线演示\",\n      \"summary\": \"Lin 决定采用 offline-only demo，不上传假数据。\"\n    },\n    {\n      \"timestamp\": \"00:20\",\n      \"title\": \"Mei 确认清单工作\",\n      \"summary\": \"Mei 接下 demo checklist，但 review meeting 日期未定。\"\n    },\n    {\n      \"timestamp\": \"00:25\",\n      \"title\": \"Ren 接手清单责任\",\n      \"summary\": \"Lin 确认风险清单责任转移给 Ren，截止日期调整为周一。\"\n    },\n    {\n      \"timestamp\": \"00:30\",\n      \"title\": \"Ren 确认上线方案\",\n      \"summary\": \"Ren 确认云端上传和正式上线均未获得批准或决定。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "704e4558cf2ce0a39f225a69647d3b6c217caadd3733604293a0b417246fe654",
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "虚构项目演示与风险清单会议",
+            "overview": "会议讨论了演示数据的上传方式、预算审批、风险清单的责任分配及截止日期等关键问题。Lin 和 Mei 分别负责演示和清单工作，Ren 接手清单责任，但整体进度和审批状态仍待明确。",
+            "topics": [
+              "演示数据上传方式",
+              "预算审批流程",
+              "风险清单责任分配",
+              "截止日期确认"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。",
+              "reason": "Lin 提出采用离线演示方案，避免使用假数据，符合项目实际要求。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            },
+            {
+              "quote": "Correction: checklist 不再由 Mei 负责，改由 Ren 负责。截止从 Friday 改到 Monday。",
+              "reason": "Lin 确认风险清单责任转移给 Ren，并调整截止日期为周一。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 68000,
+                "end_ms": 88000
+              }
+            },
+            {
+              "quote": "Confirmed, I own the demo checklist and will finish it by Monday. 我们没有批准云端上传，也没有决定正式上线。",
+              "reason": "Ren 确认接手清单工作，但云端上传和正式上线均未获得批准或决定。",
+              "speaker": "Ren",
+              "evidence_span": {
+                "start_ms": 89000,
+                "end_ms": 110000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "采用离线演示方案",
+                "风险清单责任转移给 Ren",
+                "截止日期调整为周一"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 30000,
+                  "end_ms": 46000
+                },
+                {
+                  "start_ms": 68000,
+                  "end_ms": 88000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "负责完成 demo checklist",
+                "review meeting 的日期还没确定"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                },
+                {
+                  "start_ms": 47000,
+                  "end_ms": 64000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "演示数据上传方式未定",
+              "options": [
+                "云端上传",
+                "offline-only demo"
+              ],
+              "decision": "offline-only demo",
+              "rationale": "Lin 提出采用离线演示方案，避免使用假数据。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            },
+            {
+              "problem": "风险清单责任分配未定",
+              "options": [
+                "由 Mei 负责",
+                "由 Ren 负责"
+              ],
+              "decision": "由 Ren 负责",
+              "rationale": "Lin 确认责任转移给 Ren。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 68000,
+                "end_ms": 88000
+              }
+            },
+            {
+              "problem": "演示正式上线日期未定",
+              "options": [
+                "立即上线",
+                "等待审批后上线"
+              ],
+              "decision": "等待审批后上线",
+              "rationale": "Ren 确认云端上传和正式上线均未获得批准或决定。",
+              "owner": "Ren",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 89000,
+                "end_ms": 110000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成 demo checklist",
+              "owner": "Ren",
+              "due_at": "2024-01-01",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 47000,
+                "end_ms": 64000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:05",
+              "title": "Lin 提出演示方案",
+              "summary": "Lin 提议采用云端上传，但尚未获批。"
+            },
+            {
+              "timestamp": "00:10",
+              "title": "Mei 提出风险清单问题",
+              "summary": "预算未批准，客户未同意，风险清单责任未定。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "Lin 决定采用离线演示",
+              "summary": "Lin 决定采用 offline-only demo，不上传假数据。"
+            },
+            {
+              "timestamp": "00:20",
+              "title": "Mei 确认清单工作",
+              "summary": "Mei 接下 demo checklist，但 review meeting 日期未定。"
+            },
+            {
+              "timestamp": "00:25",
+              "title": "Ren 接手清单责任",
+              "summary": "Lin 确认风险清单责任转移给 Ren，截止日期调整为周一。"
+            },
+            {
+              "timestamp": "00:30",
+              "title": "Ren 确认上线方案",
+              "summary": "Ren 确认云端上传和正式上线均未获得批准或决定。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "虚构项目演示与风险清单会议",
+            "overview": "会议讨论了演示数据的上传方式、预算审批、风险清单的责任分配及截止日期等关键问题。Lin 和 Mei 分别负责演示和清单工作，Ren 接手清单责任，但整体进度和审批状态仍待明确。",
+            "topics": [
+              "演示数据上传方式",
+              "预算审批流程",
+              "风险清单责任分配",
+              "截止日期确认"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。",
+              "reason": "Lin 提出采用离线演示方案，避免使用假数据，符合项目实际要求。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            },
+            {
+              "quote": "Correction: checklist 不再由 Mei 负责，改由 Ren 负责。截止从 Friday 改到 Monday。",
+              "reason": "Lin 确认风险清单责任转移给 Ren，并调整截止日期为周一。",
+              "speaker": "Lin",
+              "evidence_span": {
+                "start_ms": 68000,
+                "end_ms": 88000
+              }
+            },
+            {
+              "quote": "Confirmed, I own the demo checklist and will finish it by Monday. 我们没有批准云端上传，也没有决定正式上线。",
+              "reason": "Ren 确认接手清单工作，但云端上传和正式上线均未获得批准或决定。",
+              "speaker": "Ren",
+              "evidence_span": {
+                "start_ms": 89000,
+                "end_ms": 110000
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Lin",
+              "viewpoints": [
+                "采用离线演示方案",
+                "风险清单责任转移给 Ren",
+                "截止日期调整为周一"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 30000,
+                  "end_ms": 46000
+                },
+                {
+                  "start_ms": 68000,
+                  "end_ms": 88000
+                }
+              ]
+            },
+            {
+              "speaker": "Mei",
+              "viewpoints": [
+                "负责完成 demo checklist",
+                "review meeting 的日期还没确定"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 14000,
+                  "end_ms": 28000
+                },
+                {
+                  "start_ms": 47000,
+                  "end_ms": 64000
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "演示数据上传方式未定",
+              "options": [
+                "云端上传",
+                "offline-only demo"
+              ],
+              "decision": "offline-only demo",
+              "rationale": "Lin 提出采用离线演示方案，避免使用假数据。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 30000,
+                "end_ms": 46000
+              }
+            },
+            {
+              "problem": "风险清单责任分配未定",
+              "options": [
+                "由 Mei 负责",
+                "由 Ren 负责"
+              ],
+              "decision": "由 Ren 负责",
+              "rationale": "Lin 确认责任转移给 Ren。",
+              "owner": "Lin",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 68000,
+                "end_ms": 88000
+              }
+            },
+            {
+              "problem": "演示正式上线日期未定",
+              "options": [
+                "立即上线",
+                "等待审批后上线"
+              ],
+              "decision": "等待审批后上线",
+              "rationale": "Ren 确认云端上传和正式上线均未获得批准或决定。",
+              "owner": "Ren",
+              "needs_review": true,
+              "evidence_span": {
+                "start_ms": 89000,
+                "end_ms": 110000
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成 demo checklist",
+              "owner": "Ren",
+              "due_at": "2024-01-01",
+              "priority": "medium",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 47000,
+                "end_ms": 64000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:05",
+              "title": "Lin 提出演示方案",
+              "summary": "Lin 提议采用云端上传，但尚未获批。"
+            },
+            {
+              "timestamp": "00:10",
+              "title": "Mei 提出风险清单问题",
+              "summary": "预算未批准，客户未同意，风险清单责任未定。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "Lin 决定采用离线演示",
+              "summary": "Lin 决定采用 offline-only demo，不上传假数据。"
+            },
+            {
+              "timestamp": "00:20",
+              "title": "Mei 确认清单工作",
+              "summary": "Mei 接下 demo checklist，但 review meeting 日期未定。"
+            },
+            {
+              "timestamp": "00:25",
+              "title": "Ren 接手清单责任",
+              "summary": "Lin 确认风险清单责任转移给 Ren，截止日期调整为周一。"
+            },
+            {
+              "timestamp": "00:30",
+              "title": "Ren 确认上线方案",
+              "summary": "Ren 确认云端上传和正式上线均未获得批准或决定。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.0198415409977315
+      },
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-final",
+          "stage": "raw",
+          "payload_sha256": "be74f2740768b73d0840e6c1def581a080b3d1bce97cfaddd055eb68043c92ca",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "decision_ledger[1].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "decision_ledger[2].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Ren",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].due_at",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "2024-01-01",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配",
+                  "Monday",
+                  "by Monday",
+                  "周一",
+                  "周一前",
+                  "星期一",
+                  "星期一前"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-final",
+          "stage": "postprocessed",
+          "payload_sha256": "be74f2740768b73d0840e6c1def581a080b3d1bce97cfaddd055eb68043c92ca",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "decision_ledger[1].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Lin",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "decision_ledger[2].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Ren",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              },
+              {
+                "path": "action_tracks[0].due_at",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "2024-01-01",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配",
+                  "Monday",
+                  "by Monday",
+                  "周一",
+                  "周一前",
+                  "星期一",
+                  "星期一前"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "93ea680f5421d0a51f61fbad7750a79c9c6faa0dcb6085f0576e019154555bdb"
+    }
+  ],
+  "limits": [
+    "Only frozen synthetic text; no audio, live ASR, diarization or product UI.",
+    "First request follows download/hash/load, not a rebooted-machine cold baseline.",
+    "Token latency is not the time a complete Smart Minutes package can be displayed.",
+    "Structural assessment does not establish semantic fidelity; item review is required."
+  ],
+  "semantic_review": "See semantic-review.json; schema success alone is not semantic success."
+}

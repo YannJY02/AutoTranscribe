@@ -1,0 +1,1270 @@
+{
+  "schema_version": 1,
+  "issue": "YAN-77",
+  "recorded_at": "2026-09-09T07:18:56.794083+00:00",
+  "scope": "Five preregistered synthetic text generations; stage B stopped by rule. Unchanged product prompts, no ASR or product UI.",
+  "baseline_commit": "196dab5009b75e875e8cf8ca7efc7bdf32cac79a",
+  "baseline_public_run_sha256": "9dc4490fe547770e4530ce72c89c20c9f8d670ee8f28cbafdbe5825831a8b47f",
+  "dataset_version": "local-summary-v1",
+  "dataset_sha256": "64618b1d5e4cb7d094ddd3a1a7015465c0c2b30e19b6dba574a294f353f8d280",
+  "selection": {
+    "available_case_count": 8,
+    "selected_case_ids": [
+      "zh-release-decision-final",
+      "en-launch-plan-final",
+      "insufficient-transcript-final",
+      "bilingual-plan-correction-prefix-03",
+      "bilingual-plan-correction-final"
+    ]
+  },
+  "preregistered_contract": {
+    "screen_version": "qwen35-4b-conditional-v1",
+    "issue": "YAN-77",
+    "reason": "The original approved plan says to compare 4B if 2B is insufficient; the preserved 2B screen triggered that condition.",
+    "registered_before_generation": true,
+    "baseline_commit": "196dab5009b75e875e8cf8ca7efc7bdf32cac79a",
+    "baseline_dataset_sha256": "64618b1d5e4cb7d094ddd3a1a7015465c0c2b30e19b6dba574a294f353f8d280",
+    "model_repo": "mlx-community/Qwen3.5-4B-4bit",
+    "model_revision": "0e7ffd5c629ef7719d4cbc04069232580bfa9d9c",
+    "max_total_generations": 8,
+    "max_tokens_per_request": 1536,
+    "request_timeout_s": 120,
+    "load_timeout_s": 120,
+    "temperature": 0.0,
+    "seed": 7,
+    "enable_thinking": false,
+    "same_product_prompts_and_expectations": true,
+    "rerun_2b": false,
+    "retry_or_tune_for_success": false,
+    "stage_a": {
+      "case_ids": [
+        "zh-release-decision-final",
+        "en-launch-plan-final",
+        "insufficient-transcript-final",
+        "bilingual-plan-correction-prefix-03",
+        "bilingual-plan-correction-final"
+      ],
+      "selection_reason": "Cover the observed 2B date/option fabrication, task replacement, sound-check fabrication, live truncation, and checklist/risk-list correction confusion with the smallest five-request screen. Selection is deliberately enriched for failures, not a representative success rate."
+    },
+    "stage_b": {
+      "only_if": "Every stage-A request ends without truncation, passes strict schema validation, and independent item review finds no material fidelity problem. Otherwise all three controls remain not_run_by_stop_rule.",
+      "case_ids": [
+        "mixed-design-review-final",
+        "bilingual-plan-correction-prefix-01",
+        "bilingual-plan-correction-prefix-02"
+      ],
+      "selection_reason": "Only after stage A passes, complete the remaining original controls to check proposal/unknown preservation and the pre-correction assignment before considering a combined resource experiment."
+    },
+    "resource_boundary": "One isolated model process reuses weights within each stage and fresh prompt caches per request. Shared installed-app lock, idle and preservation checks. No concurrent ASR/LS-EEND, production provider or UI changes.",
+    "decision_boundary": "A negative screen stops further summary generations and does not authorize a combined load test. If all eight pass materially, report the evidence and remaining uncertainty before deciding whether a minimal combined-resource test is justified."
+  },
+  "preregistered_contract_file_sha256": "c2770a13d26ab896526920bcbd10a12a1d50ccabccdde9ef93d4106d6dfb6923",
+  "model": {
+    "repo_id": "mlx-community/Qwen3.5-4B-4bit",
+    "revision": "0e7ffd5c629ef7719d4cbc04069232580bfa9d9c",
+    "files": [
+      {
+        "name": ".gitattributes",
+        "bytes": 1570,
+        "sha256": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930"
+      },
+      {
+        "name": "chat_template.jinja",
+        "bytes": 7756,
+        "sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+      },
+      {
+        "name": "config.json",
+        "bytes": 3366,
+        "sha256": "f3efc81b2ea8d96a45301037d3ccccbcccdef44a961845c87f286aaddbc6eaaa"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 3034300695,
+        "sha256": "5fb9acd0246866381cf8c5c354c6db1019f6498eec4ccb4f5edcc71ffeacb2db"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 101944,
+        "sha256": "52e534c41f7b97708329c85f762e5882bf48bd5955a422c6ae74eba321e6048a"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 390,
+        "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+      },
+      {
+        "name": "processor_config.json",
+        "bytes": 1300,
+        "sha256": "14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b"
+      },
+      {
+        "name": "tokenizer.json",
+        "bytes": 19989343,
+        "sha256": "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 1139,
+        "sha256": "e98f1901ac6f0adff67b1d540bfa0c36ac1a0cf59eb72ed78146ef89aafa1182"
+      },
+      {
+        "name": "video_preprocessor_config.json",
+        "bytes": 385,
+        "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 6722759,
+        "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      }
+    ]
+  },
+  "runtime": {
+    "model_load_wall_s": 2.0118087920127437,
+    "packages": {
+      "mlx": "0.32.2",
+      "mlx-lm": "0.31.3",
+      "mlx-metal": "0.32.2",
+      "transformers": "5.16.1",
+      "huggingface-hub": "1.30.0",
+      "jsonschema": "4.26.0"
+    },
+    "python": "3.11.14",
+    "platform": "macOS-27.0-arm64-arm-64bit",
+    "machine": "arm64",
+    "model_class": "mlx_lm.models.qwen3_5.Model",
+    "language_only_loader": true
+  },
+  "generation": {
+    "max_tokens": 1536,
+    "request_timeout_s": 120.0,
+    "load_timeout_s": 120.0,
+    "temperature": 0.0,
+    "seed": 7,
+    "enable_thinking": false,
+    "model_reuse": "one loaded model for every request",
+    "prompt_cache_reuse": false,
+    "previous_generated_summary_in_input": false
+  },
+  "source_files": {
+    "insightkit/prompts/system_instruction.md": "eb0a95aa94fb752afa1930c87ebadf5572175b049b33096421a7e83345bb54fa",
+    "insightkit/prompts/live_insight_prompt.md": "c7225d43e7e7cf7796b7be35582965c514abff7f20469422cfde65702ab12ba6",
+    "insightkit/prompts/final_insight_prompt.md": "6d79d884b951aba96f65a2cf4bebb9b35b9df597f103c1f5d778413b9c0e9f9c",
+    "insightkit/schemas/insight_package_v1.json": "8334ffd2108be01d7f0de4cb047edf922e0962b60fe806d3519c83fca577c27e",
+    "insightkit/insights/service.py": "76bbc6684969ccef1fc861200e3377fbddbf20bd629e29accda756e89b01c752",
+    "insightkit/insights/postprocess.py": "bd6bc3b4bbd4514b9ab56e223f450cabbd57289601c78b1a14c0dd73d1a06b7b",
+    "insightkit/insights/schema_validator.py": "9389d5f598216f97e37a8865b00ac0b19b38bbfd5ba3a85ec79e3aae4f9bef1c"
+  },
+  "experiment_sources_at_run": {
+    "scripts/compare_local_summary.py": "fa747acb902a52885d10816373136a709b95c5a778d8d27bffc58fefa3c5bb8d",
+    "scripts/local_summary_assessment.py": "c436c4ce3441185fb4dac616e4ab9668a2b9c8bb420c78140755ca6e11b77a37",
+    "evals/local_summary/v1/dataset.json": "25197e32dda5433c98055ea11a2edfc310eb5949bc358d2d2815cf975c7ab45c",
+    "evals/local_summary/v1/qwen-4b-screen.json": "c2770a13d26ab896526920bcbd10a12a1d50ccabccdde9ef93d4106d6dfb6923",
+    "tests/test_compare_local_summary.py": "669e01a1e60aa2b50f595fd54329288a6d72a172b234ba9a180f56cd8b032afe",
+    "tests/test_local_summary_assessment.py": "e312e2b5840cbe1c766381e4ba5b4f6e2d28e224ba13413bc921734bdac963e2"
+  },
+  "host": {
+    "system": "hw.model: MacBookPro18,1\nhw.memsize: 17179869184",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5425a",
+    "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27852899)\t100%; charged; 0:00 remaining present: true",
+    "low_power_mode": "Battery Power:\n Sleep On Power Button 1\n lowpowermode         0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         5\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           1\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n lowpowermode         0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         10\n womp                 1\n networkoversleep     0\n sleep                0\n tcpkeepalive         1\n disksleep            10",
+    "thermal": 0,
+    "cohort": "Component screen under ordinary background load; no UI or concurrent ASR."
+  },
+  "observed_thermal_states": [
+    0
+  ],
+  "preservation": {
+    "installed_revision": true,
+    "installed_build": true,
+    "installed_info_sha256": true,
+    "installed_executable_sha256": true,
+    "runtime_config_sha256": true,
+    "consent_sha256": true,
+    "records_files": true,
+    "records_metadata_sha256": true
+  },
+  "installed_build": "20260909123140",
+  "installed_revision": "6a85f89",
+  "idle_before": {
+    "socket_present": true,
+    "live_sessions": 0,
+    "active_job": false,
+    "queued_jobs": 0
+  },
+  "idle_after": {
+    "socket_present": true,
+    "live_sessions": 0,
+    "active_job": false,
+    "queued_jobs": 0
+  },
+  "execution": {
+    "exit_code": 0,
+    "termination": null,
+    "messages": [
+      {
+        "event": "load_started",
+        "controller_received_wall_s": 1.3477892499940936
+      },
+      {
+        "event": "ready",
+        "model_load_wall_s": 2.0118087920127437,
+        "packages": {
+          "mlx": "0.32.2",
+          "mlx-lm": "0.31.3",
+          "mlx-metal": "0.32.2",
+          "transformers": "5.16.1",
+          "huggingface-hub": "1.30.0",
+          "jsonschema": "4.26.0"
+        },
+        "python": "3.11.14",
+        "platform": "macOS-27.0-arm64-arm-64bit",
+        "machine": "arm64",
+        "model_class": "mlx_lm.models.qwen3_5.Model",
+        "language_only_loader": true,
+        "controller_received_wall_s": 3.3951532909995876
+      },
+      {
+        "event": "case_started",
+        "id": "zh-release-decision-final",
+        "index": 0,
+        "controller_received_wall_s": 3.395428332994925
+      },
+      {
+        "event": "case_complete",
+        "id": "zh-release-decision-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 20.99543458300468
+      },
+      {
+        "event": "case_started",
+        "id": "en-launch-plan-final",
+        "index": 1,
+        "controller_received_wall_s": 20.995578499991097
+      },
+      {
+        "event": "case_complete",
+        "id": "en-launch-plan-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 39.656613500003004
+      },
+      {
+        "event": "case_started",
+        "id": "insufficient-transcript-final",
+        "index": 2,
+        "controller_received_wall_s": 39.65694608299236
+      },
+      {
+        "event": "case_complete",
+        "id": "insufficient-transcript-final",
+        "status": "completed",
+        "finish_reason": "stop",
+        "strict_pipeline_status": "passed",
+        "controller_received_wall_s": 44.10822733299574
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-prefix-03",
+        "index": 3,
+        "controller_received_wall_s": 44.10838079100358
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-prefix-03",
+        "status": "completed",
+        "finish_reason": "length",
+        "strict_pipeline_status": "failed",
+        "controller_received_wall_s": 75.40858245799609
+      },
+      {
+        "event": "case_started",
+        "id": "bilingual-plan-correction-final",
+        "index": 4,
+        "controller_received_wall_s": 75.40896254099789
+      },
+      {
+        "event": "case_complete",
+        "id": "bilingual-plan-correction-final",
+        "status": "completed",
+        "finish_reason": "length",
+        "strict_pipeline_status": "failed",
+        "controller_received_wall_s": 106.97366166599386
+      },
+      {
+        "event": "finished",
+        "controller_received_wall_s": 106.97402508299274
+      }
+    ],
+    "controller_wall_s": 107.1116137909994
+  },
+  "execution_status": "completed",
+  "plan_file_sha256": "a615de020cc3312c78c94878c6da447b27b17afe15b634688b4785045d62157f",
+  "requests": [
+    {
+      "id": "zh-release-decision-final",
+      "index": 0,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 925,
+      "formatted_prompt_ids_sha256": "a226f505bd3c6405c759133e5338f044d9696d00f941c672fba06325901bb147",
+      "first_token_wall_s": 3.6007777909981087,
+      "first_text_wall_s": 3.6007777909981087,
+      "generation_wall_s": 17.488418791996082,
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 768,
+      "library_prompt_tokens": 925,
+      "library_prompt_tps": 294.7757726340293,
+      "library_generation_tps": 55.38890136577545,
+      "mlx_peak_memory_gb": 3.621390814,
+      "truncated": false,
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "虚构的星河项目发布方案讨论",
+            "overview": "会议讨论了星河项目的发布方案，确定了采用蓝色主题，并分配了演示稿制作与复核的任务。",
+            "topics": [
+              "发布方案",
+              "主题选择",
+              "任务分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "我们决定采用蓝色主题，原因是测试用户更容易识别。",
+              "reason": "明确记录了主题选择的决策依据及原因。",
+              "speaker": "乙",
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "甲",
+              "viewpoints": [
+                "讨论发布方案",
+                "分配乙负责演示稿制作与复核"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 4200
+                },
+                {
+                  "start_ms": 10500,
+                  "end_ms": 15000
+                }
+              ]
+            },
+            {
+              "speaker": "乙",
+              "viewpoints": [
+                "建议采用蓝色主题",
+                "解释选择蓝色主题的原因"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 5000,
+                  "end_ms": 9800
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "星河项目发布方案的主题选择",
+              "options": [
+                "蓝色主题",
+                "其他颜色主题"
+              ],
+              "decision": "采用蓝色主题",
+              "rationale": "测试用户更容易识别",
+              "owner": "乙",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成演示稿并在测试环境复核",
+              "owner": "乙",
+              "due_at": "周五前",
+              "priority": "high",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "讨论星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "主题决策",
+              "summary": "决定采用蓝色主题，理由是测试用户更容易识别。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "任务分配",
+              "summary": "乙负责周五前完成演示稿并在测试环境复核。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "虚构的星河项目发布方案讨论",
+            "overview": "会议讨论了星河项目的发布方案，确定了采用蓝色主题，并分配了演示稿制作与复核的任务。",
+            "topics": [
+              "发布方案",
+              "主题选择",
+              "任务分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "我们决定采用蓝色主题，原因是测试用户更容易识别。",
+              "reason": "明确记录了主题选择的决策依据及原因。",
+              "speaker": "乙",
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "甲",
+              "viewpoints": [
+                "讨论发布方案",
+                "分配乙负责演示稿制作与复核"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 4200
+                },
+                {
+                  "start_ms": 10500,
+                  "end_ms": 15000
+                }
+              ]
+            },
+            {
+              "speaker": "乙",
+              "viewpoints": [
+                "建议采用蓝色主题",
+                "解释选择蓝色主题的原因"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 5000,
+                  "end_ms": 9800
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "星河项目发布方案的主题选择",
+              "options": [
+                "蓝色主题",
+                "其他颜色主题"
+              ],
+              "decision": "采用蓝色主题",
+              "rationale": "测试用户更容易识别",
+              "owner": "乙",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 5000,
+                "end_ms": 9800
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成演示稿并在测试环境复核",
+              "owner": "乙",
+              "due_at": "周五前",
+              "priority": "high",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 10500,
+                "end_ms": 15000
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "讨论星河项目发布方案。"
+            },
+            {
+              "timestamp": "00:08",
+              "title": "主题决策",
+              "summary": "决定采用蓝色主题，理由是测试用户更容易识别。"
+            },
+            {
+              "timestamp": "00:15",
+              "title": "任务分配",
+              "summary": "乙负责周五前完成演示稿并在测试环境复核。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.08065712499956135
+      },
+      "complete_package_available_wall_s": 17.59666491599637,
+      "request_wall_s": 17.598465666000266,
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"虚构的星河项目发布方案讨论\",\n    \"overview\": \"会议讨论了星河项目的发布方案，确定了采用蓝色主题，并分配了演示稿制作与复核的任务。\",\n    \"topics\": [\n      \"发布方案\",\n      \"主题选择\",\n      \"任务分配\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"我们决定采用蓝色主题，原因是测试用户更容易识别。\",\n      \"reason\": \"明确记录了主题选择的决策依据及原因。\",\n      \"speaker\": \"乙\",\n      \"evidence_span\": {\n        \"start_ms\": 5000,\n        \"end_ms\": 9800\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"甲\",\n      \"viewpoints\": [\n        \"讨论发布方案\",\n        \"分配乙负责演示稿制作与复核\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 4200\n        },\n        {\n          \"start_ms\": 10500,\n          \"end_ms\": 15000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"乙\",\n      \"viewpoints\": [\n        \"建议采用蓝色主题\",\n        \"解释选择蓝色主题的原因\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 5000,\n          \"end_ms\": 9800\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"星河项目发布方案的主题选择\",\n      \"options\": [\n        \"蓝色主题\",\n        \"其他颜色主题\"\n      ],\n      \"decision\": \"采用蓝色主题\",\n      \"rationale\": \"测试用户更容易识别\",\n      \"owner\": \"乙\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 5000,\n        \"end_ms\": 9800\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成演示稿并在测试环境复核\",\n      \"owner\": \"乙\",\n      \"due_at\": \"周五前\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 10500,\n        \"end_ms\": 15000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"会议开始\",\n      \"summary\": \"讨论星河项目发布方案。\"\n    },\n    {\n      \"timestamp\": \"00:08\",\n      \"title\": \"主题决策\",\n      \"summary\": \"决定采用蓝色主题，理由是测试用户更容易识别。\"\n    },\n    {\n      \"timestamp\": \"00:15\",\n      \"title\": \"任务分配\",\n      \"summary\": \"乙负责周五前完成演示稿并在测试环境复核。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "c05f78338835c7522f6ffb9e4703b92ac48be24df2a35bc10be9353f377bf445",
+      "transcript_sha256": "f5ad82609b359fc21fc6712ab0a82239301e3eb87b91edec362de2086f790e4b",
+      "structural_assessment": {
+        "raw": {
+          "case_id": "zh-release-decision-final",
+          "stage": "raw",
+          "payload_sha256": "36d4eff7c10c317e39692bc5d3a1239aa10b369099b9cac7fe6bf93fc80f8903",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "乙",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "zh-release-decision-final",
+          "stage": "postprocessed",
+          "payload_sha256": "36d4eff7c10c317e39692bc5d3a1239aa10b369099b9cac7fe6bf93fc80f8903",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "乙",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "906721e64ccd2036c4fcedccd613c8267e7632fbdbc8cf4ce6a44dc50bdc0bc3"
+    },
+    {
+      "id": "en-launch-plan-final",
+      "index": 1,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 927,
+      "formatted_prompt_ids_sha256": "7628647914fe167e707d4dfead8096d7df06b0ba639a23eb0036a71fdb7e8a7e",
+      "first_token_wall_s": 2.719592334004119,
+      "first_text_wall_s": 2.719592334004119,
+      "generation_wall_s": 18.632630749998498,
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 879,
+      "library_prompt_tokens": 927,
+      "library_prompt_tps": 362.78136498382537,
+      "library_generation_tps": 55.32526774071186,
+      "mlx_peak_memory_gb": 3.624144522,
+      "truncated": false,
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "项目 Cedar 启动演练",
+            "overview": "本次会议为项目 Cedar 的启动演练，讨论了试点运行模式及数据源选择。",
+            "topics": [
+              "项目启动",
+              "数据源策略",
+              "任务分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "We decided to keep the pilot offline because the sample data is synthetic.",
+              "reason": "明确了试点运行的核心决策依据：数据为合成数据，因此保持离线模式。",
+              "speaker": "Blair",
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            },
+            {
+              "quote": "Blair owns the checklist and will finish it by Friday.",
+              "reason": "明确了关键任务的所有权及截止日期，是后续执行的重要约束。",
+              "speaker": "Alex",
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Alex",
+              "viewpoints": [
+                "确认会议性质为虚构演练",
+                "指派 Blair 负责清单并设定周五截止"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3500
+                },
+                {
+                  "start_ms": 9000,
+                  "end_ms": 13200
+                }
+              ]
+            },
+            {
+              "speaker": "Blair",
+              "viewpoints": [
+                "因样本数据为合成数据，决定保持试点离线"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4000,
+                  "end_ms": 8600
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "试点运行模式选择",
+              "options": [
+                "保持离线",
+                "连接在线"
+              ],
+              "decision": "保持离线",
+              "rationale": "因为样本数据是合成的，连接在线可能产生误导或风险。",
+              "owner": "Blair",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成项目清单",
+              "owner": "Blair",
+              "due_at": "Friday",
+              "priority": "high",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "Alex 确认会议为项目 Cedar 的虚构启动演练。"
+            },
+            {
+              "timestamp": "00:40",
+              "title": "决策点：试点模式",
+              "summary": "Blair 指出因数据为合成，决定保持试点离线。"
+            },
+            {
+              "timestamp": "01:30",
+              "title": "任务分配",
+              "summary": "Alex 确认 Blair 负责清单，并设定周五截止。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "项目 Cedar 启动演练",
+            "overview": "本次会议为项目 Cedar 的启动演练，讨论了试点运行模式及数据源选择。",
+            "topics": [
+              "项目启动",
+              "数据源策略",
+              "任务分配"
+            ]
+          },
+          "highlight_insights": [
+            {
+              "quote": "We decided to keep the pilot offline because the sample data is synthetic.",
+              "reason": "明确了试点运行的核心决策依据：数据为合成数据，因此保持离线模式。",
+              "speaker": "Blair",
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            },
+            {
+              "quote": "Blair owns the checklist and will finish it by Friday.",
+              "reason": "明确了关键任务的所有权及截止日期，是后续执行的重要约束。",
+              "speaker": "Alex",
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "speaker_perspectives": [
+            {
+              "speaker": "Alex",
+              "viewpoints": [
+                "确认会议性质为虚构演练",
+                "指派 Blair 负责清单并设定周五截止"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 0,
+                  "end_ms": 3500
+                },
+                {
+                  "start_ms": 9000,
+                  "end_ms": 13200
+                }
+              ]
+            },
+            {
+              "speaker": "Blair",
+              "viewpoints": [
+                "因样本数据为合成数据，决定保持试点离线"
+              ],
+              "evidence_spans": [
+                {
+                  "start_ms": 4000,
+                  "end_ms": 8600
+                }
+              ]
+            }
+          ],
+          "decision_ledger": [
+            {
+              "problem": "试点运行模式选择",
+              "options": [
+                "保持离线",
+                "连接在线"
+              ],
+              "decision": "保持离线",
+              "rationale": "因为样本数据是合成的，连接在线可能产生误导或风险。",
+              "owner": "Blair",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 4000,
+                "end_ms": 8600
+              }
+            }
+          ],
+          "action_tracks": [
+            {
+              "task": "完成项目清单",
+              "owner": "Blair",
+              "due_at": "Friday",
+              "priority": "high",
+              "status": "open",
+              "needs_review": false,
+              "evidence_span": {
+                "start_ms": 9000,
+                "end_ms": 13200
+              }
+            }
+          ],
+          "timeline_beats": [
+            {
+              "timestamp": "00:00",
+              "title": "会议开始",
+              "summary": "Alex 确认会议为项目 Cedar 的虚构启动演练。"
+            },
+            {
+              "timestamp": "00:13",
+              "title": "决策点：试点模式",
+              "summary": "Blair 指出因数据为合成，决定保持试点离线。"
+            },
+            {
+              "timestamp": "00:13",
+              "title": "任务分配",
+              "summary": "Alex 确认 Blair 负责清单，并设定周五截止。"
+            }
+          ],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.019101291996776126
+      },
+      "complete_package_available_wall_s": 18.655046209009015,
+      "request_wall_s": 18.65701158400043,
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"项目 Cedar 启动演练\",\n    \"overview\": \"本次会议为项目 Cedar 的启动演练，讨论了试点运行模式及数据源选择。\",\n    \"topics\": [\n      \"项目启动\",\n      \"数据源策略\",\n      \"任务分配\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"We decided to keep the pilot offline because the sample data is synthetic.\",\n      \"reason\": \"明确了试点运行的核心决策依据：数据为合成数据，因此保持离线模式。\",\n      \"speaker\": \"Blair\",\n      \"evidence_span\": {\n        \"start_ms\": 4000,\n        \"end_ms\": 8600\n      }\n    },\n    {\n      \"quote\": \"Blair owns the checklist and will finish it by Friday.\",\n      \"reason\": \"明确了关键任务的所有权及截止日期，是后续执行的重要约束。\",\n      \"speaker\": \"Alex\",\n      \"evidence_span\": {\n        \"start_ms\": 9000,\n        \"end_ms\": 13200\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Alex\",\n      \"viewpoints\": [\n        \"确认会议性质为虚构演练\",\n        \"指派 Blair 负责清单并设定周五截止\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 3500\n        },\n        {\n          \"start_ms\": 9000,\n          \"end_ms\": 13200\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Blair\",\n      \"viewpoints\": [\n        \"因样本数据为合成数据，决定保持试点离线\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 4000,\n          \"end_ms\": 8600\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"试点运行模式选择\",\n      \"options\": [\n        \"保持离线\",\n        \"连接在线\"\n      ],\n      \"decision\": \"保持离线\",\n      \"rationale\": \"因为样本数据是合成的，连接在线可能产生误导或风险。\",\n      \"owner\": \"Blair\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 4000,\n        \"end_ms\": 8600\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成项目清单\",\n      \"owner\": \"Blair\",\n      \"due_at\": \"Friday\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 9000,\n        \"end_ms\": 13200\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"会议开始\",\n      \"summary\": \"Alex 确认会议为项目 Cedar 的虚构启动演练。\"\n    },\n    {\n      \"timestamp\": \"00:40\",\n      \"title\": \"决策点：试点模式\",\n      \"summary\": \"Blair 指出因数据为合成，决定保持试点离线。\"\n    },\n    {\n      \"timestamp\": \"01:30\",\n      \"title\": \"任务分配\",\n      \"summary\": \"Alex 确认 Blair 负责清单，并设定周五截止。\"\n    }\n  ],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "666c65739359ab1ab59c6ae414c6d94321cf75cfce100718c9e47bbf5503eb3c",
+      "transcript_sha256": "50d39367539e9e1f5e1cd8a7b34c034e4bf1ed1d284de2b35590c580ce41943e",
+      "structural_assessment": {
+        "raw": {
+          "case_id": "en-launch-plan-final",
+          "stage": "raw",
+          "payload_sha256": "816ce5975f85f7a8b212c0003e16f7604f870d9198459832242e8485fde37dee",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "fail",
+            "issues": [
+              {
+                "path": "timeline_beats[1].timestamp",
+                "code": "invalid_or_future_timestamp"
+              },
+              {
+                "path": "timeline_beats[2].timestamp",
+                "code": "invalid_or_future_timestamp"
+              }
+            ],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Blair",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "en-launch-plan-final",
+          "stage": "postprocessed",
+          "payload_sha256": "09c5d1b9f6454f471e4b56f319bee93dfa9c9f3e41587ae56093ce36deec3c8c",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "requires_review",
+            "issues": [
+              {
+                "path": "decision_ledger[0].owner",
+                "code": "value_outside_frozen_literal_domain",
+                "value": "Blair",
+                "allowed_values": [
+                  "",
+                  "unknown",
+                  "not specified",
+                  "unassigned",
+                  "unspecified",
+                  "TBD",
+                  "未明确",
+                  "未知",
+                  "未指定",
+                  "待确认",
+                  "待定",
+                  "待分配",
+                  "未分配"
+                ]
+              }
+            ],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "c9a923c30f1020410d2c9562b81c5a081b9ba62a32da7d5d17bb56b156414462"
+    },
+    {
+      "id": "insufficient-transcript-final",
+      "index": 2,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 838,
+      "formatted_prompt_ids_sha256": "1a6386d9b3db36dac2a19eec15114989e0af036f7c197b0294f6513e34f743f7",
+      "first_token_wall_s": 2.5284562919987366,
+      "first_text_wall_s": 2.5284562919987366,
+      "generation_wall_s": 4.42463991700788,
+      "finish_reason": "stop",
+      "generation_tokens_including_stop": 104,
+      "library_prompt_tokens": 838,
+      "library_prompt_tps": 353.9329265431144,
+      "library_generation_tps": 56.15380708770738,
+      "mlx_peak_memory_gb": 3.618549406,
+      "truncated": false,
+      "pipeline": {
+        "raw_payload": {
+          "session_overview": {
+            "title": "会议总览",
+            "overview": "当前输入仅包含一段简短的音频检查录音，未包含实质性会议内容。",
+            "topics": []
+          },
+          "highlight_insights": [],
+          "speaker_perspectives": [],
+          "decision_ledger": [],
+          "action_tracks": [],
+          "timeline_beats": [],
+          "provenance_links": []
+        },
+        "postprocessed_payload": {
+          "session_overview": {
+            "title": "会议总览",
+            "overview": "当前输入仅包含一段简短的音频检查录音，未包含实质性会议内容。",
+            "topics": []
+          },
+          "highlight_insights": [],
+          "speaker_perspectives": [],
+          "decision_ledger": [],
+          "action_tracks": [],
+          "timeline_beats": [],
+          "provenance_links": []
+        },
+        "raw_schema_valid": true,
+        "strict_pipeline_status": "passed",
+        "pipeline_wall_s": 0.021442458004457876
+      },
+      "complete_package_available_wall_s": 4.448593207998783,
+      "request_wall_s": 4.450416249994305,
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"会议总览\",\n    \"overview\": \"当前输入仅包含一段简短的音频检查录音，未包含实质性会议内容。\",\n    \"topics\": []\n  },\n  \"highlight_insights\": [],\n  \"speaker_perspectives\": [],\n  \"decision_ledger\": [],\n  \"action_tracks\": [],\n  \"timeline_beats\": [],\n  \"provenance_links\": []\n}",
+      "raw_text_sha256": "366f5290a793731ffa0732739d069193307f33f58e257b8def5b49c8e6e508c9",
+      "transcript_sha256": "d167615df349a84982d3665c3532d495791fbb8d4522741d5128b68ba4bc57b5",
+      "structural_assessment": {
+        "raw": {
+          "case_id": "insufficient-transcript-final",
+          "stage": "raw",
+          "payload_sha256": "fda9f8d1f073c05d9bc0e4b976bd7fc309c7e03a079483cabbb8d746d58bce19",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "within_literal_domains",
+            "issues": [],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "insufficient-transcript-final",
+          "stage": "postprocessed",
+          "payload_sha256": "fda9f8d1f073c05d9bc0e4b976bd7fc309c7e03a079483cabbb8d746d58bce19",
+          "parse_status": "supplied_json_value",
+          "schema": {
+            "status": "pass",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "pass",
+            "issues": [],
+            "meaning": "Range/link checks only; cited text may still not support the claim."
+          },
+          "field_domains": {
+            "status": "within_literal_domains",
+            "issues": [],
+            "meaning": "Literal domain only; omissions, wrong-task assignments and unlisted equivalent expressions require semantic review."
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "d975d799026830a09bf3479eb97c96153f50db7ec734ca619095dd7c66bd0a81"
+    },
+    {
+      "id": "bilingual-plan-correction-prefix-03",
+      "index": 3,
+      "mode": "live",
+      "status": "completed",
+      "formatted_prompt_tokens": 1111,
+      "formatted_prompt_ids_sha256": "f8439ff22ce116aaffd2f10640dc2b99b56edd290a0cf42a1b7640e3e949bd7d",
+      "first_token_wall_s": 3.237078209000174,
+      "first_text_wall_s": 3.237078209000174,
+      "generation_wall_s": 31.284873666998465,
+      "finish_reason": "length",
+      "generation_tokens_including_stop": 1536,
+      "library_prompt_tokens": 1111,
+      "library_prompt_tps": 362.9549086532242,
+      "library_generation_tps": 54.79883265815706,
+      "mlx_peak_memory_gb": 3.7483383,
+      "truncated": true,
+      "pipeline": {
+        "raw_payload": null,
+        "postprocessed_payload": null,
+        "raw_schema_valid": false,
+        "strict_pipeline_status": "failed",
+        "error": {
+          "type": "JSONDecodeError",
+          "message": "Expecting ',' delimiter: line 180 column 37 (char 3857)"
+        },
+        "pipeline_wall_s": 0.00040600000647827983
+      },
+      "request_wall_s": 31.29801108399988,
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"Harbor Demo 演示与风险清单讨论\",\n    \"overview\": \"会议讨论了 Harbor 演示（demo）的部署策略、数据安全性以及演示清单（checklist）的责任分配。最终决定采用离线演示，并重新分配了演示清单的负责人，同时确认了风险清单尚未分派。\",\n    \"topics\": [\n      \"演示部署策略\",\n      \"数据安全性\",\n      \"任务责任分配\",\n      \"风险清单\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。\",\n      \"reason\": \"明确了演示的核心策略，即仅使用离线数据以确保安全。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"quote\": \"Correction: checklist 不再由 Mei 负责，改由 Ren 负责。\",\n      \"reason\": \"修正了之前的任务分配，明确了演示清单的新负责人。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"quote\": \"Confirmed, I own the demo checklist and will finish it by Monday.\",\n      \"reason\": \"Ren 确认了新的任务职责和截止日期。\",\n      \"speaker\": \"Ren\",\n      \"evidence_span\": {\n        \"start_ms\": 89000,\n        \"end_ms\": 110000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"提议将演示上传至云端服务\",\n        \"决定采用离线演示以确保数据安全\",\n        \"修正了演示清单的负责人为 Ren\",\n        \"指出风险清单和上线日期尚未确定\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 13000\n        },\n        {\n          \"start_ms\": 30000,\n          \"end_ms\": 46000\n        },\n        {\n          \"start_ms\": 68000,\n          \"end_ms\": 88000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"指出预算未批准且无客户同意\",\n        \"表示当前没有分派风险清单工作\",\n        \"最初被分配演示清单但随后被修正\",\n        \"指出 review meeting 日期未定\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        },\n        {\n          \"start_ms\": 47000,\n          \"end_ms\": 64000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Ren\",\n      \"viewpoints\": [\n        \"确认负责演示清单\",\n        \"承诺在周一前完成演示清单\",\n        \"重申云端上传和上线日期未定，风险清单未分派\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 68000,\n          \"end_ms\": 88000\n        },\n        {\n          \"start_ms\": 89000,\n          \"end_ms\": 110000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"演示清单（demo checklist）的负责人不明确\",\n      \"options\": [\n        \"由 Mei 负责\",\n        \"由 Ren 负责\"\n      ],\n      \"decision\": \"由 Ren 负责\",\n      \"rationale\": \"Lin 在会议中明确修正了任务分配，指出 Mei 不再负责，改由 Ren 接手。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"problem\": \"演示数据的安全性\",\n      \"options\": [\n        \"上传云端服务\",\n        \"采用离线演示\"\n      ],\n      \"decision\": \"采用 offline-only demo\",\n      \"rationale\": \"Lin 提议并决定不上传任何测试文本，因为数据为假数据，需确保离线。\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"problem\": \"风险清单（risk list）的负责人和截止日期\",\n      \"options\": [\n        \"等待后续分派\",\n        \"立即分派\"\n      ],\n      \"decision\": \"待定\",\n      \"rationale\": \"Mei 和 Ren 均确认风险清单尚未分派，负责人和截止日期均未确定。\",\n      \"owner\": \"待定\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成演示清单（demo checklist）\",\n      \"owner\": \"Ren\",\n      \"due_at\": \"Monday\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"task\": \"整理风险清单\",\n      \"owner\": \"待定\",\n      \"due_at\": \"待定\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"提议云端演示\",\n      \"summary\": \"Lin 提议将演示上传至云端服务。\"",
+      "raw_text_sha256": "f77f92dc66066dba9bf95624203635341420c3893812001dc91c932f2d3f0e2b",
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-prefix-03",
+          "stage": "raw",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-prefix-03",
+          "stage": "postprocessed",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "d9eda937beea3d6c15f2b37248ff4eccc17391e40b1d32362129b063421653d7"
+    },
+    {
+      "id": "bilingual-plan-correction-final",
+      "index": 4,
+      "mode": "final",
+      "status": "completed",
+      "formatted_prompt_tokens": 1169,
+      "formatted_prompt_ids_sha256": "d2ad80a298712e5c5d11f9975666144a6c126cab505016db5a243e4eaa09fbca",
+      "first_token_wall_s": 3.4184402910032077,
+      "first_text_wall_s": 3.4184402910032077,
+      "generation_wall_s": 31.555435292000766,
+      "finish_reason": "length",
+      "generation_tokens_including_stop": 1536,
+      "library_prompt_tokens": 1169,
+      "library_prompt_tps": 361.76901489263247,
+      "library_generation_tps": 54.67004877087366,
+      "mlx_peak_memory_gb": 3.711277674,
+      "truncated": true,
+      "pipeline": {
+        "raw_payload": null,
+        "postprocessed_payload": null,
+        "raw_schema_valid": false,
+        "strict_pipeline_status": "failed",
+        "error": {
+          "type": "JSONDecodeError",
+          "message": "Unterminated string starting at: line 185 column 7 (char 3879)"
+        },
+        "pipeline_wall_s": 0.0006063750042812899
+      },
+      "request_wall_s": 31.562535875011235,
+      "raw_text": "{\n  \"session_overview\": {\n    \"title\": \"Harbor 演示与风险规划会议\",\n    \"overview\": \"会议讨论了 Harbor 演示项目的执行计划，包括云端上传提议的取消、离线演示的决策、任务负责人的变更以及风险清单的待定状态。\",\n    \"topics\": [\n      \"演示部署策略\",\n      \"任务分配变更\",\n      \"风险清单规划\",\n      \"上线审批状态\"\n    ]\n  },\n  \"highlight_insights\": [\n    {\n      \"quote\": \"决定采用 offline-only demo，不上传任何测试文本，因为这些是假数据。\",\n      \"reason\": \"明确否定了云端上传提议，确立了离线演示的技术路线。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"quote\": \"Correction: checklist 不再由 Mei 负责，改由 Ren 负责。\",\n      \"reason\": \"记录了任务负责人从 Mei 变更为 Ren 的关键决策。\",\n      \"speaker\": \"Lin\",\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"quote\": \"风险清单的负责人和截止日期仍然未知。\",\n      \"reason\": \"指出了当前项目规划中最大的不确定性，即风险清单尚未分派。\",\n      \"speaker\": \"Mei\",\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"speaker_perspectives\": [\n    {\n      \"speaker\": \"Lin\",\n      \"viewpoints\": [\n        \"提议云端上传但随后被否决\",\n        \"最终决定采用离线演示\",\n        \"确认任务负责人变更为 Ren\",\n        \"强调假数据不应上传\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 0,\n          \"end_ms\": 13000\n        },\n        {\n          \"start_ms\": 30000,\n          \"end_ms\": 46000\n        },\n        {\n          \"start_ms\": 68000,\n          \"end_ms\": 88000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Mei\",\n      \"viewpoints\": [\n        \"指出预算未批准且无客户同意\",\n        \"表示当前任务未分派\",\n        \"最初接受 demo checklist 但负责人被变更\",\n        \"强调风险清单负责人和日期待定\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 14000,\n          \"end_ms\": 28000\n        },\n        {\n          \"start_ms\": 47000,\n          \"end_ms\": 64000\n        }\n      ]\n    },\n    {\n      \"speaker\": \"Ren\",\n      \"viewpoints\": [\n        \"确认接手 demo checklist\",\n        \"确认截止日期为周一\",\n        \"重申云端上传未获批且风险清单未分派\"\n      ],\n      \"evidence_spans\": [\n        {\n          \"start_ms\": 89000,\n          \"end_ms\": 110000\n        }\n      ]\n    }\n  ],\n  \"decision_ledger\": [\n    {\n      \"problem\": \"演示数据源选择：云端上传 vs 离线演示\",\n      \"options\": [\n        \"上传到云端服务\",\n        \"采用 offline-only 演示\"\n      ],\n      \"decision\": \"采用 offline-only demo，不上传任何测试文本\",\n      \"rationale\": \"数据为假数据，且云端上传提议尚未获批\",\n      \"owner\": \"Lin\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 30000,\n        \"end_ms\": 46000\n      }\n    },\n    {\n      \"problem\": \"Demo checklist 任务负责人归属\",\n      \"options\": [\n        \"由 Mei 负责\",\n        \"由 Ren 负责\"\n      ],\n      \"decision\": \"由 Ren 负责\",\n      \"rationale\": \"Lin 在会议中明确更正了之前的分配，指定 Ren 为负责人\",\n      \"owner\": \"Ren\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 68000,\n        \"end_ms\": 88000\n      }\n    },\n    {\n      \"problem\": \"风险清单的负责人与截止日期\",\n      \"options\": [\n        \"待定\",\n        \"已分派\"\n      ],\n      \"decision\": \"未分派\",\n      \"rationale\": \"会议中多次提及风险清单负责人和日期均未知，尚未确定\",\n      \"owner\": \"Unassigned\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"action_tracks\": [\n    {\n      \"task\": \"完成 demo checklist\",\n      \"owner\": \"Ren\",\n      \"due_at\": \"Monday\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"needs_review\": false,\n      \"evidence_span\": {\n        \"start_ms\": 89000,\n        \"end_ms\": 110000\n      }\n    },\n    {\n      \"task\": \"整理风险清单\",\n      \"owner\": \"Unassigned\",\n      \"due_at\": \"Undetermined\",\n      \"priority\": \"medium\",\n      \"status\": \"open\",\n      \"needs_review\": true,\n      \"evidence_span\": {\n        \"start_ms\": 14000,\n        \"end_ms\": 28000\n      }\n    }\n  ],\n  \"timeline_beats\": [\n    {\n      \"timestamp\": \"00:00\",\n      \"title\": \"提议云端上传\",\n      \"summary\": \"Lin 提议将演示上传到云端服务，但随后被否决。\"\n    },\n    {\n      \"timestamp\": \"00:04\",\n      \"title\": \"确定技术路线\",\n      \"summary\": \"会议决定采用 offline-only demo，不上传任何测试文本。\"\n    },\n    {\n      \"timestamp\": \"00:11\",\n      \"",
+      "raw_text_sha256": "6f8e94c3d8df9a18248ce1c395c47a98f2ad673977af4f217912e258bf157649",
+      "transcript_sha256": "91f3e81969ec10f7aba2bb6693baf5677dd3e19a06b504bd0f6be7f45b18c3a5",
+      "structural_assessment": {
+        "raw": {
+          "case_id": "bilingual-plan-correction-final",
+          "stage": "raw",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        },
+        "postprocessed": {
+          "case_id": "bilingual-plan-correction-final",
+          "stage": "postprocessed",
+          "payload_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "parse_status": "unavailable",
+          "schema": {
+            "status": "not_available",
+            "issues": []
+          },
+          "evidence_scope": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "field_domains": {
+            "status": "not_checked",
+            "issues": []
+          },
+          "semantic_status": "not_reviewed",
+          "semantic_pass": null
+        }
+      },
+      "local_result_file_sha256": "ecd6a8cb1f40c26b1dc10821cf7a7597a44471c2272c8467912912784b93ea7c"
+    }
+  ],
+  "conditional_stop": {
+    "stage_a_requests": 5,
+    "stage_a_complete": true,
+    "stage_b_status": "not_run_by_stop_rule",
+    "reason": "Stage A contains a truncated or schema-invalid output; the preregistered all-pass condition failed before semantic review.",
+    "structural_failure_cases": [
+      "bilingual-plan-correction-prefix-03",
+      "bilingual-plan-correction-final"
+    ],
+    "stage_b_cases": [
+      {
+        "id": "mixed-design-review-final",
+        "status": "not_run_by_stop_rule"
+      },
+      {
+        "id": "bilingual-plan-correction-prefix-01",
+        "status": "not_run_by_stop_rule"
+      },
+      {
+        "id": "bilingual-plan-correction-prefix-02",
+        "status": "not_run_by_stop_rule"
+      }
+    ],
+    "real_4b_generations": 5,
+    "additional_4b_generations": 0,
+    "additional_2b_generations": 0,
+    "combined_resource_test": "not_justified_by_this_screen"
+  },
+  "limits": [
+    "Only frozen synthetic text; no audio, live ASR, diarization or product UI.",
+    "First request follows download/hash/load, not a rebooted-machine cold baseline.",
+    "Token latency is not the time a complete Smart Minutes package can be displayed.",
+    "Structural assessment does not establish semantic fidelity; item review is required.",
+    "Stage A is deliberately enriched for 2B failures; do not compare aggregate success rates between models.",
+    "The all-pass prerequisite for remaining controls and any joint-load consideration failed."
+  ],
+  "semantic_review": "See semantic-review.json; schema success alone is not semantic success."
+}
