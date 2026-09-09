@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -68,11 +69,29 @@ class InsightService:
             else:
                 strict_mode = os.getenv("INSIGHTKIT_STRICT_MODE", "1").strip() != "0"
         self.strict_mode = bool(strict_mode)
+        self._call_meta = threading.local()
         self.last_call_meta: dict[str, Any] = {
             "vendor": self.default_vendor,
             "model": self.model,
             "strict_mode": self.strict_mode,
         }
+
+    @property
+    def last_call_meta(self) -> dict[str, Any]:
+        """Keep legacy metadata access scoped to the current RPC or job thread."""
+        meta = getattr(self._call_meta, "value", None)
+        if meta is None:
+            meta = {
+                "vendor": self.default_vendor,
+                "model": self.model,
+                "strict_mode": self.strict_mode,
+            }
+            self._call_meta.value = meta
+        return meta
+
+    @last_call_meta.setter
+    def last_call_meta(self, value: dict[str, Any]) -> None:
+        self._call_meta.value = dict(value)
 
     def _effective_vendor(self, provider_vendor: str | None) -> str:
         if os.getenv("INSIGHTKIT_ANALYSIS_MODE", "cloud").strip().lower() == "local":

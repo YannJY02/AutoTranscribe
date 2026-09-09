@@ -65,6 +65,9 @@ final class LiveSessionViewModel: ObservableObject {
     /// cooperative thread pool which would stall all async/SwiftUI work.
     let rpcQueue = DispatchQueue(label: "InsightKit.LiveSession.RPC", qos: .userInitiated)
     let runtimeStartupGroup = DispatchGroup()
+    var liveBackgroundSession: LiveBackgroundSession?
+    var liveSummaryQueue: BoundedLiveWorkQueue<LiveBackgroundSession, LiveInsightRefreshOutcome>?
+    var liveSpeakerQueue: BoundedLiveWorkQueue<LiveSpeakerRequest, LiveSpeakerEnrichmentResult>?
 
     // Session state — internal so extensions can access them
     var activeMode: AudioInputMode = .microphone
@@ -141,6 +144,7 @@ final class LiveSessionViewModel: ObservableObject {
     var lastInsightPackage: InsightPackageV1?
     var captureTimeline = LiveMediaCaptureTimeline()
     var pendingPresentationCaptureStatus: LivePresentationCaptureStatus?
+    var delayedSummaryUITestFixture: DelayedSummarySocketFixture?
 
     init(
         rpcClient: InsightRPCClientProtocol = InsightRPCClient(),
@@ -151,6 +155,7 @@ final class LiveSessionViewModel: ObservableObject {
         chunkAssembler: ChunkAssembler = ChunkAssembler(),
         asrService: LiveASRServiceProtocol = LiveASRService(),
         transcriptPipeline: LiveTranscriptProcessing? = nil,
+        backgroundClientFactory: (() -> InsightRPCClientProtocol)? = nil,
         reviewMediaComposer: ReviewMediaComposing = AVFoundationReviewMediaComposer(),
         mediaAssetInspector: MediaAssetInspecting = AVFoundationMediaAssetInspector(),
         finalMediaTranscriber: FinalMediaTranscribing? = nil,
@@ -174,6 +179,23 @@ final class LiveSessionViewModel: ObservableObject {
         self.transcriptPipeline = transcriptPipeline ?? LiveTranscriptPipeline(
             runtime: InsightRPCLiveTranscriptPipelineRuntime(rpcClient: rpcClient)
         )
+        let makeBackgroundClient = backgroundClientFactory ?? { rpcClient.makeBackgroundClient() }
+        let summaryClient = makeBackgroundClient()
+        let speakerClient = makeBackgroundClient()
+        liveSummaryQueue = BoundedLiveWorkQueue(
+            label: "InsightKit.LiveSession.Summary", maximumPending: 1, coalescesPending: true,
+            operation: { session in LiveInsightRefreshOutcome.run(client: summaryClient, meetingID: session.meetingID) },
+            completion: { [weak self] session, result in
+                if case .success(let outcome) = result { self?.applyLiveInsightOutcome(outcome, session: session) }
+            }
+        )
+        liveSpeakerQueue = BoundedLiveWorkQueue(
+            label: "InsightKit.LiveSession.Speaker", maximumPending: 8,
+            operation: { request in
+                try speakerClient.asrEnrichLiveChunk(meetingID: request.session.meetingID, chunkID: request.chunkID)
+            },
+            completion: { [weak self] request, result in self?.applyLiveSpeakerResult(result, request: request) }
+        )
 
         configureAudioCaptureCallbacks()
         self.videoCaptureService.onRecordingFirstFrame = { [weak self] time in
@@ -196,6 +218,9 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     private func shutdownForDeinit() {
+        stopDelayedSummaryUITestScenario()
+        liveSummaryQueue?.invalidate()
+        liveSpeakerQueue?.invalidate()
         captureMonitorTask?.cancel()
         captureStartupTask?.cancel()
         cancelWarmupTasks()
@@ -427,6 +452,8 @@ final class LiveSessionViewModel: ObservableObject {
         }
         transcriptPipeline.reset()
 
+        beginLiveBackgroundWork(meetingID: meetingID)
+
         updateMain {
             self.sessionHandle = SessionHandle(activeMeetingID: meetingID, lastMeetingID: nil)
         }
@@ -464,17 +491,7 @@ final class LiveSessionViewModel: ObservableObject {
                 })
                 guard self.isCurrentLiveSession(meetingID) else { return }
                 self.refreshSidecarStatus()
-                try self.assertSidecarCapabilities([
-                    "session.start",
-                    "session.stop",
-                    "asr.transcribe_chunk",
-                    "asr.transcribe_media",
-                    "asr.prewarm",
-                    "transcript.delta",
-                    "transcript.replace",
-                    "insight.refresh_live",
-                    "records.save",
-                ])
+                try self.assertLiveSidecarCapabilities()
                 try self.ensureRuntimeReady(requireASR: true, requireProvider: false, allowProviderProbeFailure: true)
                 guard self.isCurrentLiveSession(meetingID) else { return }
                 try self.rpcClient.sessionStart(meetingID: meetingID, title: "直播洞察", source: source)
@@ -636,6 +653,7 @@ final class LiveSessionViewModel: ObservableObject {
 
     func stopLiveSession(finalState: CaptureState) {
         if !isRunning { return }
+        invalidateLiveBackgroundWork()
 
         if stopUITestSessionIfNeeded(finalState: finalState) {
             return
@@ -817,6 +835,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func buildFinalInsight() {
+        invalidateLiveBackgroundWork()
         if buildUITestFinalInsightIfNeeded() {
             return
         }
@@ -1441,6 +1460,8 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func resetSessionUI() {
+        stopDelayedSummaryUITestScenario()
+        invalidateLiveBackgroundWork()
         cancelWarmupTasks()
         stopRecordingDurationTimer()
         captureState = .idle
@@ -1690,11 +1711,14 @@ extension LiveSessionViewModel {
         notes = []
         smartMinutesData = nil
         lastInsightPackage = nil
+        beginLiveBackgroundWork(meetingID: meetingID)
+        startDelayedSummaryUITestScenario(meetingID: meetingID)
         return true
     }
 
     func stopUITestSessionIfNeeded(finalState: CaptureState) -> Bool {
         guard isUITestingMode, isRunning else { return false }
+        stopDelayedSummaryUITestScenario()
 
         stopRecordingDurationTimer()
         stateQueue.sync {
@@ -1717,6 +1741,7 @@ extension LiveSessionViewModel {
 
     func buildUITestFinalInsightIfNeeded() -> Bool {
         guard isUITestingMode else { return false }
+        stopDelayedSummaryUITestScenario()
 
         let result = InsightRefreshResult(
             package: Self.uiTestInsightPackage,

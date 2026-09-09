@@ -3,6 +3,78 @@ import XCTest
 @testable import InsightKitApp
 
 final class WorkflowCoordinatorTests: XCTestCase {
+    func testLegacyChunkRuntimeCannotEnterLiveRecording() throws {
+        try assertLiveRuntimeCannotStart(missing: ["asr.transcribe_live_chunk", "asr.enrich_live_chunk"])
+    }
+
+    func testRuntimeWithoutSpeakerEnrichmentCannotEnterLiveRecording() throws {
+        try assertLiveRuntimeCannotStart(missing: ["asr.enrich_live_chunk"])
+    }
+
+    func testProgressiveRuntimeCanPrepareLiveWithoutLegacyChunkMethod() throws {
+        let rpc = RPCClientMock()
+        let capabilities = try XCTUnwrap(rpc.sidecarVersionStub["capabilities"] as? [String])
+        rpc.sidecarVersionStub["capabilities"] = capabilities.filter {
+            $0 != "asr.transcribe_chunk" && $0 != "transcription.import_file"
+        }
+        let coordinator = makeCapabilityTestCoordinator(rpc: rpc)
+        waitForCapabilityFixtureLoad(coordinator)
+
+        XCTAssertTrue(coordinator.canStartLive)
+        XCTAssertTrue(coordinator.supportsSystemAudioPicker)
+        XCTAssertNoThrow(try coordinator.liveViewModel.assertLiveSidecarCapabilities())
+        XCTAssertFalse(coordinator.liveViewModel.isRunning)
+    }
+
+    private func assertLiveRuntimeCannotStart(missing: Set<String>) throws {
+        let rpc = RPCClientMock()
+        let capabilities = try XCTUnwrap(rpc.sidecarVersionStub["capabilities"] as? [String])
+        rpc.sidecarVersionStub["capabilities"] = capabilities.filter {
+            !missing.contains($0) && $0 != "transcription.import_file"
+        }
+        let coordinator = makeCapabilityTestCoordinator(rpc: rpc)
+        waitForCapabilityFixtureLoad(coordinator)
+        let live = coordinator.liveViewModel
+
+        XCTAssertThrowsError(try live.assertLiveSidecarCapabilities()) { error in
+            for method in missing {
+                XCTAssertTrue(error.localizedDescription.contains(method))
+            }
+        }
+        // Do not open a real capture device when this admission regression fails.
+        guard !coordinator.canStartLive else {
+            return XCTFail("An incompatible runtime must not enable live recording")
+        }
+        XCTAssertFalse(coordinator.supportsSystemAudioPicker)
+        coordinator.startLiveSession()
+
+        XCTAssertFalse(live.isRunning)
+        XCTAssertNil(live.captureStartupTask)
+        XCTAssertNil(live.currentActiveMeetingID())
+        XCTAssertEqual(live.sessionPhase, .preparing)
+        XCTAssertEqual(coordinator.bannerMessage?.title, "当前侧车版本不支持实时语音总结")
+    }
+
+    private func makeCapabilityTestCoordinator(rpc: RPCClientMock) -> WorkflowCoordinator {
+        WorkflowCoordinator(
+            liveViewModel: LiveSessionViewModel(rpcClient: rpc),
+            transcriptionViewModel: TranscriptionSessionViewModel(
+                rpcClient: rpc, autoRefresh: false, autoPolling: false, bootstrapSidecar: false
+            ),
+            importViewModel: ImportSessionViewModel(rpcClient: rpc),
+            capabilityClient: rpc
+        )
+    }
+
+    private func waitForCapabilityFixtureLoad(_ coordinator: WorkflowCoordinator) {
+        // The fixture omits file import. Its disabled state proves the async
+        // capability response was applied, rather than testing the unknown state.
+        let loaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !coordinator.supportsTranscriptionFlow
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 2), .completed)
+    }
+
     func testOpenLiveResetsPreparedInputModeToMicrophone() {
         let live = LiveSessionViewModel()
         live.inputMode = .mixed

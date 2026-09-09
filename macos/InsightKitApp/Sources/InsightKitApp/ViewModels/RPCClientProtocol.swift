@@ -3,6 +3,8 @@ import Foundation
 // MARK: - InsightRPCClientProtocol
 
 protocol InsightRPCClientProtocol {
+    /// A separate socket/client state for a serial background worker.
+    func makeBackgroundClient() -> InsightRPCClientProtocol
     func sessionStart(meetingID: String, title: String, source: String) throws
     func sessionStop(meetingID: String) throws
     func sessionStopForFinalization(meetingID: String, leaseToken: String) throws
@@ -26,6 +28,8 @@ protocol InsightRPCClientProtocol {
     func asrRuntimeBootstrap(model: String, engine: LocalASREngine?) throws -> ASRBootstrapResult
     func asrPrewarm(model: String, engine: LocalASREngine?, timeoutSec: Int) throws -> ASRPrewarmResult
     func asrTranscribeChunk(wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta]
+    func asrTranscribeLiveChunk(meetingID: String, chunkID: String, wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta]
+    func asrEnrichLiveChunk(meetingID: String, chunkID: String) throws -> LiveSpeakerEnrichmentResult
     func asrTranscribeMedia(mediaPath: String, source: String) throws -> [RPCSegmentDelta]
     func providersStatus(probeActive: Bool) throws -> AnalysisProvidersStatus
     func providerProbe(vendor: ProviderVendor, model: String, baseURL: String, forceRefresh: Bool) throws -> ProviderProbeResult

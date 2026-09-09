@@ -98,6 +98,7 @@ class InsightRPCServer:
         self._last_error_code = ""
         self._last_latency_ms = 0
         self._admission_lock = threading.RLock()
+        self._session_lifecycle_lock = threading.RLock()
         self._shutdown_pending = False
         self._in_flight_mutations = 0
 
@@ -105,7 +106,7 @@ class InsightRPCServer:
         self._push_broker = PushBroker()
         self._session_handler = SessionHandler(store=self.store)
         self._insight_coord = InsightCoordinator(store=self.store, insight_service=self.insight_service)
-        self._asr_dispatcher = ASRDispatcher()
+        self._asr_dispatcher = ASRDispatcher(store=self.store)
         self._provider_probe = ProviderProbe(insight_service=self.insight_service)
         self._watch_bridge = WatchBridge()
         self._job_queue = JobQueue(
@@ -136,6 +137,7 @@ class InsightRPCServer:
 
     def shutdown(self) -> None:
         self._active = False
+        self._asr_dispatcher.live_speakers.close()
         self._job_queue.shutdown()
         if self._server_socket is not None:
             self._server_socket.close()
@@ -227,6 +229,8 @@ class InsightRPCServer:
             "asr.runtime.bootstrap": self._asr_runtime_bootstrap,
             "asr.prewarm": self._asr_prewarm,
             "asr.transcribe_chunk": self._asr_transcribe_chunk,
+            "asr.transcribe_live_chunk": self._asr_dispatcher.asr_transcribe_live_chunk,
+            "asr.enrich_live_chunk": self._asr_dispatcher.asr_enrich_live_chunk,
             "asr.transcribe_media": self._asr_transcribe_media,
             "analysis.providers.status": self._analysis_providers_status,
             "analysis.provider.probe": self._analysis_provider_probe,
@@ -278,10 +282,16 @@ class InsightRPCServer:
     # ── SessionHandler delegates ──────────────────────────────────────
 
     def _session_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self._session_handler.session_start(params)
+        with self._session_lifecycle_lock:
+            result = self._session_handler.session_start(params)
+            self._asr_dispatcher.live_speakers.start(result["meeting_id"])
+            return result
 
     def _session_stop(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self._session_handler.session_stop(params)
+        with self._session_lifecycle_lock:
+            result = self._session_handler.session_stop(params)
+            self._asr_dispatcher.live_speakers.stop(params["meeting_id"])
+            return result
 
     def _session_finalization_abort(self, params: dict[str, Any]) -> dict[str, Any]:
         meeting_id = str(params.get("meeting_id", "") or "").strip()
@@ -298,16 +308,24 @@ class InsightRPCServer:
         return self._session_handler.transcript_delta(params)
 
     def _transcript_replace(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self._session_handler.transcript_replace(params)
+        with self._session_lifecycle_lock:
+            self._asr_dispatcher.live_speakers.stop(params["meeting_id"])
+            return self._session_handler.transcript_replace(params)
 
     def _transcript_list(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.transcript_list(params)
 
     def _live_session_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self._session_handler.live_session_start(params)
+        with self._session_lifecycle_lock:
+            result = self._session_handler.live_session_start(params)
+            self._asr_dispatcher.live_speakers.start(result["meeting_id"])
+            return result
 
     def _live_session_stop(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self._session_handler.live_session_stop(params)
+        with self._session_lifecycle_lock:
+            result = self._session_handler.live_session_stop(params)
+            self._asr_dispatcher.live_speakers.stop(params["meeting_id"])
+            return result
 
     def _live_session_status(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._session_handler.live_session_status(params)
@@ -509,6 +527,8 @@ class InsightRPCServer:
                 "asr.runtime.bootstrap",
                 "asr.prewarm",
                 "asr.transcribe_chunk",
+                "asr.transcribe_live_chunk",
+                "asr.enrich_live_chunk",
                 "analysis.providers.status",
                 "analysis.provider.probe",
                 "diagnostics.quick_check",
@@ -542,7 +562,9 @@ class InsightRPCServer:
         result["status"] = "available"
         meeting_id = str(params.get("meeting_id", "") or "").strip()
         if meeting_id:
-            replaced = self.store.replace_segments(meeting_id, result.get("segments", []))
+            with self._session_lifecycle_lock:
+                self._asr_dispatcher.live_speakers.stop(meeting_id)
+                replaced = self.store.replace_segments(meeting_id, result.get("segments", []))
             result["meeting_id"] = meeting_id
             result["replaced"] = replaced
         return result
@@ -565,7 +587,9 @@ class InsightRPCServer:
         handler = getattr(self._session_handler, "transcript_replace", None)
         if not callable(handler):
             raise RuntimeError("runtime transcript replacement unsupported")
-        result = handler({"meeting_id": meeting_id, "segments": segments})
+        with self._session_lifecycle_lock:
+            self._asr_dispatcher.live_speakers.stop(meeting_id)
+            result = handler({"meeting_id": meeting_id, "segments": segments})
         result["status"] = "available"
         return result
 

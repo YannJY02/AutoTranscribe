@@ -317,6 +317,8 @@ def gate_specs(changed_files: Sequence[str], *, mode: str, python_executable: st
         )
     if mode == "full" and swift_changed:
         gates.append(GateSpec("swift-tests", (("swift", "test", "--package-path", "macos/InsightKitApp"),)))
+    if mode == "full" and any(path.startswith("macos/LiveDiarizationWorker/") for path in files):
+        gates.append(GateSpec("live-diarization-tests", (("swift", "test", "--package-path", "macos/LiveDiarizationWorker", "--jobs", "4"),)))
     if mode == "full" and xcuitests_changed:
         gates.append(
             GateSpec(

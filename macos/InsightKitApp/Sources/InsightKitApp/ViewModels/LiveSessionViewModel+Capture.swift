@@ -16,10 +16,14 @@ enum LiveCaptureHealthHint {
 
 enum LiveAnalysisHealthHint {
     static let refreshTimeout = "智能分析刷新超时，转写继续；系统会在后续转写更新后自动重试。"
+    static let refreshBusy = "上一轮智能分析仍在处理，转写继续；后续内容将合并到下一轮更新。"
+    static let refreshUnavailable = "智能分析暂时不可用，转写继续；后续有新内容时会再次尝试。"
+    static let speakerBacklog = "说话人标注暂时跟不上，转写继续；部分片段会保留未标注。"
+    static let speakerUnavailable = "说话人标注暂时不可用，转写继续；部分片段会保留未标注。"
 
     static func isTransient(_ message: String?) -> Bool {
         guard let message else { return false }
-        return message == refreshTimeout
+        return [refreshTimeout, refreshBusy, refreshUnavailable].contains(message)
     }
 }
 
@@ -238,6 +242,7 @@ extension LiveSessionViewModel {
             self.captureHealth.lastChunkAt = Date()
         }
 
+        let backgroundSession = stateQueue.sync { liveBackgroundSession }
         let context = LiveTranscriptPipelineContext(
             meetingID: meetingID,
             source: rpcSource(for: activeMode),
@@ -249,12 +254,15 @@ extension LiveSessionViewModel {
 
         let outcome = try transcriptPipeline.process(chunk: chunk, context: context)
         applyTranscriptPipelineOutcome(outcome)
+        if let backgroundSession, backgroundSession.meetingID == meetingID {
+            enqueueLiveBackgroundWork(chunk: chunk, outcome: outcome, session: backgroundSession)
+        }
         return outcome
     }
 
     func applyTranscriptPipelineOutcome(_ outcome: LiveTranscriptPipelineOutcome) {
         switch outcome.refresh {
-        case .none:
+        case .none, .requested:
             break
         case .success:
             stateQueue.sync {

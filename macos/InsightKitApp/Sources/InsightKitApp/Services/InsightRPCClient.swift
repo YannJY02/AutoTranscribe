@@ -87,6 +87,14 @@ final class InsightRPCClient {
         self.config = config
     }
 
+    func makeBackgroundClient() -> InsightRPCClientProtocol {
+        var backgroundConfig = config
+        // A timed-out provider/helper request may still be running in the
+        // sidecar. Retrying would create duplicate work, not cancel that call.
+        backgroundConfig.maxRetries = 0
+        return InsightRPCClient(config: backgroundConfig)
+    }
+
     // MARK: - Persistent connection lifecycle
 
     /// Open a persistent NDJSON connection and perform the handshake.
@@ -502,6 +510,45 @@ final class InsightRPCClient {
             overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec)
         )
         return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    func asrTranscribeLiveChunk(meetingID: String, chunkID: String, wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta] {
+        let result = try callWithRetry(
+            method: "asr.transcribe_live_chunk",
+            params: ["meeting_id": meetingID, "chunk_id": chunkID, "wav_path": wavPath,
+                     "offset_ms": offsetMs, "source": source],
+            overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec),
+            maxRetriesOverride: 0
+        )
+        return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    func asrEnrichLiveChunk(meetingID: String, chunkID: String) throws -> LiveSpeakerEnrichmentResult {
+        let result = try callWithRetry(
+            method: "asr.enrich_live_chunk",
+            params: ["meeting_id": meetingID, "chunk_id": chunkID],
+            overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec),
+            maxRetriesOverride: 0
+        )
+        guard let returnedMeetingID = result["meeting_id"] as? String,
+              returnedMeetingID == meetingID,
+              let rawStatus = result["status"] as? String,
+              let status = LiveSpeakerEnrichmentResult.Status(rawValue: rawStatus),
+              let rawUpdates = result["updates"] as? [[String: Any]] else {
+            throw RPCError.invalidResponse
+        }
+        let updates = try rawUpdates.map { row -> LiveSpeakerUpdate in
+            guard let id = row["chunk_id"] as? String,
+                  let originals = row["original_segments"] as? [[String: Any]],
+                  let replacements = row["segments"] as? [[String: Any]] else {
+                throw RPCError.invalidResponse
+            }
+            return LiveSpeakerUpdate(chunkID: id,
+                originalSegments: decodeSegmentDeltas(from: originals, fallbackSource: ""),
+                segments: decodeSegmentDeltas(from: replacements, fallbackSource: ""))
+        }
+        return LiveSpeakerEnrichmentResult(meetingID: returnedMeetingID, updates: updates,
+                                          status: status, error: result["error"] as? String)
     }
 
     func asrTranscribeMedia(mediaPath: String, source: String = "media") throws -> [RPCSegmentDelta] {
