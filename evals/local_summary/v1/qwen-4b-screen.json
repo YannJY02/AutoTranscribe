@@ -1,0 +1,41 @@
+{
+  "screen_version": "qwen35-4b-conditional-v1",
+  "issue": "YAN-77",
+  "reason": "The original approved plan says to compare 4B if 2B is insufficient; the preserved 2B screen triggered that condition.",
+  "registered_before_generation": true,
+  "baseline_commit": "196dab5009b75e875e8cf8ca7efc7bdf32cac79a",
+  "baseline_dataset_sha256": "64618b1d5e4cb7d094ddd3a1a7015465c0c2b30e19b6dba574a294f353f8d280",
+  "model_repo": "mlx-community/Qwen3.5-4B-4bit",
+  "model_revision": "0e7ffd5c629ef7719d4cbc04069232580bfa9d9c",
+  "max_total_generations": 8,
+  "max_tokens_per_request": 1536,
+  "request_timeout_s": 120,
+  "load_timeout_s": 120,
+  "temperature": 0.0,
+  "seed": 7,
+  "enable_thinking": false,
+  "same_product_prompts_and_expectations": true,
+  "rerun_2b": false,
+  "retry_or_tune_for_success": false,
+  "stage_a": {
+    "case_ids": [
+      "zh-release-decision-final",
+      "en-launch-plan-final",
+      "insufficient-transcript-final",
+      "bilingual-plan-correction-prefix-03",
+      "bilingual-plan-correction-final"
+    ],
+    "selection_reason": "Cover the observed 2B date/option fabrication, task replacement, sound-check fabrication, live truncation, and checklist/risk-list correction confusion with the smallest five-request screen. Selection is deliberately enriched for failures, not a representative success rate."
+  },
+  "stage_b": {
+    "only_if": "Every stage-A request ends without truncation, passes strict schema validation, and independent item review finds no material fidelity problem. Otherwise all three controls remain not_run_by_stop_rule.",
+    "case_ids": [
+      "mixed-design-review-final",
+      "bilingual-plan-correction-prefix-01",
+      "bilingual-plan-correction-prefix-02"
+    ],
+    "selection_reason": "Only after stage A passes, complete the remaining original controls to check proposal/unknown preservation and the pre-correction assignment before considering a combined resource experiment."
+  },
+  "resource_boundary": "One isolated model process reuses weights within each stage and fresh prompt caches per request. Shared installed-app lock, idle and preservation checks. No concurrent ASR/LS-EEND, production provider or UI changes.",
+  "decision_boundary": "A negative screen stops further summary generations and does not authorize a combined load test. If all eight pass materially, report the evidence and remaining uncertainty before deciding whether a minimal combined-resource test is justified."
+}

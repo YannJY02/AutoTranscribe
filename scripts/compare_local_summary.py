@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 MODEL_REPO = "mlx-community/Qwen3.5-2B-4bit"
+MODEL_REPOS = (MODEL_REPO, "mlx-community/Qwen3.5-4B-4bit")
 MAX_REQUESTS = 8
 SOURCE_FILES = (
     "insightkit/prompts/system_instruction.md",
@@ -82,10 +83,10 @@ def worker_command(python: Path, plan_path: Path) -> list[str]:
     return [str(python.absolute()), str(Path(__file__).resolve()), "worker", "--plan", str(plan_path)]
 
 
-def verify_model_manifest(model_path: Path, manifest_path: Path) -> dict:
+def verify_model_manifest(model_path: Path, manifest_path: Path, *, expected_repo: str = MODEL_REPO) -> dict:
     model_path = model_path.resolve(strict=True)
     manifest = json.loads(manifest_path.read_text())
-    if manifest.get("repo_id") != MODEL_REPO or not re.fullmatch(
+    if expected_repo not in MODEL_REPOS or manifest.get("repo_id") != expected_repo or not re.fullmatch(
         r"[0-9a-f]{40}", str(manifest.get("revision", ""))
     ):
         raise ValueError("model manifest must pin the selected repository and commit")
@@ -139,6 +140,16 @@ def make_request(case: dict) -> dict:
     }
 
 
+def select_cases(cases: list[dict], identifiers: list[str] | None) -> list[dict]:
+    if identifiers is None:
+        return cases
+    by_id = {case["id"]: case for case in cases}
+    if (not identifiers or len(identifiers) != len(set(identifiers))
+            or any(identifier not in by_id for identifier in identifiers)):
+        raise ValueError("case selection must name unique cases from the frozen contract")
+    return [by_id[identifier] for identifier in identifiers]
+
+
 def make_plan(args: argparse.Namespace) -> dict:
     from scripts.local_summary_assessment import load_contract
 
@@ -147,16 +158,20 @@ def make_plan(args: argparse.Namespace) -> dict:
     if not 0 < args.load_timeout <= 300:
         raise ValueError("model loading must have a bounded timeout")
     contract = load_contract(args.dataset)
-    cases = contract["cases"]
+    cases = select_cases(contract["cases"], args.case_ids)
     if not 1 <= len(cases) <= MAX_REQUESTS or len({case["id"] for case in cases}) != len(cases):
         raise ValueError("the plan must contain one to eight unique requests")
-    manifest = verify_model_manifest(args.model_path, args.model_manifest)
+    manifest = verify_model_manifest(args.model_path, args.model_manifest, expected_repo=args.model_repo)
     requests = [make_request(case) for case in cases]
     return {
         "schema_version": 1,
         "issue": "YAN-77",
         "dataset_version": contract["dataset_version"],
         "dataset_sha256": contract["dataset_sha256"],
+        "selection": {
+            "available_case_count": len(contract["cases"]),
+            "selected_case_ids": [case["id"] for case in cases],
+        },
         "model": manifest,
         "model_path": str(args.model_path.resolve()),
         "source_files": {name: file_sha256(ROOT / name) for name in SOURCE_FILES},
@@ -434,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--dataset", type=Path, default=ROOT / "evals/local_summary/v1/dataset.json")
     run.add_argument("--model-path", type=Path, required=True)
     run.add_argument("--model-manifest", type=Path, required=True)
+    run.add_argument("--model-repo", choices=MODEL_REPOS, default=MODEL_REPO)
+    run.add_argument("--case", dest="case_ids", action="append", help="Frozen case ID; repeat in the preregistered order. Defaults to all eight.")
     run.add_argument("--python", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--max-tokens", type=int, default=1536)

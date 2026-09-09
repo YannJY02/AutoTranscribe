@@ -110,6 +110,42 @@ def test_worker_environment_does_not_inherit_provider_credentials_or_routing(tmp
     assert environment["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == "1"
 
 
+def test_case_subset_keeps_frozen_inputs_and_explicit_order():
+    from scripts.local_summary_assessment import load_contract
+
+    cases = load_contract()["cases"]
+    identifiers = [cases[6]["id"], cases[3]["id"]]
+    selected = runner.select_cases(cases, identifiers)
+    assert selected == [cases[6], cases[3]]
+    assert [request["case"]["id"] for request in map(runner.make_request, selected)] == identifiers
+    assert len(cases) == 8
+
+
+@pytest.mark.parametrize("identifiers", [[], ["missing"], ["same", "same"]])
+def test_case_subset_rejects_empty_unknown_or_duplicate_ids(identifiers):
+    with pytest.raises(ValueError, match="unique cases"):
+        runner.select_cases([{"id": "same"}], identifiers)
+
+
+def test_model_selection_must_match_manifest_before_loading(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    runner.write_json(manifest, {"repo_id": runner.MODEL_REPO, "revision": "a" * 40})
+    with pytest.raises(ValueError, match="selected repository"):
+        runner.verify_model_manifest(tmp_path, manifest, expected_repo="mlx-community/Qwen3.5-4B-4bit")
+
+
+def test_conditional_4b_plan_has_no_new_or_repeated_inputs():
+    from scripts.local_summary_assessment import load_contract
+
+    contract = load_contract()
+    plan = json.loads((runner.ROOT / "evals/local_summary/v1/qwen-4b-screen.json").read_text())
+    assert plan["baseline_dataset_sha256"] == contract["dataset_sha256"]
+    stage_a, stage_b = plan["stage_a"]["case_ids"], plan["stage_b"]["case_ids"]
+    assert len(stage_a) == 5 and len(stage_b) == 3
+    assert not set(stage_a) & set(stage_b)
+    assert set(stage_a + stage_b) == {case["id"] for case in contract["cases"]}
+
+
 def fake_command(code):
     return [sys.executable, "-u", "-c", code]
 
