@@ -1,0 +1,31 @@
+{
+  "recorded_at": "2026-09-09T06:30:26.969252+00:00",
+  "source_fixture": "short-mixed / frozen-v1",
+  "source_media_sha256": "8edd1a97b3f77ce17d3e71958ca45f05663b24aed439f781cf45e1b9f5bbc351",
+  "source_reference_sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516",
+  "format": "mono 16-kHz PCM16",
+  "shared_58s_pcm_prefix_verified": true,
+  "coverage": "Synthetic bilingual alternating voices; schedule overlap is not verified acoustic overlap; no natural/quiet speech coverage.",
+  "files": [
+    {
+      "path": "reference-300s.json",
+      "bytes": 9627,
+      "sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516"
+    },
+    {
+      "path": "reference-58s.json",
+      "bytes": 1629,
+      "sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108"
+    },
+    {
+      "path": "short-mixed-300s.wav",
+      "bytes": 9600078,
+      "sha256": "645a0096e826a4c0bbfeffe662549abe6f204d15313c24b358fbf1db4751f15a"
+    },
+    {
+      "path": "short-mixed-58s.wav",
+      "bytes": 1856078,
+      "sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+    }
+  ]
+}

@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Run a finite local-audio streaming ASR experiment in an isolated child.
+
+Acquire the repository's installed-app resource lock and verify application
+idleness before invoking this command. Model acquisition is deliberately
+separate; the child inherits only core locale/path values and offline flags.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import importlib
+import json
+import os
+from pathlib import Path
+import platform
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+
+from streaming_asr_experiment.common import (
+    EventJournal, StreamSession, load_audio, load_reference, quality_metrics,
+    sha256_file,
+)
+
+
+CORE_ENV = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE")
+MODEL_NAMES = ("vibevoice", "nemotron", "voxtral")
+
+
+def write_report(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, ensure_ascii=False, allow_nan=False)
+            stream.write("\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def worker(args) -> int:
+    events_path = Path(str(args.output) + ".events.jsonl")
+    if args.output.exists() or events_path.exists():
+        raise ValueError("refusing to overwrite an earlier report or event journal")
+    report = {
+        "schema_version": 1, "status": "initializing", "model": args.model,
+        "started_at": datetime.now(timezone.utc).isoformat(), "passes": [],
+        "protocol": {"pacing": args.pacing, "passes": args.passes,
+                     "max_audio_seconds": args.max_audio_seconds,
+                     "max_tokens": args.max_tokens, "latency_ms": args.latency_ms,
+                     "chunk_ms": args.chunk_ms, "language": args.language,
+                     "seed": args.seed, "event_journal": str(events_path)},
+        "environment": {"python": sys.executable, "python_version": platform.python_version(),
+                        "platform": platform.platform()},
+        "limits": [
+            "Input is a finite local WAV source; capture, IPC, GUI and product queue/drop policy are not measured.",
+            "The first stream follows model setup in a new process; file caches and lazy graph compilation are not controlled.",
+            "Repeated streams reuse model weights with adapter-created fresh streaming state; they are not independent quality examples.",
+            "Source lateness measures release relative to the WAV sample clock, not model word timestamps or queue depth.",
+            "CER/WER exclude punctuation, speaker identity, timestamps and cross-language order.",
+            "Process RSS omits a full accounting of GPU/shared memory; adapter-specific memory counters have their own scope.",
+        ],
+    }
+    journal, adapter, model = None, None, None
+    try:
+        journal = EventJournal(events_path)
+        journal.record("worker_started", model=args.model)
+        audio = load_audio(args.input, args.max_audio_seconds)
+        reference, segments = load_reference(args.reference, audio.duration_ms)
+        report["input"] = {"audio_sha256": sha256_file(args.input),
+                           "reference_sha256": sha256_file(args.reference),
+                           "sample_rate": audio.sample_rate, "frames": audio.frames,
+                           "duration_ms": audio.duration_ms, "reference_text": reference,
+                           "reference_segments": segments}
+        write_report(args.output, report)
+
+        started = time.monotonic_ns()
+        adapter = importlib.import_module(f"streaming_asr_experiment.{args.model}")
+        report["adapter_import_ms"] = (time.monotonic_ns() - started) / 1_000_000
+        report["adapter_sha256"] = sha256_file(Path(adapter.__file__))
+        journal.record("model_setup_started")
+        started = time.monotonic_ns()
+        model, metadata = adapter.load(args, journal)
+        report["model_setup_ms"] = (time.monotonic_ns() - started) / 1_000_000
+        report["adapter_metadata"] = metadata
+        journal.record("model_setup_completed", wall_ms=report["model_setup_ms"])
+        report["status"] = "running"
+        write_report(args.output, report)
+
+        for index in range(1, args.passes + 1):
+            row = {"pass": index, "status": "running"}
+            report["passes"].append(row)
+            write_report(args.output, report)
+            session = StreamSession(audio, journal, index, pacing=args.pacing)
+            try:
+                result = adapter.run(model, audio, session, args)
+                row["final_text_available_ms"] = session.elapsed_ms()
+                row["stream"] = session.summary()
+                if not isinstance(result, dict) or not isinstance(result.get("text"), str):
+                    raise ValueError("adapter must return final recognized text")
+                row["adapter_result"] = result
+                if row["stream"]["released_frames"] != audio.frames:
+                    raise ValueError("adapter returned before releasing the complete input")
+                if (result.get("truncated") or result.get("completed") is False
+                        or result.get("status") in {"failed", "truncated"}):
+                    raise ValueError("adapter reported an incomplete or truncated result")
+                row["quality"] = quality_metrics(reference, result["text"])
+                row["status"] = "completed"
+                journal.record("stream_completed", pass_index=index,
+                               final_text_available_ms=row["final_text_available_ms"])
+            except Exception as error:
+                row.update(status="failed", stream=session.summary(),
+                           error={"type": type(error).__name__, "message": str(error)})
+                raise
+            finally:
+                write_report(args.output, report)
+        report["status"] = "completed"
+    except Exception as error:
+        report.update(status="failed", error={"type": type(error).__name__, "message": str(error)})
+        traceback.print_exc()
+        if journal:
+            journal.record("worker_failed", error=report["error"])
+    finally:
+        if model is not None and adapter is not None and hasattr(adapter, "close"):
+            try:
+                adapter.close(model)
+            except Exception as error:
+                report["cleanup_error"] = {"type": type(error).__name__, "message": str(error)}
+                report["status"] = "failed"
+                traceback.print_exc()
+        report["finished_at"] = datetime.now(timezone.utc).isoformat()
+        write_report(args.output, report)
+        if journal:
+            journal.close()
+    return 0 if report["status"] == "completed" else 1
+
+
+def stop_owned_process(process) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        process.wait(timeout=5)
+        return
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=5)
+
+
+def rss_sample(pid: int) -> dict:
+    """Read only this worker's counters; never collect full command arguments."""
+    try:
+        result = subprocess.run(["ps", "-o", "rss=,pcpu=", "-p", str(pid)],
+                                text=True, capture_output=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"available": False, "error_type": type(error).__name__}
+    fields = result.stdout.split()
+    if result.returncode or len(fields) != 2:
+        return {"available": False}
+    return {"available": True, "rss_kib": int(fields[0]), "cpu_pct": float(fields[1])}
+
+
+def driver(args, argv) -> int:
+    stdout_path, stderr_path = Path(str(args.output) + ".stdout.log"), Path(str(args.output) + ".stderr.log")
+    resources_path = Path(str(args.output) + ".resources.json")
+    for path in (args.output, stdout_path, stderr_path, resources_path,
+                 Path(str(args.output) + ".events.jsonl")):
+        if path.exists():
+            raise ValueError(f"refusing to overwrite earlier evidence: {path}")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    env = {key: os.environ[key] for key in CORE_ENV if key in os.environ}
+    env.update(PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1", HF_HUB_OFFLINE="1",
+               TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
+    command = [sys.executable, str(Path(__file__).resolve()), *argv, "--worker"]
+    process_report = {"command": command, "timeout_seconds": args.timeout_seconds,
+                      "max_rss_mib": args.max_rss_mib,
+                      "rss_scope": "worker process only; not complete GPU or whole-app memory", "samples": []}
+    started = time.monotonic()
+    process = None
+    previous_handler = signal.getsignal(signal.SIGTERM)
+    def interrupted(signum, _frame):
+        raise InterruptedError(f"driver received signal {signum}")
+    signal.signal(signal.SIGTERM, interrupted)
+    with stdout_path.open("x") as stdout, stderr_path.open("x") as stderr:
+        stdout_path.chmod(0o600)
+        stderr_path.chmod(0o600)
+        try:
+            process = subprocess.Popen(command, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
+            while process.poll() is None:
+                elapsed = time.monotonic() - started
+                if elapsed > args.timeout_seconds:
+                    process_report["timed_out"] = True
+                    stop_owned_process(process)
+                    break
+                sample = rss_sample(process.pid)
+                process_report["samples"].append({"elapsed_s": elapsed, **sample})
+                write_report(resources_path, process_report)
+                if sample.get("rss_kib", 0) > args.max_rss_mib * 1024:
+                    raise MemoryError("worker RSS exceeded the declared experiment limit")
+                time.sleep(1)
+        except BaseException as error:
+            process_report["error"] = {"type": type(error).__name__, "message": str(error)}
+            if process is not None:
+                stop_owned_process(process)
+            process_report["interrupted"] = isinstance(error, KeyboardInterrupt)
+        finally:
+            process_report["returncode"] = process.returncode if process is not None else None
+            process_report["wall_ms"] = (time.monotonic() - started) * 1000
+            write_report(resources_path, process_report)
+            signal.signal(signal.SIGTERM, previous_handler)
+    report = json.loads(args.output.read_text()) if args.output.exists() else {
+        "schema_version": 1, "model": args.model, "status": "failed", "passes": [],
+        "error": {"type": "WorkerDidNotReport", "message": "See retained stdout/stderr"}}
+    report["process"] = {key: value for key, value in process_report.items() if key != "samples"}
+    report["process"]["resources_path"] = str(resources_path)
+    if process_report["returncode"] != 0 or process_report.get("error") or process_report.get("timed_out"):
+        report["status"] = "failed"
+    write_report(args.output, report)
+    print(json.dumps({"status": report["status"], "output": str(args.output)}))
+    if process_report.get("interrupted"):
+        return 130
+    return 0 if report["status"] == "completed" else 1
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", required=True, choices=MODEL_NAMES)
+    parser.add_argument("--model-path", required=True, type=Path)
+    parser.add_argument("--runtime-root", required=True, type=Path)
+    parser.add_argument("--library-path", type=Path)
+    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--reference", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--language", default="auto")
+    parser.add_argument("--pacing", choices=("realtime", "accelerated"), default="realtime")
+    parser.add_argument("--latency-ms", type=int)
+    parser.add_argument("--chunk-ms", type=int, default=320, help="Input packet size; adapters retain their native model cadence")
+    parser.add_argument("--passes", type=int, default=2)
+    parser.add_argument("--max-audio-seconds", type=int, default=300)
+    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--timeout-seconds", type=int, default=1200)
+    parser.add_argument("--max-rss-mib", type=int, default=8192)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if not (1 <= args.passes <= 3 and 1 <= args.max_audio_seconds <= 480
+            and 1 <= args.max_tokens <= 8192 and 1 <= args.timeout_seconds <= 1800
+            and 256 <= args.max_rss_mib <= 12288
+            and 1 <= args.chunk_ms <= 4000):
+        parser.error("invalid experiment bounds")
+    if args.latency_ms is None:
+        args.latency_ms = {"nemotron": 320, "voxtral": 480, "vibevoice": None}[args.model]
+    for key in ("model_path", "runtime_root", "library_path", "input", "reference", "output"):
+        if getattr(args, key) is not None:
+            setattr(args, key, getattr(args, key).expanduser().resolve())
+    try:
+        return worker(args) if args.worker else driver(args, argv)
+    except (OSError, ValueError) as error:
+        print(json.dumps({"status": "failed", "error": {"type": type(error).__name__, "message": str(error)}}), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

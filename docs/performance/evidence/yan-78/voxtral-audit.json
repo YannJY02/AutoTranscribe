@@ -1,0 +1,1446 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-09T07:31:09.148317+00:00",
+  "status": "completed_read_only_token_and_evidence_audit",
+  "audit_scope": "Existing 58-second, two-pass run only. No ASR inference, model load, app/config/consent write, or raw evidence rewrite was performed.",
+  "audit_runtime": {
+    "python": "logs/yan78/voxtral/.venv/bin/python",
+    "mistral_common": "1.11.7",
+    "tokenizer_only": true,
+    "mlx_or_voxmlx_imported": false,
+    "bytecode_writes_disabled": true
+  },
+  "evidence": {
+    "report": {
+      "path": "logs/yan78/voxtral/short.json",
+      "bytes": 9221,
+      "sha256": "2306c80448b30b2d10c72d3c2ac0e6dec371800b76984f9406edc27495358386"
+    },
+    "journal": {
+      "path": "logs/yan78/voxtral/short.json.events.jsonl",
+      "bytes": 1033072,
+      "sha256": "9fb5fd677d73c2ab1dd76d9360ba89f667a3e104acc98ff2978be06333f8bfef"
+    },
+    "resources": {
+      "path": "logs/yan78/voxtral/short.json.resources.json",
+      "bytes": 16760,
+      "sha256": "8fa0dace287dc2d7b997cc5d450db789d7b0b1be593614260031dc104f51dc07"
+    },
+    "stdout": {
+      "path": "logs/yan78/voxtral/short.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stderr": {
+      "path": "logs/yan78/voxtral/short.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "controller": {
+      "path": "logs/yan78/voxtral-short.controller.json",
+      "bytes": 9215,
+      "sha256": "503e702d45542fa8993d3c2702bd9ffaa366185b01f01fbd303634cdbb4c9a5a"
+    },
+    "audio": {
+      "path": "logs/yan78/inputs/short-mixed-58s.wav",
+      "bytes": 1856078,
+      "sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+    },
+    "reference": {
+      "path": "logs/yan78/inputs/reference-58s.json",
+      "bytes": 1629,
+      "sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108"
+    },
+    "tokenizer": {
+      "path": "logs/yan78/voxtral/model/tekken.json",
+      "bytes": 14910348,
+      "sha256": "8434af1d39eba99f0ef46cf1450bf1a63fa941a26933a1ef5dbbf4adf0d00e44"
+    },
+    "tokenizer_source": {
+      "path": "logs/yan78/voxtral/.venv/lib/python3.11/site-packages/mistral_common/tokens/tokenizers/tekken.py",
+      "bytes": 21792,
+      "sha256": "758dda479744e49c407abc19b61bfcaa3fd1ef88e14c7e8861a5773f76da00cb"
+    },
+    "special_token_source": {
+      "path": "logs/yan78/voxtral/.venv/lib/python3.11/site-packages/mistral_common/tokens/tokenizers/base.py",
+      "bytes": 14690,
+      "sha256": "ae287ae9d1ee2213b6433f8bd5aea10df259ce059652fec34c0d1553048f9799"
+    },
+    "native_stream_source": {
+      "path": "logs/yan78/voxtral/source/voxmlx/voxmlx/stream.py",
+      "bytes": 11442,
+      "sha256": "912cd5f2be365a326ec0310742a86a49d0aea82f93c5a4a707c7b67263467b55"
+    },
+    "metric_source": {
+      "path": "scripts/streaming_asr_experiment/common.py",
+      "bytes": 9086,
+      "sha256": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33"
+    },
+    "adapter_source": {
+      "path": "scripts/streaming_asr_experiment/voxtral.py",
+      "bytes": 15242,
+      "sha256": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+    }
+  },
+  "evidence_unchanged_after_audit": true,
+  "journal_integrity": {
+    "rows": 4392,
+    "complete_json_lines": true,
+    "consecutive_sequence_from_zero": true,
+    "process_timestamps_monotonic": true,
+    "kind_counts": {
+      "worker_started": 1,
+      "model_setup_started": 1,
+      "voxtral_native_configuration": 1,
+      "model_setup_completed": 1,
+      "stream_started": 2,
+      "native_stream_configuration": 2,
+      "native_diagnostic": 4,
+      "native_audio_source_started": 2,
+      "audio_released": 1450,
+      "native_audio_callback": 1450,
+      "text": 1470,
+      "native_eof_requested": 2,
+      "native_flush_started": 2,
+      "native_flush_completed": 2,
+      "stream_completed": 2
+    }
+  },
+  "input": {
+    "channels": 1,
+    "sample_width_bytes": 2,
+    "sample_rate": 16000,
+    "frames": 928000,
+    "compression": "NONE",
+    "duration_ms": 58000,
+    "hashes_match_recorded_input": true,
+    "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+    "reference_segments": [
+      {
+        "end_ms": 8000,
+        "speaker": "林",
+        "start_ms": 2000,
+        "text": "我们先固定今天的测试文件和操作顺序。"
+      },
+      {
+        "end_ms": 17000,
+        "speaker": "Alex",
+        "start_ms": 11000,
+        "text": "The same input will be replayed for every measured run."
+      },
+      {
+        "end_ms": 26000,
+        "speaker": "林",
+        "start_ms": 20000,
+        "text": "决定使用冻结方案，不在运行中修改内容。"
+      },
+      {
+        "end_ms": 36000,
+        "speaker": "Alex",
+        "start_ms": 29000,
+        "text": "I will check the hashes and durations before the next run."
+      },
+      {
+        "end_ms": 41000,
+        "speaker": "林",
+        "start_ms": 35000,
+        "text": "这段短暂交叉发言也保留在测试里。"
+      },
+      {
+        "end_ms": 50000,
+        "speaker": "Alex",
+        "start_ms": 44000,
+        "text": "A failed validation produces no benchmark result."
+      },
+      {
+        "end_ms": 58000,
+        "speaker": "林",
+        "start_ms": 53000,
+        "text": "所有内容都是合成的，不来自私人会议。"
+      }
+    ]
+  },
+  "baseline": {
+    "runtime": "awni/voxmlx",
+    "source_revision": "e6d193e85e84e30f26e370c66973ce287b8a9d57",
+    "model_id": "T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit",
+    "model_revision": "e41b00294733d2db2fe767cd7c5454ba617c2bed",
+    "quantization": {
+      "group_size": 64,
+      "bits": 4
+    },
+    "model_setup_ms": 6987.666458,
+    "native_delay_ms": 480,
+    "native_chunk_ms": 80,
+    "requested_generic_chunk_ms": 320,
+    "requested_chunk_is_not_native_chunk": true,
+    "greedy_temperature": 0.0,
+    "fresh_stream_state_each_pass": true,
+    "weights_reused_between_passes": true
+  },
+  "diagnostic_methods": {
+    "literal": "Replay every saved native_token_ids list with the pinned Tekkenizer.decode(..., SpecialTokenPolicy.IGNORE); compare each exact text delta and its concatenation to the raw report.",
+    "full_token_decode": "Group saved token IDs by native EOS, then call the same IGNORE decoder on each whole group. No EOS occurred in either pass, so each has one group. Do not strip, correct, translate, insert spaces, or use the reference to reconstruct text.",
+    "word_boundary_aware_reconstruction": "Within each EOS group, split the saved IDs only at [STREAMING_WORD] (ID 33). Decode each segment with the original IGNORE decoder, discard only segments whose decoded text is empty, and join those decoded strings with one ASCII space. No splitting inside a segment, no spelling/translation correction, and no use of reference text in reconstruction.",
+    "quality": "All three renderings use the existing NFKC/lowercase Han CER and English-regex WER. Reference: 65 Han characters and 28 English words. Punctuation, speakers, timestamps, and cross-language order are outside this score.",
+    "boundary_semantics": "The paper calls [W] a word boundary at emission-group onset; consecutive words can share a group. The third column is therefore an explicitly synthetic rendering diagnostic, not a validated native display rule or a complete word segmentation.",
+    "latency": "First-text and final-text timing remain the original native-output observations; diagnostics do not create replacement latency numbers."
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "status": "completed",
+      "journal_counts": {
+        "stream_started": 1,
+        "native_stream_configuration": 1,
+        "native_diagnostic": 2,
+        "native_audio_source_started": 1,
+        "audio_released": 725,
+        "native_audio_callback": 725,
+        "text": 735,
+        "native_eof_requested": 1,
+        "native_flush_started": 1,
+        "native_flush_completed": 1,
+        "stream_completed": 1
+      },
+      "integrity": {
+        "every_saved_native_decode_replayed_exactly": true,
+        "literal_text_equals_report": true,
+        "literal_metrics_equal_report": true,
+        "input_releases_and_callbacks_contiguous": true,
+        "complete_input_frames_delivered": true,
+        "all_source_intervals_have_release_before_callback": true,
+        "native_eos_count": 0,
+        "flush_started_after_last_callback": true,
+        "flush_pcm_accounting_matches_input": true,
+        "native_flush_completed": true,
+        "stream_timestamp_inversions": []
+      },
+      "timing": {
+        "first_text_ms_reported": 2990.105416000006,
+        "first_nonempty_text_event": {
+          "sequence": 110,
+          "kind": "text",
+          "process_elapsed_ms": 9985.90525,
+          "pass_index": 1,
+          "stream_elapsed_ms": 2990.113708001445,
+          "text": "我们",
+          "semantics": "delta",
+          "audio_end_frame": 47360,
+          "audio_end_ms": 2960.0,
+          "raw": {
+            "native_token_ids": [
+              15738
+            ],
+            "during_flush": false
+          }
+        },
+        "first_empty_token_event": {
+          "sequence": 58,
+          "kind": "text",
+          "process_elapsed_ms": 9051.843292,
+          "pass_index": 1,
+          "stream_elapsed_ms": 2056.04641600803,
+          "text": "",
+          "semantics": "delta",
+          "audio_end_frame": 32000,
+          "audio_end_ms": 2000.0,
+          "raw": {
+            "native_token_ids": [
+              32
+            ],
+            "during_flush": false
+          }
+        },
+        "final_text_available_ms": 59792.04825000488,
+        "stream_wall_ms": 59792.64941600559,
+        "max_source_lateness_ms": 1161.8576250073966,
+        "last_release_ms": 58001.46325000969,
+        "last_callback_ms": 58005.26654100395,
+        "native_eof_ms": 58408.485874999315,
+        "native_flush_start_ms": 58410.7711250108,
+        "native_flush_end_event_ms": 59788.581583008636,
+        "native_flush_duration_ms": 1377.542791000451,
+        "completion_after_input_duration_ms": 1792.048250004882,
+        "completion_after_last_callback_ms": 1786.781709000934,
+        "scope": "All timing is copied from the existing run; diagnostics perform no new timing or inference."
+      },
+      "tokens": {
+        "count": 735,
+        "canonical_json_sha256": "48913acca9a918702144aed8e0e336e5506b579552b5404caf58b0fcf610ecaf",
+        "canonical_json_format": "json.dumps(all_native_token_ids, separators=(comma, colon)), UTF-8",
+        "special_counts": {
+          "32": 616,
+          "33": 46
+        },
+        "content_count": 73,
+        "content_token_ids": [
+          15738,
+          9932,
+          2854,
+          1186,
+          13908,
+          34784,
+          2713,
+          10437,
+          1139,
+          84720,
+          11449,
+          25109,
+          4300,
+          86018,
+          5752,
+          109423,
+          55550,
+          1320,
+          1784,
+          57223,
+          4082,
+          27142,
+          2352,
+          1273,
+          99317,
+          2975,
+          45868,
+          128484,
+          16353,
+          1046,
+          127466,
+          40522,
+          5367,
+          1187,
+          19109,
+          7429,
+          34290,
+          1044,
+          3163,
+          17397,
+          34613,
+          7732,
+          4392,
+          48394,
+          25855,
+          20759,
+          33854,
+          1320,
+          1073,
+          27142,
+          6390,
+          3265,
+          1102,
+          2873,
+          1115,
+          1421,
+          28243,
+          2975,
+          3265,
+          6651,
+          1774,
+          1046,
+          66892,
+          60564,
+          77186,
+          6973,
+          10494,
+          3163,
+          4976,
+          8661,
+          19853,
+          9788,
+          53289
+        ],
+        "native_eos_delimited_groups": 1,
+        "content_ascii_space_bytes": 0,
+        "full_decoder_matches_content_byte_concatenation": true,
+        "nonempty_streaming_word_groups": 46
+      },
+      "literal": {
+        "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandwaitforthenextone.所有内容都是个什么不来自这个会议",
+        "quality": {
+          "chinese_cer": {
+            "errors": 24,
+            "reference_units": 65,
+            "hypothesis_units": 47,
+            "rate": 0.36923076923076925
+          },
+          "english_wer": {
+            "errors": 28,
+            "reference_units": 28,
+            "hypothesis_units": 2,
+            "rate": 1.0
+          }
+        },
+        "replacement_characters": 6,
+        "ascii_spaces": 0,
+        "english_metric_units": [
+          "thesameinputwillbereplayedforeverymeasuredrun",
+          "iwillcheckthefaultsandwaitforthenextone"
+        ]
+      },
+      "full_token_decode_diagnostic": {
+        "text": "我们先固定今天的测试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用冻结方案,不再运行中修改内容。Iwillcheckthefaultsandwaitforthenextone.所有内容都是个什么不来自这个会议",
+        "quality": {
+          "chinese_cer": {
+            "errors": 21,
+            "reference_units": 65,
+            "hypothesis_units": 50,
+            "rate": 0.3230769230769231
+          },
+          "english_wer": {
+            "errors": 28,
+            "reference_units": 28,
+            "hypothesis_units": 2,
+            "rate": 1.0
+          }
+        },
+        "replacement_characters": 0,
+        "ascii_spaces": 0,
+        "english_metric_units": [
+          "thesameinputwillbereplayedforeverymeasuredrun",
+          "iwillcheckthefaultsandwaitforthenextone"
+        ]
+      },
+      "word_boundary_aware_reconstruction_diagnostic": {
+        "text": "我们 先 固定 今天 的测试 文件 和操 作 顺 序。 The same inputwillbe replayedfor every measured run. 决定 使用 冻结 方 案, 不再 运 行 中 修改 内 容。 Iwill checkthe faultsand wait for the next one. 所有 内容 都是 个 什么 不来 自 这个 会议",
+        "quality": {
+          "chinese_cer": {
+            "errors": 21,
+            "reference_units": 65,
+            "hypothesis_units": 50,
+            "rate": 0.3230769230769231
+          },
+          "english_wer": {
+            "errors": 21,
+            "reference_units": 28,
+            "hypothesis_units": 15,
+            "rate": 0.75
+          }
+        },
+        "replacement_characters": 0,
+        "ascii_spaces": 45,
+        "english_metric_units": [
+          "the",
+          "same",
+          "inputwillbe",
+          "replayedfor",
+          "every",
+          "measured",
+          "run",
+          "iwill",
+          "checkthe",
+          "faultsand",
+          "wait",
+          "for",
+          "the",
+          "next",
+          "one"
+        ],
+        "groups": [
+          {
+            "text": "我们",
+            "content_token_ids": [
+              15738
+            ]
+          },
+          {
+            "text": "先",
+            "content_token_ids": [
+              9932
+            ]
+          },
+          {
+            "text": "固定",
+            "content_token_ids": [
+              2854,
+              1186,
+              13908
+            ]
+          },
+          {
+            "text": "今天",
+            "content_token_ids": [
+              34784
+            ]
+          },
+          {
+            "text": "的测试",
+            "content_token_ids": [
+              2713,
+              10437,
+              1139,
+              84720
+            ]
+          },
+          {
+            "text": "文件",
+            "content_token_ids": [
+              11449,
+              25109
+            ]
+          },
+          {
+            "text": "和操",
+            "content_token_ids": [
+              4300,
+              86018
+            ]
+          },
+          {
+            "text": "作",
+            "content_token_ids": [
+              5752
+            ]
+          },
+          {
+            "text": "顺",
+            "content_token_ids": [
+              109423
+            ]
+          },
+          {
+            "text": "序。",
+            "content_token_ids": [
+              55550,
+              1320
+            ]
+          },
+          {
+            "text": "The",
+            "content_token_ids": [
+              1784
+            ]
+          },
+          {
+            "text": "same",
+            "content_token_ids": [
+              57223
+            ]
+          },
+          {
+            "text": "inputwillbe",
+            "content_token_ids": [
+              4082,
+              27142,
+              2352
+            ]
+          },
+          {
+            "text": "replayedfor",
+            "content_token_ids": [
+              1273,
+              99317,
+              2975
+            ]
+          },
+          {
+            "text": "every",
+            "content_token_ids": [
+              45868
+            ]
+          },
+          {
+            "text": "measured",
+            "content_token_ids": [
+              128484
+            ]
+          },
+          {
+            "text": "run.",
+            "content_token_ids": [
+              16353,
+              1046
+            ]
+          },
+          {
+            "text": "决定",
+            "content_token_ids": [
+              127466
+            ]
+          },
+          {
+            "text": "使用",
+            "content_token_ids": [
+              40522
+            ]
+          },
+          {
+            "text": "冻结",
+            "content_token_ids": [
+              5367,
+              1187,
+              19109
+            ]
+          },
+          {
+            "text": "方",
+            "content_token_ids": [
+              7429
+            ]
+          },
+          {
+            "text": "案,",
+            "content_token_ids": [
+              34290,
+              1044
+            ]
+          },
+          {
+            "text": "不再",
+            "content_token_ids": [
+              3163,
+              17397
+            ]
+          },
+          {
+            "text": "运",
+            "content_token_ids": [
+              34613
+            ]
+          },
+          {
+            "text": "行",
+            "content_token_ids": [
+              7732
+            ]
+          },
+          {
+            "text": "中",
+            "content_token_ids": [
+              4392
+            ]
+          },
+          {
+            "text": "修改",
+            "content_token_ids": [
+              48394,
+              25855
+            ]
+          },
+          {
+            "text": "内",
+            "content_token_ids": [
+              20759
+            ]
+          },
+          {
+            "text": "容。",
+            "content_token_ids": [
+              33854,
+              1320
+            ]
+          },
+          {
+            "text": "Iwill",
+            "content_token_ids": [
+              1073,
+              27142
+            ]
+          },
+          {
+            "text": "checkthe",
+            "content_token_ids": [
+              6390,
+              3265
+            ]
+          },
+          {
+            "text": "faultsand",
+            "content_token_ids": [
+              1102,
+              2873,
+              1115,
+              1421
+            ]
+          },
+          {
+            "text": "wait",
+            "content_token_ids": [
+              28243
+            ]
+          },
+          {
+            "text": "for",
+            "content_token_ids": [
+              2975
+            ]
+          },
+          {
+            "text": "the",
+            "content_token_ids": [
+              3265
+            ]
+          },
+          {
+            "text": "next",
+            "content_token_ids": [
+              6651
+            ]
+          },
+          {
+            "text": "one.",
+            "content_token_ids": [
+              1774,
+              1046
+            ]
+          },
+          {
+            "text": "所有",
+            "content_token_ids": [
+              66892
+            ]
+          },
+          {
+            "text": "内容",
+            "content_token_ids": [
+              60564
+            ]
+          },
+          {
+            "text": "都是",
+            "content_token_ids": [
+              77186
+            ]
+          },
+          {
+            "text": "个",
+            "content_token_ids": [
+              6973
+            ]
+          },
+          {
+            "text": "什么",
+            "content_token_ids": [
+              10494
+            ]
+          },
+          {
+            "text": "不来",
+            "content_token_ids": [
+              3163,
+              4976
+            ]
+          },
+          {
+            "text": "自",
+            "content_token_ids": [
+              8661
+            ]
+          },
+          {
+            "text": "这个",
+            "content_token_ids": [
+              19853
+            ]
+          },
+          {
+            "text": "会议",
+            "content_token_ids": [
+              9788,
+              53289
+            ]
+          }
+        ],
+        "status": "diagnostic only; emission-group separators, not guaranteed full word segmentation"
+      },
+      "native_flush_snapshot": {
+        "tail_flush_eligible": true,
+        "prefilled": true,
+        "n_audio_samples_fed": 920320,
+        "n_total_decoded": 750,
+        "audio_buf_frames": 7680,
+        "pending_audio_frames": 0
+      }
+    },
+    {
+      "pass": 2,
+      "status": "completed",
+      "journal_counts": {
+        "stream_started": 1,
+        "native_stream_configuration": 1,
+        "native_diagnostic": 2,
+        "native_audio_source_started": 1,
+        "audio_released": 725,
+        "native_audio_callback": 725,
+        "text": 735,
+        "native_eof_requested": 1,
+        "native_flush_started": 1,
+        "native_flush_completed": 1,
+        "stream_completed": 1
+      },
+      "integrity": {
+        "every_saved_native_decode_replayed_exactly": true,
+        "literal_text_equals_report": true,
+        "literal_metrics_equal_report": true,
+        "input_releases_and_callbacks_contiguous": true,
+        "complete_input_frames_delivered": true,
+        "all_source_intervals_have_release_before_callback": true,
+        "native_eos_count": 0,
+        "flush_started_after_last_callback": true,
+        "flush_pcm_accounting_matches_input": true,
+        "native_flush_completed": true,
+        "stream_timestamp_inversions": []
+      },
+      "timing": {
+        "first_text_ms_reported": 6604.467708006268,
+        "first_nonempty_text_event": {
+          "sequence": 2394,
+          "kind": "text",
+          "process_elapsed_ms": 73513.050792,
+          "pass_index": 2,
+          "stream_elapsed_ms": 6604.477375003626,
+          "text": "我们",
+          "semantics": "delta",
+          "audio_end_frame": 104960,
+          "audio_end_ms": 6560.0,
+          "raw": {
+            "native_token_ids": [
+              15738
+            ],
+            "during_flush": false
+          }
+        },
+        "first_empty_token_event": {
+          "sequence": 2322,
+          "kind": "text",
+          "process_elapsed_ms": 71749.166042,
+          "pass_index": 2,
+          "stream_elapsed_ms": 4840.594000008423,
+          "text": "",
+          "semantics": "delta",
+          "audio_end_frame": 76800,
+          "audio_end_ms": 4800.0,
+          "raw": {
+            "native_token_ids": [
+              32
+            ],
+            "during_flush": false
+          }
+        },
+        "final_text_available_ms": 66547.57158301072,
+        "stream_wall_ms": 66547.59666700556,
+        "max_source_lateness_ms": 99.2465420102235,
+        "last_release_ms": 58006.67895800143,
+        "last_callback_ms": 58006.79683301132,
+        "native_eof_ms": 62128.169125004206,
+        "native_flush_start_ms": 62138.12137499917,
+        "native_flush_end_event_ms": 66526.72950000851,
+        "native_flush_duration_ms": 4388.611332993605,
+        "completion_after_input_duration_ms": 8547.571583010722,
+        "completion_after_last_callback_ms": 8540.7747499994,
+        "scope": "All timing is copied from the existing run; diagnostics perform no new timing or inference."
+      },
+      "tokens": {
+        "count": 735,
+        "canonical_json_sha256": "5b33473585a70295bc24806ec89f8e1bb3de5bd48ecdf66a1a8381052a0bcdc4",
+        "canonical_json_format": "json.dumps(all_native_token_ids, separators=(comma, colon)), UTF-8",
+        "special_counts": {
+          "32": 614,
+          "33": 45
+        },
+        "content_count": 76,
+        "content_token_ids": [
+          15738,
+          9932,
+          2854,
+          1186,
+          13908,
+          34784,
+          2713,
+          10437,
+          1139,
+          84720,
+          11449,
+          25109,
+          4300,
+          86018,
+          5752,
+          109423,
+          55550,
+          1320,
+          1784,
+          57223,
+          4082,
+          27142,
+          2352,
+          1273,
+          99317,
+          2975,
+          45868,
+          128484,
+          16353,
+          1046,
+          127466,
+          40522,
+          5367,
+          1187,
+          19109,
+          7429,
+          34290,
+          1044,
+          3163,
+          17397,
+          34613,
+          7732,
+          4392,
+          48394,
+          25855,
+          20759,
+          33854,
+          1320,
+          1073,
+          27142,
+          6390,
+          3265,
+          1102,
+          2873,
+          1115,
+          1421,
+          3265,
+          2966,
+          1116,
+          2023,
+          2975,
+          3265,
+          6651,
+          1774,
+          1046,
+          8032,
+          45868,
+          1774,
+          19746,
+          88545,
+          1044,
+          2209,
+          3509,
+          15080,
+          88545,
+          1046
+        ],
+        "native_eos_delimited_groups": 1,
+        "content_ascii_space_bytes": 0,
+        "full_decoder_matches_content_byte_concatenation": true,
+        "nonempty_streaming_word_groups": 45
+      },
+      "literal": {
+        "text": "我们先��定今天的��试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用��结方案,不再运行中修改内容。Iwillcheckthefaultsandthewaytentsforthenextone.Soeveryoneshouldremember,butrightjustremember.",
+        "quality": {
+          "chinese_cer": {
+            "errors": 35,
+            "reference_units": 65,
+            "hypothesis_units": 31,
+            "rate": 0.5384615384615384
+          },
+          "english_wer": {
+            "errors": 28,
+            "reference_units": 28,
+            "hypothesis_units": 4,
+            "rate": 1.0
+          }
+        },
+        "replacement_characters": 6,
+        "ascii_spaces": 0,
+        "english_metric_units": [
+          "thesameinputwillbereplayedforeverymeasuredrun",
+          "iwillcheckthefaultsandthewaytentsforthenextone",
+          "soeveryoneshouldremember",
+          "butrightjustremember"
+        ]
+      },
+      "full_token_decode_diagnostic": {
+        "text": "我们先固定今天的测试文件和操作顺序。Thesameinputwillbereplayedforeverymeasuredrun.决定使用冻结方案,不再运行中修改内容。Iwillcheckthefaultsandthewaytentsforthenextone.Soeveryoneshouldremember,butrightjustremember.",
+        "quality": {
+          "chinese_cer": {
+            "errors": 32,
+            "reference_units": 65,
+            "hypothesis_units": 34,
+            "rate": 0.49230769230769234
+          },
+          "english_wer": {
+            "errors": 28,
+            "reference_units": 28,
+            "hypothesis_units": 4,
+            "rate": 1.0
+          }
+        },
+        "replacement_characters": 0,
+        "ascii_spaces": 0,
+        "english_metric_units": [
+          "thesameinputwillbereplayedforeverymeasuredrun",
+          "iwillcheckthefaultsandthewaytentsforthenextone",
+          "soeveryoneshouldremember",
+          "butrightjustremember"
+        ]
+      },
+      "word_boundary_aware_reconstruction_diagnostic": {
+        "text": "我们 先 固定 今天 的测试 文件 和操 作 顺 序。 The same inputwillbe replayedfor every measured run. 决定 使用 冻结 方 案, 不再 运 行 中 修改 内 容。 Iwill checkthe faultsandtheway tents for the next one. So everyone should remember, but right just remember.",
+        "quality": {
+          "chinese_cer": {
+            "errors": 32,
+            "reference_units": 65,
+            "hypothesis_units": 34,
+            "rate": 0.49230769230769234
+          },
+          "english_wer": {
+            "errors": 22,
+            "reference_units": 28,
+            "hypothesis_units": 23,
+            "rate": 0.7857142857142857
+          }
+        },
+        "replacement_characters": 0,
+        "ascii_spaces": 44,
+        "english_metric_units": [
+          "the",
+          "same",
+          "inputwillbe",
+          "replayedfor",
+          "every",
+          "measured",
+          "run",
+          "iwill",
+          "checkthe",
+          "faultsandtheway",
+          "tents",
+          "for",
+          "the",
+          "next",
+          "one",
+          "so",
+          "everyone",
+          "should",
+          "remember",
+          "but",
+          "right",
+          "just",
+          "remember"
+        ],
+        "groups": [
+          {
+            "text": "我们",
+            "content_token_ids": [
+              15738
+            ]
+          },
+          {
+            "text": "先",
+            "content_token_ids": [
+              9932
+            ]
+          },
+          {
+            "text": "固定",
+            "content_token_ids": [
+              2854,
+              1186,
+              13908
+            ]
+          },
+          {
+            "text": "今天",
+            "content_token_ids": [
+              34784
+            ]
+          },
+          {
+            "text": "的测试",
+            "content_token_ids": [
+              2713,
+              10437,
+              1139,
+              84720
+            ]
+          },
+          {
+            "text": "文件",
+            "content_token_ids": [
+              11449,
+              25109
+            ]
+          },
+          {
+            "text": "和操",
+            "content_token_ids": [
+              4300,
+              86018
+            ]
+          },
+          {
+            "text": "作",
+            "content_token_ids": [
+              5752
+            ]
+          },
+          {
+            "text": "顺",
+            "content_token_ids": [
+              109423
+            ]
+          },
+          {
+            "text": "序。",
+            "content_token_ids": [
+              55550,
+              1320
+            ]
+          },
+          {
+            "text": "The",
+            "content_token_ids": [
+              1784
+            ]
+          },
+          {
+            "text": "same",
+            "content_token_ids": [
+              57223
+            ]
+          },
+          {
+            "text": "inputwillbe",
+            "content_token_ids": [
+              4082,
+              27142,
+              2352
+            ]
+          },
+          {
+            "text": "replayedfor",
+            "content_token_ids": [
+              1273,
+              99317,
+              2975
+            ]
+          },
+          {
+            "text": "every",
+            "content_token_ids": [
+              45868
+            ]
+          },
+          {
+            "text": "measured",
+            "content_token_ids": [
+              128484
+            ]
+          },
+          {
+            "text": "run.",
+            "content_token_ids": [
+              16353,
+              1046
+            ]
+          },
+          {
+            "text": "决定",
+            "content_token_ids": [
+              127466
+            ]
+          },
+          {
+            "text": "使用",
+            "content_token_ids": [
+              40522
+            ]
+          },
+          {
+            "text": "冻结",
+            "content_token_ids": [
+              5367,
+              1187,
+              19109
+            ]
+          },
+          {
+            "text": "方",
+            "content_token_ids": [
+              7429
+            ]
+          },
+          {
+            "text": "案,",
+            "content_token_ids": [
+              34290,
+              1044
+            ]
+          },
+          {
+            "text": "不再",
+            "content_token_ids": [
+              3163,
+              17397
+            ]
+          },
+          {
+            "text": "运",
+            "content_token_ids": [
+              34613
+            ]
+          },
+          {
+            "text": "行",
+            "content_token_ids": [
+              7732
+            ]
+          },
+          {
+            "text": "中",
+            "content_token_ids": [
+              4392
+            ]
+          },
+          {
+            "text": "修改",
+            "content_token_ids": [
+              48394,
+              25855
+            ]
+          },
+          {
+            "text": "内",
+            "content_token_ids": [
+              20759
+            ]
+          },
+          {
+            "text": "容。",
+            "content_token_ids": [
+              33854,
+              1320
+            ]
+          },
+          {
+            "text": "Iwill",
+            "content_token_ids": [
+              1073,
+              27142
+            ]
+          },
+          {
+            "text": "checkthe",
+            "content_token_ids": [
+              6390,
+              3265
+            ]
+          },
+          {
+            "text": "faultsandtheway",
+            "content_token_ids": [
+              1102,
+              2873,
+              1115,
+              1421,
+              3265,
+              2966
+            ]
+          },
+          {
+            "text": "tents",
+            "content_token_ids": [
+              1116,
+              2023
+            ]
+          },
+          {
+            "text": "for",
+            "content_token_ids": [
+              2975
+            ]
+          },
+          {
+            "text": "the",
+            "content_token_ids": [
+              3265
+            ]
+          },
+          {
+            "text": "next",
+            "content_token_ids": [
+              6651
+            ]
+          },
+          {
+            "text": "one.",
+            "content_token_ids": [
+              1774,
+              1046
+            ]
+          },
+          {
+            "text": "So",
+            "content_token_ids": [
+              8032
+            ]
+          },
+          {
+            "text": "everyone",
+            "content_token_ids": [
+              45868,
+              1774
+            ]
+          },
+          {
+            "text": "should",
+            "content_token_ids": [
+              19746
+            ]
+          },
+          {
+            "text": "remember,",
+            "content_token_ids": [
+              88545,
+              1044
+            ]
+          },
+          {
+            "text": "but",
+            "content_token_ids": [
+              2209
+            ]
+          },
+          {
+            "text": "right",
+            "content_token_ids": [
+              3509
+            ]
+          },
+          {
+            "text": "just",
+            "content_token_ids": [
+              15080
+            ]
+          },
+          {
+            "text": "remember.",
+            "content_token_ids": [
+              88545,
+              1046
+            ]
+          }
+        ],
+        "status": "diagnostic only; emission-group separators, not guaranteed full word segmentation"
+      },
+      "native_flush_snapshot": {
+        "tail_flush_eligible": true,
+        "prefilled": true,
+        "n_audio_samples_fed": 898560,
+        "n_total_decoded": 733,
+        "audio_buf_frames": 29440,
+        "pending_audio_frames": 0
+      }
+    }
+  ],
+  "content_observations": [
+    {
+      "reference_segment": 1,
+      "observation": "Whole-token decoding repairs 固 and 测 in the first Chinese sentence; its remaining text is preserved."
+    },
+    {
+      "reference_segment": 2,
+      "observation": "The first English sentence has the same ordered letters after whitespace removal. Native/full decode omit all spaces. Marker reconstruction yields The same inputwillbe replayedfor every measured run.; group-internal boundaries remain absent."
+    },
+    {
+      "reference_segment": 3,
+      "observation": "Whole-token decoding repairs 冻. Both passes retain 不再 where the reference has 不在."
+    },
+    {
+      "reference_segment": 4,
+      "observation": "Both passes say faults in place of hashes and fail to preserve the hashes and durations before the next run phrase. Marker-only rendering still leaves concatenated words; it does not correct these substitutions."
+    },
+    {
+      "reference_segment": 5,
+      "observation": "Neither whole-token rendering contains the Chinese overlap sentence 这段短暂交叉发言也保留在测试里。 Inserting marker-based spaces does not restore it."
+    },
+    {
+      "reference_segment": 6,
+      "observation": "Neither whole-token rendering contains A failed validation produces no benchmark result. Inserting marker-based spaces does not restore it."
+    },
+    {
+      "reference_segment": 7,
+      "observation": "Pass 1 emits 所有内容都是个什么不来自这个会议 instead of the final reference sentence. Pass 2 ends with Soeveryone...justremember., an English sentence with no matching reference content. No word-timestamp attribution is claimed."
+    }
+  ],
+  "resources": {
+    "worker_returncode": 0,
+    "controller_returncode": 0,
+    "worker_process_wall_ms": 135922.90283400507,
+    "sample_count": 130,
+    "available_rss_sample_count": 130,
+    "sampled_peak_rss_kib": 1002976,
+    "sampled_peak_rss_mib": 979.46875,
+    "sampled_peak_rss_gib": 0.956512451171875,
+    "sampled_peak_record": {
+      "elapsed_s": 6.102021124999737,
+      "available": true,
+      "rss_kib": 1002976,
+      "cpu_pct": 76.2
+    },
+    "last_rss_record": {
+      "elapsed_s": 134.90727954200702,
+      "available": true,
+      "rss_kib": 0,
+      "cpu_pct": 0.0
+    },
+    "rss_scope": "worker process only; not complete GPU or whole-app memory",
+    "thermal_max_observed": 0,
+    "system_swap_before": "vm.swapusage: total = 22528.00M  used = 21436.81M  free = 1091.19M  (encrypted)",
+    "system_swap_after": "vm.swapusage: total = 37888.00M  used = 25302.75M  free = 12585.25M  (encrypted)",
+    "system_swap_used_increase_mib": 3865.94,
+    "swap_attribution": "Whole-machine readings with a large starting swap burden; increase is not isolated to this worker. A sampled RSS below 1 GiB does not establish total model/unified/GPU memory use or safe headroom."
+  },
+  "isolation": {
+    "controller_preserved": true,
+    "before_equals_after": true,
+    "installed_revision": "6a85f89",
+    "installed_build": "20260909123140",
+    "unchanged_fields": [
+      "installed_revision",
+      "installed_build",
+      "installed_executable_sha256",
+      "runtime_config_sha256",
+      "consent_enabled",
+      "consent_sha256"
+    ],
+    "idle_before": {
+      "socket_present": true,
+      "app_processes": 1,
+      "writable_records_handle": false
+    },
+    "idle_after": {
+      "socket_present": true,
+      "app_processes": 1,
+      "writable_records_handle": false
+    },
+    "all_sampled_app_checks_one_process_and_no_writable_records_handle": true,
+    "background_download_partials": []
+  },
+  "conclusions": [
+    "The saved two-pass evidence is internally consistent and every 1280-frame input interval was delivered once through the finite-source callback; both native flushes returned successfully with zero native EOS resets.",
+    "Literal CER is 24/65 and 35/65. Whole-token decode repairs three split UTF-8 Chinese characters per pass, yielding 21/65 and 32/65. This is display-layer repair, not new recognition.",
+    "Literal and whole-token WER are 28/28 in both passes because English output has no spaces. Marker-only reconstruction yields 21/28 and 22/28, but grouped words remain concatenated. None of these WER columns should be summarized as every English word being recognized incorrectly.",
+    "Missing reference sentences and substantive substitutions remain after both display diagnostics. The evidence supports failure of this pinned native-loop-plus-4-bit-model stack on this fixture, not a universal judgment about Voxtral Realtime or its official runtime.",
+    "First-text time and flush duration worsen in the repeated pass, and the resulting transcript differs despite greedy decoding. This run does not establish the cause or long-session behavior.",
+    "Complete PCM delivery and a returned flush do not prove all speech was transcribed. The known EOS-reset loss path was not exercised here. No five-minute inference was executed by this audit."
+  ],
+  "sources": [
+    {
+      "title": "Voxtral Realtime paper, sections 3.1 and 6.2",
+      "url": "https://arxiv.org/html/2602.11298v1#S3.SS1",
+      "supports": "[W] starts a word emission group; consecutive words sharing an emission frame need no intervening [W]. Splitting on this marker therefore cannot recover all word boundaries."
+    },
+    {
+      "title": "Mistral model discussion 39, maintainer response",
+      "url": "https://huggingface.co/mistralai/Voxtral-Mini-4B-Realtime-2602/discussions/39",
+      "supports": "[STREAMING_WORD] position is described as an emission-group timestamp proxy. It is not documented here as an instruction to insert one space per word."
+    },
+    {
+      "title": "mistral-common special token definitions",
+      "url": "https://mistralai.github.io/mistral-common/code_reference/mistral_common/tokens/tokenizers/base/",
+      "supports": "SpecialTokens defines streaming_word and streaming_pad; local Tekkenizer maps them to IDs 33 and 32."
+    },
+    {
+      "title": "Pinned voxmlx stream implementation",
+      "url": "https://github.com/awni/voxmlx/blob/e6d193e85e84e30f26e370c66973ce287b8a9d57/voxmlx/stream.py",
+      "supports": "The native baseline decodes each content token individually using SpecialTokenPolicy.IGNORE and prints the result verbatim."
+    }
+  ]
+}

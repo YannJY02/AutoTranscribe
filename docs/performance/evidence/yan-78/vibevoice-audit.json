@@ -1,0 +1,2702 @@
+{
+  "schema_version": 1,
+  "audit_created_at": "2026-09-09T07:22:50.702737+00:00",
+  "status": "completed",
+  "scope": "Read-only audit of two completed 58-second passes and one completed 300-second pass. No model load, inference, runtime rerun, or source/test/input/report edit was performed by this audit. Only audit.json and audit.md are created.",
+  "method": {
+    "normalization": "NFKC, lowercase, curly apostrophe to ASCII apostrophe; original HAN and ENGLISH_WORD regexes from common.py.",
+    "alignment": "Unit-cost Levenshtein traceback; deterministic tie priority match, substitution, insertion, deletion. All repeated occurrences retained. Ordered mixed sequence is additional audit evidence only.",
+    "no_metric_pooling": true,
+    "parser_source_sha256": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9"
+  },
+  "frozen_input_sha256_before_and_after_equal": true,
+  "frozen_file_sha256": {
+    "scripts/streaming_asr_experiment/vibevoice.py": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9",
+    "scripts/streaming_asr_experiment/common.py": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+    "tests/test_streaming_asr_vibevoice.py": "49676c9432835679b3bbb25b6ac26ba450e7b74b5f9353622e7225e527b2c4d2",
+    "logs/yan78/input-receipt.json": "4fb7238e2a0721cd34a8f3bdfb3222d914c7f51cb53e9e0004434ff26897cb47",
+    "docs/performance/fixture-corpus-manifest.json": "8e7005f358538276201e0f2dc42ca713115f4fc72a820ea72199d3e256ae5ddf",
+    "logs/yan78/vibevoice/preparation.json": "de38d4c2b6a81b346cf128c9c7eb6ec8eea40e7889862aac525dcf0a876b59a2",
+    "logs/yan78/vibevoice/README.md": "b24d0a22a70c855c66e7280ae1fdb4353725982963b81b600d04648c8e0504b9",
+    "logs/yan78/vibevoice/short.json": "f663995e119eeeea3e7adff7b158a658cbc1c0a31867bb7b120c5678a33691c3",
+    "logs/yan78/vibevoice/short.json.events.jsonl": "2e8028c0914957fba0c63bc25cd43595e95b68275260957b01b850099f637cf5",
+    "logs/yan78/vibevoice/long.json": "4717c81b6f0ce014c1d71cf5d4fc9530b4d0cf2f2a5bfa07910c4bfc6cb4d37a",
+    "logs/yan78/vibevoice/long.json.events.jsonl": "75fe7f92729eaef641ea74b2827d77f076aae3cd732eded64053620db4f91e69",
+    "logs/yan78/inputs/reference-300s.json": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516",
+    "logs/yan78/inputs/reference-58s.json": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108",
+    "logs/yan78/inputs/short-mixed-300s.wav": "645a0096e826a4c0bbfeffe662549abe6f204d15313c24b358fbf1db4751f15a",
+    "logs/yan78/inputs/short-mixed-58s.wav": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+  },
+  "fixture_provenance": {
+    "fixture": "short-mixed / frozen-v1",
+    "configured_speaker_to_tts_voice": {
+      "林": "Tingting",
+      "Alex": "Samantha"
+    },
+    "recipe_voice_turn_counts": {
+      "Tingting": 4,
+      "Samantha": 3
+    },
+    "generator": {
+      "record_seed": 20260801,
+      "revision": "6dff2524c06433de01e78821e641596481145a46",
+      "source": "scripts/performance_fixture_corpus.py",
+      "source_sha256": "e7a3264bed4078343f665ec054c169ca73a2a6bd520216bd8d6a858362700695",
+      "spec": "docs/performance/fixture-corpus-spec.json",
+      "spec_sha256": "bab1655b694eec54f14eadaadeb2306593c2c0882852110fc26372f0c34b19ea",
+      "version": "1"
+    },
+    "pinned_generator_and_spec_hashes_verified": true,
+    "canonical_audio": {
+      "path": "<benchmark-fixtures>/v1/media/short-mixed.m4a",
+      "sha256": "8edd1a97b3f77ce17d3e71958ca45f05663b24aed439f781cf45e1b9f5bbc351",
+      "verified_current_file_hash": true
+    },
+    "canonical_reference": {
+      "path": "<benchmark-fixtures>/v1/reference-transcripts/short-mixed.json",
+      "sha256": "4ec45f43d6977dbd118bad4c9f1332a9a843b824149c2d9fba42d8a9dbf37516",
+      "verified_current_file_hash": true
+    },
+    "experiment_inputs_match_receipt_and_reports": true,
+    "shared_first_58s_pcm_verified_equal": true,
+    "generator_behavior": "The pinned _synthesize_cycle invokes Apple say with each segment voice, fails on nonzero command exit, and mixes the separate synthesized files. expand_segments removes the voice field from the reference JSON. The recipe and output hash chain therefore support two configured synthetic voices; role names alone would not.",
+    "boundaries": [
+      "No separate auditory or acoustic speaker-identity analysis was performed.",
+      "The fixture contains two configured TTS voices, not verified distinct human speakers.",
+      "Scheduled segment overlap is not verified acoustic overlap; the generator may produce speech shorter than its allotted slot.",
+      "No natural-meeting, low-volume, or general diarization-quality inference is established."
+    ],
+    "speaker_conclusion": "The raw model output has one ID despite the two configured synthetic voices in this frozen recipe. The parser retains all raw speaker labels. This run does not demonstrate separation of these configured voices; no DER can be computed from arrival-only labels and scheduled reference slots."
+  },
+  "annotation_policy": {
+    "primary_score": "The original benchmark text and scores are unchanged.",
+    "sensitivity_rule": "Remove only the exact case-sensitive string [Silence], then call the unchanged original scorer. Retain input→output substitutions and all remaining text.",
+    "specific_annotation_status": "Observed generated annotation-like text. Its spelling was not found as a defined control token or annotation in the inspected pinned official documentation/code and tokenizer metadata.",
+    "primary_evidence": {
+      "official_git_revision": "1541f590c7099820f10ea012f48d2399282df69f",
+      "official_git_grep": {
+        "pattern": "[Silence]",
+        "case_insensitive": true,
+        "pathspecs": [
+          "*.py",
+          "*.md",
+          "*.json"
+        ],
+        "exit_code": 1,
+        "matches": 0
+      },
+      "hf_revision": "4262d23d8a539a6530cf64fbd0b1751ef9a30853",
+      "hf_literal_occurrence_by_file": {
+        "README.md": false,
+        "tokenizer_config.json": false,
+        "tokenizer.json": false,
+        "special_tokens_map.json": false
+      },
+      "tokenizer_added_token_with_exact_content": false,
+      "official_display_behavior": "The pinned display adapter collapses consecutive repeated instances of a generic bracket tag when merging cards; it does not remove all bracket tags. Its silence comment describes empty chunks. The paper Appendix A describes no-speech chunks as empty text. These observations do not define [Silence] removal as an official evaluation rule.",
+      "links": {
+        "official_streaming_adapter": "https://github.com/microsoft/VibeVoice/blob/1541f590c7099820f10ea012f48d2399282df69f/vllm_plugin/asr_streaming.py#L199-L245",
+        "official_streaming_guide": "https://github.com/microsoft/VibeVoice/blob/1541f590c7099820f10ea012f48d2399282df69f/docs/vibevoice-asr-streaming.md",
+        "pinned_model_card": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-1.5B/blob/4262d23d8a539a6530cf64fbd0b1751ef9a30853/README.md",
+        "paper_appendix_a": "https://arxiv.org/html/2609.02812v1#A1"
+      }
+    },
+    "inference": "The sensitivity calculation separates annotation-like insertions from lexical substitutions; it is secondary and is not substituted for official CER/WER or first-text timing."
+  },
+  "short": {
+    "report": "logs/yan78/vibevoice/short.json",
+    "journal": "logs/yan78/vibevoice/short.json.events.jsonl",
+    "started_at": "2026-09-09T07:03:41.729874+00:00",
+    "finished_at": "2026-09-09T07:05:43.087098+00:00",
+    "duration_ms": 58000.0,
+    "reference_segment_count": 7,
+    "passes": [
+      {
+        "pass": 1,
+        "status": "completed",
+        "processed_chunks": 20,
+        "expected_chunks": 20,
+        "generation_tokens": 162,
+        "completed": true,
+        "truncated": false,
+        "truncation_reasons": [],
+        "integrity_checks": {
+          "raw_chunks_join_equals_raw_text": true,
+          "journal_step_raw_equals_raw_chunks": true,
+          "replayed_parser_text_equals_report": true,
+          "replayed_parser_speakers_equal_report": true,
+          "journal_speakers_equal_report": true,
+          "journal_cumulative_text_equals_parser_publications": true,
+          "literal_score_recomputed_equals_original": true,
+          "raw_speaker_ids_equal_parser_ids": true
+        },
+        "literal_quality_original_unchanged": {
+          "chinese_cer": {
+            "errors": 0,
+            "reference_units": 65,
+            "hypothesis_units": 65,
+            "rate": 0.0
+          },
+          "english_wer": {
+            "errors": 13,
+            "reference_units": 28,
+            "hypothesis_units": 40,
+            "rate": 0.4642857142857143
+          }
+        },
+        "literal_alignment_audit": {
+          "chinese": {
+            "distance": 0,
+            "reference_units": 65,
+            "hypothesis_units": 65,
+            "insertions": 0,
+            "deletions": 0,
+            "substitutions": 0,
+            "operations": []
+          },
+          "english": {
+            "distance": 13,
+            "reference_units": 28,
+            "hypothesis_units": 40,
+            "insertions": 12,
+            "deletions": 0,
+            "substitutions": 1,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 1,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 2,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 2,
+                "hypothesis_index": 5,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 13,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 14,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 15,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 16,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 28,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 29,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 38,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 39,
+                "actual": "silence"
+              }
+            ]
+          },
+          "ordered_mixed": {
+            "distance": 13,
+            "reference_units": 93,
+            "hypothesis_units": 105,
+            "insertions": 12,
+            "deletions": 0,
+            "substitutions": 1,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 18,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 19,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 19,
+                "hypothesis_index": 22,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 31,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 49,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 50,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 55,
+                "hypothesis_index": 62,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 78,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 79,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 87,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 88,
+                "actual": "silence"
+              }
+            ]
+          }
+        },
+        "annotation_sensitivity": {
+          "remove_exact_case_sensitive_string": "[Silence]",
+          "occurrences_removed": 12,
+          "no_other_cleanup_before_original_scorer": true,
+          "quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 1,
+              "reference_units": 28,
+              "hypothesis_units": 28,
+              "rate": 0.03571428571428571
+            }
+          },
+          "alignment_audit": {
+            "chinese": {
+              "distance": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0,
+              "operations": []
+            },
+            "english": {
+              "distance": 1,
+              "reference_units": 28,
+              "hypothesis_units": 28,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 2,
+                  "hypothesis_index": 2,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            },
+            "ordered_mixed": {
+              "distance": 1,
+              "reference_units": 93,
+              "hypothesis_units": 93,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 19,
+                  "hypothesis_index": 19,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            }
+          }
+        },
+        "publication_timing": {
+          "original_first_text_ms_unchanged": 5547.8396249964135,
+          "original_final_text_available_ms_unchanged": 58466.35058399988,
+          "original_stream_wall_ms_unchanged": 58466.363500003354,
+          "derived_first_lexical_text_event": {
+            "sequence": 11,
+            "kind": "text",
+            "process_elapsed_ms": 9866.811417,
+            "pass_index": 1,
+            "stream_elapsed_ms": 5547.8521670011105,
+            "text": "[Silence] \n我们先固定今",
+            "semantics": "cumulative",
+            "audio_end_frame": 55533,
+            "audio_end_ms": 3470.8125,
+            "raw": "[Silence] \n Speaker 0:我们先固定今",
+            "chunk_index": 0,
+            "consumed_end_frame": 46934
+          },
+          "first_published_event_already_contains_lexical_text": true,
+          "timing_note": "The original first_text_ms and journal event use adjacent clock samples. The derived event is not a replacement metric; no per-token or acoustic word timestamp is available."
+        },
+        "speaker_observation": {
+          "label_count": 7,
+          "raw_ids": [
+            0
+          ],
+          "parser_ids": [
+            0
+          ],
+          "all_ids_zero": true,
+          "raw_offsets": [
+            11,
+            60,
+            147,
+            198,
+            278,
+            326,
+            406
+          ],
+          "text_offsets": [
+            11,
+            49,
+            125,
+            165,
+            234,
+            271,
+            340
+          ],
+          "turn_content_alignment": [
+            {
+              "index": 0,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 2000,
+              "reference_end_ms": 8000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 1,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 11000,
+              "reference_end_ms": 17000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 2,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 20000,
+              "reference_end_ms": 26000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 3,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 29000,
+              "reference_end_ms": 36000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 4,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 35000,
+              "reference_end_ms": 41000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 5,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 44000,
+              "reference_end_ms": 50000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 6,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 53000,
+              "reference_end_ms": 58000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            }
+          ],
+          "acoustic_timestamps_available": false,
+          "der_computed": false
+        },
+        "no_lexical_omissions_in_observed_output": {
+          "ordered_mixed_deletions": 0,
+          "reference_units": 93,
+          "hypothesis_units": 93,
+          "reference_segments": 7,
+          "observed_label_delimited_segments": 7,
+          "method": "Levenshtein over a single ordered sequence of Han characters and English words, then each label-delimited text segment in reference order. This preserves cross-language order and repeated occurrences; it is an audit, not an acoustic metric."
+        },
+        "original_max_source_lateness_ms": 13.154084000154398
+      },
+      {
+        "pass": 2,
+        "status": "completed",
+        "processed_chunks": 20,
+        "expected_chunks": 20,
+        "generation_tokens": 162,
+        "completed": true,
+        "truncated": false,
+        "truncation_reasons": [],
+        "integrity_checks": {
+          "raw_chunks_join_equals_raw_text": true,
+          "journal_step_raw_equals_raw_chunks": true,
+          "replayed_parser_text_equals_report": true,
+          "replayed_parser_speakers_equal_report": true,
+          "journal_speakers_equal_report": true,
+          "journal_cumulative_text_equals_parser_publications": true,
+          "literal_score_recomputed_equals_original": true,
+          "raw_speaker_ids_equal_parser_ids": true
+        },
+        "literal_quality_original_unchanged": {
+          "chinese_cer": {
+            "errors": 0,
+            "reference_units": 65,
+            "hypothesis_units": 65,
+            "rate": 0.0
+          },
+          "english_wer": {
+            "errors": 13,
+            "reference_units": 28,
+            "hypothesis_units": 40,
+            "rate": 0.4642857142857143
+          }
+        },
+        "literal_alignment_audit": {
+          "chinese": {
+            "distance": 0,
+            "reference_units": 65,
+            "hypothesis_units": 65,
+            "insertions": 0,
+            "deletions": 0,
+            "substitutions": 0,
+            "operations": []
+          },
+          "english": {
+            "distance": 13,
+            "reference_units": 28,
+            "hypothesis_units": 40,
+            "insertions": 12,
+            "deletions": 0,
+            "substitutions": 1,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 1,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 2,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 2,
+                "hypothesis_index": 5,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 13,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 14,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 15,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 16,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 28,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 29,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 38,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 39,
+                "actual": "silence"
+              }
+            ]
+          },
+          "ordered_mixed": {
+            "distance": 13,
+            "reference_units": 93,
+            "hypothesis_units": 105,
+            "insertions": 12,
+            "deletions": 0,
+            "substitutions": 1,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 18,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 19,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 19,
+                "hypothesis_index": 22,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 31,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 49,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 50,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 55,
+                "hypothesis_index": 62,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 78,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 79,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 87,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 88,
+                "actual": "silence"
+              }
+            ]
+          }
+        },
+        "annotation_sensitivity": {
+          "remove_exact_case_sensitive_string": "[Silence]",
+          "occurrences_removed": 12,
+          "no_other_cleanup_before_original_scorer": true,
+          "quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 1,
+              "reference_units": 28,
+              "hypothesis_units": 28,
+              "rate": 0.03571428571428571
+            }
+          },
+          "alignment_audit": {
+            "chinese": {
+              "distance": 0,
+              "reference_units": 65,
+              "hypothesis_units": 65,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0,
+              "operations": []
+            },
+            "english": {
+              "distance": 1,
+              "reference_units": 28,
+              "hypothesis_units": 28,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 2,
+                  "hypothesis_index": 2,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            },
+            "ordered_mixed": {
+              "distance": 1,
+              "reference_units": 93,
+              "hypothesis_units": 93,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 19,
+                  "hypothesis_index": 19,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            }
+          }
+        },
+        "publication_timing": {
+          "original_first_text_ms_unchanged": 4805.698000011034,
+          "original_final_text_available_ms_unchanged": 58497.01983400155,
+          "original_stream_wall_ms_unchanged": 58497.03504200443,
+          "derived_first_lexical_text_event": {
+            "sequence": 102,
+            "kind": "text",
+            "process_elapsed_ms": 67594.655667,
+            "pass_index": 2,
+            "stream_elapsed_ms": 4805.700875003822,
+            "text": "[Silence] \n我们先固定今",
+            "semantics": "cumulative",
+            "audio_end_frame": 55533,
+            "audio_end_ms": 3470.8125,
+            "raw": "[Silence] \n Speaker 0:我们先固定今",
+            "chunk_index": 0,
+            "consumed_end_frame": 46934
+          },
+          "first_published_event_already_contains_lexical_text": true,
+          "timing_note": "The original first_text_ms and journal event use adjacent clock samples. The derived event is not a replacement metric; no per-token or acoustic word timestamp is available."
+        },
+        "speaker_observation": {
+          "label_count": 7,
+          "raw_ids": [
+            0
+          ],
+          "parser_ids": [
+            0
+          ],
+          "all_ids_zero": true,
+          "raw_offsets": [
+            11,
+            60,
+            147,
+            198,
+            278,
+            326,
+            406
+          ],
+          "text_offsets": [
+            11,
+            49,
+            125,
+            165,
+            234,
+            271,
+            340
+          ],
+          "turn_content_alignment": [
+            {
+              "index": 0,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 2000,
+              "reference_end_ms": 8000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 1,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 11000,
+              "reference_end_ms": 17000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 2,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 20000,
+              "reference_end_ms": 26000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 3,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 29000,
+              "reference_end_ms": 36000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 4,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 35000,
+              "reference_end_ms": 41000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 5,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 44000,
+              "reference_end_ms": 50000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 6,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 53000,
+              "reference_end_ms": 58000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            }
+          ],
+          "acoustic_timestamps_available": false,
+          "der_computed": false
+        },
+        "no_lexical_omissions_in_observed_output": {
+          "ordered_mixed_deletions": 0,
+          "reference_units": 93,
+          "hypothesis_units": 93,
+          "reference_segments": 7,
+          "observed_label_delimited_segments": 7,
+          "method": "Levenshtein over a single ordered sequence of Han characters and English words, then each label-delimited text segment in reference order. This preserves cross-language order and repeated occurrences; it is an audit, not an acoustic metric."
+        },
+        "original_max_source_lateness_ms": 50.42183399875648
+      }
+    ],
+    "reopen_repeat_consistency": {
+      "text": true,
+      "raw_text": true,
+      "raw_chunks": true,
+      "speaker_events": true,
+      "generation_tokens": true,
+      "processed_chunks": true
+    }
+  },
+  "long": {
+    "report": "logs/yan78/vibevoice/long.json",
+    "journal": "logs/yan78/vibevoice/long.json.events.jsonl",
+    "started_at": "2026-09-09T07:07:14.691144+00:00",
+    "finished_at": "2026-09-09T07:12:19.261194+00:00",
+    "duration_ms": 300000.0,
+    "reference_segment_count": 35,
+    "passes": [
+      {
+        "pass": 1,
+        "status": "completed",
+        "processed_chunks": 103,
+        "expected_chunks": 103,
+        "generation_tokens": 833,
+        "completed": true,
+        "truncated": false,
+        "truncation_reasons": [],
+        "integrity_checks": {
+          "raw_chunks_join_equals_raw_text": true,
+          "journal_step_raw_equals_raw_chunks": true,
+          "replayed_parser_text_equals_report": true,
+          "replayed_parser_speakers_equal_report": true,
+          "journal_speakers_equal_report": true,
+          "journal_cumulative_text_equals_parser_publications": true,
+          "literal_score_recomputed_equals_original": true,
+          "raw_speaker_ids_equal_parser_ids": true
+        },
+        "literal_quality_original_unchanged": {
+          "chinese_cer": {
+            "errors": 0,
+            "reference_units": 325,
+            "hypothesis_units": 325,
+            "rate": 0.0
+          },
+          "english_wer": {
+            "errors": 74,
+            "reference_units": 140,
+            "hypothesis_units": 209,
+            "rate": 0.5285714285714286
+          }
+        },
+        "literal_alignment_audit": {
+          "chinese": {
+            "distance": 0,
+            "reference_units": 325,
+            "hypothesis_units": 325,
+            "insertions": 0,
+            "deletions": 0,
+            "substitutions": 0,
+            "operations": []
+          },
+          "english": {
+            "distance": 74,
+            "reference_units": 140,
+            "hypothesis_units": 209,
+            "insertions": 69,
+            "deletions": 0,
+            "substitutions": 5,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 1,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 2,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 2,
+                "hypothesis_index": 5,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 13,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 14,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 15,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 10,
+                "hypothesis_index": 16,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 28,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 29,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 21,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 38,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 39,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 40,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 41,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 42,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 28,
+                "hypothesis_index": 43,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 30,
+                "hypothesis_index": 46,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 38,
+                "hypothesis_index": 54,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 38,
+                "hypothesis_index": 55,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 38,
+                "hypothesis_index": 56,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 38,
+                "hypothesis_index": 57,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 38,
+                "hypothesis_index": 58,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 49,
+                "hypothesis_index": 70,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 49,
+                "hypothesis_index": 71,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 49,
+                "hypothesis_index": 72,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 80,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 81,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 82,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 83,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 84,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 56,
+                "hypothesis_index": 85,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 58,
+                "hypothesis_index": 88,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 66,
+                "hypothesis_index": 96,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 66,
+                "hypothesis_index": 97,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 66,
+                "hypothesis_index": 98,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 66,
+                "hypothesis_index": 99,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 66,
+                "hypothesis_index": 100,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 112,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 113,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 114,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 122,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 123,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 124,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 125,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 126,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 84,
+                "hypothesis_index": 127,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 86,
+                "hypothesis_index": 130,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 94,
+                "hypothesis_index": 138,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 94,
+                "hypothesis_index": 139,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 94,
+                "hypothesis_index": 140,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 94,
+                "hypothesis_index": 141,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 94,
+                "hypothesis_index": 142,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 105,
+                "hypothesis_index": 154,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 105,
+                "hypothesis_index": 155,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 105,
+                "hypothesis_index": 156,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 164,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 165,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 166,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 167,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 168,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 112,
+                "hypothesis_index": 169,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 114,
+                "hypothesis_index": 172,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 122,
+                "hypothesis_index": 180,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 122,
+                "hypothesis_index": 181,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 122,
+                "hypothesis_index": 182,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 122,
+                "hypothesis_index": 183,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 122,
+                "hypothesis_index": 184,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 133,
+                "hypothesis_index": 196,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 133,
+                "hypothesis_index": 197,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 133,
+                "hypothesis_index": 198,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 140,
+                "hypothesis_index": 206,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 140,
+                "hypothesis_index": 207,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 140,
+                "hypothesis_index": 208,
+                "actual": "silence"
+              }
+            ]
+          },
+          "ordered_mixed": {
+            "distance": 74,
+            "reference_units": 465,
+            "hypothesis_units": 534,
+            "insertions": 69,
+            "deletions": 0,
+            "substitutions": 5,
+            "operations": [
+              {
+                "operation": "insertion",
+                "reference_boundary": 0,
+                "hypothesis_index": 0,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 18,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 17,
+                "hypothesis_index": 19,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 19,
+                "hypothesis_index": 22,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 30,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 27,
+                "hypothesis_index": 31,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 49,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 44,
+                "hypothesis_index": 50,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 55,
+                "hypothesis_index": 62,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 78,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 70,
+                "hypothesis_index": 79,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 87,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 77,
+                "hypothesis_index": 88,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 93,
+                "hypothesis_index": 105,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 93,
+                "hypothesis_index": 106,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 110,
+                "hypothesis_index": 124,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 110,
+                "hypothesis_index": 125,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 112,
+                "hypothesis_index": 128,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 120,
+                "hypothesis_index": 136,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 120,
+                "hypothesis_index": 137,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 120,
+                "hypothesis_index": 138,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 137,
+                "hypothesis_index": 156,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 137,
+                "hypothesis_index": 157,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 148,
+                "hypothesis_index": 169,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 163,
+                "hypothesis_index": 185,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 163,
+                "hypothesis_index": 186,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 170,
+                "hypothesis_index": 194,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 170,
+                "hypothesis_index": 195,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 186,
+                "hypothesis_index": 212,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 186,
+                "hypothesis_index": 213,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 203,
+                "hypothesis_index": 231,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 203,
+                "hypothesis_index": 232,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 205,
+                "hypothesis_index": 235,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 213,
+                "hypothesis_index": 243,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 213,
+                "hypothesis_index": 244,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 213,
+                "hypothesis_index": 245,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 230,
+                "hypothesis_index": 263,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 230,
+                "hypothesis_index": 264,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 241,
+                "hypothesis_index": 276,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 256,
+                "hypothesis_index": 292,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 256,
+                "hypothesis_index": 293,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 263,
+                "hypothesis_index": 301,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 263,
+                "hypothesis_index": 302,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 279,
+                "hypothesis_index": 319,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 279,
+                "hypothesis_index": 320,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 296,
+                "hypothesis_index": 338,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 296,
+                "hypothesis_index": 339,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 298,
+                "hypothesis_index": 342,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 306,
+                "hypothesis_index": 350,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 306,
+                "hypothesis_index": 351,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 306,
+                "hypothesis_index": 352,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 323,
+                "hypothesis_index": 370,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 323,
+                "hypothesis_index": 371,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 334,
+                "hypothesis_index": 383,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 349,
+                "hypothesis_index": 399,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 349,
+                "hypothesis_index": 400,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 356,
+                "hypothesis_index": 408,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 356,
+                "hypothesis_index": 409,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 372,
+                "hypothesis_index": 426,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 372,
+                "hypothesis_index": 427,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 389,
+                "hypothesis_index": 445,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 389,
+                "hypothesis_index": 446,
+                "actual": "silence"
+              },
+              {
+                "operation": "substitution",
+                "reference_index": 391,
+                "hypothesis_index": 449,
+                "expected": "input",
+                "actual": "output"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 399,
+                "hypothesis_index": 457,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 399,
+                "hypothesis_index": 458,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 399,
+                "hypothesis_index": 459,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 416,
+                "hypothesis_index": 477,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 416,
+                "hypothesis_index": 478,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 427,
+                "hypothesis_index": 490,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 442,
+                "hypothesis_index": 506,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 442,
+                "hypothesis_index": 507,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 449,
+                "hypothesis_index": 515,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 449,
+                "hypothesis_index": 516,
+                "actual": "silence"
+              },
+              {
+                "operation": "insertion",
+                "reference_boundary": 465,
+                "hypothesis_index": 533,
+                "actual": "silence"
+              }
+            ]
+          }
+        },
+        "annotation_sensitivity": {
+          "remove_exact_case_sensitive_string": "[Silence]",
+          "occurrences_removed": 69,
+          "no_other_cleanup_before_original_scorer": true,
+          "quality": {
+            "chinese_cer": {
+              "errors": 0,
+              "reference_units": 325,
+              "hypothesis_units": 325,
+              "rate": 0.0
+            },
+            "english_wer": {
+              "errors": 5,
+              "reference_units": 140,
+              "hypothesis_units": 140,
+              "rate": 0.03571428571428571
+            }
+          },
+          "alignment_audit": {
+            "chinese": {
+              "distance": 0,
+              "reference_units": 325,
+              "hypothesis_units": 325,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0,
+              "operations": []
+            },
+            "english": {
+              "distance": 5,
+              "reference_units": 140,
+              "hypothesis_units": 140,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 5,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 2,
+                  "hypothesis_index": 2,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 30,
+                  "hypothesis_index": 30,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 58,
+                  "hypothesis_index": 58,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 86,
+                  "hypothesis_index": 86,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 114,
+                  "hypothesis_index": 114,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            },
+            "ordered_mixed": {
+              "distance": 5,
+              "reference_units": 465,
+              "hypothesis_units": 465,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 5,
+              "operations": [
+                {
+                  "operation": "substitution",
+                  "reference_index": 19,
+                  "hypothesis_index": 19,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 112,
+                  "hypothesis_index": 112,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 205,
+                  "hypothesis_index": 205,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 298,
+                  "hypothesis_index": 298,
+                  "expected": "input",
+                  "actual": "output"
+                },
+                {
+                  "operation": "substitution",
+                  "reference_index": 391,
+                  "hypothesis_index": 391,
+                  "expected": "input",
+                  "actual": "output"
+                }
+              ]
+            }
+          }
+        },
+        "publication_timing": {
+          "original_first_text_ms_unchanged": 4587.297582998872,
+          "original_final_text_available_ms_unchanged": 300599.78283300006,
+          "original_stream_wall_ms_unchanged": 300599.7922910028,
+          "derived_first_lexical_text_event": {
+            "sequence": 11,
+            "kind": "text",
+            "process_elapsed_ms": 8434.0465,
+            "pass_index": 1,
+            "stream_elapsed_ms": 4587.303499996779,
+            "text": "[Silence] \n我们先固定今",
+            "semantics": "cumulative",
+            "audio_end_frame": 55533,
+            "audio_end_ms": 3470.8125,
+            "raw": "[Silence] \n Speaker 0:我们先固定今",
+            "chunk_index": 0,
+            "consumed_end_frame": 46934
+          },
+          "first_published_event_already_contains_lexical_text": true,
+          "timing_note": "The original first_text_ms and journal event use adjacent clock samples. The derived event is not a replacement metric; no per-token or acoustic word timestamp is available."
+        },
+        "speaker_observation": {
+          "label_count": 35,
+          "raw_ids": [
+            0
+          ],
+          "parser_ids": [
+            0
+          ],
+          "all_ids_zero": true,
+          "raw_offsets": [
+            11,
+            60,
+            147,
+            198,
+            278,
+            326,
+            406,
+            455,
+            504,
+            601,
+            651,
+            731,
+            778,
+            858,
+            907,
+            956,
+            1053,
+            1104,
+            1184,
+            1231,
+            1311,
+            1361,
+            1411,
+            1507,
+            1557,
+            1637,
+            1684,
+            1764,
+            1813,
+            1862,
+            1959,
+            2009,
+            2089,
+            2136,
+            2216
+          ],
+          "text_offsets": [
+            11,
+            49,
+            125,
+            165,
+            234,
+            271,
+            340,
+            378,
+            416,
+            502,
+            541,
+            610,
+            646,
+            715,
+            753,
+            791,
+            877,
+            917,
+            986,
+            1022,
+            1091,
+            1130,
+            1169,
+            1254,
+            1293,
+            1362,
+            1398,
+            1467,
+            1505,
+            1543,
+            1629,
+            1668,
+            1737,
+            1773,
+            1842
+          ],
+          "turn_content_alignment": [
+            {
+              "index": 0,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 2000,
+              "reference_end_ms": 8000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 1,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 11000,
+              "reference_end_ms": 17000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 2,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 20000,
+              "reference_end_ms": 26000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 3,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 29000,
+              "reference_end_ms": 36000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 4,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 35000,
+              "reference_end_ms": 41000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 5,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 44000,
+              "reference_end_ms": 50000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 6,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 53000,
+              "reference_end_ms": 58000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 7,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 62000,
+              "reference_end_ms": 68000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 8,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 71000,
+              "reference_end_ms": 77000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 9,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 80000,
+              "reference_end_ms": 86000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 10,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 89000,
+              "reference_end_ms": 96000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 11,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 95000,
+              "reference_end_ms": 101000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 12,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 104000,
+              "reference_end_ms": 110000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 13,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 113000,
+              "reference_end_ms": 118000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 14,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 122000,
+              "reference_end_ms": 128000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 15,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 131000,
+              "reference_end_ms": 137000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 16,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 140000,
+              "reference_end_ms": 146000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 17,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 149000,
+              "reference_end_ms": 156000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 18,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 155000,
+              "reference_end_ms": 161000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 19,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 164000,
+              "reference_end_ms": 170000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 20,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 173000,
+              "reference_end_ms": 178000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 21,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 182000,
+              "reference_end_ms": 188000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 22,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 191000,
+              "reference_end_ms": 197000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 23,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 200000,
+              "reference_end_ms": 206000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 24,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 209000,
+              "reference_end_ms": 216000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 25,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 215000,
+              "reference_end_ms": 221000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 26,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 224000,
+              "reference_end_ms": 230000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 27,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 233000,
+              "reference_end_ms": 238000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 28,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 242000,
+              "reference_end_ms": 248000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 29,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 251000,
+              "reference_end_ms": 257000,
+              "ordered_mixed_distance": 1,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 1
+            },
+            {
+              "index": 30,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 260000,
+              "reference_end_ms": 266000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 31,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 269000,
+              "reference_end_ms": 276000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 32,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 275000,
+              "reference_end_ms": 281000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 33,
+              "reference_speaker": "Alex",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 284000,
+              "reference_end_ms": 290000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            },
+            {
+              "index": 34,
+              "reference_speaker": "林",
+              "observed_speaker_id": 0,
+              "reference_start_ms": 293000,
+              "reference_end_ms": 298000,
+              "ordered_mixed_distance": 0,
+              "insertions": 0,
+              "deletions": 0,
+              "substitutions": 0
+            }
+          ],
+          "acoustic_timestamps_available": false,
+          "der_computed": false
+        },
+        "no_lexical_omissions_in_observed_output": {
+          "ordered_mixed_deletions": 0,
+          "reference_units": 465,
+          "hypothesis_units": 465,
+          "reference_segments": 35,
+          "observed_label_delimited_segments": 35,
+          "method": "Levenshtein over a single ordered sequence of Han characters and English words, then each label-delimited text segment in reference order. This preserves cross-language order and repeated occurrences; it is an audit, not an acoustic metric."
+        },
+        "original_max_source_lateness_ms": 1826.3512079953216
+      }
+    ],
+    "reference_repetition": {
+      "verified_cycles": 5,
+      "cycle_ms": 60000,
+      "unique_sentence_templates": 7,
+      "chinese_units": {
+        "per_cycle": 65,
+        "total": 325
+      },
+      "english_units": {
+        "per_cycle": 28,
+        "total": 140
+      },
+      "reference_is_five_repeated_short_sequences": true,
+      "interpretation": "Sustained-run and repeated-context evidence only; it is not five times as many independent lexical examples. No short/long denominator pooling."
+    },
+    "maximum_source_lateness_audit": {
+      "max_late_release_event": {
+        "sequence": 145,
+        "kind": "audio_released",
+        "process_elapsed_ms": 103010.613166,
+        "pass_index": 1,
+        "stream_elapsed_ms": 99163.86587500165,
+        "audio_end_frame": 1557400,
+        "audio_end_ms": 97337.5,
+        "source_lateness_ms": 1826.3512079953216
+      },
+      "preceding_release_event": {
+        "sequence": 141,
+        "kind": "audio_released",
+        "process_elapsed_ms": 98256.294708,
+        "pass_index": 1,
+        "stream_elapsed_ms": 94409.54795799917,
+        "audio_end_frame": 1510466,
+        "audio_end_ms": 94404.125,
+        "source_lateness_ms": 5.409291000454687
+      },
+      "preceding_step_start": {
+        "sequence": 142,
+        "kind": "stream_step_start",
+        "process_elapsed_ms": 98256.391416,
+        "pass_index": 1,
+        "stream_elapsed_ms": 94409.64841599634,
+        "chunk_index": 31,
+        "audio_end_frame": 1510466,
+        "model_window_audio_end_frame": 1510400,
+        "model_start_sample": 2182400,
+        "real_model_samples": 83200,
+        "zero_padding_samples": 0,
+        "eof_flush": false
+      },
+      "preceding_step_end": {
+        "sequence": 144,
+        "kind": "stream_step_end",
+        "process_elapsed_ms": 102910.28975,
+        "pass_index": 1,
+        "stream_elapsed_ms": 99063.54370800545,
+        "chunk_index": 31,
+        "raw": "the next run.",
+        "generated_tokens": 4,
+        "total_generated_tokens": 262,
+        "encoding_ms": 1902.860124988365,
+        "decoding_ms": 2751.0294590028934
+      },
+      "following_step_start": {
+        "sequence": 146,
+        "kind": "stream_step_start",
+        "process_elapsed_ms": 103010.740666,
+        "pass_index": 1,
+        "stream_elapsed_ms": 99163.99783300585,
+        "chunk_index": 32,
+        "audio_end_frame": 1557400,
+        "model_window_audio_end_frame": 1557334,
+        "model_start_sample": 2252800,
+        "real_model_samples": 83200,
+        "zero_padding_samples": 0,
+        "eof_flush": false
+      },
+      "following_step_end": {
+        "sequence": 149,
+        "kind": "stream_step_end",
+        "process_elapsed_ms": 104198.083416,
+        "pass_index": 1,
+        "stream_elapsed_ms": 100351.34091600776,
+        "chunk_index": 32,
+        "raw": "[Silence] \n Speaker 0:这段短暂交叉发言也",
+        "generated_tokens": 14,
+        "total_generated_tokens": 276,
+        "encoding_ms": 904.6539589908207,
+        "decoding_ms": 282.69775000808295
+      },
+      "next_release_events": [
+        {
+          "sequence": 150,
+          "kind": "audio_released",
+          "process_elapsed_ms": 104205.328583,
+          "pass_index": 1,
+          "stream_elapsed_ms": 100358.58291600016,
+          "audio_end_frame": 1604333,
+          "audio_end_ms": 100270.8125,
+          "source_lateness_ms": 87.76220800692681
+        },
+        {
+          "sequence": 154,
+          "kind": "audio_released",
+          "process_elapsed_ms": 107062.093416,
+          "pass_index": 1,
+          "stream_elapsed_ms": 103215.3425830038,
+          "audio_end_frame": 1651266,
+          "audio_end_ms": 103204.125,
+          "source_lateness_ms": 11.19445800234098
+        }
+      ],
+      "preceding_step_measured_elapsed_ms": 4653.895292009111,
+      "preceding_step_reported_encoding_ms": 1902.860124988365,
+      "preceding_step_reported_decoding_ms": 2751.0294590028934,
+      "preceding_step_reported_phase_sum_ms": 4653.889583991258,
+      "next_release_due_during_preceding_step": true,
+      "preceding_step_end_after_next_due_ms": 1726.0437080054544,
+      "gap_preceding_step_end_to_release_event_ms": 100.32216699619312,
+      "interpretation": "The next audio-release deadline occurred while step 31 was still executing. Its completion was followed by about 100 ms before the next release event. The recorded spans establish this overrun sequence, not the cause of the slower encode/decode work.",
+      "phase_scope": "encoding includes window preparation/resampling and encode_speech; decoding includes native generation, parsing, and publication. These are wall-clock spans, not isolated GPU/CPU kernels.",
+      "cause_unestablished": [
+        "memory pressure",
+        "storage IO",
+        "CPU contention",
+        "GPU scheduling",
+        "thermal throttling"
+      ],
+      "source_lateness_scope": "Finite real-time-paced WAV release delay. This is not an observed production capture-queue overflow."
+    }
+  }
+}

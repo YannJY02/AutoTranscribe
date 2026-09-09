@@ -1,0 +1,862 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-09-09T07:10:05.717038+00:00",
+  "status": "internally_consistent_with_measurement_limits",
+  "scope": {
+    "new_files_only": [
+      "logs/yan78/nemotron/audit.json",
+      "logs/yan78/nemotron/audit.md"
+    ],
+    "model_runs": 0,
+    "dependency_installs": 0,
+    "analysis_runtime": "Python 3.11 standard library"
+  },
+  "source_snapshot": {
+    "report": {
+      "path": "logs/yan78/nemotron/short.json",
+      "size_bytes": 14665,
+      "sha256": "bef9906273030ed1d087de898fb558415c640d4b413449645064e4a6823bcbbb"
+    },
+    "events": {
+      "path": "logs/yan78/nemotron/short.json.events.jsonl",
+      "size_bytes": 573774,
+      "sha256": "9a6188ac14fdba28af7f0be8ebf2ececcd51e0d328f7d0cd10811448050698ce"
+    },
+    "resources": {
+      "path": "logs/yan78/nemotron/short.json.resources.json",
+      "size_bytes": 16557,
+      "sha256": "cee6908634223449403853b6e7686c7a9263dba5f50383372862aed16a55509c"
+    },
+    "controller": {
+      "path": "logs/yan78/nemotron-short.controller.json",
+      "size_bytes": 8742,
+      "sha256": "cbd7d45d99e0c2989e08510d7e29a2947e8e299901909a50a0c0581a8a7cf83a"
+    },
+    "reference": {
+      "path": "logs/yan78/inputs/reference-58s.json",
+      "size_bytes": 1629,
+      "sha256": "fd1cf2eecbd755c08cb747ea6253d759e053cb4b3d09d4a19902f0b3c4155108"
+    },
+    "audio": {
+      "path": "logs/yan78/inputs/short-mixed-58s.wav",
+      "size_bytes": 1856078,
+      "sha256": "8d61f394b9f63f5a5afc7f7190a02a4f614e6c0ae2c3a2c640188dce84619cfb"
+    },
+    "stderr": {
+      "path": "logs/yan78/nemotron/short.json.stderr.log",
+      "size_bytes": 14834,
+      "sha256": "3d6d665b3db5a5d30ff28e0f512508ebfb5aa7095722259a6a7a9461d88cfebf"
+    }
+  },
+  "measured_source_comparison": {
+    "scripts/compare_streaming_asr.py": {
+      "recorded_sha256": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea",
+      "current_sha256": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea",
+      "matches_measured_source": true
+    },
+    "scripts/streaming_asr_experiment/common.py": {
+      "recorded_sha256": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+      "current_sha256": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33",
+      "matches_measured_source": true
+    },
+    "scripts/streaming_asr_experiment/nemotron.py": {
+      "recorded_sha256": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+      "current_sha256": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de",
+      "matches_measured_source": true
+    }
+  },
+  "overall_checks": {
+    "report_completed": true,
+    "worker_exit_zero": true,
+    "controller_exit_zero": true,
+    "exactly_two_completed_passes": true,
+    "wav_header_matches_protocol": true,
+    "audio_sha256_matches_report": true,
+    "reference_sha256_matches_report": true,
+    "reference_text_matches_fixed_reference": true,
+    "reference_segments_match_fixed_reference": true,
+    "event_sequences_contiguous": true,
+    "process_event_clock_monotonic": true,
+    "no_failure_events": true,
+    "controller_preserved_app_and_config": true,
+    "pass_1.released_frames_exact": true,
+    "pass_1.release_frontiers_strictly_increase": true,
+    "pass_1.each_push_follows_matching_release": true,
+    "pass_1.pushes_cover_input_once_without_gaps": true,
+    "pass_1.raw_results_never_exceed_released_audio": true,
+    "pass_1.native_input_frontier_matches_release_frontier": true,
+    "pass_1.one_native_final_after_finish": true,
+    "pass_1.native_finish_succeeded": true,
+    "pass_1.native_final_text_equals_report_and_final_emission": true,
+    "pass_1.native_final_words_and_languages_equal_report": true,
+    "pass_1.text_emissions_follow_cumulative_replacement": true,
+    "pass_1.all_native_partials_append_only": true,
+    "pass_1.finalization_preserves_scored_chinese_and_english_units": true,
+    "pass_1.recomputed_cer_wer_match_report": true,
+    "pass_1.reported_native_counts_match_events": true,
+    "pass_1.reported_native_next_sum_matches_events": true,
+    "pass_1.reported_finish_sum_matches_events": true,
+    "pass_1.reported_decode_and_finish_sum_matches_events": true,
+    "pass_1.reported_first_text_matches_event_within_point_one_ms": true,
+    "pass_1.reported_max_source_lateness_matches_events": true,
+    "pass_1.per_stream_event_clock_monotonic": true,
+    "pass_2.released_frames_exact": true,
+    "pass_2.release_frontiers_strictly_increase": true,
+    "pass_2.each_push_follows_matching_release": true,
+    "pass_2.pushes_cover_input_once_without_gaps": true,
+    "pass_2.raw_results_never_exceed_released_audio": true,
+    "pass_2.native_input_frontier_matches_release_frontier": true,
+    "pass_2.one_native_final_after_finish": true,
+    "pass_2.native_finish_succeeded": true,
+    "pass_2.native_final_text_equals_report_and_final_emission": true,
+    "pass_2.native_final_words_and_languages_equal_report": true,
+    "pass_2.text_emissions_follow_cumulative_replacement": true,
+    "pass_2.all_native_partials_append_only": true,
+    "pass_2.finalization_preserves_scored_chinese_and_english_units": true,
+    "pass_2.recomputed_cer_wer_match_report": true,
+    "pass_2.reported_native_counts_match_events": true,
+    "pass_2.reported_native_next_sum_matches_events": true,
+    "pass_2.reported_finish_sum_matches_events": true,
+    "pass_2.reported_decode_and_finish_sum_matches_events": true,
+    "pass_2.reported_first_text_matches_event_within_point_one_ms": true,
+    "pass_2.reported_max_source_lateness_matches_events": true,
+    "pass_2.per_stream_event_clock_monotonic": true,
+    "final_texts_identical_across_two_passes": true,
+    "native_text_frontier_sequences_identical_across_two_passes": true
+  },
+  "all_consistency_checks_passed": true,
+  "input": {
+    "channels": 1,
+    "sample_width_bytes": 2,
+    "sample_rate": 16000,
+    "frames": 928000,
+    "compression": "NONE",
+    "duration_ms": 58000.0,
+    "reference_text": "我们先固定今天的测试文件和操作顺序。 The same input will be replayed for every measured run. 决定使用冻结方案，不在运行中修改内容。 I will check the hashes and durations before the next run. 这段短暂交叉发言也保留在测试里。 A failed validation produces no benchmark result. 所有内容都是合成的，不来自私人会议。",
+    "first_reference_speech_start_ms": 2000,
+    "reference_segment_count": 7
+  },
+  "independent_scoring": {
+    "method": "Full dynamic-programming Levenshtein matrix and traceback implemented independently of the experiment scorer; unit costs 1, tie order match/substitution/deletion/insertion.",
+    "normalization": "Unicode NFKC, lowercase, curly apostrophe to ASCII; Han-character extraction for CER and ASCII alphanumeric/apostrophe word regex for WER.",
+    "same_scores_for_both_passes": true,
+    "chinese_cer": {
+      "errors": 3,
+      "reference_units": 65,
+      "hypothesis_units": 63,
+      "rate": 0.046153846153846156,
+      "edit_counts": {
+        "correct": 62,
+        "substitution": 1,
+        "deletion": 2,
+        "insertion": 0
+      },
+      "operations": [
+        {
+          "type": "substitution",
+          "reference": "在",
+          "hypothesis": "再",
+          "reference_index": 26,
+          "hypothesis_index": 26
+        },
+        {
+          "type": "deletion",
+          "reference": "所",
+          "reference_index": 49
+        },
+        {
+          "type": "deletion",
+          "reference": "有",
+          "reference_index": 50
+        }
+      ],
+      "reference_tokens": [
+        "我",
+        "们",
+        "先",
+        "固",
+        "定",
+        "今",
+        "天",
+        "的",
+        "测",
+        "试",
+        "文",
+        "件",
+        "和",
+        "操",
+        "作",
+        "顺",
+        "序",
+        "决",
+        "定",
+        "使",
+        "用",
+        "冻",
+        "结",
+        "方",
+        "案",
+        "不",
+        "在",
+        "运",
+        "行",
+        "中",
+        "修",
+        "改",
+        "内",
+        "容",
+        "这",
+        "段",
+        "短",
+        "暂",
+        "交",
+        "叉",
+        "发",
+        "言",
+        "也",
+        "保",
+        "留",
+        "在",
+        "测",
+        "试",
+        "里",
+        "所",
+        "有",
+        "内",
+        "容",
+        "都",
+        "是",
+        "合",
+        "成",
+        "的",
+        "不",
+        "来",
+        "自",
+        "私",
+        "人",
+        "会",
+        "议"
+      ],
+      "hypothesis_tokens": [
+        "我",
+        "们",
+        "先",
+        "固",
+        "定",
+        "今",
+        "天",
+        "的",
+        "测",
+        "试",
+        "文",
+        "件",
+        "和",
+        "操",
+        "作",
+        "顺",
+        "序",
+        "决",
+        "定",
+        "使",
+        "用",
+        "冻",
+        "结",
+        "方",
+        "案",
+        "不",
+        "再",
+        "运",
+        "行",
+        "中",
+        "修",
+        "改",
+        "内",
+        "容",
+        "这",
+        "段",
+        "短",
+        "暂",
+        "交",
+        "叉",
+        "发",
+        "言",
+        "也",
+        "保",
+        "留",
+        "在",
+        "测",
+        "试",
+        "里",
+        "内",
+        "容",
+        "都",
+        "是",
+        "合",
+        "成",
+        "的",
+        "不",
+        "来",
+        "自",
+        "私",
+        "人",
+        "会",
+        "议"
+      ]
+    },
+    "english_wer": {
+      "errors": 13,
+      "reference_units": 28,
+      "hypothesis_units": 16,
+      "rate": 0.4642857142857143,
+      "edit_counts": {
+        "correct": 15,
+        "substitution": 1,
+        "deletion": 12,
+        "insertion": 0
+      },
+      "operations": [
+        {
+          "type": "deletion",
+          "reference": "the",
+          "reference_index": 0
+        },
+        {
+          "type": "deletion",
+          "reference": "same",
+          "reference_index": 1
+        },
+        {
+          "type": "deletion",
+          "reference": "input",
+          "reference_index": 2
+        },
+        {
+          "type": "deletion",
+          "reference": "will",
+          "reference_index": 3
+        },
+        {
+          "type": "deletion",
+          "reference": "be",
+          "reference_index": 4
+        },
+        {
+          "type": "deletion",
+          "reference": "replayed",
+          "reference_index": 5
+        },
+        {
+          "type": "deletion",
+          "reference": "i",
+          "reference_index": 10
+        },
+        {
+          "type": "deletion",
+          "reference": "will",
+          "reference_index": 11
+        },
+        {
+          "type": "deletion",
+          "reference": "check",
+          "reference_index": 12
+        },
+        {
+          "type": "deletion",
+          "reference": "the",
+          "reference_index": 13
+        },
+        {
+          "type": "deletion",
+          "reference": "hashes",
+          "reference_index": 14
+        },
+        {
+          "type": "deletion",
+          "reference": "and",
+          "reference_index": 15
+        },
+        {
+          "type": "substitution",
+          "reference": "durations",
+          "hypothesis": "s",
+          "reference_index": 16,
+          "hypothesis_index": 4
+        }
+      ],
+      "reference_tokens": [
+        "the",
+        "same",
+        "input",
+        "will",
+        "be",
+        "replayed",
+        "for",
+        "every",
+        "measured",
+        "run",
+        "i",
+        "will",
+        "check",
+        "the",
+        "hashes",
+        "and",
+        "durations",
+        "before",
+        "the",
+        "next",
+        "run",
+        "a",
+        "failed",
+        "validation",
+        "produces",
+        "no",
+        "benchmark",
+        "result"
+      ],
+      "hypothesis_tokens": [
+        "for",
+        "every",
+        "measured",
+        "run",
+        "s",
+        "before",
+        "the",
+        "next",
+        "run",
+        "a",
+        "failed",
+        "validation",
+        "produces",
+        "no",
+        "benchmark",
+        "result"
+      ]
+    }
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "final_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+      "final_text_sha256": "852f85ba3de7f937ef6228300960f7abdf102c6d9e9248a6477f4cd2c628f629",
+      "input": {
+        "sample_rate": 16000,
+        "frames": 928000,
+        "duration_ms": 58000.0,
+        "release_count": 182,
+        "push_count": 182,
+        "pushed_frames": 928000,
+        "full_packet_frames": 5120,
+        "last_packet_frames": 1280
+      },
+      "text": {
+        "native_results": 176,
+        "native_partials": 175,
+        "native_finals": 1,
+        "text_emissions": 60,
+        "first_text": "我",
+        "first_text_event": {
+          "sequence": 29,
+          "stream_elapsed_ms": 2620.2025829988997,
+          "audio_end_frame": 40960
+        },
+        "final_text_event": {
+          "sequence": 963,
+          "stream_elapsed_ms": 58080.187165993266,
+          "audio_end_frame": 928000
+        },
+        "native_final_event": {
+          "sequence": 964,
+          "stream_elapsed_ms": 58080.219665993354,
+          "audio_end_frame": 928000
+        },
+        "native_languages": [
+          "zh-CN"
+        ],
+        "last_partial_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result, 内容都是合成的, 不来自私人会议",
+        "last_partial_event": {
+          "sequence": 958,
+          "stream_elapsed_ms": 58029.63612500753,
+          "audio_end_frame": 928000
+        },
+        "last_partial_exactly_equals_final": false,
+        "finalization_edits": [
+          {
+            "operation": "replace",
+            "partial": "A",
+            "final": "a"
+          },
+          {
+            "operation": "delete",
+            "partial": ",",
+            "final": ""
+          },
+          {
+            "operation": "delete",
+            "partial": ",",
+            "final": ""
+          },
+          {
+            "operation": "insert",
+            "partial": "",
+            "final": "。"
+          }
+        ],
+        "missing_english_phrases_absent_from_every_native_result": {
+          "the same input will be replayed": true,
+          "i will check the hashes and durations": true
+        },
+        "english_raw_snapshots": [
+          {
+            "reference_start_ms": 11000,
+            "reference_end_ms": 17000,
+            "reference_text": "The same input will be replayed for every measured run.",
+            "raw_result": {
+              "sequence": 270,
+              "stream_elapsed_ms": 17010.824625001987,
+              "audio_end_frame": 271360
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run"
+          },
+          {
+            "reference_start_ms": 29000,
+            "reference_end_ms": 36000,
+            "reference_text": "I will check the hashes and durations before the next run.",
+            "raw_result": {
+              "sequence": 580,
+              "stream_elapsed_ms": 35872.28541600052,
+              "audio_end_frame": 573440
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段"
+          },
+          {
+            "reference_start_ms": 44000,
+            "reference_end_ms": 50000,
+            "reference_text": "A failed validation produces no benchmark result.",
+            "raw_result": {
+              "sequence": 817,
+              "stream_elapsed_ms": 49956.1289580015,
+              "audio_end_frame": 798720
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result"
+          }
+        ]
+      },
+      "timing": {
+        "clock": "per-stream monotonic milliseconds; setup and the other pass are excluded",
+        "first_text_reported_ms": 2620.19387500186,
+        "first_text_event_ms": 2620.2025829988997,
+        "first_text_after_first_reference_speech_start_ms": 620.2025829988997,
+        "final_text_event_ms": 58080.187165993266,
+        "adapter_returned_ms_reported_as_final_text_available": 58080.77379100723,
+        "adapter_return_minus_final_emission_ms": 0.5866250139661133,
+        "final_text_after_nominal_audio_end_ms": 80.18716599326581,
+        "last_audio_release_event_ms": 58001.38187500124,
+        "final_text_after_last_actual_release_event_ms": 78.80529099202249,
+        "source_lateness_ms": {
+          "minimum": 0.02670800720807165,
+          "median": 9.312958000518847,
+          "maximum": 566.8922079994809
+        },
+        "worst_source_lateness_event": {
+          "sequence": 12,
+          "stream_elapsed_ms": 1526.8952500045998,
+          "audio_end_frame": 15360
+        },
+        "native_next_call_count": 359,
+        "native_next_returned_result_count": 176,
+        "native_next_total_ms": 6992.503502999999,
+        "native_next_max_ms": 878.09375,
+        "longest_native_next_event": {
+          "sequence": 11,
+          "stream_elapsed_ms": 1526.1432910047006,
+          "audio_end_frame": 10240
+        },
+        "native_finish_ms": 50.134416,
+        "native_next_plus_finish_ms": 7042.637918999999,
+        "native_push_total_ms": 33.594297000000005,
+        "scope_note": "next includes C decoding plus result readback/release; finish synchronously decodes the tail. Their sum excludes pacing, Python/audio preparation, logging, push and stream construction/destruction."
+      },
+      "native_word_offsets": {
+        "last_end_ms": 58320,
+        "words_beyond_audio_end": [
+          {
+            "text": "不来自私人会议。",
+            "start_ms": 55280,
+            "end_ms": 58320,
+            "confidence": 1.0
+          }
+        ],
+        "longest_word_span_ms": 17280,
+        "used_for_latency_or_cer_wer": false
+      },
+      "checks": {
+        "released_frames_exact": true,
+        "release_frontiers_strictly_increase": true,
+        "each_push_follows_matching_release": true,
+        "pushes_cover_input_once_without_gaps": true,
+        "raw_results_never_exceed_released_audio": true,
+        "native_input_frontier_matches_release_frontier": true,
+        "one_native_final_after_finish": true,
+        "native_finish_succeeded": true,
+        "native_final_text_equals_report_and_final_emission": true,
+        "native_final_words_and_languages_equal_report": true,
+        "text_emissions_follow_cumulative_replacement": true,
+        "all_native_partials_append_only": true,
+        "finalization_preserves_scored_chinese_and_english_units": true,
+        "recomputed_cer_wer_match_report": true,
+        "reported_native_counts_match_events": true,
+        "reported_native_next_sum_matches_events": true,
+        "reported_finish_sum_matches_events": true,
+        "reported_decode_and_finish_sum_matches_events": true,
+        "reported_first_text_matches_event_within_point_one_ms": true,
+        "reported_max_source_lateness_matches_events": true,
+        "per_stream_event_clock_monotonic": true
+      }
+    },
+    {
+      "pass": 2,
+      "final_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 a failed validation produces no benchmark result 内容都是合成的 不来自私人会议。",
+      "final_text_sha256": "852f85ba3de7f937ef6228300960f7abdf102c6d9e9248a6477f4cd2c628f629",
+      "input": {
+        "sample_rate": 16000,
+        "frames": 928000,
+        "duration_ms": 58000.0,
+        "release_count": 182,
+        "push_count": 182,
+        "pushed_frames": 928000,
+        "full_packet_frames": 5120,
+        "last_packet_frames": 1280
+      },
+      "text": {
+        "native_results": 176,
+        "native_partials": 175,
+        "native_finals": 1,
+        "text_emissions": 60,
+        "first_text": "我",
+        "first_text_event": {
+          "sequence": 993,
+          "stream_elapsed_ms": 2603.0537909973646,
+          "audio_end_frame": 40960
+        },
+        "final_text_event": {
+          "sequence": 1927,
+          "stream_elapsed_ms": 58080.98008298839,
+          "audio_end_frame": 928000
+        },
+        "native_final_event": {
+          "sequence": 1928,
+          "stream_elapsed_ms": 58081.01854099368,
+          "audio_end_frame": 928000
+        },
+        "native_languages": [
+          "zh-CN"
+        ],
+        "last_partial_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result, 内容都是合成的, 不来自私人会议",
+        "last_partial_event": {
+          "sequence": 1922,
+          "stream_elapsed_ms": 58027.65283299959,
+          "audio_end_frame": 928000
+        },
+        "last_partial_exactly_equals_final": false,
+        "finalization_edits": [
+          {
+            "operation": "replace",
+            "partial": "A",
+            "final": "a"
+          },
+          {
+            "operation": "delete",
+            "partial": ",",
+            "final": ""
+          },
+          {
+            "operation": "delete",
+            "partial": ",",
+            "final": ""
+          },
+          {
+            "operation": "insert",
+            "partial": "",
+            "final": "。"
+          }
+        ],
+        "missing_english_phrases_absent_from_every_native_result": {
+          "the same input will be replayed": true,
+          "i will check the hashes and durations": true
+        },
+        "english_raw_snapshots": [
+          {
+            "reference_start_ms": 11000,
+            "reference_end_ms": 17000,
+            "reference_text": "The same input will be replayed for every measured run.",
+            "raw_result": {
+              "sequence": 1234,
+              "stream_elapsed_ms": 17008.907625000575,
+              "audio_end_frame": 271360
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run"
+          },
+          {
+            "reference_start_ms": 29000,
+            "reference_end_ms": 36000,
+            "reference_text": "I will check the hashes and durations before the next run.",
+            "raw_result": {
+              "sequence": 1544,
+              "stream_elapsed_ms": 35891.727915994124,
+              "audio_end_frame": 573440
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段"
+          },
+          {
+            "reference_start_ms": 44000,
+            "reference_end_ms": 50000,
+            "reference_text": "A failed validation produces no benchmark result.",
+            "raw_result": {
+              "sequence": 1781,
+              "stream_elapsed_ms": 49961.04970799934,
+              "audio_end_frame": 798720
+            },
+            "raw_text": "我们先固定今天的测试文件和操作顺序 for every measured run决定使用冻结方案不再运行中修改内容s before the next run 这段短暂交叉发言也保留在测试里 A failed validation produces no benchmark result"
+          }
+        ]
+      },
+      "timing": {
+        "clock": "per-stream monotonic milliseconds; setup and the other pass are excluded",
+        "first_text_reported_ms": 2603.0422909971094,
+        "first_text_event_ms": 2603.0537909973646,
+        "first_text_after_first_reference_speech_start_ms": 603.0537909973646,
+        "final_text_event_ms": 58080.98008298839,
+        "adapter_returned_ms_reported_as_final_text_available": 58081.253332988126,
+        "adapter_return_minus_final_emission_ms": 0.2732499997364357,
+        "final_text_after_nominal_audio_end_ms": 80.98008298838977,
+        "last_audio_release_event_ms": 58001.291458000196,
+        "final_text_after_last_actual_release_event_ms": 79.68862498819362,
+        "source_lateness_ms": {
+          "minimum": 0.08133299183100462,
+          "median": 9.12977049330948,
+          "maximum": 12.069833000423387
+        },
+        "worst_source_lateness_event": {
+          "sequence": 1857,
+          "stream_elapsed_ms": 54732.34504098946,
+          "audio_end_frame": 875520
+        },
+        "native_next_call_count": 359,
+        "native_next_returned_result_count": 176,
+        "native_next_total_ms": 6283.0831659999985,
+        "native_next_max_ms": 52.4375,
+        "longest_native_next_event": {
+          "sequence": 1230,
+          "stream_elapsed_ms": 16698.752999989665,
+          "audio_end_frame": 266240
+        },
+        "native_finish_ms": 52.109,
+        "native_next_plus_finish_ms": 6335.192165999999,
+        "native_push_total_ms": 33.83040399999998,
+        "scope_note": "next includes C decoding plus result readback/release; finish synchronously decodes the tail. Their sum excludes pacing, Python/audio preparation, logging, push and stream construction/destruction."
+      },
+      "native_word_offsets": {
+        "last_end_ms": 58320,
+        "words_beyond_audio_end": [
+          {
+            "text": "不来自私人会议。",
+            "start_ms": 55280,
+            "end_ms": 58320,
+            "confidence": 1.0
+          }
+        ],
+        "longest_word_span_ms": 17280,
+        "used_for_latency_or_cer_wer": false
+      },
+      "checks": {
+        "released_frames_exact": true,
+        "release_frontiers_strictly_increase": true,
+        "each_push_follows_matching_release": true,
+        "pushes_cover_input_once_without_gaps": true,
+        "raw_results_never_exceed_released_audio": true,
+        "native_input_frontier_matches_release_frontier": true,
+        "one_native_final_after_finish": true,
+        "native_finish_succeeded": true,
+        "native_final_text_equals_report_and_final_emission": true,
+        "native_final_words_and_languages_equal_report": true,
+        "text_emissions_follow_cumulative_replacement": true,
+        "all_native_partials_append_only": true,
+        "finalization_preserves_scored_chinese_and_english_units": true,
+        "recomputed_cer_wer_match_report": true,
+        "reported_native_counts_match_events": true,
+        "reported_native_next_sum_matches_events": true,
+        "reported_finish_sum_matches_events": true,
+        "reported_decode_and_finish_sum_matches_events": true,
+        "reported_first_text_matches_event_within_point_one_ms": true,
+        "reported_max_source_lateness_matches_events": true,
+        "per_stream_event_clock_monotonic": true
+      }
+    }
+  ],
+  "setup": {
+    "model_setup_ms": 13367.863709,
+    "library_load_ms": 2548.316583,
+    "recognizer_create_ms": 10818.848292,
+    "native_backend_stderr": [
+      "[asr] model=.nemotron-3.5-asr-streaming-0.6b.q8_0.gguf head=rnnt backend=MTL0"
+    ],
+    "reference_sdk_revision": "4f9676226f667d14608487df744f375db87127f8",
+    "expected_model_revision": "1c8deaecc64b91f034d73e08dd8b64625eb3395d",
+    "latency_ms": 320,
+    "chunk_ms": 320,
+    "language_prompt": "auto"
+  },
+  "rss": {
+    "sample_count": 128,
+    "available_samples": 128,
+    "unavailable_samples": 0,
+    "peak_sample": {
+      "elapsed_s": 15.215325208002469,
+      "available": true,
+      "rss_kib": 1031728,
+      "cpu_pct": 11.1
+    },
+    "observed_peak_rss_mib": 1007.546875,
+    "guard_limit_mib_not_observed_peak": 8192,
+    "first_sample_elapsed_s": 0.0019412080000620335,
+    "last_sample_elapsed_s": 129.5770341669995,
+    "sample_gap_s": {
+      "minimum": 1.005942125004367,
+      "median": 1.019051875002333,
+      "maximum": 1.0965507079963572
+    },
+    "driver_process_wall_ms": 130591.66575000563,
+    "tail_after_last_sample_to_driver_completion_s": 1.0146315830061212,
+    "coverage_note": "128/128 available samples from driver elapsed 0.00194 to 129.57703 s, about one per second. Launch/setup, both streams and process completion are monitored, but the exact worker-exit instant and between-sample peaks are not observed. The 8192 MiB value is only the configured stop threshold."
+  },
+  "controller": {
+    "exit_code": 0,
+    "app_config_and_consent_preserved": true,
+    "sample_count": 26,
+    "thermal_values": [
+      0
+    ],
+    "all_samples_no_writable_records_handle": true,
+    "background_download_partials_at_start": [
+      "vibevoice/official-model/model-00002-of-00003.safetensors.partial",
+      "vibevoice/official-model/model-00001-of-00003.safetensors.partial",
+      "vibevoice/official-model/tokenizer.json.partial",
+      "voxtral/model/model.safetensors.partial"
+    ],
+    "parallel_public_model_downloads_during_run": true,
+    "io_interference_quantified": false,
+    "swap_before": "vm.swapusage: total = 22528.00M  used = 20906.75M  free = 1621.25M  (encrypted)",
+    "swap_after": "vm.swapusage: total = 22528.00M  used = 20872.94M  free = 1655.06M  (encrypted)"
+  },
+  "limitations": [
+    "One fixed 58-second synthetic Chinese/English fixture, repeated twice in one loaded recognizer; the repetitions are not independent accuracy samples.",
+    "English omissions are present in output returned by this model/runtime/auto-prompt configuration. The artifacts exclude driver concatenation as their cause but do not isolate the underlying model, runtime or prompt cause.",
+    "Other public-model weights were being downloaded during the Nemotron run. The controller records four partial-download paths; bandwidth, disk I/O and paging activity were not measured. Setup and first-stream latency may be affected, so small differences are not a strict performance ranking.",
+    "The first annotated speech starts at 2000 ms. The 878.094 ms native next call and the largest first-stream source delay occur before it; first-text latency here does not test speech starting immediately on a cold stream.",
+    "The report final_text_available_ms is captured after adapter.run returns. The native final-text event is the direct publication observation and precedes that return by less than 0.6 ms in both passes.",
+    "RSS is sampled worker-process resident memory, not complete GPU/unified-memory allocation, total application memory or a continuous true peak. Resource and event clocks use separate origins; no exact per-pass RSS attribution is claimed.",
+    "Native word offsets are not validated alignment: the final word ends at 58320 ms on 58000 ms input, and one fused Chinese/English word span lasts 17280 ms. They are not used for CER/WER or publication latency.",
+    "CER/WER use language-specific extracted units and exclude punctuation, speaker identity, word timestamps and cross-language order. Scoring is against the supplied fixed reference; this audit did not listen to audio or run a model."
+  ],
+  "conclusion": "The saved two-pass output, scores, input delivery and native timing sums are internally consistent. English omissions originate in the retained native outputs rather than adapter accumulation. This is a bounded runtime observation, not product acceptance or a strict isolated performance comparison."
+}

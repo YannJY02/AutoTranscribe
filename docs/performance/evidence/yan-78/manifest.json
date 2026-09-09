@@ -1,0 +1,435 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-09-09T07:43:30.122333+00:00",
+  "issue": "YAN-78",
+  "github_issue": 126,
+  "repository": "YannJY02/AutoTranscribe",
+  "base_revision": "18fea4b",
+  "raw_evidence_root": "logs/yan78",
+  "cpu": "Apple M1 Pro",
+  "cpu_cores": 10,
+  "memory_bytes": 17179869184,
+  "code": [
+    {
+      "path": "scripts/compare_streaming_asr.py",
+      "sha256": "90a08a35315050025f79d282b3d43144310e49e3d00cdb41f09bd3c3cf963df3"
+    },
+    {
+      "path": "scripts/streaming_asr_experiment/__init__.py",
+      "sha256": "42248d2ee2ada842dca6a074ba775f49f2ae47854b3c2760b2c56bfa1ea45230"
+    },
+    {
+      "path": "scripts/streaming_asr_experiment/common.py",
+      "sha256": "35e18184b0c636e37fff676c28ff6cec519fb4a35c5acea63110b05313ffbb33"
+    },
+    {
+      "path": "scripts/streaming_asr_experiment/nemotron.py",
+      "sha256": "df24c550a0350f35132716403470df8d5b7ac133bbc44ead8dce38e2ed8ab5de"
+    },
+    {
+      "path": "scripts/streaming_asr_experiment/vibevoice.py",
+      "sha256": "42b71fa721b483757183f4d3a8124f7e34c37b99f1da6245592b400faae902f9"
+    },
+    {
+      "path": "scripts/streaming_asr_experiment/voxtral.py",
+      "sha256": "3432ed3a455e118d636745df07d62797ce9c04bed8c4f16ef7dc1e1f0376801c"
+    },
+    {
+      "path": "tests/test_streaming_asr_common.py",
+      "sha256": "bfec46b1944df681df8ee1a7a0f53d0a80b7d046149e2077fb35c4010dc40836"
+    },
+    {
+      "path": "tests/test_streaming_asr_nemotron.py",
+      "sha256": "b1ab5aa495d10f217b89a8c82bcea3bbf01366da0b26df70c8923e074f4e322b"
+    },
+    {
+      "path": "tests/test_streaming_asr_vibevoice.py",
+      "sha256": "49676c9432835679b3bbb25b6ac26ba450e7b74b5f9353622e7225e527b2c4d2"
+    },
+    {
+      "path": "tests/test_streaming_asr_voxtral.py",
+      "sha256": "76f786ee12fbed4a186130524953284249e16469f258c8b6298fff9c3b025b38"
+    }
+  ],
+  "raw_inventory": [
+    {
+      "path": "acquire_models.py",
+      "bytes": 2048,
+      "sha256": "cdaaffd6ee2d3ea051bd796ebc89325f1edc20f9d63e2478b24a156db758894f"
+    },
+    {
+      "path": "corpus-verification.json",
+      "bytes": 84,
+      "sha256": "f4fee5b3a1d4262a29338b658657b46b82e14c8eaea6f21e0d290c486014372d"
+    },
+    {
+      "path": "doctor.json",
+      "bytes": 4463,
+      "sha256": "d4a7eec11a599e61b58fd6558e439f2705da3ff153904f566d212f60c69c9eee"
+    },
+    {
+      "path": "download-receipt.json",
+      "bytes": 1942,
+      "sha256": "d36badb2cc10123136d8269b5cf22feee696643b0be308cfab6b1879e4e65e9c"
+    },
+    {
+      "path": "extension-decisions.json",
+      "bytes": 911,
+      "sha256": "ca2d50a0404379628cee0fa91c2a3e56431ddffbd1c81431082031d4f5bdc386"
+    },
+    {
+      "path": "input-receipt.json",
+      "bytes": 1149,
+      "sha256": "4fb7238e2a0721cd34a8f3bdfb3222d914c7f51cb53e9e0004434ff26897cb47"
+    },
+    {
+      "path": "nemotron/audit.json",
+      "bytes": 31964,
+      "sha256": "bf05f14566d0678b955164028319742b75550f5d74fa3880b0dbd8f3f8a03fb1"
+    },
+    {
+      "path": "nemotron/audit.md",
+      "bytes": 6282,
+      "sha256": "3aacfd7b0cfff2814b27b5dac9d4e10cca20cf1a8ef7ccfb3c4dd88f07589697"
+    },
+    {
+      "path": "nemotron/preparation.json",
+      "bytes": 4427,
+      "sha256": "3bc071ef2ff91335dc97d49d77819e27cd5a4995da90822111b5ebafee8c5675"
+    },
+    {
+      "path": "nemotron/short.json",
+      "bytes": 14665,
+      "sha256": "bef9906273030ed1d087de898fb558415c640d4b413449645064e4a6823bcbbb"
+    },
+    {
+      "path": "nemotron/short.json.events.jsonl",
+      "bytes": 573774,
+      "sha256": "9a6188ac14fdba28af7f0be8ebf2ececcd51e0d328f7d0cd10811448050698ce"
+    },
+    {
+      "path": "nemotron/short.json.resources.json",
+      "bytes": 16557,
+      "sha256": "cee6908634223449403853b6e7686c7a9263dba5f50383372862aed16a55509c"
+    },
+    {
+      "path": "nemotron/short.json.stderr.log",
+      "bytes": 14834,
+      "sha256": "3d6d665b3db5a5d30ff28e0f512508ebfb5aa7095722259a6a7a9461d88cfebf"
+    },
+    {
+      "path": "nemotron/short.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "nemotron-short.controller.json",
+      "bytes": 8742,
+      "sha256": "cbd7d45d99e0c2989e08510d7e29a2947e8e299901909a50a0c0581a8a7cf83a"
+    },
+    {
+      "path": "order-amendment.json",
+      "bytes": 440,
+      "sha256": "3b1fe16532ce29691291d8783b2411fab713a19db0b6fb074941f0f2784b3f4a"
+    },
+    {
+      "path": "pre-run-tests.log",
+      "bytes": 829,
+      "sha256": "06158eebf8ad03322a0dfdf211b7f639b2976a7fea1037af903ec1960a3bb347"
+    },
+    {
+      "path": "publish_evidence.py",
+      "bytes": 10204,
+      "sha256": "aa87e8a4ed6cbb3b7fb63f2ed588ca20274dd08d6df404530286bcf534da6c8d"
+    },
+    {
+      "path": "run_guarded.py",
+      "bytes": 7183,
+      "sha256": "a03121be163f429c8e9425770401d7fed2f96baee3c04a16eb8a6f6f3a60f574"
+    },
+    {
+      "path": "versions/compare_streaming_asr-before-interrupt-fix.py.txt",
+      "bytes": 13982,
+      "sha256": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea"
+    },
+    {
+      "path": "versions/run_guarded-nemotron.py.txt",
+      "bytes": 6812,
+      "sha256": "d169f58ca65b9e6aba2f0a445d920bca77d0c023342f0fda350b4a9cc2a28f1a"
+    },
+    {
+      "path": "vibevoice/audit.json",
+      "bytes": 91921,
+      "sha256": "9342c568d1792806022288dad300336c15c6bb744480f5d89c87d91703eb07b9"
+    },
+    {
+      "path": "vibevoice/audit.md",
+      "bytes": 7212,
+      "sha256": "b5eea3a9871aa8440b9eb386040bdd79a082040116859ed7f52ea9159a170b4c"
+    },
+    {
+      "path": "vibevoice/conversion-report.json",
+      "bytes": 2802,
+      "sha256": "499f5ba338f93d269ff6fc647c0927681d496308c7def3891f5e3bfe1eba8a0e"
+    },
+    {
+      "path": "vibevoice/conversion.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vibevoice/conversion.stdout.log",
+      "bytes": 806,
+      "sha256": "3e14069b7eaf2e01e2ef940a0151a74b49a7047bd6a88200454d813967041929"
+    },
+    {
+      "path": "vibevoice/convert_1p5b.py",
+      "bytes": 6112,
+      "sha256": "c52672c086035f9d9baff5fd6f17fbff7e40ff2186f3891e9b32421317745505"
+    },
+    {
+      "path": "vibevoice/download-receipt.json",
+      "bytes": 2853,
+      "sha256": "74e482d72d21ea866f8a41634f06254600ddecb9bbf198ba9691878e9e09bbdd"
+    },
+    {
+      "path": "vibevoice/environment-freeze.txt",
+      "bytes": 704,
+      "sha256": "6be5cd103c2b945705657267e605d89ab6b7978644f7bf285259709f175865d2"
+    },
+    {
+      "path": "vibevoice/fir-actual-environment.json",
+      "bytes": 399,
+      "sha256": "d2cc9d6c7ef1d2f1c7709fb25c25422499909d08e3553a7f9a29d8eccbc9f839"
+    },
+    {
+      "path": "vibevoice/long-decision.json",
+      "bytes": 1032,
+      "sha256": "ea1bee997b8696823a7ef05e0e89ede3308470b0fb5d22a26707746a60a9aee7"
+    },
+    {
+      "path": "vibevoice/long.json",
+      "bytes": 29416,
+      "sha256": "4717c81b6f0ce014c1d71cf5d4fc9530b4d0cf2f2a5bfa07910c4bfc6cb4d37a"
+    },
+    {
+      "path": "vibevoice/long.json.events.jsonl",
+      "bytes": 273785,
+      "sha256": "75fe7f92729eaef641ea74b2827d77f076aae3cd732eded64053620db4f91e69"
+    },
+    {
+      "path": "vibevoice/long.json.resources.json",
+      "bytes": 37394,
+      "sha256": "877c11186edd5d519a9dee7b62c49eee4e838b0f384a81690576e4c107a2c956"
+    },
+    {
+      "path": "vibevoice/long.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vibevoice/long.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vibevoice/manifests/download-files.json",
+      "bytes": 6041,
+      "sha256": "40b30bd002bc20ea703f93d7aeaa42f98efb7974355c290f9f50ab793511df26"
+    },
+    {
+      "path": "vibevoice/preparation.json",
+      "bytes": 33630,
+      "sha256": "de38d4c2b6a81b346cf128c9c7eb6ec8eea40e7889862aac525dcf0a876b59a2"
+    },
+    {
+      "path": "vibevoice/short.json",
+      "bytes": 14770,
+      "sha256": "f663995e119eeeea3e7adff7b158a658cbc1c0a31867bb7b120c5678a33691c3"
+    },
+    {
+      "path": "vibevoice/short.json.events.jsonl",
+      "bytes": 65583,
+      "sha256": "2e8028c0914957fba0c63bc25cd43595e95b68275260957b01b850099f637cf5"
+    },
+    {
+      "path": "vibevoice/short.json.resources.json",
+      "bytes": 15529,
+      "sha256": "3945872dfd3030619cefa2cb27f88a1aa3c9c3cf876cf06e3690def71351cd5e"
+    },
+    {
+      "path": "vibevoice/short.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vibevoice/short.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vibevoice-conversion.controller.json",
+      "bytes": 3912,
+      "sha256": "93f9e107c2c9661d8360f7da2bda9a71604a2363cf078cc0acc548f6dfd16a46"
+    },
+    {
+      "path": "vibevoice-long.controller.json",
+      "bytes": 17610,
+      "sha256": "11cd97d307d7f2fc6b9a164c8930994de5b8103788a63cb0bbb326a515ae4e09"
+    },
+    {
+      "path": "vibevoice-short.controller.json",
+      "bytes": 9066,
+      "sha256": "afb7cdf2dd0829e37bbaabfc923be817dd5faacda5c705c462f855f43d98c02e"
+    },
+    {
+      "path": "voxtral/audit.json",
+      "bytes": 43976,
+      "sha256": "77e81613a13f96f0e3ec3378f7e4cd3f1130f72507c1b9aff466f28dcfb1349c"
+    },
+    {
+      "path": "voxtral/audit.md",
+      "bytes": 7603,
+      "sha256": "64428212cb354ec5891c625b17d2a055fd9d1896ee3cafe3699acc226dff5884"
+    },
+    {
+      "path": "voxtral/environment-freeze.txt",
+      "bytes": 791,
+      "sha256": "1699c92da84c8dbb62520aaae3980136eba9ec365359aad0d055f9a7bffc5239"
+    },
+    {
+      "path": "voxtral/preparation.json",
+      "bytes": 3809,
+      "sha256": "85691afd5096f151dac3c91c7d5a6dd2d5fe42d826cb3d0d7a831a74cd555961"
+    },
+    {
+      "path": "voxtral/short.json",
+      "bytes": 9221,
+      "sha256": "2306c80448b30b2d10c72d3c2ac0e6dec371800b76984f9406edc27495358386"
+    },
+    {
+      "path": "voxtral/short.json.events.jsonl",
+      "bytes": 1033072,
+      "sha256": "9fb5fd677d73c2ab1dd76d9360ba89f667a3e104acc98ff2978be06333f8bfef"
+    },
+    {
+      "path": "voxtral/short.json.resources.json",
+      "bytes": 16760,
+      "sha256": "8fa0dace287dc2d7b997cc5d450db789d7b0b1be593614260031dc104f51dc07"
+    },
+    {
+      "path": "voxtral/short.json.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "voxtral/short.json.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "voxtral-short.controller.json",
+      "bytes": 9215,
+      "sha256": "503e702d45542fa8993d3c2702bd9ffaa366185b01f01fbd303634cdbb4c9a5a"
+    }
+  ],
+  "published_artifacts": [
+    {
+      "path": "cli-before-interrupt-fix.py.txt",
+      "bytes": 13982,
+      "sha256": "50a9d2293b0e89674ba17d97290acf6bed4ece05562d6cf1c3e263de88044eea"
+    },
+    {
+      "path": "conversion.json",
+      "bytes": 2658,
+      "sha256": "3ae4f91f06f1c8c727212e25ab3cd1146def3b7dbb8266f9e8ff76cb50fdffff"
+    },
+    {
+      "path": "convert-vibevoice.py.txt",
+      "bytes": 6112,
+      "sha256": "c52672c086035f9d9baff5fd6f17fbff7e40ff2186f3891e9b32421317745505"
+    },
+    {
+      "path": "dependencies.json",
+      "bytes": 1905,
+      "sha256": "f9884dc04d377f5ec051cbe6c27a3c3d31b26ee6dc4827169662de3ed4a8f3f2"
+    },
+    {
+      "path": "input-receipt.json",
+      "bytes": 1149,
+      "sha256": "4fb7238e2a0721cd34a8f3bdfb3222d914c7f51cb53e9e0004434ff26897cb47"
+    },
+    {
+      "path": "model-downloads.json",
+      "bytes": 12963,
+      "sha256": "979586eb92abf11c3500a66b4cb8b8c743fd8d1d9369164a5c438a522e5597f7"
+    },
+    {
+      "path": "nemotron-audit.json",
+      "bytes": 31964,
+      "sha256": "bf05f14566d0678b955164028319742b75550f5d74fa3880b0dbd8f3f8a03fb1"
+    },
+    {
+      "path": "nemotron-audit.md",
+      "bytes": 5927,
+      "sha256": "e25edb859cc81e6ecf9277ccaebb98525a0085aff6a31bce4a2c3fac3a4001d7"
+    },
+    {
+      "path": "resources.json",
+      "bytes": 91041,
+      "sha256": "e9d12edfce00ec91a34dd9c1251b3c453d65f6147d64587300739589931ee1b8"
+    },
+    {
+      "path": "results.json",
+      "bytes": 88708,
+      "sha256": "c4e6c7ca88fd7c656a9c17fad4f0f677a6dd4765c8b5d687ac3cb73312d01c12"
+    },
+    {
+      "path": "run-guarded-nemotron.py.txt",
+      "bytes": 6812,
+      "sha256": "d169f58ca65b9e6aba2f0a445d920bca77d0c023342f0fda350b4a9cc2a28f1a"
+    },
+    {
+      "path": "run-guarded.py.txt",
+      "bytes": 7183,
+      "sha256": "a03121be163f429c8e9425770401d7fed2f96baee3c04a16eb8a6f6f3a60f574"
+    },
+    {
+      "path": "text-and-step-events.jsonl",
+      "bytes": 750826,
+      "sha256": "30f559158ed618908a555a5f413f991e04d0f9e57b288d1e833a6e8b73616646"
+    },
+    {
+      "path": "vibevoice-audit.json",
+      "bytes": 91819,
+      "sha256": "5d721c63ec41a4c0ce592ec17bb5c08b30cb3c9b50a4413d49bad6f60a681c94"
+    },
+    {
+      "path": "vibevoice-audit.md",
+      "bytes": 7238,
+      "sha256": "88012a6a87e3c9d5f36addbb9bb6fd32b1031675a621260d86ece744436b55d1"
+    },
+    {
+      "path": "voxtral-audit.json",
+      "bytes": 42896,
+      "sha256": "956aa23f3e05a16cbf1090bdf54ab5e618a4b72e242eedf4d86feb0aad8a5563"
+    },
+    {
+      "path": "voxtral-audit.md",
+      "bytes": 7286,
+      "sha256": "36d78d4a857a55c12011c32e15003dca10cb5880be790ad032fffe4eeaa5cfe8"
+    }
+  ],
+  "runtime_pins": {
+    "nemotron": "NVIDIA/NeMo-Speech.cpp v0.1.0 @ 4f9676226f667d14608487df744f375db87127f8",
+    "vibevoice": "Blaizzy/mlx-audio @ 17001a6950956302f15b53d86b601324efe716ba",
+    "voxtral": "awni/voxmlx @ e6d193e85e84e30f26e370c66973ce287b8a9d57"
+  },
+  "source_change_after_measurement": "Only the CLI KeyboardInterrupt failure-report merge changed after Nemotron/VibeVoice measurements. The exact earlier CLI is archived; measured paths and three adapters remain unchanged.",
+  "validation": {
+    "targeted_tests": "45 passed before first cohort; final KeyboardInterrupt fake branch 11 passed in its file; no model rerun",
+    "independent_code_review": "Completed; the one Ctrl-C cleanup finding was fixed and covered.",
+    "full_harness": "See final PR validation and local handoff receipt; final-content run occurs after publication."
+  },
+  "reproducibility": "Restore archived helpers to the original logs/yan78 layout, use pinned local environments/weights/input, acquire installed-app lock, and reproduce recorded argv from results/controllers. Convert helper also requires vibevoice/manifests/download-files.json from model-downloads.json; do not run archived text files in place."
+}
