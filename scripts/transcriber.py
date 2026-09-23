@@ -1411,7 +1411,7 @@ def _qwen_segments_from_result(result: Any) -> list[dict[str, Any]]:
     return [{"start": 0, "end": 1200, "text": text, "speaker": "", "confidence": 0.0}]
 
 
-def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True, preserve_words: bool = False) -> tuple[str, list[dict[str, Any]]]:
     with phase(Phase.SPEECH_DETECTION):
         if not _speech_exists(audio_path):
             return "unknown", []
@@ -1425,7 +1425,7 @@ def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> t
     if attach_diarization and DIARIZATION_ENABLED and _qwen_builtin_diarization_requested() and not diarize:
         logger.warning("Qwen 说话人分离未就绪，将继续无 speaker 转写。")
 
-    return_timestamps = QWEN_MLX_RETURN_TIMESTAMPS or diarize or (attach_diarization and DIARIZATION_ENABLED)
+    return_timestamps = QWEN_MLX_RETURN_TIMESTAMPS or preserve_words or diarize or (attach_diarization and DIARIZATION_ENABLED)
     forced_aligner = _resolve_qwen_forced_aligner_source() if return_timestamps else None
     kwargs: dict[str, Any] = {
         "audio": str(audio_path),
@@ -1443,15 +1443,22 @@ def _transcribe_qwen_mlx(audio_path: Path, attach_diarization: bool = True) -> t
     result = worker.transcribe(**kwargs)
     with phase(Phase.SEGMENT_CONVERSION):
         segments = _qwen_segments_from_result(result)
+        if preserve_words:
+            words = [_segment_from_qwen_item(item) for item in (getattr(result, "segments", None) or []) if isinstance(item, dict)]
+            for segment in segments:
+                segment["_words"] = [word for word in words if word is not None
+                                     and word["start"] >= segment["start"] and word["end"] <= segment["end"]]
     if attach_diarization:
         segments = _attach_diarization_labels(audio_path, segments)
     _mark_warm_ready()
     return _qwen_lang(getattr(result, "language", "")), segments
 
 
-def _transcribe_active(audio_path: Path, attach_diarization: bool = True) -> tuple[str, list[dict[str, Any]]]:
+def _transcribe_active(audio_path: Path, attach_diarization: bool = True, preserve_words: bool = False) -> tuple[str, list[dict[str, Any]]]:
     engine = _engine()
     if engine == QWEN_MLX_ENGINE:
+        if preserve_words:
+            return _transcribe_qwen_mlx(audio_path, attach_diarization=attach_diarization, preserve_words=True)
         return _transcribe_qwen_mlx(audio_path, attach_diarization=attach_diarization)
     if engine == "funasr":
         return _transcribe_funasr(audio_path, attach_diarization=attach_diarization)
@@ -1671,7 +1678,7 @@ def transcribe(input_path: Path) -> dict[str, Any]:
                 pass
 
 
-def transcribe_audio_chunk(wav_path: Path, offset_ms: int = 0) -> list[dict[str, Any]]:
+def transcribe_audio_chunk(wav_path: Path, offset_ms: int = 0, *, attach_diarization: bool = True, preserve_words: bool = False) -> list[dict[str, Any]]:
     """
     对单个 WAV chunk 执行增量转写，并返回绝对时间戳片段。
     """
@@ -1680,7 +1687,10 @@ def transcribe_audio_chunk(wav_path: Path, offset_ms: int = 0) -> list[dict[str,
     if wav_path.suffix.lower() != ".wav":
         raise ValueError("live chunk must be wav")
 
-    _, raw_segments = _transcribe_active(wav_path)
+    if attach_diarization and not preserve_words:
+        _, raw_segments = _transcribe_active(wav_path)
+    else:
+        _, raw_segments = _transcribe_active(wav_path, attach_diarization=attach_diarization, preserve_words=preserve_words)
 
     out: list[dict[str, Any]] = []
     for seg in raw_segments:
@@ -1702,6 +1712,9 @@ def transcribe_audio_chunk(wav_path: Path, offset_ms: int = 0) -> list[dict[str,
                 "confidence": float(seg.get("confidence", 0.0) or 0.0),
             }
         )
+        if preserve_words:
+            out[-1]["_words"] = [dict(start_ms=w["start"] + int(offset_ms), end_ms=w["end"] + int(offset_ms), text=w["text"])
+                                 for w in seg.get("_words", [])]
     return out
 
 

@@ -6,16 +6,17 @@ protocol LiveTranscriptProcessing {
 }
 
 protocol LiveTranscriptPipelineRuntime {
-    func transcribe(chunk: AudioChunk, source: String) throws -> [RPCSegmentDelta]
+    func transcribe(chunk: AudioChunk, meetingID: String, source: String) throws -> [RPCSegmentDelta]
     func appendTranscriptDelta(meetingID: String, segments: [RPCSegmentDelta]) throws -> Int
-    func refreshLiveInsight(meetingID: String, windowSec: Int) throws -> InsightRefreshResult
 }
 
 struct InsightRPCLiveTranscriptPipelineRuntime: LiveTranscriptPipelineRuntime {
     let rpcClient: InsightRPCClientProtocol
 
-    func transcribe(chunk: AudioChunk, source: String) throws -> [RPCSegmentDelta] {
-        try rpcClient.asrTranscribeChunk(
+    func transcribe(chunk: AudioChunk, meetingID: String, source: String) throws -> [RPCSegmentDelta] {
+        try rpcClient.asrTranscribeLiveChunk(
+            meetingID: meetingID,
+            chunkID: String(chunk.index),
             wavPath: chunk.url.path,
             offsetMs: chunk.startMs,
             source: source
@@ -26,9 +27,6 @@ struct InsightRPCLiveTranscriptPipelineRuntime: LiveTranscriptPipelineRuntime {
         try rpcClient.transcriptDelta(meetingID: meetingID, segments: segments)
     }
 
-    func refreshLiveInsight(meetingID: String, windowSec: Int) throws -> InsightRefreshResult {
-        try rpcClient.refreshLive(meetingID: meetingID, windowSec: windowSec)
-    }
 }
 
 struct LiveTranscriptPipelineContext {
@@ -42,6 +40,7 @@ struct LiveTranscriptPipelineContext {
 
 enum LiveTranscriptPipelineRefresh {
     case none
+    case requested
     case success(InsightRefreshResult)
     case paused(LiveTranscriptPipelinePauseReason)
 }
@@ -141,7 +140,6 @@ struct LiveTranscriptPipelineErrorClassifier {
 
 final class LiveTranscriptPipeline: LiveTranscriptProcessing {
     private let runtime: LiveTranscriptPipelineRuntime
-    private let errorClassifier: LiveTranscriptPipelineErrorClassifier
     private let clock: () -> Date
     private var coordinator: LiveInsightCoordinator
     private var recentFingerprints: [String]
@@ -150,13 +148,11 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
         runtime: LiveTranscriptPipelineRuntime,
         coordinator: LiveInsightCoordinator = LiveInsightCoordinator(),
         recentFingerprints: [String] = [],
-        errorClassifier: LiveTranscriptPipelineErrorClassifier = .localizedDescription,
         clock: @escaping () -> Date = Date.init
     ) {
         self.runtime = runtime
         self.coordinator = coordinator
         self.recentFingerprints = recentFingerprints
-        self.errorClassifier = errorClassifier
         self.clock = clock
     }
 
@@ -167,7 +163,7 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
 
     func process(chunk: AudioChunk, context: LiveTranscriptPipelineContext) throws -> LiveTranscriptPipelineOutcome {
         let startedProcessingAt = clock()
-        var deltas = try runtime.transcribe(chunk: chunk, source: context.source)
+        var deltas = try runtime.transcribe(chunk: chunk, meetingID: context.meetingID, source: context.source)
         deltas = deduplicate(deltas)
         let chunkIndex = chunk.index + 1
 
@@ -230,89 +226,19 @@ final class LiveTranscriptPipeline: LiveTranscriptProcessing {
             )
         }
 
-        do {
-            let analysisStartedAt = clock()
-            let result = try runtime.refreshLiveInsight(meetingID: context.meetingID, windowSec: 120)
-            let analysisLatencyMs = max(0, Int(clock().timeIntervalSince(analysisStartedAt) * 1_000))
-            coordinator.markRefreshed(at: processedAt)
-            return outcome(
-                context: context,
-                chunkIndex: chunkIndex,
-                latencyMs: latencyMs,
-                ingested: ingested,
-                transcriptSegments: transcriptSegments,
-                processedAt: processedAt,
-                firstSegmentMs: firstSegmentMs,
-                refresh: .success(result),
-                analysisLatencyMs: analysisLatencyMs
-            )
-        } catch {
-            if errorClassifier.isProviderAuthFailure(error) {
-                coordinator.markRefreshed(at: processedAt)
-                return outcome(
-                    context: context,
-                    chunkIndex: chunkIndex,
-                    latencyMs: latencyMs,
-                    ingested: ingested,
-                    transcriptSegments: transcriptSegments,
-                    processedAt: processedAt,
-                    firstSegmentMs: firstSegmentMs,
-                    refresh: .paused(.authFailed),
-                    providerMetric: "analysis-paused",
-                    analysisRuntimeState: .pausedAuthFailed,
-                    errorMessage: "智能分析服务鉴权失败，转写继续、洞察已暂停。请打开设置修复 API 配置后重新开始直播洞察。"
-                )
-            }
-            if errorClassifier.isProviderProbeTimeout(error) {
-                coordinator.markRefreshed(at: processedAt)
-                return outcome(
-                    context: context,
-                    chunkIndex: chunkIndex,
-                    latencyMs: latencyMs,
-                    ingested: ingested,
-                    transcriptSegments: transcriptSegments,
-                    processedAt: processedAt,
-                    firstSegmentMs: firstSegmentMs,
-                    refresh: .paused(.timeout),
-                    providerMetric: "analysis-paused",
-                    analysisRuntimeState: .pausedTimeout,
-                    errorMessage: "智能分析探测超时，转写继续、洞察已暂停。请稍后重试或检查网络。"
-                )
-            }
-            if errorClassifier.isLiveRefreshTimeout(error) {
-                coordinator.markRefreshed(at: processedAt)
-                return outcome(
-                    context: context,
-                    chunkIndex: chunkIndex,
-                    latencyMs: latencyMs,
-                    ingested: ingested,
-                    transcriptSegments: transcriptSegments,
-                    processedAt: processedAt,
-                    firstSegmentMs: firstSegmentMs,
-                    refresh: .paused(.timeout),
-                    providerMetric: "analysis-refresh-timeout",
-                    analysisRuntimeState: .ready,
-                    errorMessage: nil
-                )
-            }
-            if errorClassifier.isProviderInvalidResponse(error) {
-                coordinator.markRefreshed(at: processedAt)
-                return outcome(
-                    context: context,
-                    chunkIndex: chunkIndex,
-                    latencyMs: latencyMs,
-                    ingested: ingested,
-                    transcriptSegments: transcriptSegments,
-                    processedAt: processedAt,
-                    firstSegmentMs: firstSegmentMs,
-                    refresh: .paused(.invalidProviderResponse),
-                    providerMetric: "analysis-invalid-response",
-                    analysisRuntimeState: .pausedInvalidResponse,
-                    errorMessage: AnalysisProviderErrorPresentation.invalidResponseMessage
-                )
-            }
-            throw error
-        }
+        // Reserve this refresh when it is requested. Completion belongs to a
+        // separate worker and must never hold or re-publish transcript metrics.
+        coordinator.markRefreshed(at: processedAt)
+        return outcome(
+            context: context,
+            chunkIndex: chunkIndex,
+            latencyMs: latencyMs,
+            ingested: ingested,
+            transcriptSegments: transcriptSegments,
+            processedAt: processedAt,
+            firstSegmentMs: firstSegmentMs,
+            refresh: .requested
+        )
     }
 
     private func captureState(context: LiveTranscriptPipelineContext, hasNewTranscript: Bool) -> CaptureState {

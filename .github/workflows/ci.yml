@@ -123,6 +123,9 @@ jobs:
           name: swift-test-log
           path: /tmp/swift-test.log
 
+      - name: Test live diarization session protocol
+        run: swift test --package-path macos/LiveDiarizationWorker --jobs 4
+
   release-package:
     name: Release Package Smoke
     runs-on: macos-15

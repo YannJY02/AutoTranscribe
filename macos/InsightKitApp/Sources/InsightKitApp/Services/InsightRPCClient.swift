@@ -51,6 +51,8 @@ final class InsightRPCClient {
         var providerProbeTimeoutSec: Int
         /// 专用于 insight.build_final 的超时（最终洞察可能需要完整 provider 生成）
         var finalInsightTimeoutSec: Int
+        /// 专用于实时智能纪要的超时，独立于普通 RPC 和最终洞察。
+        var liveInsightTimeoutSec: Int = 30
         var maxRetries: Int
         var breakerThreshold: Int
         var breakerCooldownSec: Int
@@ -63,6 +65,7 @@ final class InsightRPCClient {
                 asrMediaTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_MEDIA_TIMEOUT_SEC"] ?? "900") ?? 900,
                 providerProbeTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_PROVIDER_PROBE_RPC_TIMEOUT_SEC"] ?? "6") ?? 6,
                 finalInsightTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_FINAL_INSIGHT_RPC_TIMEOUT_SEC"] ?? "60") ?? 60,
+                liveInsightTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_LIVE_INSIGHT_RPC_TIMEOUT_SEC"] ?? "30") ?? 30,
                 maxRetries: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_MAX_RETRIES"] ?? "1") ?? 1,
                 breakerThreshold: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_THRESHOLD"] ?? "4") ?? 4,
                 breakerCooldownSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_COOLDOWN"] ?? "10") ?? 10
@@ -85,6 +88,14 @@ final class InsightRPCClient {
 
     init(config: Config = .default()) {
         self.config = config
+    }
+
+    func makeBackgroundClient() -> InsightRPCClientProtocol {
+        var backgroundConfig = config
+        // A timed-out provider/helper request may still be running in the
+        // sidecar. Retrying would create duplicate work, not cancel that call.
+        backgroundConfig.maxRetries = 0
+        return InsightRPCClient(config: backgroundConfig)
     }
 
     // MARK: - Persistent connection lifecycle
@@ -213,7 +224,14 @@ final class InsightRPCClient {
         for (key, value) in AppConfigStore.shared.activeProviderParams() {
             params[key] = value
         }
-        let result = try callWithRetry(method: "insight.refresh_live", params: params)
+        // A provider may still be generating after the client deadline. Let the
+        // live scheduler request the next refresh instead of duplicating it here.
+        let result = try callWithRetry(
+            method: "insight.refresh_live",
+            params: params,
+            overrideTimeoutSec: config.liveInsightTimeoutSec,
+            maxRetriesOverride: 0
+        )
         return try decodePackageResult(result)
     }
 
@@ -502,6 +520,45 @@ final class InsightRPCClient {
             overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec)
         )
         return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    func asrTranscribeLiveChunk(meetingID: String, chunkID: String, wavPath: String, offsetMs: Int, source: String) throws -> [RPCSegmentDelta] {
+        let result = try callWithRetry(
+            method: "asr.transcribe_live_chunk",
+            params: ["meeting_id": meetingID, "chunk_id": chunkID, "wav_path": wavPath,
+                     "offset_ms": offsetMs, "source": source],
+            overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec),
+            maxRetriesOverride: 0
+        )
+        return decodeSegmentDeltas(from: result["segments"] as? [[String: Any]] ?? [], fallbackSource: source)
+    }
+
+    func asrEnrichLiveChunk(meetingID: String, chunkID: String) throws -> LiveSpeakerEnrichmentResult {
+        let result = try callWithRetry(
+            method: "asr.enrich_live_chunk",
+            params: ["meeting_id": meetingID, "chunk_id": chunkID],
+            overrideTimeoutSec: max(config.timeoutSec, config.asrChunkTimeoutSec),
+            maxRetriesOverride: 0
+        )
+        guard let returnedMeetingID = result["meeting_id"] as? String,
+              returnedMeetingID == meetingID,
+              let rawStatus = result["status"] as? String,
+              let status = LiveSpeakerEnrichmentResult.Status(rawValue: rawStatus),
+              let rawUpdates = result["updates"] as? [[String: Any]] else {
+            throw RPCError.invalidResponse
+        }
+        let updates = try rawUpdates.map { row -> LiveSpeakerUpdate in
+            guard let id = row["chunk_id"] as? String,
+                  let originals = row["original_segments"] as? [[String: Any]],
+                  let replacements = row["segments"] as? [[String: Any]] else {
+                throw RPCError.invalidResponse
+            }
+            return LiveSpeakerUpdate(chunkID: id,
+                originalSegments: decodeSegmentDeltas(from: originals, fallbackSource: ""),
+                segments: decodeSegmentDeltas(from: replacements, fallbackSource: ""))
+        }
+        return LiveSpeakerEnrichmentResult(meetingID: returnedMeetingID, updates: updates,
+                                          status: status, error: result["error"] as? String)
     }
 
     func asrTranscribeMedia(mediaPath: String, source: String = "media") throws -> [RPCSegmentDelta] {

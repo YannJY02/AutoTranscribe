@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +19,18 @@ DEFAULT_DB = Path(
 LEGACY_DB = Path(__file__).resolve().parent.parent.parent / "logs" / "insightkit.db"
 
 
+def _locked(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return call
+
+
 class InsightStore:
     def __init__(self, db_path: Path | None = None):
+        # RPC connections share this connection; a transaction must own it until commit.
+        self._lock = threading.RLock()
         self.db_path = db_path or DEFAULT_DB
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._migrate_legacy_db_if_needed()
@@ -28,9 +40,11 @@ class InsightStore:
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self.conn.execute("PRAGMA synchronous=NORMAL;")
 
+    @_locked
     def close(self) -> None:
         self.conn.close()
 
+    @_locked
     def init_schema(self) -> None:
         cur = self.conn.cursor()
         cur.executescript(
@@ -126,6 +140,7 @@ class InsightStore:
         self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         self.conn.commit()
 
+    @_locked
     def upsert_meeting(self, meeting_id: str, title: str, source: str, status: str) -> None:
         self.conn.execute(
             """
@@ -137,6 +152,7 @@ class InsightStore:
         )
         self.conn.commit()
 
+    @_locked
     def get_meeting(self, meeting_id: str) -> dict[str, Any] | None:
         cur = self.conn.execute(
             "SELECT id, title, source, status, started_at, ended_at FROM meetings WHERE id=?",
@@ -145,6 +161,7 @@ class InsightStore:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    @_locked
     def update_meeting_status(self, meeting_id: str, status: str) -> None:
         self.conn.execute(
             "UPDATE meetings SET status=? WHERE id=?",
@@ -152,6 +169,7 @@ class InsightStore:
         )
         self.conn.commit()
 
+    @_locked
     def count_segments(self, meeting_id: str) -> int:
         cur = self.conn.execute(
             "SELECT COUNT(1) FROM segments WHERE meeting_id=?",
@@ -160,6 +178,7 @@ class InsightStore:
         row = cur.fetchone()
         return int(row[0] if row else 0)
 
+    @_locked
     def insert_segment(
         self,
         meeting_id: str,
@@ -179,6 +198,7 @@ class InsightStore:
         )
         self.conn.commit()
 
+    @_locked
     def replace_segments(self, meeting_id: str, segments: list[dict[str, Any]]) -> int:
         with self.conn:
             self.conn.execute("DELETE FROM segments WHERE meeting_id=?", (meeting_id,))
@@ -209,6 +229,30 @@ class InsightStore:
                 ingested += 1
         return ingested
 
+    @_locked
+    def replace_exact_segments(self, meeting_id: str, originals: list[dict[str, Any]], replacements: list[dict[str, Any]]) -> bool:
+        """Patch an unchanged live chunk atomically; never remove a time range."""
+        if not originals:
+            return False
+        with self.conn:
+            ids = []
+            for seg in originals:
+                rows = self.conn.execute(
+                    "SELECT id FROM segments WHERE meeting_id=? AND start_ms=? AND end_ms=? "
+                    "AND text=? AND COALESCE(source, '')=? AND COALESCE(speaker, '')=?",
+                    (meeting_id, seg["start_ms"], seg["end_ms"], seg["text"], seg.get("source", ""), seg.get("speaker", "")),
+                ).fetchall()
+                if len(rows) != 1 or rows[0][0] in ids:
+                    return False
+                ids.append(rows[0][0])
+            self.conn.executemany("DELETE FROM segments WHERE id=?", [(row_id,) for row_id in ids])
+            self.conn.executemany(
+                "INSERT INTO segments(meeting_id, start_ms, end_ms, speaker, source, text, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(meeting_id, s["start_ms"], s["end_ms"], s.get("speaker", ""), s.get("source", ""), s["text"], s.get("confidence", 0.0)) for s in replacements],
+            )
+        return True
+
+    @_locked
     def list_segments(self, meeting_id: str) -> list[dict[str, Any]]:
         cur = self.conn.execute(
             "SELECT start_ms, end_ms, COALESCE(speaker, '') AS speaker, COALESCE(source, '') AS source, text FROM segments WHERE meeting_id=? ORDER BY start_ms",
@@ -216,6 +260,7 @@ class InsightStore:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    @_locked
     def search_segments(self, meeting_id: str, query: str, limit: int = 20) -> list[dict[str, Any]]:
         cur = self.conn.execute(
             """
@@ -230,6 +275,7 @@ class InsightStore:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    @_locked
     def upsert_insight_package(self, meeting_id: str, payload: dict[str, Any], updated_at: str) -> None:
         self.conn.execute(
             """
@@ -243,6 +289,7 @@ class InsightStore:
         )
         self.conn.commit()
 
+    @_locked
     def get_insight_package(self, meeting_id: str) -> dict[str, Any] | None:
         cur = self.conn.execute(
             "SELECT payload_json, updated_at FROM insight_packages WHERE meeting_id=?",
@@ -254,6 +301,7 @@ class InsightStore:
         payload = json.loads(str(row["payload_json"]))
         return {"payload": payload, "updated_at": row["updated_at"]}
 
+    @_locked
     def upsert_transcription_job(
         self,
         *,
@@ -299,6 +347,7 @@ class InsightStore:
         )
         self.conn.commit()
 
+    @_locked
     def get_transcription_job(self, job_id: str) -> dict[str, Any] | None:
         cur = self.conn.execute(
             """
@@ -321,6 +370,7 @@ class InsightStore:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    @_locked
     def get_latest_transcription_job_for_meeting(self, meeting_id: str) -> dict[str, Any] | None:
         cur = self.conn.execute(
             """
@@ -345,6 +395,7 @@ class InsightStore:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    @_locked
     def list_transcription_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         cur = self.conn.execute(
             """

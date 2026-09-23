@@ -213,6 +213,13 @@ def test_gate_specs_route_python_and_swift_changes():
     assert names == ["diff-check", "python-tests", "swift-tests", "architecture-contracts"]
 
 
+def test_gate_specs_test_the_separate_live_diarization_package():
+    gates = gate_specs(["macos/LiveDiarizationWorker/Sources/LiveDiarizationCore/SessionController.swift"],
+                       mode="full", python_executable="python3.11")
+    helper = next(gate for gate in gates if gate.name == "live-diarization-tests")
+    assert helper.commands == (("swift", "test", "--package-path", "macos/LiveDiarizationWorker", "--jobs", "4"),)
+
+
 def test_gate_specs_route_project_configuration_and_ui_tests():
     python_gates = gate_specs(["pyproject.toml"], mode="full", python_executable="python3.11")
     native_names = [

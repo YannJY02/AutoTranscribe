@@ -477,7 +477,8 @@ final class WorkflowCoordinator: ObservableObject {
     private var supportsLiveActions: Bool {
         supports("session.start")
             && supports("session.stop")
-            && supports("asr.transcribe_chunk")
+            && supports("asr.transcribe_live_chunk")
+            && supports("asr.enrich_live_chunk")
             && supports("asr.transcribe_media")
             && supports("transcript.replace")
             && supports("insight.refresh_live")
@@ -490,7 +491,8 @@ final class WorkflowCoordinator: ObservableObject {
     private static let uiTestCapabilities: Set<String> = [
         "session.start",
         "session.stop",
-        "asr.transcribe_chunk",
+        "asr.transcribe_live_chunk",
+        "asr.enrich_live_chunk",
         "asr.transcribe_media",
         "transcript.replace",
         "insight.refresh_live",

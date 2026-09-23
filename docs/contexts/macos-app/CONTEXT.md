@@ -96,6 +96,8 @@ _Avoid_: Regenerate, summarize
 The app-side module seam that turns audio chunks into Live Transcript Delta, optional Insight Refresh, provider-degradation state, and Live Workspace metrics.
 _Avoid_: processChunk helper, live ASR wrapper
 
+Live Transcript Delta appears before background Insight Refresh or speaker enrichment completes. These background operations use separate connections and bounded queues; slow work does not hold the next transcript chunk. A new session, stop, or final transcript invalidates their pending UI results. Speaker corrections replace only the exact original rows, preserving unrelated text and the media timeline.
+
 **Needs Review Count**:
 The number of generated items that should be treated as uncertain and checked by the user.
 _Avoid_: Warning count, error count

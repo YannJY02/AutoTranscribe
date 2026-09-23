@@ -159,6 +159,21 @@ extension LiveSessionViewModel {
             || lower.contains("probe_timeout")
     }
 
+    func assertLiveSidecarCapabilities() throws {
+        try assertSidecarCapabilities([
+            "session.start",
+            "session.stop",
+            "asr.transcribe_live_chunk",
+            "asr.enrich_live_chunk",
+            "asr.transcribe_media",
+            "asr.prewarm",
+            "transcript.delta",
+            "transcript.replace",
+            "insight.refresh_live",
+            "records.save",
+        ])
+    }
+
     func assertSidecarCapabilities(_ required: [String]) throws {
         let version: [String: Any]
         do {

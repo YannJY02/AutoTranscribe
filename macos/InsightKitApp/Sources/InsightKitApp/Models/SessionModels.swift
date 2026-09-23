@@ -94,6 +94,7 @@ struct LiveSessionMetrics {
     var needsReviewCount: Int = 0
     var queueDepth: Int = 0
     var droppedChunks: Int = 0
+    var droppedSpeakerChunks: Int = 0
     var warmReadyMs: Int = 0
     var firstSegmentMs: Int = 0
 }
