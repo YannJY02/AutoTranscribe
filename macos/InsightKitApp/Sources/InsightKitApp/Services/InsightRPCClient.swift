@@ -51,6 +51,8 @@ final class InsightRPCClient {
         var providerProbeTimeoutSec: Int
         /// 专用于 insight.build_final 的超时（最终洞察可能需要完整 provider 生成）
         var finalInsightTimeoutSec: Int
+        /// 专用于实时智能纪要的超时，独立于普通 RPC 和最终洞察。
+        var liveInsightTimeoutSec: Int = 30
         var maxRetries: Int
         var breakerThreshold: Int
         var breakerCooldownSec: Int
@@ -63,6 +65,7 @@ final class InsightRPCClient {
                 asrMediaTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_ASR_MEDIA_TIMEOUT_SEC"] ?? "900") ?? 900,
                 providerProbeTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_PROVIDER_PROBE_RPC_TIMEOUT_SEC"] ?? "6") ?? 6,
                 finalInsightTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_FINAL_INSIGHT_RPC_TIMEOUT_SEC"] ?? "60") ?? 60,
+                liveInsightTimeoutSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_LIVE_INSIGHT_RPC_TIMEOUT_SEC"] ?? "30") ?? 30,
                 maxRetries: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_MAX_RETRIES"] ?? "1") ?? 1,
                 breakerThreshold: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_THRESHOLD"] ?? "4") ?? 4,
                 breakerCooldownSec: Int(ProcessInfo.processInfo.environment["INSIGHTKIT_RPC_BREAKER_COOLDOWN"] ?? "10") ?? 10
@@ -221,7 +224,14 @@ final class InsightRPCClient {
         for (key, value) in AppConfigStore.shared.activeProviderParams() {
             params[key] = value
         }
-        let result = try callWithRetry(method: "insight.refresh_live", params: params)
+        // A provider may still be generating after the client deadline. Let the
+        // live scheduler request the next refresh instead of duplicating it here.
+        let result = try callWithRetry(
+            method: "insight.refresh_live",
+            params: params,
+            overrideTimeoutSec: config.liveInsightTimeoutSec,
+            maxRetriesOverride: 0
+        )
         return try decodePackageResult(result)
     }
 

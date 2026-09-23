@@ -4,23 +4,28 @@ import XCTest
 @testable import InsightKitApp
 
 final class InsightRPCClientFinalInsightTimeoutTests: XCTestCase {
-    func testBuildFinalUsesDedicatedFinalInsightTimeout() throws {
-        let socketPath = "/tmp/insightkit-final-\(UUID().uuidString).sock"
-        let sidecar = DelayedBuildFinalSidecar(socketPath: socketPath, responseDelay: 2.0)
+    func testRefreshLiveSurvivesGenericRPCTimeout() throws {
+        let socketPath = "/tmp/insightkit-live-\(UUID().uuidString).sock"
+        let sidecar = DelayedInsightSidecar(socketPath: socketPath, responseDelay: 2.0)
         try sidecar.start()
         defer { sidecar.stop() }
 
-        let client = InsightRPCClient(config: InsightRPCClient.Config(
-            socketPath: socketPath,
-            timeoutSec: 1,
-            asrChunkTimeoutSec: 120,
-            asrMediaTimeoutSec: 900,
-            providerProbeTimeoutSec: 6,
-            finalInsightTimeoutSec: 3,
-            maxRetries: 0,
-            breakerThreshold: 4,
-            breakerCooldownSec: 10
-        ))
+        let client = makeClient(socketPath: socketPath)
+
+        let result = try client.refreshLive(meetingID: "live-timeout-regression")
+
+        XCTAssertEqual(result.provider, "fake:slow-test")
+        XCTAssertFalse(result.package.sessionOverview.overview.isEmpty)
+        XCTAssertEqual(sidecar.receivedMethods, ["insight.refresh_live"])
+    }
+
+    func testBuildFinalUsesDedicatedFinalInsightTimeout() throws {
+        let socketPath = "/tmp/insightkit-final-\(UUID().uuidString).sock"
+        let sidecar = DelayedInsightSidecar(socketPath: socketPath, responseDelay: 2.0)
+        try sidecar.start()
+        defer { sidecar.stop() }
+
+        let client = makeClient(socketPath: socketPath)
 
         let result = try client.buildFinal(meetingID: "live-final-timeout-regression")
 
@@ -29,20 +34,94 @@ final class InsightRPCClientFinalInsightTimeoutTests: XCTestCase {
         XCTAssertEqual(result.provider, "fake:slow-test")
         XCTAssertEqual(sidecar.receivedMethods, ["smart_minutes.generate"])
     }
+
+    func testRefreshLiveHonorsItsOwnTimeout() throws {
+        let socketPath = "/tmp/insightkit-live-deadline-\(UUID().uuidString).sock"
+        let sidecar = DelayedInsightSidecar(socketPath: socketPath, responseDelay: 2.0)
+        try sidecar.start()
+        defer { sidecar.stop() }
+        let client = makeClient(socketPath: socketPath, timeoutSec: 3, liveInsightTimeoutSec: 1)
+
+        XCTAssertThrowsError(try client.refreshLive(meetingID: "live-deadline")) { error in
+            guard case InsightRPCClient.RPCError.timeout("insight.refresh_live") = error else {
+                return XCTFail("Expected the live insight deadline, got \(error)")
+            }
+        }
+        XCTAssertEqual(sidecar.receivedMethods, ["insight.refresh_live"])
+    }
+
+    func testRefreshLiveDoesNotAutomaticallyRetryProviderFailure() throws {
+        let socketPath = "/tmp/insightkit-live-no-retry-\(UUID().uuidString).sock"
+        let sidecar = DelayedInsightSidecar(
+            socketPath: socketPath,
+            responseDelay: 0,
+            maximumRequests: 3,
+            responseError: "provider temporarily unavailable"
+        )
+        try sidecar.start()
+        defer { sidecar.stop() }
+        let client = makeClient(socketPath: socketPath, maxRetries: 2)
+
+        XCTAssertThrowsError(try client.refreshLive(meetingID: "live-no-retry")) { error in
+            guard case InsightRPCClient.RPCError.remoteError("provider temporarily unavailable") = error else {
+                return XCTFail("Expected the provider error, got \(error)")
+            }
+        }
+        XCTAssertEqual(sidecar.receivedMethods, ["insight.refresh_live"])
+    }
+
+    func testSessionStartKeepsGenericRPCTimeout() throws {
+        let socketPath = "/tmp/insightkit-generic-deadline-\(UUID().uuidString).sock"
+        let sidecar = DelayedInsightSidecar(socketPath: socketPath, responseDelay: 2.0)
+        try sidecar.start()
+        defer { sidecar.stop() }
+        let client = makeClient(socketPath: socketPath)
+
+        XCTAssertThrowsError(try client.sessionStart(meetingID: "generic-deadline", title: "Test", source: "mic")) { error in
+            guard case InsightRPCClient.RPCError.timeout("session.start") = error else {
+                return XCTFail("Expected the generic RPC deadline, got \(error)")
+            }
+        }
+        XCTAssertEqual(sidecar.receivedMethods, ["session.start"])
+    }
+
+    private func makeClient(
+        socketPath: String,
+        timeoutSec: Int = 1,
+        liveInsightTimeoutSec: Int = 3,
+        maxRetries: Int = 0
+    ) -> InsightRPCClient {
+        InsightRPCClient(config: InsightRPCClient.Config(
+            socketPath: socketPath,
+            timeoutSec: timeoutSec,
+            asrChunkTimeoutSec: 120,
+            asrMediaTimeoutSec: 900,
+            providerProbeTimeoutSec: 6,
+            finalInsightTimeoutSec: 3,
+            liveInsightTimeoutSec: liveInsightTimeoutSec,
+            maxRetries: maxRetries,
+            breakerThreshold: 4,
+            breakerCooldownSec: 10
+        ))
+    }
 }
 
-private final class DelayedBuildFinalSidecar {
+private final class DelayedInsightSidecar {
     private let socketPath: String
     private let responseDelay: TimeInterval
+    private let maximumRequests: Int
+    private let responseError: String?
     private var listenFD: Int32 = -1
     private var serverThread: Thread?
     private let lock = NSLock()
     private var methods: [String] = []
     private let finished = DispatchSemaphore(value: 0)
 
-    init(socketPath: String, responseDelay: TimeInterval) {
+    init(socketPath: String, responseDelay: TimeInterval, maximumRequests: Int = 1, responseError: String? = nil) {
         self.socketPath = socketPath
         self.responseDelay = responseDelay
+        self.maximumRequests = maximumRequests
+        self.responseError = responseError
     }
 
     var receivedMethods: [String] {
@@ -65,7 +144,7 @@ private final class DelayedBuildFinalSidecar {
         guard pathBytes.count <= capacity else {
             Darwin.close(listenFD)
             listenFD = -1
-            throw NSError(domain: "DelayedBuildFinalSidecar", code: Int(ENAMETOOLONG), userInfo: [
+            throw NSError(domain: "DelayedInsightSidecar", code: Int(ENAMETOOLONG), userInfo: [
                 NSLocalizedDescriptionKey: "Socket path is too long.",
             ])
         }
@@ -96,8 +175,9 @@ private final class DelayedBuildFinalSidecar {
             throw error
         }
 
+        let serverFD = listenFD
         serverThread = Thread { [weak self] in
-            self?.run()
+            self?.run(serverFD: serverFD)
         }
         serverThread?.start()
     }
@@ -120,11 +200,13 @@ private final class DelayedBuildFinalSidecar {
         stop()
     }
 
-    private func run() {
+    private func run(serverFD: Int32) {
         defer { finished.signal() }
-        let clientFD = Darwin.accept(listenFD, nil, nil)
-        guard clientFD >= 0 else { return }
-        handle(clientFD)
+        for _ in 0..<maximumRequests {
+            let clientFD = Darwin.accept(serverFD, nil, nil)
+            guard clientFD >= 0 else { return }
+            handle(clientFD)
+        }
     }
 
     private func handle(_ clientFD: Int32) {
@@ -153,7 +235,7 @@ private final class DelayedBuildFinalSidecar {
 
         Thread.sleep(forTimeInterval: responseDelay)
 
-        let response: [String: Any] = [
+        var response: [String: Any] = [
             "jsonrpc": "2.0",
             "id": responseID,
             "result": [
@@ -176,6 +258,10 @@ private final class DelayedBuildFinalSidecar {
                 "needs_review_count": 0,
             ],
         ]
+        if let responseError {
+            response.removeValue(forKey: "result")
+            response["error"] = ["code": -32000, "message": responseError]
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: response) else { return }
         _ = data.withUnsafeBytes { bytes in
             Darwin.write(clientFD, bytes.baseAddress, bytes.count)
@@ -183,7 +269,7 @@ private final class DelayedBuildFinalSidecar {
     }
 
     private func posixError(_ operation: String) -> NSError {
-        NSError(domain: "DelayedBuildFinalSidecar", code: Int(errno), userInfo: [
+        NSError(domain: "DelayedInsightSidecar", code: Int(errno), userInfo: [
             NSLocalizedDescriptionKey: "\(operation) failed: \(String(cString: strerror(errno)))",
         ])
     }

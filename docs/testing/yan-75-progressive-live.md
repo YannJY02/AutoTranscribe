@@ -35,6 +35,24 @@ The packager regression failed on the missing selector before the fix and passes
 
 ## Manual acceptance
 
+### Live summary deadline regression (2026-09-23)
+
+A synthetic live request through the installed DeepSeek sidecar returned a valid
+package after 8.83 seconds, beyond the app's generic eight-second RPC timeout.
+The summary worker discarded the result, leaving minutes absent during recording
+even though final generation worked. Live generation now has a separate bounded
+30-second deadline (`INSIGHTKIT_LIVE_INSIGHT_RPC_TIMEOUT_SEC`) and no immediate
+RPC retry; the existing background scheduler continues to coalesce later updates.
+This does not change the ASR, generic RPC, or final-generation timeouts.
+
+The delayed Unix-socket unit regression failed before the repair and passed
+afterward. The native `LiveSlowSummaryWorkspaceTests` scenario uses the actual
+RPC client with a one-second generic deadline and a six-second synthetic provider
+response. It requires both transcript rows and the summary to appear while still
+recording, then checks that stopping remains responsive. Local before/after proof
+is retained under `logs/smart-minutes-20260923/`; the provider timing is one
+diagnostic observation, not a latency guarantee.
+
 1. Record a short conversation with two people taking turns, including a sustained sentence and a brief interruption. Observe text arrival, later speaker corrections, and Smart Minutes updates.
 2. Continue speaking while a summary is updating. Check that newly recognized text keeps appearing and speaker labels retain the same person across turns.
 3. Stop, reopen the saved Record, and compare media duration, transcript seek times, speaker labels and generated minutes. Start a second session and confirm that old text or summaries do not appear in it.
